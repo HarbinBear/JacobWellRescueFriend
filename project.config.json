@@ -1,0 +1,32 @@
+{
+    "setting": {
+        "urlCheck": true,
+        "es6": true,
+        "postcss": true,
+        "minified": true,
+        "newFeature": true,
+        "autoCompile": true,
+        "compileHotReLoad": true,
+        "nativeCompile": true
+    },
+    "appid": "ttb9dacf6727b90eaa02",
+    "projectname": "雅各布井营救好友",
+    "douyinProjectType": "native",
+    "condition": {
+        "game": {
+            "current": -1,
+            "list": [
+                {
+                    "id": 1767873437743,
+                    "name": "我在贪吃蛇游戏中获得了0分，快来挑战我吧！",
+                    "pathName": "我在贪吃蛇游戏中获得了0分，快来挑战我吧！",
+                    "query": "from=share&score=0",
+                    "scene": "",
+                    "launchFrom": "",
+                    "location": "",
+                    "mockUpdateType": "Noupdate"
+                }
+            ]
+        }
+    }
+}
