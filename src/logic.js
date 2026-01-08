@@ -62,11 +62,11 @@ function checkCollision(x, y) {
     let c = Math.floor(x/tileSize);
     for(let ry = r-1; ry <= r+1; ry++) {
         for(let rc = c-1; rc <= c+1; rc++) {
-            if(state.map[ry] && state.map[ry][rc] === 1) {
-                let wallX = rc * tileSize + tileSize/2;
-                let wallY = ry * tileSize + tileSize/2;
-                let dist = Math.hypot(x - wallX, y - wallY);
-                if(dist < 10 + tileSize*0.5) return true;
+            if(state.map[ry] && state.map[ry][rc] && typeof state.map[ry][rc] === 'object') {
+                let wall = state.map[ry][rc];
+                let dist = Math.hypot(x - wall.x, y - wall.y);
+                // 碰撞半径 = 墙半径 + 玩家半径(10)
+                if(dist < wall.r + 10) return true;
             }
         }
     }
@@ -80,10 +80,9 @@ function getNearestWallDist(x, y) {
     let minDist = 999;
     for(let ry = r-2; ry <= r+2; ry++) {
         for(let rc = c-2; rc <= c+2; rc++) {
-            if(state.map[ry] && state.map[ry][rc] === 1) {
-                let wallX = rc * tileSize + tileSize/2;
-                let wallY = ry * tileSize + tileSize/2;
-                let dist = Math.hypot(x - wallX, y - wallY) - (tileSize * 0.7);
+            if(state.map[ry] && state.map[ry][rc] && typeof state.map[ry][rc] === 'object') {
+                let wall = state.map[ry][rc];
+                let dist = Math.hypot(x - wall.x, y - wall.y) - wall.r;
                 if(dist < minDist) minDist = dist;
             }
         }
@@ -128,8 +127,10 @@ export function update() {
     if(input.speedUp) speed = CONFIG.moveSpeed; 
     
     if(input.move > 0) {
-        player.vx += Math.cos(player.angle) * speed * CONFIG.acceleration;
-        player.vy += Math.sin(player.angle) * speed * CONFIG.acceleration;
+        // 修改：加速度方向直接由摇杆方向(targetAngle)决定，提升操控手感
+        // 原逻辑是基于当前朝向(player.angle)加速，会导致转向时移动轨迹画弧过大
+        player.vx += Math.cos(player.targetAngle) * speed * CONFIG.acceleration;
+        player.vy += Math.sin(player.targetAngle) * speed * CONFIG.acceleration;
     }
 
     // 水阻力
@@ -200,6 +201,23 @@ export function update() {
         showAlert("上升过快！减缓速度！", "#f00");
     }
 
+    // 更新探索地图
+    // 探索半径约为光照范围
+    let exploreRadius = Math.ceil(CONFIG.lightRange / CONFIG.tileSize);
+    let pr = Math.floor(player.y / CONFIG.tileSize);
+    let pc = Math.floor(player.x / CONFIG.tileSize);
+    
+    for(let r = pr - exploreRadius; r <= pr + exploreRadius; r++) {
+        for(let c = pc - exploreRadius; c <= pc + exploreRadius; c++) {
+            if(r >= 0 && r < CONFIG.rows && c >= 0 && c < CONFIG.cols) {
+                // 简单的距离判断
+                if(Math.hypot(c-pc, r-pr) <= exploreRadius) {
+                    if(state.explored[r]) state.explored[r][c] = true;
+                }
+            }
+        }
+    }
+
     // 4. 任务逻辑
     let dist = Math.hypot(player.x - target.x, player.y - target.y);
     if(!target.found && dist < 40) {
@@ -216,8 +234,15 @@ export function update() {
             target.x += dx * 0.05;
             target.y += dy * 0.05;
         }
-        
-        if(depthM < 4) endGame(true);
+    }
+
+    // 水面检测 (y < 20 视为浮出水面)
+    if(player.y < 20) {
+        if(player.hasTarget) {
+            endGame(true);
+        } else {
+            endGame(false, target.name + '，你先等等，我要回家吃饭了。');
+        }
     }
 
     if(player.o2 <= 0) endGame(false, "氧气耗尽");

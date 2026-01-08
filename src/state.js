@@ -4,6 +4,7 @@ export const state = {
     screen: 'play', // play, win, lose
     map: [],
     walls: [], // 存储墙壁的渲染圆心
+    explored: [], // 记录已探索区域
     msgTimer: null,
     alertMsg: '',
     alertColor: '#fff',
@@ -32,17 +33,23 @@ export const input = {
 };
 
 export const touches = {
-    leftId: null,
-    leftStart: { x: 0, y: 0 },
-    leftCurr: { x: 0, y: 0 },
-    rightId: null,
-    rightStart: { x: 0, y: 0 },
-    rightCurr: { x: 0, y: 0 }
+    joystickId: null,
+    start: { x: 0, y: 0 },
+    curr: { x: 0, y: 0 }
 };
 
 export function resetState() {
     state.screen = 'play';
     state.texts = [];
+    
+    // 重置探索地图
+    state.explored = [];
+    for(let r=0; r<CONFIG.rows; r++) {
+        state.explored[r] = [];
+        for(let c=0; c<CONFIG.cols; c++) {
+            state.explored[r][c] = false;
+        }
+    }
     
     player.o2 = 100; 
     player.n2 = 0; 

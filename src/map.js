@@ -6,66 +6,148 @@ export function generateMap() {
     state.map = [];
     const { rows, cols, tileSize } = CONFIG;
     
+    // 1. 初始化：随机填充 (元胞自动机初始状态)
     for(let r=0; r<rows; r++) {
         state.map[r] = [];
-        for(let c=0; c<cols; c++) state.map[r][c] = 1;
-    }
-
-    // 顶部水面开放
-    for(let r=0; r<6; r++) {
-        for(let c=1; c<cols-1; c++) state.map[r][c] = 0;
-    }
-
-    // 矿工挖掘
-    let miner = {x: Math.floor(cols/2), y: 5}; 
-    let steps = 0;
-    const maxSteps = rows * cols * 3;
-    
-    while(steps < maxSteps) {
-        for(let ry=0; ry<2; ry++) {
-            for(let rx=0; rx<2; rx++) {
-                if(miner.y+ry < rows-1 && miner.x+rx < cols-1 && miner.y+ry > 0 && miner.x+rx > 0) {
-                    state.map[miner.y+ry][miner.x+rx] = 0;
-                }
+        for(let c=0; c<cols; c++) {
+            // 边缘必须是墙，但顶部(r=0)除外，那是水面
+            if(r === rows-1 || c === 0 || c === cols-1) {
+                state.map[r][c] = 1;
+            } else {
+                // 随机填充，45%概率是墙
+                state.map[r][c] = Math.random() < 0.45 ? 1 : 0;
             }
         }
-        
-        let dir = Math.random();
-        if(dir < 0.35 && miner.y < rows-3) miner.y++;
-        else if(dir < 0.6 && miner.x < cols-3) miner.x++;
-        else if(dir < 0.8 && miner.y > 6) miner.y--; 
-        else if(miner.x > 2) miner.x--;
-        
-        steps++;
     }
 
-    // 封闭边界
-    for(let r=0; r<rows; r++) state.map[r][0] = state.map[r][cols-1] = 1;
-    for(let c=0; c<cols; c++) state.map[rows-1][c] = 1;
+    // 2. 顶部水面区域 (确保顶部是空的)
+    // 从 r=0 开始清理，确保水面没有墙
+    for(let r=0; r<8; r++) {
+        for(let c=1; c<cols-1; c++) {
+            state.map[r][c] = 0;
+        }
+    }
 
-    // 生成墙壁渲染数据
+    // 3. 元胞自动机平滑 (模拟自然洞穴)
+    // 进行几次迭代，让墙壁聚集成块，空地连成片
+    for(let i=0; i<5; i++) {
+        let newMap = JSON.parse(JSON.stringify(state.map));
+        for(let r=1; r<rows-1; r++) {
+            for(let c=1; c<cols-1; c++) {
+                let neighbors = getNeighborCount(r, c);
+                if(neighbors > 4) newMap[r][c] = 1;
+                else if(neighbors < 4) newMap[r][c] = 0;
+            }
+        }
+        state.map = newMap;
+    }
+
+    // 4. 狭窄水道生成 (使用随机游走挖掘细长通道)
+    // 在地图中随机找点，如果是墙，就挖一条细长的路
+    for(let i=0; i<15; i++) {
+        let miner = {
+            x: Math.floor(Math.random() * (cols-4) + 2),
+            y: Math.floor(Math.random() * (rows-10) + 8)
+        };
+        let len = Math.floor(Math.random() * 20 + 10);
+        for(let step=0; step<len; step++) {
+            if(miner.y > 0 && miner.y < rows-1 && miner.x > 0 && miner.x < cols-1) {
+                state.map[miner.y][miner.x] = 0;
+                // 偶尔把旁边也挖掉，形成不规则宽度
+                if(Math.random() > 0.7) {
+                    let adjX = miner.x + (Math.random()>0.5?1:-1);
+                    let adjY = miner.y + (Math.random()>0.5?1:-1);
+                    if(adjY > 0 && adjY < rows-1 && adjX > 0 && adjX < cols-1) {
+                        state.map[adjY][adjX] = 0;
+                    }
+                }
+            }
+            // 随机移动
+            miner.x += Math.floor(Math.random() * 3) - 1;
+            miner.y += Math.floor(Math.random() * 3) - 1;
+        }
+    }
+
+    // 5. 确保顶部水面不被封死 (再次清理顶部)
+    for(let r=0; r<6; r++) {
+        for(let c=1; c<cols-1; c++) {
+            state.map[r][c] = 0;
+        }
+    }
+    // 岸边不规则化
+    for(let c=1; c<cols-1; c++) {
+        if(Math.random() > 0.5) state.map[6][c] = 0;
+        if(Math.random() > 0.7) state.map[7][c] = 0;
+    }
+
+    // 6. 生成墙壁渲染数据 (打破网格感)
     state.walls = [];
     for(let r=0; r<rows; r++) {
         for(let c=0; c<cols; c++) {
             if(state.map[r][c] === 1) {
-                state.walls.push({
-                    x: c * tileSize + tileSize/2,
-                    y: r * tileSize + tileSize/2,
-                    r: tileSize * (0.6 + Math.random() * 0.3) 
-                });
+                // 随机偏移，打破正方形网格
+                let offsetX = (Math.random() - 0.5) * tileSize * 0.6;
+                let offsetY = (Math.random() - 0.5) * tileSize * 0.6;
+                // 随机大小，稍微大一点以覆盖缝隙
+                let radius = tileSize * (0.6 + Math.random() * 0.4);
+                
+                let wall = {
+                    x: c * tileSize + tileSize/2 + offsetX,
+                    y: r * tileSize + tileSize/2 + offsetY,
+                    r: radius
+                };
+                
+                state.walls.push(wall);
+                // 将详细信息存回 map，方便碰撞检测
+                state.map[r][c] = wall;
+                
+                // 偶尔添加额外的填充石块
+                if(Math.random() < 0.3) {
+                    state.walls.push({
+                        x: c * tileSize + tileSize/2 + (Math.random()-0.5)*tileSize,
+                        y: r * tileSize + tileSize/2 + (Math.random()-0.5)*tileSize,
+                        r: tileSize * (0.3 + Math.random() * 0.3)
+                    });
+                }
             }
         }
     }
 
-    // 放置目标
+    // 放置目标 (确保在空地上)
     let valid = false;
     while(!valid) {
-        let tr = Math.floor(rows * 0.7 + Math.random() * (rows * 0.2));
-        let tc = Math.floor(cols * 0.5 + Math.random() * (cols * 0.4));
+        let tr = Math.floor(rows * 0.6 + Math.random() * (rows * 0.3));
+        let tc = Math.floor(cols * 0.2 + Math.random() * (cols * 0.6));
         if(state.map[tr][tc] === 0) {
-            target.x = tc * tileSize + tileSize/2;
-            target.y = tr * tileSize + tileSize/2;
-            valid = true;
+            // 检查周围是否有空地，避免生成在死胡同里太难找
+            let spaceCount = 0;
+            for(let rr=-1; rr<=1; rr++)
+                for(let cc=-1; cc<=1; cc++)
+                    if(state.map[tr+rr][tc+cc] === 0) spaceCount++;
+            
+            if(spaceCount >= 5) {
+                target.x = tc * tileSize + tileSize/2;
+                target.y = tr * tileSize + tileSize/2;
+                valid = true;
+            }
         }
     }
+}
+
+function getNeighborCount(r, c) {
+    let count = 0;
+    for(let i=-1; i<=1; i++) {
+        for(let j=-1; j<=1; j++) {
+            if(i===0 && j===0) continue;
+            let nr = r+i;
+            let nc = c+j;
+            // 边界外视为墙
+            if(nr < 0 || nr >= state.map.length || nc < 0 || nc >= state.map[0].length) {
+                count++;
+            } else if(state.map[nr][nc] === 1) {
+                count++;
+            }
+        }
+    }
+    return count;
 }

@@ -46,24 +46,70 @@ export function draw() {
 
     // 绘制墙壁
     const { tileSize, rows, cols } = CONFIG;
-    let startC = Math.floor(-camX/tileSize) - 2;
-    let endC = startC + (canvas.width/tileSize) + 4;
-    let startR = Math.floor(-camY/tileSize) - 2;
-    let endR = startR + (canvas.height/tileSize) + 4;
+    
+    // 优化：只绘制视野内的墙壁
+    // 由于现在墙壁是列表形式，且没有空间索引，简单的视锥剔除可能需要遍历所有墙壁
+    // 为了性能，我们可以先绘制背景，然后遍历 walls
+    // 如果性能有问题，可以考虑将 walls 按网格分块存储，这里先直接遍历
+    
+    // 绘制水面背景 (深蓝色渐变)
+    let waterGradient = ctx.createLinearGradient(0, 0, 0, 300);
+    waterGradient.addColorStop(0, 'rgba(100, 200, 255, 0.3)');
+    waterGradient.addColorStop(1, 'rgba(0, 50, 100, 0.0)');
+    ctx.fillStyle = waterGradient;
+    ctx.fillRect(-1000, 0, 4000, 300); // 覆盖顶部区域
 
-    for(let r=startR; r<endR; r++) {
-        for(let c=startC; c<endC; c++) {
-            if(r>=0 && r<rows && c>=0 && c<cols && state.map[r][c] === 1) {
-                ctx.fillStyle = '#222'; 
-                let cx = c*tileSize+tileSize/2;
-                let cy = r*tileSize+tileSize/2;
-                let rad = tileSize * 0.7; 
-                ctx.beginPath();
-                ctx.arc(cx, cy, rad, 0, Math.PI*2);
-                ctx.fill();
-                ctx.strokeStyle = '#444'; 
-                ctx.stroke();
-            }
+    // 绘制水面线 (多层波浪)
+    let time = Date.now() / 1000;
+    
+    // 后层波浪 (较暗，较慢)
+    ctx.strokeStyle = 'rgba(100, 200, 255, 0.3)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(-1000, 5);
+    for(let x=-1000; x<3000; x+=40) {
+        ctx.lineTo(x, 5 + Math.sin(x/150 + time*0.8)*8);
+    }
+    ctx.stroke();
+
+    // 前层波浪 (亮色，较快)
+    ctx.strokeStyle = 'rgba(200, 240, 255, 0.8)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-1000, 5); 
+    for(let x=-1000; x<3000; x+=30) {
+        ctx.lineTo(x, 5 + Math.sin(x/100 + time)*5);
+    }
+    ctx.stroke();
+
+    // 绘制墙壁 (使用 state.walls 代替网格遍历，以支持不规则排列)
+    // 筛选视野内的墙壁
+    let viewL = -camX - 100;
+    let viewR = -camX + canvas.width + 100;
+    let viewT = -camY - 100;
+    let viewB = -camY + canvas.height + 100;
+
+    // 使用纹理或噪点填充墙壁，去除描边以减少球体感
+    ctx.fillStyle = '#222';
+    // ctx.strokeStyle = '#333'; // 去除描边
+    // ctx.lineWidth = 2;
+
+    for(let w of state.walls) {
+        // 简单的视口剔除
+        if(w.x > viewL && w.x < viewR && w.y > viewT && w.y < viewB) {
+            ctx.beginPath();
+            // 稍微变形一点，不那么圆
+            // 为了性能，还是画圆，但是通过重叠和无描边来减少球感
+            // 也可以画两个略微偏移的圆来模拟不规则
+            ctx.arc(w.x, w.y, w.r, 0, Math.PI*2);
+            ctx.fill();
+            
+            // 绘制内部纹理/阴影细节
+            ctx.fillStyle = '#1a1a1a';
+            ctx.beginPath();
+            ctx.arc(w.x - w.r*0.3, w.y - w.r*0.3, w.r*0.6, 0, Math.PI*2);
+            ctx.fill();
+            ctx.fillStyle = '#222'; // 恢复主色
         }
     }
 
@@ -218,16 +264,28 @@ function getLightPolygon(sx, sy, angle, maxDist) {
         let dx = Math.cos(a);
         let dy = Math.sin(a);
         
-        let dist = 0;
-        let stepLen = 4; // 优化步长
+        let dist = maxDist;
+        let stepLen = 5; 
+        
+        // 射线步进检测
         for(let d=0; d<maxDist; d+=stepLen) {
-            dist = d;
             let tx = sx + dx * d;
             let ty = sy + dy * d;
             let r = Math.floor(ty/tileSize);
             let c = Math.floor(tx/tileSize);
-            if(state.map[r] && state.map[r][c] === 1) {
-                break;
+            
+            // 粗略检测：网格有东西
+            if(state.map[r] && state.map[r][c]) {
+                // 精确检测：射线与圆相交
+                let wall = state.map[r][c];
+                // 简单的点在圆内检测 (比射线-圆相交方程快，但精度稍低，对于光照足够)
+                // 如果当前步进点进入了墙壁半径内
+                let distToWallCenter = Math.hypot(tx - wall.x, ty - wall.y);
+                if(distToWallCenter < wall.r) {
+                    // 稍微回退一点，避免光线穿入墙壁太深
+                    dist = d - stepLen/2;
+                    break;
+                }
             }
         }
         points.push({x: sx + dx * dist, y: sy + dy * dist});
@@ -246,17 +304,21 @@ function isLineOfSight(x1, y1, x2, y2, maxDist) {
         let cy = y1 + (y2-y1)*t;
         let r = Math.floor(cy/tileSize);
         let c = Math.floor(cx/tileSize);
-        if(state.map[r] && state.map[r][c] === 1) return false;
+        
+        if(state.map[r] && state.map[r][c]) {
+             let wall = state.map[r][c];
+             if(Math.hypot(cx - wall.x, cy - wall.y) < wall.r) return false;
+        }
     }
     return true;
 }
 
 function drawUI() {
-    // 仪表盘背景
+    // 仪表盘背景 (加高以容纳小地图)
     ctx.fillStyle = 'rgba(0, 10, 15, 0.8)';
-    ctx.fillRect(10, 10, 160, 100);
+    ctx.fillRect(10, 10, 160, 260); // 高度增加到 260
     ctx.strokeStyle = '#445';
-    ctx.strokeRect(10, 10, 160, 100);
+    ctx.strokeRect(10, 10, 160, 260);
 
     ctx.fillStyle = '#0ff';
     ctx.font = 'bold 14px Arial';
@@ -288,6 +350,57 @@ function drawUI() {
     ctx.fillStyle = '#b85';
     ctx.fillRect(50, 80, Math.min(100, player.silt), 10);
 
+    // 小地图 (移到左上角，仪表盘下方)
+    if(state.explored && state.explored.length > 0) {
+        let mapSize = 140; // 稍微大一点
+        let mapX = 20;
+        let mapY = 100; // 紧接在扬尘条下方
+        
+        // 背景
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+        ctx.fillRect(mapX, mapY, mapSize, mapSize);
+        ctx.strokeStyle = '#445';
+        ctx.strokeRect(mapX, mapY, mapSize, mapSize);
+        
+        // 计算缩放
+        let scaleX = mapSize / CONFIG.cols;
+        let scaleY = mapSize / CONFIG.rows;
+        
+        // 绘制已探索区域
+        for(let r=0; r<CONFIG.rows; r++) {
+            for(let c=0; c<CONFIG.cols; c++) {
+                if(state.explored[r] && state.explored[r][c]) {
+                    let mx = mapX + c * scaleX;
+                    let my = mapY + r * scaleY;
+                    
+                    if(state.map[r][c]) {
+                        // 墙壁
+                        ctx.fillStyle = '#555';
+                        ctx.fillRect(mx, my, scaleX, scaleY);
+                    } else {
+                        // 水道 (稍微亮一点的蓝色)
+                        ctx.fillStyle = 'rgba(50, 100, 150, 0.5)';
+                        ctx.fillRect(mx, my, scaleX, scaleY);
+                    }
+                }
+            }
+        }
+        
+        // 玩家位置
+        let px = mapX + (player.x / CONFIG.tileSize) * scaleX;
+        let py = mapY + (player.y / CONFIG.tileSize) * scaleY;
+        ctx.fillStyle = '#0f0';
+        ctx.beginPath(); ctx.arc(px, py, 2, 0, Math.PI*2); ctx.fill();
+        
+        // 目标位置 (如果已探索或已找到)
+        if(target.found || (state.explored[Math.floor(target.y/CONFIG.tileSize)] && state.explored[Math.floor(target.y/CONFIG.tileSize)][Math.floor(target.x/CONFIG.tileSize)])) {
+             let tx = mapX + (target.x / CONFIG.tileSize) * scaleX;
+             let ty = mapY + (target.y / CONFIG.tileSize) * scaleY;
+             ctx.fillStyle = '#f0f';
+             ctx.beginPath(); ctx.arc(tx, ty, 2, 0, Math.PI*2); ctx.fill();
+        }
+    }
+
     // 警告信息
     if(state.alertMsg) {
         ctx.fillStyle = state.alertColor;
@@ -314,56 +427,33 @@ function drawUI() {
 function drawControls() {
     if(state.screen !== 'play') return;
 
-    // 左摇杆 (移动)
-    if(touches.leftId !== null) {
+    // 摇杆绘制
+    if(touches.joystickId !== null) {
+        // 摇杆底座
         ctx.beginPath();
-        ctx.arc(touches.leftStart.x, touches.leftStart.y, 40, 0, Math.PI*2);
+        ctx.arc(touches.start.x, touches.start.y, 40, 0, Math.PI*2);
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+        ctx.lineWidth = 2;
         ctx.stroke();
         
+        // 摇杆头
         ctx.beginPath();
-        ctx.arc(touches.leftCurr.x, touches.leftCurr.y, 20, 0, Math.PI*2);
+        ctx.arc(touches.curr.x, touches.curr.y, 20, 0, Math.PI*2);
         ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
         ctx.fill();
-    } else {
-        // 提示
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
-        ctx.beginPath();
-        ctx.arc(80, canvas.height - 80, 40, 0, Math.PI*2);
-        ctx.fill();
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-        ctx.textAlign = 'center';
-        ctx.font = '12px Arial';
-        ctx.fillText('移动', 80, canvas.height - 80);
-    }
 
-    // 右摇杆 (转向)
-    if(touches.rightId !== null) {
+        // 方向指示线
         ctx.beginPath();
-        ctx.arc(touches.rightStart.x, touches.rightStart.y, 40, 0, Math.PI*2);
+        ctx.moveTo(touches.start.x, touches.start.y);
+        ctx.lineTo(touches.curr.x, touches.curr.y);
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
-        ctx.stroke();
-
-        ctx.beginPath();
-        ctx.arc(touches.rightCurr.x, touches.rightCurr.y, 20, 0, Math.PI*2);
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-        ctx.fill();
-        
-        // 指示方向
-        ctx.beginPath();
-        ctx.moveTo(touches.rightStart.x, touches.rightStart.y);
-        ctx.lineTo(touches.rightCurr.x, touches.rightCurr.y);
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+        ctx.lineWidth = 1;
         ctx.stroke();
     } else {
-        // 提示
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
-        ctx.beginPath();
-        ctx.arc(canvas.width - 80, canvas.height - 80, 40, 0, Math.PI*2);
-        ctx.fill();
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+        // 屏幕下方提示
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
         ctx.textAlign = 'center';
-        ctx.font = '12px Arial';
-        ctx.fillText('转向', canvas.width - 80, canvas.height - 80);
+        ctx.font = '14px Arial';
+        ctx.fillText('按住屏幕任意位置移动', canvas.width / 2, canvas.height - 50);
     }
 }
