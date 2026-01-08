@@ -113,6 +113,57 @@ export function generateMap() {
         }
     }
 
+    // 7. 生成浅水区生态 (水草和鱼)
+    state.plants = [];
+    state.fishes = [];
+    
+    // 水草：附着在浅水区(前10行)的墙壁上
+    for(let w of state.walls) {
+        if(w.y < 10 * tileSize) {
+            // 每个墙壁尝试生成几株水草
+            if(Math.random() < 0.4) {
+                let angle = Math.random() * Math.PI * 2;
+                let dist = w.r * 0.8;
+                state.plants.push({
+                    x: w.x + Math.cos(angle) * dist,
+                    y: w.y + Math.sin(angle) * dist,
+                    len: 10 + Math.random() * 15,
+                    color: Math.random() > 0.5 ? '#2e8b57' : '#3cb371', // 海绿/春绿
+                    offset: Math.random() * Math.PI * 2 // 摆动相位
+                });
+            }
+        }
+    }
+
+    // 鱼群：在浅水区生成多个鱼群
+    let schools = Math.floor(Math.random() * 4) + 5; // 5-8个鱼群
+    for(let s=0; s<schools; s++) {
+        // 鱼群中心
+        let centerR = Math.floor(Math.random() * 8 + 1); // 1-9行
+        let centerC = Math.floor(Math.random() * (cols-4) + 2);
+        
+        // 检查中心点是否是空地
+        if(state.map[centerR] && state.map[centerR][centerC] === 0) {
+            // 每个鱼群 5-12 条鱼
+            let count = Math.floor(Math.random() * 8) + 5;
+            // 随机颜色：珊瑚色、金色、天蓝色、热带紫
+            let colors = ['#ff7f50', '#ffd700', '#00bfff', '#da70d6'];
+            let schoolColor = colors[Math.floor(Math.random() * colors.length)];
+            
+            for(let i=0; i<count; i++) {
+                state.fishes.push({
+                    x: centerC * tileSize + tileSize/2 + (Math.random()-0.5)*tileSize*2,
+                    y: centerR * tileSize + tileSize/2 + (Math.random()-0.5)*tileSize*2,
+                    vx: (Math.random() - 0.5) * 1.0, 
+                    vy: (Math.random() - 0.5) * 0.3,
+                    size: 4 + Math.random() * 3, // 稍微大一点
+                    color: schoolColor,
+                    phase: Math.random() * Math.PI * 2
+                });
+            }
+        }
+    }
+
     // 放置目标 (确保在空地上)
     let valid = false;
     while(!valid) {

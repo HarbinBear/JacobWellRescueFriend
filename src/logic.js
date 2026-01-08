@@ -248,5 +248,57 @@ export function update() {
     if(player.o2 <= 0) endGame(false, "氧气耗尽");
     if(player.n2 >= 100) endGame(false, "严重减压病");
 
+    // 5. 生态系统更新 (鱼群游动)
+    if(state.fishes) {
+        for(let fish of state.fishes) {
+            // 初始化角度
+            if(fish.angle === undefined) fish.angle = Math.atan2(fish.vy, fish.vx);
+
+            fish.x += fish.vx;
+            fish.y += fish.vy;
+            
+            // 边界反弹 (修正为地图宽度)
+            if(fish.x < 0 || fish.x > CONFIG.cols * CONFIG.tileSize) fish.vx *= -1;
+            
+            // 水面限制 (防止飞出水面)
+            if(fish.y < 60) {
+                fish.y = 60;
+                fish.vy = Math.abs(fish.vy) * 0.5; // 反弹并减速
+            }
+            // 底部限制
+            if(fish.y > CONFIG.rows * CONFIG.tileSize) fish.vy *= -1;
+
+            // 随机转向 (降低频率和平滑度)
+            if(Math.random() < 0.005) {
+                fish.vx += (Math.random() - 0.5) * 0.8;
+                fish.vy += (Math.random() - 0.5) * 0.4;
+            }
+            
+            // 限制速度
+            let speed = Math.hypot(fish.vx, fish.vy);
+            if(speed > 2.0) {
+                fish.vx *= 0.9;
+                fish.vy *= 0.9;
+            } else if (speed < 0.5) {
+                fish.vx *= 1.1;
+                fish.vy *= 1.1;
+            }
+            
+            // 简单的避障 (如果碰到墙壁就反向)
+            if(checkCollision(fish.x + fish.vx*10, fish.y + fish.vy*10)) {
+                fish.vx *= -1;
+                fish.vy *= -1;
+            }
+
+            // 平滑更新角度
+            let targetAngle = Math.atan2(fish.vy, fish.vx);
+            // 角度插值
+            let diff = targetAngle - fish.angle;
+            while(diff > Math.PI) diff -= Math.PI*2;
+            while(diff < -Math.PI) diff += Math.PI*2;
+            fish.angle += diff * 0.1; // 平滑系数
+        }
+    }
+
     updateParticles();
 }

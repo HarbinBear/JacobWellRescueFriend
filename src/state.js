@@ -4,6 +4,8 @@ export const state = {
     screen: 'play', // play, win, lose
     map: [],
     walls: [], // 存储墙壁的渲染圆心
+    plants: [], // 存储水草
+    fishes: [], // 存储鱼群
     explored: [], // 记录已探索区域
     msgTimer: null,
     alertMsg: '',

@@ -44,20 +44,16 @@ export function draw() {
     ctx.save();
     ctx.translate(camX, camY);
 
-    // 绘制墙壁
-    const { tileSize, rows, cols } = CONFIG;
-    
-    // 优化：只绘制视野内的墙壁
-    // 由于现在墙壁是列表形式，且没有空间索引，简单的视锥剔除可能需要遍历所有墙壁
-    // 为了性能，我们可以先绘制背景，然后遍历 walls
-    // 如果性能有问题，可以考虑将 walls 按网格分块存储，这里先直接遍历
-    
-    // 绘制水面背景 (深蓝色渐变)
-    let waterGradient = ctx.createLinearGradient(0, 0, 0, 300);
-    waterGradient.addColorStop(0, 'rgba(100, 200, 255, 0.3)');
-    waterGradient.addColorStop(1, 'rgba(0, 50, 100, 0.0)');
-    ctx.fillStyle = waterGradient;
-    ctx.fillRect(-1000, 0, 4000, 300); // 覆盖顶部区域
+    // 绘制水面背景 (明亮的天空和浅水渐变)
+    // 从 y=-800 (天空) 到 y=600 (深水过渡)
+    let skyGradient = ctx.createLinearGradient(0, -800, 0, 600);
+    skyGradient.addColorStop(0, '#87CEEB'); // 天空蓝
+    skyGradient.addColorStop(0.5, '#E0F7FA'); // 水面亮白 (y=0附近)
+    skyGradient.addColorStop(0.6, '#4DD0E1'); // 浅水青
+    skyGradient.addColorStop(1, 'rgba(37, 42, 48, 0)'); // 透明，露出底色
+
+    ctx.fillStyle = skyGradient;
+    ctx.fillRect(-2000, -1000, 6000, 1600);
 
     // 绘制水面线 (多层波浪)
     let time = Date.now() / 1000;
@@ -81,6 +77,29 @@ export function draw() {
         ctx.lineTo(x, 5 + Math.sin(x/100 + time)*5);
     }
     ctx.stroke();
+
+    // 绘制阳光束 (God Rays) - 仅在浅水区可见
+    if(player.y < 600) {
+        ctx.save();
+        ctx.globalCompositeOperation = 'screen';
+        for(let i=0; i<5; i++) {
+            let rayX = (Math.floor(time * 20) + i * 200) % 2000 - 500;
+            let rayAngle = Math.PI/2 + Math.sin(time * 0.5 + i) * 0.2;
+            
+            let grad = ctx.createLinearGradient(rayX, 0, rayX + Math.cos(rayAngle)*400, Math.sin(rayAngle)*400);
+            grad.addColorStop(0, 'rgba(200, 255, 255, 0.15)');
+            grad.addColorStop(1, 'rgba(200, 255, 255, 0)');
+            
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.moveTo(rayX - 20, 0);
+            ctx.lineTo(rayX + 20, 0);
+            ctx.lineTo(rayX + Math.cos(rayAngle)*400 + 40, Math.sin(rayAngle)*400);
+            ctx.lineTo(rayX + Math.cos(rayAngle)*400 - 40, Math.sin(rayAngle)*400);
+            ctx.fill();
+        }
+        ctx.restore();
+    }
 
     // 绘制墙壁 (使用 state.walls 代替网格遍历，以支持不规则排列)
     // 筛选视野内的墙壁
@@ -110,6 +129,78 @@ export function draw() {
             ctx.arc(w.x - w.r*0.3, w.y - w.r*0.3, w.r*0.6, 0, Math.PI*2);
             ctx.fill();
             ctx.fillStyle = '#222'; // 恢复主色
+        }
+    }
+
+    // 绘制水草
+    if(state.plants) {
+        for(let p of state.plants) {
+            // 视口剔除
+            if(p.x > viewL && p.x < viewR && p.y > viewT && p.y < viewB) {
+                let sway = Math.sin(time * 2 + p.offset) * 5;
+                ctx.strokeStyle = p.color;
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(p.x, p.y);
+                // 二次贝塞尔曲线模拟弯曲
+                ctx.quadraticCurveTo(p.x + sway, p.y - p.len/2, p.x + sway*1.5, p.y - p.len);
+                ctx.stroke();
+            }
+        }
+    }
+
+    // 绘制鱼群
+    if(state.fishes) {
+        for(let f of state.fishes) {
+            if(f.x > viewL && f.x < viewR && f.y > viewT && f.y < viewB) {
+                ctx.save();
+                ctx.translate(f.x, f.y);
+                
+                // 使用平滑角度，如果未定义则回退到速度方向
+                let angle = f.angle !== undefined ? f.angle : Math.atan2(f.vy, f.vx);
+                ctx.rotate(angle);
+                
+                ctx.fillStyle = f.color;
+                
+                // 鱼身 (流线型)
+                ctx.beginPath();
+                // 鱼头在右 (0,0) -> (size, 0)
+                ctx.moveTo(f.size, 0); 
+                // 上半身曲线
+                ctx.quadraticCurveTo(0, -f.size*0.6, -f.size, 0); 
+                // 下半身曲线
+                ctx.quadraticCurveTo(0, f.size*0.6, f.size, 0); 
+                ctx.fill();
+
+                // 眼睛 (画在鱼头上，相对于鱼中心)
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+                ctx.beginPath();
+                ctx.arc(f.size * 0.6, -f.size * 0.2, f.size * 0.25, 0, Math.PI*2);
+                ctx.fill();
+                ctx.fillStyle = '#000';
+                ctx.beginPath();
+                ctx.arc(f.size * 0.7, -f.size * 0.2, f.size * 0.12, 0, Math.PI*2);
+                ctx.fill();
+                
+                // 尾巴 (摆动)
+                ctx.fillStyle = f.color; // 恢复鱼的颜色
+                ctx.save(); // 保存鱼中心状态
+                
+                let tailSway = Math.sin(time * 15 + f.phase) * 0.5; // 角度摆动
+                // 移动到尾部连接点
+                ctx.translate(-f.size, 0);
+                ctx.rotate(tailSway);
+                
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.lineTo(-f.size * 0.6, -f.size * 0.5);
+                ctx.lineTo(-f.size * 0.6, f.size * 0.5);
+                ctx.fill();
+                
+                ctx.restore(); // 恢复到鱼中心状态
+                
+                ctx.restore(); // 恢复到世界坐标系
+            }
         }
     }
 
@@ -163,12 +254,36 @@ export function draw() {
     ctx.restore();
 
     // 2. 光照遮罩计算
+    lightCtx.clearRect(0, 0, canvas.width, canvas.height); // 清除上一帧的遮罩，防止半透明叠加变黑
     lightCtx.globalCompositeOperation = 'source-over';
     lightCtx.shadowBlur = 0; 
-    let depthFactor = Math.min(1, Math.max(0, player.y / (rows*tileSize)));
-    let currentAmbient = Math.max(0.05, 0.9 * (1 - depthFactor * 0.9));
     
-    lightCtx.fillStyle = `rgba(0, 0, 0, ${1 - currentAmbient})`;
+    // 深度因子：0(水面) -> 1(深渊)
+    let depthFactor = Math.min(1, Math.max(0, player.y / (CONFIG.rows*CONFIG.tileSize)));
+    
+    // 基础环境光：随深度变暗
+    let baseAmbient = Math.max(0.05, 0.9 * (1 - depthFactor * 0.9));
+    
+    // 水面额外光照：浅水区(y<500)非常亮，甚至过曝
+    let surfaceLight = 0;
+    if(player.y < 500) {
+        // 线性插值：0m -> 1.0 (全亮), 500m -> 0
+        surfaceLight = (500 - player.y) / 500 * 1.2; 
+    }
+    
+    let currentAmbient = Math.min(1.0, baseAmbient + surfaceLight);
+    
+    // 遮罩颜色
+    let maskAlpha = Math.max(0, 1 - currentAmbient);
+    // 浅水区遮罩几乎透明，深水区黑
+    
+    lightCtx.fillStyle = `rgba(0, 0, 0, ${maskAlpha})`;
+    // 如果在深水区，加一点蓝绿色调
+    if(depthFactor > 0.2) {
+        let blueTint = Math.max(0, (1 - depthFactor) * 30);
+        lightCtx.fillStyle = `rgba(0, ${blueTint/2}, ${blueTint}, ${maskAlpha})`;
+    }
+    
     lightCtx.fillRect(0, 0, canvas.width, canvas.height);
 
     let siltVis = Math.max(0.1, 1 - (player.silt / 80)); 
