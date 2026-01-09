@@ -4,13 +4,46 @@ export const state = {
     screen: 'play', // play, win, lose
     map: [],
     walls: [], // 存储墙壁的渲染圆心
+    invisibleWalls: [], // 仅对玩家生效的空气墙
     plants: [], // 存储水草
     fishes: [], // 存储鱼群
     explored: [], // 记录已探索区域
     msgTimer: null,
     alertMsg: '',
     alertColor: '#fff',
-    texts: []
+    texts: [],
+    // 剧情相关状态
+    story: {
+        stage: 0, // 0:未开始, 1:第一次下潜, 2:黑屏过渡, 3:第二次下潜, 4:濒死, 5:获救, 6:结束
+        timer: 0,
+        shake: 0, // 屏幕晃动强度
+        redOverlay: 0, // 红色遮罩透明度
+        flags: {
+            seenSuit: false,
+            npcEntered: false,
+            collapsed: false,
+            blackScreen: false,
+            narrowVision: false,
+            rescued: false,
+            approachedTunnel: false
+        }
+    },
+    debug: {
+        fastMove: true
+    },
+    npc: {
+        active: false,
+        x: 0, y: 0,
+        vx: 0, vy: 0,
+        angle: 0,
+        state: 'follow', // follow, wait, enter_tunnel, dead
+        targetX: 0, targetY: 0
+    },
+    landmarks: {
+        suit: {x:0, y:0},
+        tunnelEntry: {x:0, y:0},
+        tunnelEnd: {x:0, y:0}
+    }
 };
 
 export const player = {

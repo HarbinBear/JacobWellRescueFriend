@@ -1,6 +1,9 @@
 import { CONFIG } from './config.js';
 import { state, player, target, particles, input, resetState } from './state.js';
 import { generateMap } from './map.js';
+import { StoryManager } from './StoryManager.js';
+
+const storyManager = new StoryManager();
 
 // --- 粒子系统 ---
 class Particle {
@@ -16,7 +19,14 @@ class Particle {
             this.size = 1 + Math.random() * 10; 
             this.maxSize = 20 + Math.random() * 20; 
             this.alpha = 0.3 + Math.random() * 0.2;
-        } else {
+        } else if (type === 'blood') {
+            // 实际上不再使用 blood，但保留定义以防万一
+            this.vx = (Math.random()-0.5) * 0.5;
+            this.vy = -0.5 - Math.random(); 
+            this.size = 2 + Math.random() * 3;
+            this.life = 2.0;
+            this.alpha = 0.8;
+        } else { // bubble
             this.vx = (Math.random()-0.5) * 0.5;
             this.vy = -1 - Math.random(); 
             this.size = 1 + Math.random()*2;
@@ -28,12 +38,16 @@ class Particle {
         this.y += this.vy;
         
         if(this.type === 'silt') {
-            this.life -= 0.0002; 
+            this.life -= 0.005; // 加快消散 (原 0.0002)
             if(this.size < this.maxSize) this.size += 0.1;
             this.vx *= 0.96;
             this.vy *= 0.96;
             this.vx += (Math.random()-0.5)*0.02;
             this.vy += (Math.random()-0.5)*0.02;
+        } else if (this.type === 'blood') {
+            this.life -= 0.01;
+            this.size += 0.05; 
+            this.vx *= 0.95;
         } else {
             this.life -= 0.01;
         }
@@ -46,6 +60,12 @@ export function triggerSilt(x, y, count) {
     }
 }
 
+// 挂载到 window 供 StoryManager 使用
+window.triggerSilt = triggerSilt;
+window.addBubble = function(x, y) {
+    particles.push(new Particle(x + (Math.random()-0.5)*10, y + (Math.random()-0.5)*10, 'bubble'));
+};
+
 function updateParticles() {
     if(Math.random() < 0.02) particles.push(new Particle(player.x, player.y, 'bubble'));
     for(let i=particles.length-1; i>=0; i--) {
@@ -55,11 +75,149 @@ function updateParticles() {
     }
 }
 
+// --- 剧情与NPC逻辑 ---
+
+function updateNPC() {
+    if(!state.npc.active) return;
+    
+    let targetX = player.x;
+    let targetY = player.y;
+    let speed = 1.5;
+    
+    // Debug 加速
+    if(state.debug.fastMove) speed *= 3;
+    
+    if(state.npc.state === 'follow') {
+        // 跟随在玩家身后一点
+        targetX = player.x - Math.cos(player.angle) * 40;
+        targetY = player.y - Math.sin(player.angle) * 40;
+        
+        // 随机游动
+        if(Math.random() < 0.02) {
+            state.npc.targetX = (Math.random() - 0.5) * 60;
+            state.npc.targetY = (Math.random() - 0.5) * 60;
+        }
+        targetX += state.npc.targetX || 0;
+        targetY += state.npc.targetY || 0;
+        
+    } else if (state.npc.state === 'enter_tunnel') {
+        // 使用路径点导航
+        if(!state.npc.pathIndex) state.npc.pathIndex = 0;
+        let path = state.landmarks.tunnelPath;
+        
+        if(path && state.npc.pathIndex < path.length) {
+            let wp = path[state.npc.pathIndex];
+            targetX = wp.x;
+            targetY = wp.y;
+            
+            // 如果接近当前路点，切换到下一个
+            if(Math.hypot(targetX - state.npc.x, targetY - state.npc.y) < 40) { // 放宽判定范围
+                state.npc.pathIndex++;
+            }
+        } else {
+            // 走完了或者没有路径，就去终点
+            targetX = state.landmarks.tunnelEnd.x;
+            targetY = state.landmarks.tunnelEnd.y;
+        }
+        speed = 2.5; // 稍微快一点进入
+        if(state.debug.fastMove) speed *= 3;
+
+        // 强制移动，忽略碰撞
+        let dx = targetX - state.npc.x;
+        let dy = targetY - state.npc.y;
+        let dist = Math.hypot(dx, dy);
+        
+        if(dist > 5) {
+            state.npc.vx = (dx / dist) * speed;
+            state.npc.vy = (dy / dist) * speed;
+            state.npc.x += state.npc.vx;
+            state.npc.y += state.npc.vy;
+        }
+        
+        // 更新角度
+        if(Math.abs(state.npc.vx) > 0.1 || Math.abs(state.npc.vy) > 0.1) {
+            let targetAngle = Math.atan2(state.npc.vy, state.npc.vx);
+            state.npc.angle = targetAngle; // 直接转向，不平滑，防止抽搐
+        }
+        return; // 独占逻辑，直接返回
+
+    } else if (state.npc.state === 'wait') {
+        targetX = state.npc.x;
+        targetY = state.npc.y;
+        speed = 0;
+        
+        // 等待时也要随机动一动 (增强幅度)
+        if(Math.random() < 0.1) {
+             state.npc.vx += (Math.random() - 0.5) * 1.0;
+             state.npc.vy += (Math.random() - 0.5) * 1.0;
+        }
+        // 阻尼
+        state.npc.vx *= 0.95;
+        state.npc.vy *= 0.95;
+        state.npc.x += state.npc.vx;
+        state.npc.y += state.npc.vy;
+        
+        // 限制范围 (不跑太远)
+        // 这里简单处理，不让它穿墙即可
+        if(checkCollision(state.npc.x, state.npc.y, false)) {
+             state.npc.x -= state.npc.vx;
+             state.npc.y -= state.npc.vy;
+             state.npc.vx *= -1; // 反弹
+             state.npc.vy *= -1;
+        }
+        
+        // 转向玩家
+        let dx = player.x - state.npc.x;
+        let dy = player.y - state.npc.y;
+        let targetAngle = Math.atan2(dy, dx);
+        let diff = targetAngle - state.npc.angle;
+        while(diff > Math.PI) diff -= Math.PI*2;
+        while(diff < -Math.PI) diff += Math.PI*2;
+        state.npc.angle += diff * 0.05;
+        
+        return; // wait 状态下不执行后面的移动逻辑
+
+    } else if (state.npc.state === 'rescue') {
+        targetX = player.x;
+        targetY = player.y;
+        speed = 2.0;
+    }
+    
+    // 移动NPC
+    let dx = targetX - state.npc.x;
+    let dy = targetY - state.npc.y;
+    let dist = Math.hypot(dx, dy);
+    
+    if(dist > 5) {
+        state.npc.vx = (dx / dist) * speed;
+        state.npc.vy = (dy / dist) * speed;
+        state.npc.x += state.npc.vx;
+        state.npc.y += state.npc.vy;
+        
+        // 简单的避障 (NPC 不受透明墙影响)
+        if(checkCollision(state.npc.x + state.npc.vx*10, state.npc.y + state.npc.vy*10, false)) {
+             state.npc.x -= state.npc.vx;
+             state.npc.y -= state.npc.vy;
+        }
+    }
+    
+    // 更新角度
+    if(Math.abs(state.npc.vx) > 0.1 || Math.abs(state.npc.vy) > 0.1) {
+        let targetAngle = Math.atan2(state.npc.vy, state.npc.vx);
+        let diff = targetAngle - state.npc.angle;
+        while(diff > Math.PI) diff -= Math.PI*2;
+        while(diff < -Math.PI) diff += Math.PI*2;
+        state.npc.angle += diff * 0.1;
+    }
+}
+
 // --- 辅助函数 ---
-function checkCollision(x, y) {
+function checkCollision(x, y, isPlayer = false) {
     const { tileSize } = CONFIG;
     let r = Math.floor(y/tileSize);
     let c = Math.floor(x/tileSize);
+    
+    // 检查普通墙壁
     for(let ry = r-1; ry <= r+1; ry++) {
         for(let rc = c-1; rc <= c+1; rc++) {
             if(state.map[ry] && state.map[ry][rc] && typeof state.map[ry][rc] === 'object') {
@@ -70,6 +228,15 @@ function checkCollision(x, y) {
             }
         }
     }
+    
+    // 检查透明墙壁 (仅玩家)
+    if(isPlayer && state.invisibleWalls) {
+        for(let wall of state.invisibleWalls) {
+            let dist = Math.hypot(x - wall.x, y - wall.y);
+            if(dist < wall.r + 10) return true;
+        }
+    }
+    
     return false;
 }
 
@@ -90,16 +257,16 @@ function getNearestWallDist(x, y) {
     return minDist;
 }
 
-export function showAlert(msg, color) {
+export function showStoryText(msg, color, duration = 3000) {
     state.alertMsg = msg;
     state.alertColor = color;
     clearTimeout(state.msgTimer);
-    state.msgTimer = setTimeout(() => state.alertMsg = '', 3000);
+    state.msgTimer = setTimeout(() => state.alertMsg = '', duration);
 }
 
 function endGame(win, reason) {
     state.screen = win ? 'win' : 'lose';
-    state.alertMsg = win ? "成功救出 " + target.name + "！" : reason;
+    state.alertMsg = win ? "第二次下潜结束" : reason;
     state.alertColor = win ? "#fff" : "#f00";
 }
 
@@ -107,11 +274,41 @@ function endGame(win, reason) {
 export function resetGameLogic() {
     resetState();
     generateMap();
-    showAlert("任务开始：寻找 " + target.name, "#0ff");
+    
+    // 初始化剧情
+    state.story.stage = 1;
+    state.story.timer = 0;
+    state.story.shake = 0;
+    state.story.redOverlay = 0;
+    state.story.flags = {
+        seenSuit: false,
+        npcEntered: false,
+        collapsed: false,
+        blackScreen: false,
+        narrowVision: false,
+        rescued: false,
+        approachedTunnel: false
+    };
+    
+    // 初始化NPC
+    state.npc.active = true;
+    state.npc.x = player.x - 30;
+    state.npc.y = player.y;
+    state.npc.state = 'follow';
+    
+    showStoryText("难得的假期，熊子带我们去洞穴潜水", "#0ff", 4000);
 }
 
 export function update() {
     if(state.screen !== 'play') return;
+
+    // --- 剧情逻辑 ---
+    storyManager.update();
+    
+    // 如果是黑屏状态，跳过物理更新
+    if(state.story.flags.blackScreen) return;
+
+    updateNPC();
 
     // 1. 转向系统
     player.targetAngle = input.targetAngle;
@@ -123,9 +320,17 @@ export function update() {
     player.angle += angleDiff * CONFIG.turnSpeed; 
 
     // 2. 移动系统
+    // 如果被卡住，禁止移动
+    if(state.story.stage === 4 || state.story.stage === 5) {
+        input.move = 0;
+    }
+
     let speed = CONFIG.moveSpeed * 0.3; 
     if(input.speedUp) speed = CONFIG.moveSpeed; 
     
+    // 调试加速
+    if(state.debug.fastMove) speed *= 3;
+
     if(input.move > 0) {
         // 修改：加速度方向直接由摇杆方向(targetAngle)决定，提升操控手感
         // 原逻辑是基于当前朝向(player.angle)加速，会导致转向时移动轨迹画弧过大
@@ -141,11 +346,11 @@ export function update() {
     let nextX = player.x + player.vx;
     let nextY = player.y + player.vy;
     
-    let hitX = checkCollision(nextX, player.y);
+    let hitX = checkCollision(nextX, player.y, true);
     if(!hitX) player.x = nextX;
     else { player.vx *= -0.5; if(Math.abs(player.vx)>1) triggerSilt(player.x, player.y, 20); } 
 
-    let hitY = checkCollision(player.x, nextY);
+    let hitY = checkCollision(player.x, nextY, true);
     if(!hitY) player.y = nextY;
     else { player.vy *= -0.5; if(Math.abs(player.vy)>1) triggerSilt(player.x, player.y, 20); }
 
@@ -198,7 +403,10 @@ export function update() {
 
     if(player.vy < -CONFIG.safeAscentSpeed && depthM > 8) {
         player.n2 += 0.5; 
-        showAlert("上升过快！减缓速度！", "#f00");
+        // Debug 模式下不死亡
+        if(!state.debug.fastMove) {
+             showStoryText("上升过快！减缓速度！", "#f00", 2000);
+        }
     }
 
     // 更新探索地图
@@ -218,31 +426,10 @@ export function update() {
         }
     }
 
-    // 4. 任务逻辑
-    let dist = Math.hypot(player.x - target.x, player.y - target.y);
-    if(!target.found && dist < 40) {
-        target.found = true;
-        player.hasTarget = true;
-        showAlert("目标已连接。返回水面。", "#0f0");
-    }
-
-    if(player.hasTarget) {
-        let dx = player.x - target.x;
-        let dy = player.y - target.y;
-        let d = Math.hypot(dx, dy);
-        if(d > 30) {
-            target.x += dx * 0.05;
-            target.y += dy * 0.05;
-        }
-    }
-
     // 水面检测 (y < 20 视为浮出水面)
-    if(player.y < 20) {
-        if(player.hasTarget) {
-            endGame(true);
-        } else {
-            endGame(false, target.name + '，你先等等，我要回家吃饭了。');
-        }
+    // 只有在阶段6才允许结束
+    if(player.y < 20 && state.story.stage === 6) {
+        endGame(true, "成功生还");
     }
 
     if(player.o2 <= 0) endGame(false, "氧气耗尽");
@@ -285,7 +472,7 @@ export function update() {
             }
             
             // 简单的避障 (如果碰到墙壁就反向)
-            if(checkCollision(fish.x + fish.vx*10, fish.y + fish.vy*10)) {
+            if(checkCollision(fish.x + fish.vx*10, fish.y + fish.vy*10, false)) {
                 fish.vx *= -1;
                 fish.vy *= -1;
             }

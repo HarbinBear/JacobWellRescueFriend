@@ -1,94 +1,128 @@
 import { CONFIG } from './config.js';
 import { state, target } from './state.js';
 
-// 有机地图生成
+// 线性剧情地图生成
 export function generateMap() {
     state.map = [];
     const { rows, cols, tileSize } = CONFIG;
     
-    // 1. 初始化：随机填充 (元胞自动机初始状态)
+    // 1. 初始化：全墙壁
     for(let r=0; r<rows; r++) {
         state.map[r] = [];
         for(let c=0; c<cols; c++) {
-            // 边缘必须是墙，但顶部(r=0)除外，那是水面
-            if(r === rows-1 || c === 0 || c === cols-1) {
-                state.map[r][c] = 1;
-            } else {
-                // 随机填充，45%概率是墙
-                state.map[r][c] = Math.random() < 0.45 ? 1 : 0;
-            }
+            state.map[r][c] = 1;
         }
     }
 
-    // 2. 顶部水面区域 (确保顶部是空的)
-    // 从 r=0 开始清理，确保水面没有墙
+    // 2. 挖掘主通道 (使用路径点连接)
+    // 路径点: [row, col, radius]
+    let pathPoints = [];
+    let centerX = Math.floor(cols/2);
+    
+    // 入口水面
     for(let r=0; r<8; r++) {
-        for(let c=1; c<cols-1; c++) {
-            state.map[r][c] = 0;
-        }
+        pathPoints.push([r, centerX, 6]);
     }
-
-    // 3. 元胞自动机平滑 (模拟自然洞穴)
-    // 进行几次迭代，让墙壁聚集成块，空地连成片
-    for(let i=0; i<5; i++) {
-        let newMap = JSON.parse(JSON.stringify(state.map));
-        for(let r=1; r<rows-1; r++) {
-            for(let c=1; c<cols-1; c++) {
-                let neighbors = getNeighborCount(r, c);
-                if(neighbors > 4) newMap[r][c] = 1;
-                else if(neighbors < 4) newMap[r][c] = 0;
-            }
-        }
-        state.map = newMap;
+    
+    // 第一段：蜿蜒向下 (直到潜水服)
+    let currentR = 8;
+    let currentC = centerX;
+    for(let i=0; i<20; i++) {
+        currentR += 1.5;
+        currentC += (Math.random()-0.5)*3;
+        if(currentC < 5) currentC = 5;
+        if(currentC > cols-5) currentC = cols-5;
+        // 宽度随机变化，模拟真实洞穴
+        let width = 2.5 + Math.random() * 3; // 稍微变窄一点 (原 3+4)
+        if (Math.random() < 0.3) width += 2; // 偶尔有大厅
+        pathPoints.push([currentR, currentC, width]);
     }
-
-    // 4. 狭窄水道生成 (使用随机游走挖掘细长通道)
-    // 在地图中随机找点，如果是墙，就挖一条细长的路
+    
+    // 记录潜水服位置
+    state.landmarks.suit = {
+        x: currentC * tileSize,
+        y: currentR * tileSize
+    };
+    
+    // 第二段：继续向下 (直到狭窄通道入口)
     for(let i=0; i<15; i++) {
-        let miner = {
-            x: Math.floor(Math.random() * (cols-4) + 2),
-            y: Math.floor(Math.random() * (rows-10) + 8)
-        };
-        let len = Math.floor(Math.random() * 20 + 10);
-        for(let step=0; step<len; step++) {
-            if(miner.y > 0 && miner.y < rows-1 && miner.x > 0 && miner.x < cols-1) {
-                state.map[miner.y][miner.x] = 0;
-                // 偶尔把旁边也挖掉，形成不规则宽度
-                if(Math.random() > 0.7) {
-                    let adjX = miner.x + (Math.random()>0.5?1:-1);
-                    let adjY = miner.y + (Math.random()>0.5?1:-1);
-                    if(adjY > 0 && adjY < rows-1 && adjX > 0 && adjX < cols-1) {
-                        state.map[adjY][adjX] = 0;
-                    }
+        currentR += 1.5;
+        currentC += (Math.random()-0.5)*3;
+        if(currentC < 5) currentC = 5;
+        if(currentC > cols-5) currentC = cols-5;
+        let width = 2.0 + Math.random() * 2; // 变窄 (原 2.5+3)
+        pathPoints.push([currentR, currentC, width]);
+    }
+    
+    // 记录狭窄通道入口
+    state.landmarks.tunnelEntry = {
+        x: currentC * tileSize,
+        y: currentR * tileSize
+    };
+    
+    // 记录隧道路径点供 NPC 导航
+    state.landmarks.tunnelPath = [];
+
+    // 第三段：狭窄通道 (直线向下，很窄)
+    // 确保通道只有1格宽，看起来刚好能过
+    let tunnelStartR = currentR;
+    for(let i=0; i<60; i++) { // 加长隧道 (原15 -> 30)
+        currentR += 0.8;
+        // 稍微偏移一点点，保持狭窄
+        pathPoints.push([currentR, currentC, 0.9]); // 极窄 (原1.1)
+        
+        // 每隔几个点记录一个导航点
+        if(i % 5 === 0) {
+            state.landmarks.tunnelPath.push({
+                x: currentC * tileSize,
+                y: currentR * tileSize
+            });
+        }
+    }
+    
+    // 添加透明碰撞体，阻止玩家进入 (第一次下潜)
+    // 放在入口深处 (隧道开始后 10 格左右)
+    state.invisibleWalls.push({
+        x: currentC * tileSize,
+        y: (tunnelStartR + 8) * tileSize, // 入口下方8格，深入隧道
+        r: tileSize * 1.2 // 堵住路
+    });
+    
+    // 记录狭窄通道内部/终点
+    state.landmarks.tunnelEnd = {
+        x: currentC * tileSize,
+        y: currentR * tileSize
+    };
+    // 确保终点也在路径中
+    state.landmarks.tunnelPath.push(state.landmarks.tunnelEnd);
+
+    // 挖掘逻辑
+    for(let p of pathPoints) {
+        let [pr, pc, radius] = p;
+        for(let r=0; r<rows; r++) {
+            for(let c=0; c<cols; c++) {
+                let dist = Math.hypot(r-pr, c-pc);
+                if(dist < radius) {
+                    state.map[r][c] = 0;
                 }
             }
-            // 随机移动
-            miner.x += Math.floor(Math.random() * 3) - 1;
-            miner.y += Math.floor(Math.random() * 3) - 1;
         }
     }
-
-    // 5. 确保顶部水面不被封死 (再次清理顶部)
+    
+    // 顶部水面清理
     for(let r=0; r<6; r++) {
         for(let c=1; c<cols-1; c++) {
             state.map[r][c] = 0;
         }
     }
-    // 岸边不规则化
-    for(let c=1; c<cols-1; c++) {
-        if(Math.random() > 0.5) state.map[6][c] = 0;
-        if(Math.random() > 0.7) state.map[7][c] = 0;
-    }
 
-    // 6. 生成墙壁渲染数据 (打破网格感)
+    // 3. 生成墙壁渲染数据
     state.walls = [];
     for(let r=0; r<rows; r++) {
         for(let c=0; c<cols; c++) {
             if(state.map[r][c] === 1) {
-                // 随机偏移，打破正方形网格
                 let offsetX = (Math.random() - 0.5) * tileSize * 0.6;
                 let offsetY = (Math.random() - 0.5) * tileSize * 0.6;
-                // 随机大小，稍微大一点以覆盖缝隙
                 let radius = tileSize * (0.6 + Math.random() * 0.4);
                 
                 let wall = {
@@ -98,56 +132,41 @@ export function generateMap() {
                 };
                 
                 state.walls.push(wall);
-                // 将详细信息存回 map，方便碰撞检测
                 state.map[r][c] = wall;
-                
-                // 偶尔添加额外的填充石块
-                if(Math.random() < 0.3) {
-                    state.walls.push({
-                        x: c * tileSize + tileSize/2 + (Math.random()-0.5)*tileSize,
-                        y: r * tileSize + tileSize/2 + (Math.random()-0.5)*tileSize,
-                        r: tileSize * (0.3 + Math.random() * 0.3)
-                    });
-                }
             }
         }
     }
 
-    // 7. 生成浅水区生态 (水草和鱼)
+    // 4. 生成浅水区生态
     state.plants = [];
     state.fishes = [];
     
-    // 水草：附着在浅水区(前10行)的墙壁上
+    // 水草
     for(let w of state.walls) {
-        if(w.y < 10 * tileSize) {
-            // 每个墙壁尝试生成几株水草
-            if(Math.random() < 0.4) {
+        if(w.y < 15 * tileSize) { // 稍微深一点也有水草
+            if(Math.random() < 0.3) {
                 let angle = Math.random() * Math.PI * 2;
                 let dist = w.r * 0.8;
                 state.plants.push({
                     x: w.x + Math.cos(angle) * dist,
                     y: w.y + Math.sin(angle) * dist,
                     len: 10 + Math.random() * 15,
-                    color: Math.random() > 0.5 ? '#2e8b57' : '#3cb371', // 海绿/春绿
-                    offset: Math.random() * Math.PI * 2 // 摆动相位
+                    color: Math.random() > 0.5 ? '#2e8b57' : '#3cb371',
+                    offset: Math.random() * Math.PI * 2
                 });
             }
         }
     }
 
-    // 鱼群：在浅水区生成多个鱼群
-    let schools = Math.floor(Math.random() * 4) + 5; // 5-8个鱼群
+    // 鱼群 (只在浅水区)
+    let schools = 3;
     for(let s=0; s<schools; s++) {
-        // 鱼群中心
-        let centerR = Math.floor(Math.random() * 8 + 1); // 1-9行
-        let centerC = Math.floor(Math.random() * (cols-4) + 2);
+        let centerR = Math.floor(Math.random() * 10 + 2);
+        let centerC = Math.floor(cols/2 + (Math.random()-0.5)*10);
         
-        // 检查中心点是否是空地
         if(state.map[centerR] && state.map[centerR][centerC] === 0) {
-            // 每个鱼群 5-12 条鱼
-            let count = Math.floor(Math.random() * 8) + 5;
-            // 随机颜色：珊瑚色、金色、天蓝色、热带紫
-            let colors = ['#ff7f50', '#ffd700', '#00bfff', '#da70d6'];
+            let count = Math.floor(Math.random() * 5) + 3;
+            let colors = ['#ff7f50', '#ffd700', '#00bfff'];
             let schoolColor = colors[Math.floor(Math.random() * colors.length)];
             
             for(let i=0; i<count; i++) {
@@ -156,33 +175,15 @@ export function generateMap() {
                     y: centerR * tileSize + tileSize/2 + (Math.random()-0.5)*tileSize*2,
                     vx: (Math.random() - 0.5) * 1.0, 
                     vy: (Math.random() - 0.5) * 0.3,
-                    size: 4 + Math.random() * 3, // 稍微大一点
+                    size: 4 + Math.random() * 3,
                     color: schoolColor,
                     phase: Math.random() * Math.PI * 2
                 });
             }
         }
     }
-
-    // 放置目标 (确保在空地上)
-    let valid = false;
-    while(!valid) {
-        let tr = Math.floor(rows * 0.6 + Math.random() * (rows * 0.3));
-        let tc = Math.floor(cols * 0.2 + Math.random() * (cols * 0.6));
-        if(state.map[tr][tc] === 0) {
-            // 检查周围是否有空地，避免生成在死胡同里太难找
-            let spaceCount = 0;
-            for(let rr=-1; rr<=1; rr++)
-                for(let cc=-1; cc<=1; cc++)
-                    if(state.map[tr+rr][tc+cc] === 0) spaceCount++;
-            
-            if(spaceCount >= 5) {
-                target.x = tc * tileSize + tileSize/2;
-                target.y = tr * tileSize + tileSize/2;
-                valid = true;
-            }
-        }
-    }
+    
+    // 移除原来的目标生成逻辑，因为现在是剧情驱动
 }
 
 function getNeighborCount(r, c) {

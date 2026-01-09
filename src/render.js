@@ -37,6 +37,12 @@ export function draw() {
     let camX = -player.x + canvas.width/2;
     let camY = -player.y + canvas.height/2;
 
+    // 屏幕晃动
+    if(state.story.shake > 0) {
+        camX += (Math.random() - 0.5) * state.story.shake;
+        camY += (Math.random() - 0.5) * state.story.shake;
+    }
+
     // 1. 绘制底层世界
     ctx.fillStyle = '#252a30'; 
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -243,9 +249,79 @@ export function draw() {
         if(p.type === 'silt') {
             ctx.fillStyle = `rgba(120, 100, 80, ${p.alpha})`;
             ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); ctx.fill();
+        } else if (p.type === 'blood') {
+            ctx.fillStyle = `rgba(200, 0, 0, ${p.life * 0.8})`;
+            ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); ctx.fill();
         } else {
             ctx.fillStyle = `rgba(200, 255, 255, ${p.life})`;
             ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); ctx.fill();
+        }
+    }
+
+    // 绘制废弃潜水服
+    if(state.landmarks && state.landmarks.suit) {
+        let s = state.landmarks.suit;
+        if(s.x > viewL && s.x < viewR && s.y > viewT && s.y < viewB) {
+            ctx.save();
+            ctx.translate(s.x, s.y);
+            ctx.rotate(Math.PI/4); // 倾斜放置
+            
+            // 简单的潜水服形状
+            ctx.fillStyle = '#555'; // 灰色废旧
+            ctx.fillRect(-10, -20, 20, 40); // 躯干
+            ctx.beginPath(); ctx.arc(0, -25, 8, 0, Math.PI*2); ctx.fill(); // 头盔
+            
+            // 破损感
+            ctx.fillStyle = '#333';
+            ctx.beginPath(); ctx.moveTo(-5, -10); ctx.lineTo(5, 0); ctx.lineTo(-2, 10); ctx.fill();
+            
+            ctx.restore();
+        }
+    }
+
+    // 绘制NPC
+    if(state.npc && state.npc.active) {
+        // 使用 drawDiver 但修改颜色
+        ctx.save();
+        ctx.translate(state.npc.x, state.npc.y);
+        ctx.rotate(state.npc.angle);
+
+        ctx.fillStyle = '#333';
+        ctx.fillRect(-15, -6, 10, 4);
+        ctx.fillRect(-15, 2, 10, 4);
+
+        ctx.fillStyle = '#d44'; // 红色潜水服 (队友)
+        ctx.fillRect(-8, -4, 14, 8);
+
+        ctx.fillStyle = '#222'; 
+        ctx.beginPath(); ctx.arc(0, 0, 6, 0, Math.PI*2); ctx.fill(); 
+        
+        ctx.fillStyle = '#fa0'; 
+        ctx.beginPath(); ctx.arc(4, 0, 5, 0, Math.PI*2); ctx.fill();
+
+        ctx.fillStyle = '#bef';
+        ctx.beginPath(); ctx.fillRect(6, -3, 3, 6);
+
+        ctx.restore();
+        
+        // 绘制NPC手电筒光束 (简单版)
+        // 只有在深处才开灯
+        if(state.npc.y > 600) {
+            ctx.save();
+            ctx.translate(state.npc.x, state.npc.y);
+            ctx.rotate(state.npc.angle);
+            
+            let grad = ctx.createLinearGradient(0, 0, 200, 0);
+            grad.addColorStop(0, 'rgba(255, 255, 200, 0.4)');
+            grad.addColorStop(1, 'rgba(255, 255, 200, 0)');
+            
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(200, 40);
+            ctx.lineTo(200, -40);
+            ctx.fill();
+            ctx.restore();
         }
     }
 
@@ -289,6 +365,13 @@ export function draw() {
     let siltVis = Math.max(0.1, 1 - (player.silt / 80)); 
     let rayDist = CONFIG.lightRange * siltVis;
 
+    // 濒死视野效果：视野急剧缩小
+    if(state.story.flags.narrowVision) {
+        rayDist = 30; // 只能看到极小范围
+        lightCtx.fillStyle = 'rgba(0, 0, 0, 0.95)'; // 几乎全黑
+        lightCtx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
     let poly = getLightPolygon(player.x, player.y, player.angle, rayDist);
 
     lightCtx.save();
@@ -296,6 +379,7 @@ export function draw() {
     
     lightCtx.globalCompositeOperation = 'destination-out';
     
+    // 玩家光照
     lightCtx.shadowBlur = 30;
     lightCtx.shadowColor = "rgba(255, 255, 255, 1)";
     
@@ -313,6 +397,32 @@ export function draw() {
     for(let p of poly) lightCtx.lineTo(p.x, p.y);
     lightCtx.closePath();
     lightCtx.fill();
+
+    // NPC光照 (如果NPC激活且在深处)
+    if(state.npc && state.npc.active && state.npc.y > 600) {
+        let npcRayDist = CONFIG.lightRange * 0.8; // NPC手电筒稍弱
+        let npcPoly = getLightPolygon(state.npc.x, state.npc.y, state.npc.angle, npcRayDist);
+        
+        let npcGrad = lightCtx.createRadialGradient(
+            state.npc.x, state.npc.y, 0,
+            state.npc.x, state.npc.y, npcRayDist
+        );
+        npcGrad.addColorStop(0, 'rgba(255, 255, 255, 1.0)');    
+        npcGrad.addColorStop(0.5, 'rgba(255, 255, 255, 0.8)');  
+        npcGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');      
+        
+        lightCtx.fillStyle = npcGrad;
+        lightCtx.beginPath();
+        lightCtx.moveTo(state.npc.x, state.npc.y);
+        for(let p of npcPoly) lightCtx.lineTo(p.x, p.y);
+        lightCtx.closePath();
+        lightCtx.fill();
+        
+        // NPC自身发光
+        lightCtx.beginPath();
+        lightCtx.arc(state.npc.x, state.npc.y, 40, 0, Math.PI*2);
+        lightCtx.fill();
+    }
 
     let selfGlow = lightCtx.createRadialGradient(
         player.x, player.y, 0,
@@ -336,6 +446,39 @@ export function draw() {
     lightCtx.restore();
 
     ctx.drawImage(lightLayer, 0, 0);
+
+    // 黑屏过渡
+    if(state.story.flags.blackScreen) {
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    // 红色遮罩 (濒死)
+    if(state.story.redOverlay > 0) {
+        ctx.fillStyle = `rgba(255, 0, 0, ${state.story.redOverlay})`;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+    
+    // 隧道深处模糊遮罩 (仅在第一次下潜且接近隧道时显示)
+    if(state.story.stage === 1 && state.landmarks.tunnelEntry) {
+        let entryY = state.landmarks.tunnelEntry.y;
+        let screenEntryY = entryY + camY;
+        
+        // 如果隧道入口在屏幕内或上方
+        if(screenEntryY < canvas.height) {
+            // 创建一个渐变遮罩，从入口下方开始变黑
+            let gradientStart = Math.max(0, screenEntryY + 100);
+            if(gradientStart < canvas.height) {
+                let grad = ctx.createLinearGradient(0, gradientStart, 0, canvas.height);
+                grad.addColorStop(0, 'rgba(0,0,0,0)');
+                grad.addColorStop(0.5, 'rgba(0,0,0,0.8)');
+                grad.addColorStop(1, 'rgba(0,0,0,1)');
+                
+                ctx.fillStyle = grad;
+                ctx.fillRect(0, gradientStart, canvas.width, canvas.height - gradientStart);
+            }
+        }
+    }
 
     // 3. 绘制 UI
     drawUI();
@@ -516,12 +659,35 @@ function drawUI() {
         }
     }
 
-    // 警告信息
+    // 剧情文本显示 (支持多行)
     if(state.alertMsg) {
         ctx.fillStyle = state.alertColor;
         ctx.font = 'bold 20px Arial';
         ctx.textAlign = 'center';
-        ctx.fillText(state.alertMsg, canvas.width/2, canvas.height/3);
+        
+        // 简单的自动换行逻辑
+        let maxWidth = canvas.width * 0.8;
+        let words = state.alertMsg.split('');
+        let line = '';
+        let lines = [];
+        
+        for(let n = 0; n < words.length; n++) {
+            let testLine = line + words[n];
+            let metrics = ctx.measureText(testLine);
+            let testWidth = metrics.width;
+            if (testWidth > maxWidth && n > 0) {
+                lines.push(line);
+                line = words[n];
+            } else {
+                line = testLine;
+            }
+        }
+        lines.push(line);
+        
+        let startY = canvas.height/3;
+        for(let i=0; i<lines.length; i++) {
+            ctx.fillText(lines[i], canvas.width/2, startY + i*30);
+        }
     }
 
     // 游戏结束画面
