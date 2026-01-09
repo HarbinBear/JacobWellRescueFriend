@@ -2,7 +2,7 @@ import { CONFIG } from './config.js';
 import { state, player, target, particles, touches } from './state.js';
 
 // 创建画布
-export const canvas = tt.createCanvas();
+export const canvas = wx.createCanvas();
 export const ctx = canvas.getContext('2d');
 
 // 设置画布尺寸
@@ -10,8 +10,8 @@ canvas.width = CONFIG.screenWidth;
 canvas.height = CONFIG.screenHeight;
 
 // 资源缓存
-const wallPatternCanvas = tt.createCanvas(); // 岩石纹理
-const lightLayer = tt.createCanvas(); // 光照遮罩层
+const wallPatternCanvas = wx.createCanvas(); // 岩石纹理
+const lightLayer = wx.createCanvas(); // 光照遮罩层
 lightLayer.width = canvas.width;
 lightLayer.height = canvas.height;
 const lightCtx = lightLayer.getContext('2d');

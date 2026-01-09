@@ -1,4 +1,4 @@
-const systemInfo = tt.getSystemInfoSync();
+const systemInfo = wx.getSystemInfoSync();
 
 export const CONFIG = {
     // 画布设置 (竖屏适配)
