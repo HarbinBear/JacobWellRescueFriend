@@ -54,7 +54,7 @@ export function initInput(onReset) {
         });
     }
 
-    tt.onTouchStart((res) => {
+    wx.onTouchStart((res) => {
         if(state.screen !== 'play') {
             if (onReset) onReset();
             return;
@@ -73,7 +73,7 @@ export function initInput(onReset) {
         }
     });
 
-    tt.onTouchMove((res) => {
+    wx.onTouchMove((res) => {
         for(let t of res.touches) {
             if(t.identifier === touches.joystickId) {
                 touches.curr = { x: t.clientX, y: t.clientY };
@@ -108,11 +108,11 @@ export function initInput(onReset) {
         }
     });
 
-    tt.onTouchEnd((res) => {
+    wx.onTouchEnd((res) => {
         handleTouchEnd(res.changedTouches);
     });
 
-    tt.onTouchCancel((res) => {
+    wx.onTouchCancel((res) => {
         handleTouchEnd(res.changedTouches);
     });
 }
