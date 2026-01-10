@@ -32,7 +32,7 @@ export const state = {
     },
     endingTimer: 0, // 结局动画计时器
     debug: {
-        fastMove: true
+        fastMove: false
     },
     npc: {
         active: false,

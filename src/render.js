@@ -672,7 +672,6 @@ function drawDiver(ctx, x, y, angle, colors = null, animTime = 0, hasTank = true
 }
 
 function drawLungs(x, y, o2) {
-    const ctx = canvas.getContext('2d');
     ctx.save();
     ctx.translate(x, y);
     
@@ -843,9 +842,9 @@ function isLineOfSight(x1, y1, x2, y2, maxDist) {
 function drawUI() {
     // 仪表盘背景 (加高以容纳小地图)
     ctx.fillStyle = 'rgba(0, 10, 15, 0.8)';
-    ctx.fillRect(10, 10, 160, 260); // 高度增加到 260
+    ctx.fillRect(10, 10, 160, 200); 
     ctx.strokeStyle = '#445';
-    ctx.strokeRect(10, 10, 160, 260);
+    ctx.strokeRect(10, 10, 160, 200);
 
     ctx.fillStyle = '#0ff';
     ctx.font = 'bold 14px Arial';
