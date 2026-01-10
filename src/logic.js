@@ -568,8 +568,11 @@ export function update() {
     // 更新动画时间 (用于脚蹼动画)
     if(!player.animTime) player.animTime = 0;
     // 基础摆动速度 + 移动速度加成
+    // 降低速度系数，使其更自然
     let swimSpeed = Math.hypot(player.vx, player.vy);
-    player.animTime += 0.1 + swimSpeed * 0.5; 
+    // 假设 input.move 是摇杆偏移量 (0-1)，如果能获取到的话。
+    // 这里 swimSpeed 已经反映了最终速度。
+    player.animTime += 0.05 + swimSpeed * 0.05; 
 
     // 水流扰动 (Idle 漂浮)
     // 当玩家静止或速度很慢时，施加微小的扰动

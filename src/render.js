@@ -301,7 +301,7 @@ export function draw() {
         // 绘制NPC手电筒光束 (体积光)
         // 只有在深处才开灯
         if(state.npc.y > 600) {
-            drawVolumetricLight(ctx, state.npc.x, state.npc.y, state.npc.angle);
+            drawFlashlight(ctx, state.npc.x, state.npc.y, state.npc.angle, 0, 'volumetric');
         }
 
         // 使用 drawDiver 绘制 NPC
@@ -315,8 +315,10 @@ export function draw() {
         drawDiver(ctx, state.npc.x, state.npc.y, state.npc.angle, npcColors, Date.now()/150);
     }
 
-    // 绘制玩家手电筒光束 (体积光)
-    drawVolumetricLight(ctx, player.x, player.y, player.angle);
+    if( player.y > 600 ){
+        // 绘制玩家手电筒光束 (体积光)
+        drawFlashlight(ctx, player.x, player.y, player.angle, 0, 'volumetric');
+    }
 
     // 绘制玩家
     drawDiver(ctx, player.x, player.y, player.angle, null, player.animTime);
@@ -473,46 +475,55 @@ export function draw() {
 }
 
 // 统一的手电筒绘制函数
-function drawFlashlight(ctx, x, y, angle, rayDist) {
-    ctx.shadowBlur = 30;
-    ctx.shadowColor = "rgba(255, 255, 255, 1)";
-    
-    // 1. 主光束 (窄而远)
-    let mainRayDist = rayDist;
-    let mainPoly = getLightPolygon(x, y, angle, mainRayDist, CONFIG.fov); 
-    
-    let mainGradient = ctx.createRadialGradient(x, y, 0, x, y, mainRayDist);
-    mainGradient.addColorStop(0, 'rgba(255, 255, 255, 1.0)');    
-    mainGradient.addColorStop(0.6, 'rgba(255, 255, 255, 0.9)');  
-    mainGradient.addColorStop(1, 'rgba(255, 255, 255, 0)');      
-    
-    ctx.fillStyle = mainGradient;
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    for(let p of mainPoly) ctx.lineTo(p.x, p.y);
-    ctx.closePath();
-    ctx.fill();
-
-    // 2. 泛光 (宽而近)
-    let wideRayDist = rayDist * 0.6;
-    let widePoly = getLightPolygon(x, y, angle, wideRayDist, 120); // 120度宽角
-    
-    let wideGradient = ctx.createRadialGradient(x, y, 0, x, y, wideRayDist);
-    wideGradient.addColorStop(0, 'rgba(255, 255, 255, 0.6)');    
-    wideGradient.addColorStop(1, 'rgba(255, 255, 255, 0)');      
-    
-    ctx.fillStyle = wideGradient;
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    for(let p of widePoly) ctx.lineTo(p.x, p.y);
-    ctx.closePath();
-    ctx.fill();
+function drawFlashlight(ctx, x, y, angle, rayDist, mode = 'mask') {
+    ctx.save();
+    if (mode === 'mask') {
+        ctx.shadowBlur = 30;
+        ctx.shadowColor = "rgba(255, 255, 255, 1)";
+        
+        // 1. 主光束 (窄而远)
+        let mainRayDist = rayDist;
+        let mainPoly = getLightPolygon(x, y, angle, mainRayDist, CONFIG.fov); 
+        
+        let mainGradient = ctx.createRadialGradient(x, y, 0, x, y, mainRayDist);
+        mainGradient.addColorStop(0, 'rgba(255, 255, 255, 1.0)');    
+        mainGradient.addColorStop(0.6, 'rgba(255, 255, 255, 0.9)');  
+        mainGradient.addColorStop(1, 'rgba(255, 255, 255, 0)');      
+        
+        ctx.fillStyle = mainGradient;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        for(let p of mainPoly) ctx.lineTo(p.x, p.y);
+        ctx.closePath();
+        ctx.fill();
+    } else if (mode === 'volumetric') {
+        ctx.translate(x, y);
+        ctx.rotate(angle);
+        
+        // 模拟丁达尔效应
+        let grad = ctx.createLinearGradient(0, 0, 250, 0);
+        grad.addColorStop(0, 'rgba(200, 255, 255, 0.15)'); 
+        grad.addColorStop(1, 'rgba(200, 255, 255, 0)');
+        
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(250, 50); // 稍微宽一点
+        ctx.lineTo(250, -50);
+        ctx.fill();
+    }
+    ctx.restore();
 }
 
 // 统一的潜水员绘制函数
 function drawDiver(ctx, x, y, angle, colors = null, animTime = 0) {
     ctx.save();
-    ctx.translate(x, y);
+    
+    // 模拟水流荡漾 (视觉偏移)
+    let swayX = Math.sin(Date.now() / 1000) * 2;
+    let swayY = Math.cos(Date.now() / 1300) * 2;
+    ctx.translate(x + swayX, y + swayY);
+    
     ctx.rotate(angle);
 
     // 默认颜色 (玩家)
@@ -581,25 +592,7 @@ function drawDiver(ctx, x, y, angle, colors = null, animTime = 0) {
     ctx.restore();
 }
 
-// 绘制体积光 (可见光束)
-function drawVolumetricLight(ctx, x, y, angle) {
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(angle);
-    
-    // 模拟丁达尔效应
-    let grad = ctx.createLinearGradient(0, 0, 250, 0);
-    grad.addColorStop(0, 'rgba(200, 255, 255, 0.15)'); 
-    grad.addColorStop(1, 'rgba(200, 255, 255, 0)');
-    
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.lineTo(250, 50); // 稍微宽一点
-    ctx.lineTo(250, -50);
-    ctx.fill();
-    ctx.restore();
-}
+
 
 function getLightPolygon(sx, sy, angle, maxDist, fovDeg = CONFIG.fov) {
     let points = [];
