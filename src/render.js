@@ -296,32 +296,45 @@ export function draw() {
         }
     }
 
+    // --- 绘制体积光 (Volumetric Lights) ---
+    // 提前计算光照距离 (局部变量，避免与后续冲突)
+    let vSiltVis = Math.max(0.1, 1 - (player.silt / 80)); 
+    let vRayDist = CONFIG.lightRange * vSiltVis;
+    
+    // 濒死视野调整
+    if(state.story.stage === 4 && state.story.flags.narrowVision) {
+        let factor = Math.max(0, player.o2 / 80);
+        vRayDist = 20 + factor * 80; 
+    } else if(state.story.flags.narrowVision) {
+        vRayDist = 30; 
+    }
+
+    // 统一处理玩家和NPC的体积光
+    const lightSources = [
+        { x: player.x, y: player.y, angle: player.angle, active: player.y > 600, dist: vRayDist },
+        { x: state.npc ? state.npc.x : 0, y: state.npc ? state.npc.y : 0, angle: state.npc ? state.npc.angle : 0, active: state.npc && state.npc.active && state.npc.y > 600, dist: vRayDist * 0.9 }
+    ];
+
+    for(let src of lightSources) {
+        if(src.active) {
+            drawFlashlight(ctx, src.x, src.y, src.angle, src.dist, 'volumetric');
+        }
+    }
+
+    // --- 绘制角色 ---
+
     // 绘制NPC
     if(state.npc && state.npc.active) {
-        // 绘制NPC手电筒光束 (体积光)
-        // 只有在深处才开灯
-        if(state.npc.y > 600) {
-            drawFlashlight(ctx, state.npc.x, state.npc.y, state.npc.angle, 0, 'volumetric');
-        }
-
-        // 使用 drawDiver 绘制 NPC
         const npcColors = {
             suit: '#333',
             body: '#d44', // 红色潜水服
             tank: '#bef',
             mask: '#fa0'
         };
-        // NPC 简单使用时间作为动画驱动
         drawDiver(ctx, state.npc.x, state.npc.y, state.npc.angle, npcColors, Date.now()/150);
     }
 
-    if( player.y > 600 ){
-        // 绘制玩家手电筒光束 (体积光)
-        drawFlashlight(ctx, player.x, player.y, player.angle, 0, 'volumetric');
-    }
-
     // 绘制玩家
-    // 检查是否氧气瓶损坏
     let hasTank = !state.story.flags.tankDamaged;
     drawDiver(ctx, player.x, player.y, player.angle, null, player.animTime, hasTank);
 
@@ -388,45 +401,39 @@ export function draw() {
     
     lightCtx.globalCompositeOperation = 'destination-out';
     
-    // 玩家光照 (手电筒)
-    if(player.y > 600) {
-        drawFlashlight(lightCtx, player.x, player.y, player.angle, rayDist, 'mask');
-        lightCtx.globalCompositeOperation = 'source-over'; 
-        lightCtx.fillStyle = 'rgba(255, 255, 255, 0.1)'; // 保持 source-over 叠加白色透明
-        lightCtx.beginPath();
-        lightCtx.arc(player.x, player.y, 40, 0, Math.PI*2);
-        lightCtx.fill();
-        lightCtx.globalCompositeOperation = 'destination-out'; 
-    }
-    
-    // NPC光照
-    if(state.npc && state.npc.active && state.npc.y > 600) {
-        let npcRayDist = CONFIG.lightRange * 0.8; 
-        drawFlashlight(lightCtx, state.npc.x, state.npc.y, state.npc.angle, npcRayDist, 'mask');
-        
-        // NPC自身光圈
-        lightCtx.globalCompositeOperation = 'source-over'; 
-        lightCtx.fillStyle = 'rgba(255, 255, 255, 0.1)'; // 保持 source-over 叠加白色透明
-        lightCtx.beginPath();
-        lightCtx.arc(state.npc.x, state.npc.y, 40, 0, Math.PI*2);
-        lightCtx.fill();
-        lightCtx.globalCompositeOperation = 'destination-out'; 
+    // 定义需要绘制光照的角色列表
+    const maskSources = [
+        { x: player.x, y: player.y, angle: player.angle, active: player.y > 600, dist: rayDist },
+        { x: state.npc ? state.npc.x : 0, y: state.npc ? state.npc.y : 0, angle: state.npc ? state.npc.angle : 0, active: state.npc && state.npc.active && state.npc.y > 600, dist: rayDist * 0.9 }
+    ];
+
+    for(let src of maskSources) {
+        if(src.active) {
+            // 1. 手电筒光椎擦除
+            drawFlashlight(lightCtx, src.x, src.y, src.angle, src.dist, 'mask');
+            
+            // 2. 自身微弱光圈 (擦除遮罩)
+            let glowRadius = 40;
+            let glowGrad = lightCtx.createRadialGradient(src.x, src.y, 0, src.x, src.y, glowRadius);
+            glowGrad.addColorStop(0, 'rgba(255, 255, 255, 0.4)'); // 中心擦除 40%
+            glowGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');   // 边缘不擦除
+            
+            lightCtx.fillStyle = glowGrad;
+            lightCtx.beginPath();
+            lightCtx.arc(src.x, src.y, glowRadius, 0, Math.PI*2);
+            lightCtx.fill();
+        }
     }
 
-    // 玩家自身光圈 (统一风格)
-    // 先切回 source-over 绘制半透明白，再切回 destination-out 擦除遮罩
-    // 但这里是在遮罩层上操作，destination-out 是擦除黑色遮罩露出底图
-    // 所以要让玩家周围亮起来，直接用 destination-out 擦除一个圆即可
-    // 为了有柔和边缘，使用径向渐变
-    // 增强：在深处提供以玩家为中心的微弱环境光
+    // 玩家深处环境适应光圈 (模拟眼睛适应黑暗)
+    // 仅针对玩家，且范围更大
     let glowRadius = 50;
-    if (depthFactor > 0.8) glowRadius = 120; // 深处光圈变大，模拟眼睛适应
+    if (depthFactor > 0.8) glowRadius = 120; 
 
     let selfGlow = lightCtx.createRadialGradient(
         player.x, player.y, 0,
         player.x, player.y, glowRadius
     );
-    // 中心完全擦除 (亮)，边缘不擦除 (黑)
     // 在深处，中心也不要完全擦除，保留一点黑暗感
     let centerAlpha = depthFactor > 0.8 ? 'rgba(255, 255, 255, 0.3)' : 'rgba(255, 255, 255, 0.8)';
     
@@ -531,7 +538,10 @@ function drawFlashlight(ctx, x, y, angle, rayDist, mode = 'mask') {
         ctx.fill();
     } else if (mode === 'volumetric') {
         // 体积光也使用多边形裁剪，防止穿墙
-        // 使用淡黄色光
+        // 使用 screen 混合模式实现光照叠加，避免覆盖
+        ctx.globalCompositeOperation = 'screen';
+        
+        // 1. 大范围泛光 (淡黄色)
         let grad = ctx.createRadialGradient(x, y, 0, x, y, rayDist);
         grad.addColorStop(0, CONFIG.flashlightColor); 
         grad.addColorStop(1, 'rgba(255, 250, 200, 0)');
@@ -543,7 +553,7 @@ function drawFlashlight(ctx, x, y, angle, rayDist, mode = 'mask') {
         ctx.closePath();
         ctx.fill();
         
-        // 中心高亮光束 (更窄，更亮)
+        // 2. 中心高亮光束 (更窄，更亮)
         // 修复：确保中心光束可见且不穿墙
         let centerPoly = getLightPolygon(x, y, angle, rayDist, CONFIG.flashlightCenterFov);
         let centerGrad = ctx.createRadialGradient(x, y, 0, x, y, rayDist);
