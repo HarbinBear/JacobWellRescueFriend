@@ -117,6 +117,12 @@ export function generateMap() {
     // 强制修正到中心，构建三岔口连接点
     let junctionC = centerX; 
     
+    // 记录三岔路口地标
+    state.landmarks.junction = {
+        x: junctionC * tileSize,
+        y: junctionR * tileSize
+    };
+    
     // 连接第二洞室通道底部到三岔路口中心
     // 刚才 Phase 3 结束时 currentC 应该在 rightX 和 centerX 之间
     // 这里补几步路确保连通
@@ -156,6 +162,12 @@ export function generateMap() {
         
         pathPoints.push([deadEndR, deadEndC, width]);
     }
+    
+    // 记录死路深处地标 (用于NPC导航)
+    state.landmarks.deadEndDeep = {
+        x: deadEndC * tileSize,
+        y: deadEndR * tileSize
+    };
     
     // 记录死路区域
     state.zones.push({

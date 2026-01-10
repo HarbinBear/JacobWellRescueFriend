@@ -114,19 +114,23 @@ export class StoryManager {
                 state.story.shake = 5; // 轻微晃动
                 
                 // 封锁入口 (更深入一点)
-                // 找到 tunnelEntry 下方 2 格的位置
+                // 移除实体墙生成，防止封死玩家
+                // 仅保留视觉上的坍塌感（如粒子、震动）
+                // 如果需要阻挡，可以使用空气墙，但这里为了安全起见，暂时不生成任何阻挡物
+                // 让玩家自己决定是否进去（虽然进去也没路了）
+                
+                /* 
                 let r = Math.floor(tunnelEntry.y / CONFIG.tileSize) + 2;
                 let c = Math.floor(tunnelEntry.x / CONFIG.tileSize);
                 
-                // 移除之前的透明墙 (如果有的话，虽然不移除也没事，反正都堵死了)
-                // 这里我们直接生成一个新的实体墙堵死路
                 let newWall = {
                     x: c * CONFIG.tileSize + CONFIG.tileSize/2,
                     y: r * CONFIG.tileSize + CONFIG.tileSize/2,
-                    r: CONFIG.tileSize * 0.8 // 堵死
+                    r: CONFIG.tileSize * 0.8 
                 };
                 state.walls.push(newWall);
                 if(state.map[r]) state.map[r][c] = newWall;
+                */
             }
         }
 
@@ -315,12 +319,16 @@ export class StoryManager {
             player.o2 = 50; 
         }
         if(state.story.timer === 240) {
-            this.showText("队友塞给我了气嘴！", "#00bfff", 3000);
+            this.showText("我的氧气瓶坏了！队友把备用气嘴塞给了我！", "#f00", 4000);
             player.o2 = 100;
+            
+            // 触发氧气瓶损坏状态
+            state.story.flags.tankDamaged = true;
+            state.story.flags.rescued = true;
         }
-        if(state.story.timer === 360) {
-            this.showText("我有氧气了！", "#00bfff", 3000);
-            state.npc.state = 'follow';
+        if(state.story.timer === 400) { // 稍微延后一点
+            this.showText("靠近队友补充氧气！", "#00bfff", 3000);
+            state.npc.state = 'follow'; // 这里的 follow 会被 logic.js 中的 rescued 逻辑接管
             state.story.stage = 6;
             state.story.redOverlay = 0; // 强制移除红屏
         }

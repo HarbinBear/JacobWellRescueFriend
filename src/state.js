@@ -26,7 +26,8 @@ export const state = {
             blackScreen: false,
             narrowVision: false,
             rescued: false,
-            approachedTunnel: false
+            approachedTunnel: false,
+            tankDamaged: false
         }
     },
     debug: {

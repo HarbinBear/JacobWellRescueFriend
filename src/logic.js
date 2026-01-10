@@ -92,7 +92,52 @@ function updateNPC() {
     // Debug 加速
     if(state.debug.fastMove) speed *= 3;
     
-    if(state.npc.state === 'follow') {
+    // --- 获救后的特殊行为 (第二次下潜返程) ---
+    if(state.story.flags.rescued) {
+        // 默认跟随玩家（提供氧气）
+        targetX = player.x;
+        targetY = player.y;
+        speed = 2.2; // 稍微快一点，确保能跟上玩家
+
+        // 获取地标
+        let junction = state.landmarks.junction;
+        let deadEnd = state.landmarks.deadEndDeep;
+        let tunnelEnd = state.landmarks.tunnelEnd;
+
+        // 阻止 NPC 进入第四洞室 (如果玩家试图向下深潜)
+        if (tunnelEnd && player.y > tunnelEnd.y + 100) {
+            // NPC 停留在隧道口附近，不跟随下去
+            targetX = tunnelEnd.x;
+            targetY = tunnelEnd.y;
+        }
+        else if(junction && deadEnd) {
+            // 逻辑分界线：三岔路口附近
+            // 如果玩家还在三岔路口下方 (第三洞室)，NPC 紧跟玩家
+            if(player.y > junction.y + 5 * CONFIG.tileSize) {
+                // 保持在玩家上方一点，引导向上
+                targetX = player.x;
+                targetY = player.y - 60;
+            } 
+            else {
+                // 到达三岔路口及上方
+                // NPC 坚定地前往死路
+                targetX = deadEnd.x;
+                targetY = deadEnd.y;
+                
+                // 玩家行为检测
+                // 如果玩家进入了右侧的第二洞室 (正确路)
+                // 判定标准：在三岔路口上方，且 X 坐标明显偏右
+                if(player.y < junction.y && player.x > junction.x + 5 * CONFIG.tileSize) {
+                    // NPC 停在三岔路口等待
+                    targetX = junction.x;
+                    targetY = junction.y;
+                }
+            }
+        }
+        
+        // 移动逻辑复用下方的通用移动代码
+    }
+    else if(state.npc.state === 'follow') {
         // 跟随在玩家身后一点
         targetX = player.x - Math.cos(player.angle) * 40;
         targetY = player.y - Math.sin(player.angle) * 40;
@@ -257,28 +302,36 @@ function handleZoneEnter(zoneName) {
 
     switch(zoneName) {
         case 'chamber1':
-            storyManager.showText("进入第一洞室", "#fff", 3000);
+            // storyManager.showText("进入第一洞室", "#fff", 3000);
+            console.log("进入第一洞室");
             break;
         case 'suit_tunnel':
-            storyManager.showText("通道变窄了... 潜水服还在那里", "#ccc", 3000);
+            storyManager.showText("通道变窄了...", "#ccc", 3000);
+            console.log("进入潜水服处");
             break;
         case 'chamber2':
-            storyManager.showText("进入第二洞室", "#fff", 3000);
+            // storyManager.showText("进入第二洞室", "#fff", 3000);
+            console.log("进入第二洞室");
             break;
         case 'junction':
-            storyManager.showText("前方出现岔路口", "#f00", 4000);
+            // storyManager.showText("前方出现岔路口", "#f00", 4000);
+            console.log("进入岔路口");
             break;
         case 'dead_end':
-            storyManager.showText("这条路看起来很宽敞... 是出口吗？", "#fff", 3000);
+            // storyManager.showText("这条路看起来很宽敞... 是出口吗？", "#fff", 3000);
+            console.log("进入死路");
             break;
         case 'chamber3':
-            storyManager.showText("进入第三洞室", "#fff", 3000);
+            // storyManager.showText("进入第三洞室", "#fff", 3000);
+            console.log("进入第三洞室");
             break;
         case 'story_tunnel':
             storyManager.showText("极度狭窄的裂缝...", "#f00", 3000);
+            console.log("进入剧情隧道");
             break;
         case 'chamber4':
             storyManager.showText("未知的深渊", "#f00", 3000);
+            console.log("进入深渊");
             break;
     }
 }
@@ -351,7 +404,8 @@ export function resetGameLogic() {
         blackScreen: false,
         narrowVision: false,
         rescued: false,
-        approachedTunnel: false
+        approachedTunnel: false,
+        tankDamaged: false
     };
     state.story.visitedZones = []; // 重置已访问区域
     state.currentZone = null;
@@ -366,7 +420,7 @@ export function resetGameLogic() {
     state.camera = { zoom: 1, targetZoom: 1 };
     state.antiStuck = { timer: 0, lastPos: {x:player.x, y:player.y} };
 
-    storyManager.showText("难得的假期！\n熊子带我们去洞穴潜水！", "rgba(43, 95, 206, 1)", 4000);
+    storyManager.showText("难得的假期！\n熊子带我们去雅各布井潜水！", "rgba(43, 95, 206, 1)", 4000);
 }
 
 export function update() {
@@ -397,7 +451,15 @@ export function update() {
     state.camera.zoom += (state.camera.targetZoom - state.camera.zoom) * 0.02;
 
     // --- 防卡死机制 (Stage 3, 5, 6) ---
-    if(state.story.stage === 3 || state.story.stage === 5 || state.story.stage === 6) {
+    // 修改：仅在第二次下潜的隧道阶段生效 (Stage 5 进入隧道救援, Stage 6 返程出隧道)
+    // 且必须在隧道区域内
+    let inTunnel = false;
+    if (state.landmarks.tunnelEntry && state.landmarks.tunnelEnd) {
+        inTunnel =  player.y >= state.landmarks.tunnelEntry.y - 200 && 
+                    player.y <= state.landmarks.tunnelEnd.y;
+    }
+
+    if((state.story.stage === 5 || state.story.stage === 6) && inTunnel) {
         if(!state.antiStuck) state.antiStuck = { timer: 0, lastPos: {x:player.x, y:player.y} };
         if(input.move > 0) {
             let movedDist = Math.hypot(player.x - state.antiStuck.lastPos.x, player.y - state.antiStuck.lastPos.y);
@@ -576,8 +638,25 @@ export function update() {
     player.silt = Math.max(0, player.silt - 0.15); 
 
     // 3. 气体逻辑
-    player.o2 -= 0.0015; 
-    if(vel > 1.5) player.o2 -= 0.001;
+    let o2Consumption = CONFIG.o2ConsumptionBase;
+    if(vel > 1.5) o2Consumption += CONFIG.o2ConsumptionMove;
+
+    // 氧气瓶损坏逻辑
+    if(state.story.flags.tankDamaged) {
+        o2Consumption *= CONFIG.o2DamageMultiplier; // 消耗速度极快
+        
+        // 接触 NPC 补充氧气
+        if(state.npc.active) {
+            let distToNpc = Math.hypot(player.x - state.npc.x, player.y - state.npc.y);
+            if(distToNpc < 80) { // 接触范围
+                player.o2 += CONFIG.o2RefillRate; // 快速回复
+                if(player.o2 > 100) player.o2 = 100;
+                o2Consumption = 0; // 补充时不消耗
+            }
+        }
+    }
+
+    player.o2 -= o2Consumption; 
 
     let depthM = Math.floor(player.y / CONFIG.tileSize);
     let depthFactor = Math.max(0, (depthM - 5) / 20); 
@@ -592,9 +671,9 @@ export function update() {
     if(player.vy < -CONFIG.safeAscentSpeed && depthM > 8) {
         player.n2 += 0.5; 
         // Debug 模式下不死亡
-        if(!state.debug.fastMove) {
-             storyManager.showText("上升过快！减缓速度！", "#f00", 2000);
-        }
+        // if(!state.debug.fastMove) {
+        //      storyManager.showText("上升过快！减缓速度！", "#f00", 2000);
+        // }
     }
 
     // 更新探索地图
@@ -624,7 +703,8 @@ export function update() {
     if(player.o2 <= 0 && state.story.stage !== 4 && state.story.stage !== 5) {
         endGame(false, "氧气耗尽");
     }
-    if(player.n2 >= 100 && !state.debug.fastMove) endGame(false, "严重减压病");
+    // 暂时移除减压病致死逻辑，仅保留数值计算
+    // if(player.n2 >= 100 && !state.debug.fastMove) endGame(false, "严重减压病");
 
     // 更新动画时间 (用于脚蹼动画)
     if(!player.animTime) player.animTime = 0;
