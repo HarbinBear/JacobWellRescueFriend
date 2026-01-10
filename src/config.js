@@ -25,12 +25,12 @@ export const CONFIG = {
     // 氧气与生存参数
     o2ConsumptionBase: 0.005, // 基础氧气消耗
     o2ConsumptionMove: 0.003,  // 移动额外消耗
-    o2DamageMultiplier: 5.0,   // 氧气瓶损坏后的消耗倍率
+    o2DamageMultiplier: 6.0,   // 氧气瓶损坏后的消耗倍率
     o2RefillRate: 1.0,         // 接触NPC时的回复速度
     
     // 光照参数
     ambientLightSurface: 1.0,     // 水面/浅层环境光亮度
-    ambientLightDeep: 0.10,       // 深层最低环境光亮度
+    ambientLightDeep: 0.2,       // 深层最低环境光亮度
     darknessStartDepth: 2500,     // 开始变暗的深度 (第一洞室底部)
     flashlightColor: 'rgba(255, 247, 160, 0.2)', // 手电筒泛光颜色
     flashlightCenterColor: 'rgba(253, 253, 37, 0.41)', // 手电筒中心光束颜色

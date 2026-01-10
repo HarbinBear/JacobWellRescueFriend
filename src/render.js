@@ -962,18 +962,134 @@ function drawUI() {
     }
 
     // 游戏结束画面
-    if(state.screen !== 'play') {
+    if(state.screen === 'ending') {
+        drawEnding();
+    } else if(state.screen === 'lose') {
         ctx.fillStyle = 'rgba(0,0,0,0.8)';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = state.screen === 'win' ? '#0f0' : '#f00';
+        ctx.fillStyle = '#f00';
         ctx.font = '30px Arial';
         ctx.textAlign = 'center';
-        ctx.fillText(state.screen === 'win' ? '任务完成!' : '任务失败', canvas.width/2, canvas.height/2 - 20);
+        ctx.fillText('任务失败', canvas.width/2, canvas.height/2 - 20);
         ctx.fillStyle = '#fff';
         ctx.font = '20px Arial';
         ctx.fillText(state.alertMsg, canvas.width/2, canvas.height/2 + 20);
         ctx.fillText('点击屏幕重新开始', canvas.width/2, canvas.height/2 + 60);
     }
+}
+
+function drawEnding() {
+    // 全屏黑
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    let timer = state.endingTimer || 0;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    
+    // 阶段 1: 0-4s (0-240帧)
+    if(timer < 240) {
+        let alpha = 1;
+        if(timer < 60) alpha = timer / 60; // 淡入
+        if(timer > 180) alpha = (240 - timer) / 60; // 淡出
+        
+        ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+        ctx.font = '20px Arial';
+        wrapText(ctx, "小潘把一个密闭的洞穴气室误当成了出口，\n最终在搅动的泥沙中彻底迷失方向，\n丧生在了黑暗之中。", canvas.width/2, canvas.height/2, 30);
+    }
+    // 阶段 2: 4-8s (240-480帧)
+    else if(timer < 480) {
+        let t = timer - 240;
+        let alpha = 1;
+        if(t < 60) alpha = t / 60;
+        if(t > 180) alpha = (240 - t) / 60;
+        
+        ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+        ctx.font = '20px Arial';
+        wrapText(ctx, "为了不让更多的人丧生在恐怖的雅各布井，\n当地政府最终彻底封闭了雅各布井。", canvas.width/2, canvas.height/2, 30);
+    }
+    // 阶段 3: 8-12s (480-720帧) - 画面
+    else if(timer < 720) {
+        let t = timer - 480;
+        let alpha = 1;
+        if(t < 60) alpha = t / 60;
+        if(t > 180) alpha = (240 - t) / 60;
+        
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        
+        // 绘制示意图
+        // 两个潜水员轮廓
+        drawDiverSilhouette(canvas.width/2 - 60, canvas.height/2, '#555'); // 小熊
+        drawDiverSilhouette(canvas.width/2 + 60, canvas.height/2 + 20, '#555', true); // 小潘 (倒下)
+        
+        // 名字
+        ctx.fillStyle = '#f00';
+        ctx.font = '16px Arial';
+        ctx.fillText("(小熊)", canvas.width/2 - 60, canvas.height/2 - 50);
+        ctx.fillText("(小潘)", canvas.width/2 + 60, canvas.height/2 - 40);
+        
+        // 散落气瓶
+        ctx.fillStyle = '#333';
+        ctx.fillRect(canvas.width/2 + 80, canvas.height/2 + 30, 20, 10);
+        
+        ctx.restore();
+    }
+    // 阶段 4: 12-16s (720-960帧)
+    else if(timer < 960) {
+        let t = timer - 720;
+        let alpha = 1;
+        if(t < 60) alpha = t / 60;
+        if(t > 180) alpha = (240 - t) / 60;
+        
+        ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+        ctx.font = '24px Arial';
+        ctx.fillText("感谢您的体验", canvas.width/2, canvas.height/2);
+    }
+    // 阶段 5: 16s+ (960+)
+    else {
+        let t = timer - 960;
+        let alpha = Math.min(1, t / 60);
+        
+        ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+        ctx.font = '20px Arial';
+        ctx.fillText("制作人员名单", canvas.width/2, canvas.height/2 - 40);
+        ctx.font = '16px Arial';
+        ctx.fillText("制作人：熊子", canvas.width/2, canvas.height/2);
+        ctx.fillText("特别鸣谢：亮子", canvas.width/2, canvas.height/2 + 30);
+        
+        // 点击重启提示
+        if(t > 120) {
+             ctx.fillStyle = `rgba(255, 255, 255, ${Math.abs(Math.sin(t/30))})`;
+             ctx.font = '14px Arial';
+             ctx.fillText("点击屏幕重新开始", canvas.width/2, canvas.height - 50);
+        }
+    }
+}
+
+function wrapText(ctx, text, x, y, lineHeight) {
+    let lines = text.split('\n');
+    let startY = y - (lines.length - 1) * lineHeight / 2;
+    for(let i=0; i<lines.length; i++) {
+        ctx.fillText(lines[i], x, startY + i * lineHeight);
+    }
+}
+
+function drawDiverSilhouette(x, y, color, isDead = false) {
+    ctx.save();
+    ctx.translate(x, y);
+    if(isDead) ctx.rotate(Math.PI/2);
+    
+    ctx.fillStyle = color;
+    // 简易轮廓
+    ctx.beginPath(); ctx.arc(0, -20, 10, 0, Math.PI*2); ctx.fill(); // 头
+    ctx.fillRect(-10, -10, 20, 30); // 身
+    ctx.fillRect(-12, -10, 4, 20); // 左臂
+    ctx.fillRect(8, -10, 4, 20); // 右臂
+    ctx.fillRect(-8, 20, 6, 20); // 左腿
+    ctx.fillRect(2, 20, 6, 20); // 右腿
+    
+    ctx.restore();
 }
 
 function drawControls() {

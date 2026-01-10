@@ -58,20 +58,20 @@ export class StoryManager {
             }
             
             if(player.y < 60) {
-                this.endGame(true, "成功生还");
+                this.endGame(true, "ending");
             }
         }
     }
 
     updateStage1(suit, tunnelEntry, tunnelEnd) {
         // 开场闲聊与教学
-        if(state.story.timer === 120) this.showText("熊子：这里的水质很清澈，\n但要动作要慢，\n泥沙会阻挡视线。", "#00bfff", 4000);
-        if(state.story.timer === 360) this.showText("熊子：保持呼吸平稳，\n不要急促换气。", "#00bfff", 3000);
+        // if(state.story.timer === 120) this.showText("小熊：这里的水质很清澈，\n但要动作要慢，\n泥沙会阻挡视线。", "#00bfff", 4000);
+        // if(state.story.timer === 360) this.showText("小熊：保持呼吸平稳，\n不要急促换气。", "#00bfff", 3000);
 
         // 事件1: 发现潜水服
         if(!state.story.flags.seenSuit) {
             let d = Math.hypot(player.x - suit.x, player.y - suit.y);
-            if(d < 80) {
+            if(d < 200) {
                 state.story.flags.seenSuit = true;
                 this.showText("内心：好像是废弃很久的潜水服，为什么会在这里？", "#ffd700", 4000); // 金色
                 console.log("[Story] Found suit");
@@ -342,8 +342,13 @@ export class StoryManager {
     }
 
     endGame(win, reason) {
-        state.screen = win ? 'win' : 'lose';
-        state.alertMsg = win ? "第二次下潜结束" : reason;
-        state.alertColor = win ? "#fff" : "#f00";
+        if (win) {
+            state.screen = 'ending';
+            state.endingTimer = 0;
+        } else {
+            state.screen = 'lose';
+            state.alertMsg = reason;
+            state.alertColor = "#f00";
+        }
     }
 }

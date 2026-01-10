@@ -382,9 +382,14 @@ function getNearestWallDist(x, y) {
 }
 
 function endGame(win, reason) {
-    state.screen = win ? 'win' : 'lose';
-    // 清空消息队列，显示最终消息
-    storyManager.showText(win ? "第二次下潜结束" : reason, win ? "#fff" : "#f00", 99999, { clearQueue: true, y: CONFIG.screenHeight/2 + 20 });
+    if (win) {
+        state.screen = 'ending';
+        state.endingTimer = 0;
+    } else {
+        state.screen = 'lose';
+        // 清空消息队列，显示最终消息
+        storyManager.showText(reason, "#f00", 99999, { clearQueue: true, y: CONFIG.screenHeight/2 + 20 });
+    }
 }
 
 // --- 核心逻辑 ---
@@ -409,6 +414,7 @@ export function resetGameLogic() {
     };
     state.story.visitedZones = []; // 重置已访问区域
     state.currentZone = null;
+    state.endingTimer = 0;
     
     // 初始化NPC
     state.npc.active = true;
@@ -424,6 +430,10 @@ export function resetGameLogic() {
 }
 
 export function update() {
+    if(state.screen === 'ending') {
+        state.endingTimer++;
+        return;
+    }
     if(state.screen !== 'play') return;
 
     // --- 剧情逻辑 ---
@@ -451,15 +461,15 @@ export function update() {
     state.camera.zoom += (state.camera.targetZoom - state.camera.zoom) * 0.02;
 
     // --- 防卡死机制 (Stage 3, 5, 6) ---
-    // 修改：仅在第二次下潜的隧道阶段生效 (Stage 5 进入隧道救援, Stage 6 返程出隧道)
+    // 修改：仅在第二次下潜的隧道阶段生效 (Stage 3 寻找NPC, Stage 5 进入隧道救援, Stage 6 返程出隧道)
     // 且必须在隧道区域内
     let inTunnel = false;
     if (state.landmarks.tunnelEntry && state.landmarks.tunnelEnd) {
-        inTunnel =  player.y >= state.landmarks.tunnelEntry.y - 200 && 
+        inTunnel =  player.y >= state.landmarks.tunnelEntry.y - 600 && 
                     player.y <= state.landmarks.tunnelEnd.y;
     }
 
-    if((state.story.stage === 5 || state.story.stage === 6) && inTunnel) {
+    if((state.story.stage === 3 || state.story.stage === 5 || state.story.stage === 6) && inTunnel) {
         if(!state.antiStuck) state.antiStuck = { timer: 0, lastPos: {x:player.x, y:player.y} };
         if(input.move > 0) {
             let movedDist = Math.hypot(player.x - state.antiStuck.lastPos.x, player.y - state.antiStuck.lastPos.y);

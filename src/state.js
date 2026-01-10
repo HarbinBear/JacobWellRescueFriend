@@ -30,6 +30,7 @@ export const state = {
             tankDamaged: false
         }
     },
+    endingTimer: 0, // 结局动画计时器
     debug: {
         fastMove: true
     },
