@@ -33,7 +33,7 @@ export function generateMap() {
         if(currentC < 5) currentC = 5;
         if(currentC > cols-5) currentC = cols-5;
         // 宽度随机变化，模拟真实洞穴
-        let width = 2.5 + Math.random() * 5; // 稍微变窄一点 (原 3+4)
+        let width = 1 + Math.random() * 7; // 稍微变窄一点 (原 3+4)
         if (Math.random() < 0.3) width += 2; // 偶尔有大厅
         pathPoints.push([currentR, currentC, width]);
     }

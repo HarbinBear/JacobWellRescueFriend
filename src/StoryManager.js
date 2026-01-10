@@ -110,7 +110,7 @@ export class StoryManager {
                 console.log("[Story] Collapse triggered");
 
                 // 坍塌特效 (在入口处)
-                if(window.triggerSilt) window.triggerSilt(tunnelEntry.x, tunnelEntry.y, 50);
+                if(GameGlobal.triggerSilt) GameGlobal.triggerSilt(tunnelEntry.x, tunnelEntry.y, 50);
                 state.story.shake = 5; // 轻微晃动
                 
                 // 封锁入口 (更深入一点)
@@ -143,7 +143,7 @@ export class StoryManager {
                     let bubbleX = tunnelEntry.x + (Math.random()-0.5)*20;
                     let bubbleY = tunnelEntry.y + 300 + (Math.random()-0.5)*50;
                     
-                    if(window.addBubble) window.addBubble(bubbleX, bubbleY);
+                    if(GameGlobal.addBubble) GameGlobal.addBubble(bubbleX, bubbleY);
                     
                     // 挣扎时的轻微晃动
                     if(Math.random() < 0.1) state.story.shake = 2;
@@ -212,7 +212,7 @@ export class StoryManager {
                  let idx = state.walls.indexOf(wall);
                  if(idx > -1) state.walls.splice(idx, 1);
                  state.map[r][c] = 0; 
-                 if(window.triggerSilt) window.triggerSilt(wall.x, wall.y, 10);
+                 if(GameGlobal.triggerSilt) GameGlobal.triggerSilt(wall.x, wall.y, 10);
                  console.log("[Story] Tunnel cleared");
              }
              
@@ -255,7 +255,7 @@ export class StoryManager {
             // 在玩家周围生成大量气泡
             let bubbleX = player.x + (Math.random()-0.5)*30;
             let bubbleY = player.y + (Math.random()-0.5)*30;
-            if(window.addBubble) window.addBubble(bubbleX, bubbleY);
+            if(GameGlobal.addBubble) GameGlobal.addBubble(bubbleX, bubbleY);
         }
 
         // 挣扎晃动

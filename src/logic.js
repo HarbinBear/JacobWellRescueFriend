@@ -65,9 +65,9 @@ export function triggerSilt(x, y, count) {
     }
 }
 
-// 挂载到 window 供 StoryManager 使用
-window.triggerSilt = triggerSilt;
-window.addBubble = function(x, y) {
+// 挂载到 GameGlobal 供 StoryManager 使用
+GameGlobal.triggerSilt = triggerSilt;
+GameGlobal.addBubble = function(x, y) {
     particles.push(new Particle(x + (Math.random()-0.5)*10, y + (Math.random()-0.5)*10, 'bubble'));
 };
 
