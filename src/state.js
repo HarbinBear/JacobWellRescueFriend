@@ -39,6 +39,14 @@ export const state = {
         state: 'follow', // follow, wait, enter_tunnel, dead
         targetX: 0, targetY: 0
     },
+    camera: {
+        zoom: 1,
+        targetZoom: 1
+    },
+    antiStuck: {
+        timer: 0,
+        lastPos: {x:0, y:0}
+    },
     landmarks: {
         suit: {x:0, y:0},
         tunnelEntry: {x:0, y:0},

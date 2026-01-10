@@ -34,13 +34,13 @@ export function initTextures() {
 
 // --- 渲染主函数 ---
 export function draw() {
-    let camX = -player.x + canvas.width/2;
-    let camY = -player.y + canvas.height/2;
-
+    let zoom = state.camera ? state.camera.zoom : 1;
+    
     // 屏幕晃动
+    let shakeX = 0, shakeY = 0;
     if(state.story.shake > 0) {
-        camX += (Math.random() - 0.5) * state.story.shake;
-        camY += (Math.random() - 0.5) * state.story.shake;
+        shakeX = (Math.random() - 0.5) * state.story.shake;
+        shakeY = (Math.random() - 0.5) * state.story.shake;
     }
 
     // 1. 绘制底层世界
@@ -48,7 +48,10 @@ export function draw() {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     ctx.save();
-    ctx.translate(camX, camY);
+    // 摄像机变换：中心缩放
+    ctx.translate(canvas.width/2 + shakeX, canvas.height/2 + shakeY);
+    ctx.scale(zoom, zoom);
+    ctx.translate(-player.x, -player.y);
 
     // 绘制水面背景 (明亮的天空和浅水渐变)
     // 从 y=-800 (天空) 到 y=600 (深水过渡)
@@ -109,10 +112,12 @@ export function draw() {
 
     // 绘制墙壁 (使用 state.walls 代替网格遍历，以支持不规则排列)
     // 筛选视野内的墙壁
-    let viewL = -camX - 100;
-    let viewR = -camX + canvas.width + 100;
-    let viewT = -camY - 100;
-    let viewB = -camY + canvas.height + 100;
+    let viewHalfW = (canvas.width/2) / zoom + 100;
+    let viewHalfH = (canvas.height/2) / zoom + 100;
+    let viewL = player.x - viewHalfW;
+    let viewR = player.x + viewHalfW;
+    let viewT = player.y - viewHalfH;
+    let viewB = player.y + viewHalfH;
 
     // 使用纹理或噪点填充墙壁，去除描边以减少球体感
     ctx.fillStyle = '#222';
@@ -253,8 +258,20 @@ export function draw() {
             ctx.fillStyle = `rgba(200, 0, 0, ${p.life * 0.8})`;
             ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); ctx.fill();
         } else {
-            ctx.fillStyle = `rgba(200, 255, 255, ${p.life})`;
-            ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); ctx.fill();
+            // 气泡渲染优化
+            ctx.save();
+            ctx.translate(p.x, p.y);
+            // 稍微变形
+            ctx.scale(1.0, 0.9); 
+            
+            ctx.fillStyle = `rgba(200, 255, 255, ${p.life * 0.5})`;
+            ctx.beginPath(); ctx.arc(0, 0, p.size, 0, Math.PI*2); ctx.fill();
+            
+            // 高光
+            ctx.fillStyle = `rgba(255, 255, 255, ${p.life * 0.8})`;
+            ctx.beginPath(); ctx.arc(-p.size*0.3, -p.size*0.3, p.size*0.2, 0, Math.PI*2); ctx.fill();
+            
+            ctx.restore();
         }
     }
 
@@ -281,51 +298,28 @@ export function draw() {
 
     // 绘制NPC
     if(state.npc && state.npc.active) {
-        // 使用 drawDiver 但修改颜色
-        ctx.save();
-        ctx.translate(state.npc.x, state.npc.y);
-        ctx.rotate(state.npc.angle);
-
-        ctx.fillStyle = '#333';
-        ctx.fillRect(-15, -6, 10, 4);
-        ctx.fillRect(-15, 2, 10, 4);
-
-        ctx.fillStyle = '#d44'; // 红色潜水服 (队友)
-        ctx.fillRect(-8, -4, 14, 8);
-
-        ctx.fillStyle = '#222'; 
-        ctx.beginPath(); ctx.arc(0, 0, 6, 0, Math.PI*2); ctx.fill(); 
-        
-        ctx.fillStyle = '#fa0'; 
-        ctx.beginPath(); ctx.arc(4, 0, 5, 0, Math.PI*2); ctx.fill();
-
-        ctx.fillStyle = '#bef';
-        ctx.beginPath(); ctx.fillRect(6, -3, 3, 6);
-
-        ctx.restore();
-        
-        // 绘制NPC手电筒光束 (简单版)
+        // 绘制NPC手电筒光束 (体积光)
         // 只有在深处才开灯
         if(state.npc.y > 600) {
-            ctx.save();
-            ctx.translate(state.npc.x, state.npc.y);
-            ctx.rotate(state.npc.angle);
-            
-            let grad = ctx.createLinearGradient(0, 0, 200, 0);
-            grad.addColorStop(0, 'rgba(255, 255, 200, 0.4)');
-            grad.addColorStop(1, 'rgba(255, 255, 200, 0)');
-            
-            ctx.fillStyle = grad;
-            ctx.beginPath();
-            ctx.moveTo(0, 0);
-            ctx.lineTo(200, 40);
-            ctx.lineTo(200, -40);
-            ctx.fill();
-            ctx.restore();
+            drawVolumetricLight(ctx, state.npc.x, state.npc.y, state.npc.angle);
         }
+
+        // 使用 drawDiver 绘制 NPC
+        const npcColors = {
+            suit: '#333',
+            body: '#d44', // 红色潜水服
+            tank: '#bef',
+            mask: '#fa0'
+        };
+        // NPC 简单使用时间作为动画驱动
+        drawDiver(ctx, state.npc.x, state.npc.y, state.npc.angle, npcColors, Date.now()/150);
     }
 
-    drawDiver(ctx, player.x, player.y, player.angle);
+    // 绘制玩家手电筒光束 (体积光)
+    drawVolumetricLight(ctx, player.x, player.y, player.angle);
+
+    // 绘制玩家
+    drawDiver(ctx, player.x, player.y, player.angle, null, player.animTime);
 
     ctx.restore();
 
@@ -366,7 +360,18 @@ export function draw() {
     let rayDist = CONFIG.lightRange * siltVis;
 
     // 濒死视野效果：视野急剧缩小
-    if(state.story.flags.narrowVision) {
+    if(state.story.stage === 4 && state.story.flags.narrowVision) {
+        // 基于氧气值的动态视野
+        // O2: 80 -> 0
+        // RayDist: 100 -> 20
+        let factor = Math.max(0, player.o2 / 80);
+        rayDist = 20 + factor * 80; 
+        
+        // 遮罩透明度
+        let alpha = 0.95 + (1-factor) * 0.05; // 0.95 -> 1.0
+        lightCtx.fillStyle = `rgba(0, 0, 0, ${alpha})`;
+        lightCtx.fillRect(0, 0, canvas.width, canvas.height);
+    } else if(state.story.flags.narrowVision) {
         rayDist = 30; // 只能看到极小范围
         lightCtx.fillStyle = 'rgba(0, 0, 0, 0.95)'; // 几乎全黑
         lightCtx.fillRect(0, 0, canvas.width, canvas.height);
@@ -375,53 +380,27 @@ export function draw() {
     let poly = getLightPolygon(player.x, player.y, player.angle, rayDist);
 
     lightCtx.save();
-    lightCtx.translate(camX, camY);
+    lightCtx.translate(canvas.width/2 + shakeX, canvas.height/2 + shakeY);
+    lightCtx.scale(zoom, zoom);
+    lightCtx.translate(-player.x, -player.y);
     
     lightCtx.globalCompositeOperation = 'destination-out';
     
-    // 玩家光照
-    lightCtx.shadowBlur = 30;
-    lightCtx.shadowColor = "rgba(255, 255, 255, 1)";
-    
-    let gradient = lightCtx.createRadialGradient(
-        player.x, player.y, 0,
-        player.x, player.y, rayDist
-    );
-    gradient.addColorStop(0, 'rgba(255, 255, 255, 1.0)');    
-    gradient.addColorStop(0.5, 'rgba(255, 255, 255, 1.0)');  
-    gradient.addColorStop(0.75, 'rgba(255, 255, 255, 0.5)'); 
-    gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');      
-    lightCtx.fillStyle = gradient;
-    lightCtx.beginPath();
-    lightCtx.moveTo(player.x, player.y);
-    for(let p of poly) lightCtx.lineTo(p.x, p.y);
-    lightCtx.closePath();
-    lightCtx.fill();
+    // 玩家光照 (双光锥效果)
+    drawFlashlight(lightCtx, player.x, player.y, player.angle, rayDist);
 
     // NPC光照 (如果NPC激活且在深处)
     if(state.npc && state.npc.active && state.npc.y > 600) {
-        let npcRayDist = CONFIG.lightRange * 0.8; // NPC手电筒稍弱
-        let npcPoly = getLightPolygon(state.npc.x, state.npc.y, state.npc.angle, npcRayDist);
-        
-        let npcGrad = lightCtx.createRadialGradient(
-            state.npc.x, state.npc.y, 0,
-            state.npc.x, state.npc.y, npcRayDist
-        );
-        npcGrad.addColorStop(0, 'rgba(255, 255, 255, 1.0)');    
-        npcGrad.addColorStop(0.5, 'rgba(255, 255, 255, 0.8)');  
-        npcGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');      
-        
-        lightCtx.fillStyle = npcGrad;
-        lightCtx.beginPath();
-        lightCtx.moveTo(state.npc.x, state.npc.y);
-        for(let p of npcPoly) lightCtx.lineTo(p.x, p.y);
-        lightCtx.closePath();
-        lightCtx.fill();
+        let npcRayDist = CONFIG.lightRange * 0.8; 
+        drawFlashlight(lightCtx, state.npc.x, state.npc.y, state.npc.angle, npcRayDist);
         
         // NPC自身发光
+        lightCtx.globalCompositeOperation = 'source-over'; // 确保发光叠加正确
+        lightCtx.fillStyle = 'rgba(255, 255, 255, 0.1)';
         lightCtx.beginPath();
         lightCtx.arc(state.npc.x, state.npc.y, 40, 0, Math.PI*2);
         lightCtx.fill();
+        lightCtx.globalCompositeOperation = 'destination-out'; // 恢复遮罩擦除模式
     }
 
     let selfGlow = lightCtx.createRadialGradient(
@@ -453,30 +432,38 @@ export function draw() {
         ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
 
-    // 红色遮罩 (濒死)
+    // 红色遮罩 (濒死) - 渐变色
     if(state.story.redOverlay > 0) {
-        ctx.fillStyle = `rgba(255, 0, 0, ${state.story.redOverlay})`;
+        // 透明度越高，颜色越暗红
+        // 0.0 -> 鲜红 (255, 0, 0)
+        // 1.0 -> 暗红 (61, 3, 3)
+        let t = state.story.redOverlay;
+        let r = Math.floor(255 * (1-t) + 61 * t);
+        let g = Math.floor(0 * (1-t) + 3 * t);
+        let b = Math.floor(0 * (1-t) + 3 * t);
+        
+        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${state.story.redOverlay})`;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
     
     // 隧道深处模糊遮罩 (仅在第一次下潜且接近隧道时显示)
     if(state.story.stage === 1 && state.landmarks.tunnelEntry) {
         let entryY = state.landmarks.tunnelEntry.y;
-        let screenEntryY = entryY + camY;
+        let screenEntryY = (entryY - player.y) * zoom + canvas.height/2 + shakeY;
         
-        // 如果隧道入口在屏幕内或上方
-        if(screenEntryY < canvas.height) {
-            // 创建一个渐变遮罩，从入口下方开始变黑
-            let gradientStart = Math.max(0, screenEntryY + 100);
-            if(gradientStart < canvas.height) {
-                let grad = ctx.createLinearGradient(0, gradientStart, 0, canvas.height);
-                grad.addColorStop(0, 'rgba(0,0,0,0)');
-                grad.addColorStop(0.5, 'rgba(0,0,0,0.8)');
-                grad.addColorStop(1, 'rgba(0,0,0,1)');
-                
-                ctx.fillStyle = grad;
-                ctx.fillRect(0, gradientStart, canvas.width, canvas.height - gradientStart);
-            }
+        // 只要在屏幕范围内或上方
+        if(screenEntryY < canvas.height + 500) {
+            // 创建一个渐变遮罩，从入口处开始变黑
+            // 调整渐变起点，使其更平滑
+            let gradientStart = Math.max(-500, screenEntryY + 50); 
+            
+            let grad = ctx.createLinearGradient(0, gradientStart, 0, gradientStart + 400);
+            grad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+            grad.addColorStop(0.4, 'rgba(0, 0, 0, 0.9)');
+            grad.addColorStop(1, 'rgba(0, 0, 0, 1)');
+            
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, gradientStart, canvas.width, canvas.height - gradientStart + 500);
         }
     }
 
@@ -485,33 +472,138 @@ export function draw() {
     drawControls();
 }
 
-function drawDiver(ctx, x, y, angle) {
+// 统一的手电筒绘制函数
+function drawFlashlight(ctx, x, y, angle, rayDist) {
+    ctx.shadowBlur = 30;
+    ctx.shadowColor = "rgba(255, 255, 255, 1)";
+    
+    // 1. 主光束 (窄而远)
+    let mainRayDist = rayDist;
+    let mainPoly = getLightPolygon(x, y, angle, mainRayDist, CONFIG.fov); 
+    
+    let mainGradient = ctx.createRadialGradient(x, y, 0, x, y, mainRayDist);
+    mainGradient.addColorStop(0, 'rgba(255, 255, 255, 1.0)');    
+    mainGradient.addColorStop(0.6, 'rgba(255, 255, 255, 0.9)');  
+    mainGradient.addColorStop(1, 'rgba(255, 255, 255, 0)');      
+    
+    ctx.fillStyle = mainGradient;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    for(let p of mainPoly) ctx.lineTo(p.x, p.y);
+    ctx.closePath();
+    ctx.fill();
+
+    // 2. 泛光 (宽而近)
+    let wideRayDist = rayDist * 0.6;
+    let widePoly = getLightPolygon(x, y, angle, wideRayDist, 120); // 120度宽角
+    
+    let wideGradient = ctx.createRadialGradient(x, y, 0, x, y, wideRayDist);
+    wideGradient.addColorStop(0, 'rgba(255, 255, 255, 0.6)');    
+    wideGradient.addColorStop(1, 'rgba(255, 255, 255, 0)');      
+    
+    ctx.fillStyle = wideGradient;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    for(let p of widePoly) ctx.lineTo(p.x, p.y);
+    ctx.closePath();
+    ctx.fill();
+}
+
+// 统一的潜水员绘制函数
+function drawDiver(ctx, x, y, angle, colors = null, animTime = 0) {
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(angle);
 
-    ctx.fillStyle = '#333';
-    ctx.fillRect(-15, -6, 10, 4);
-    ctx.fillRect(-15, 2, 10, 4);
+    // 默认颜色 (玩家)
+    const defaultColors = {
+        suit: '#333',
+        body: '#dd0',
+        tank: '#bef',
+        mask: '#fa0'
+    };
+    const c = colors || defaultColors;
 
-    ctx.fillStyle = '#dd0';
+    // 脚蹼动画 (模拟上下/前后摆动)
+    // 使用传入的 animTime，如果没有则回退到 Date.now()
+    let time = animTime || Date.now() / 150;
+    
+    // 左脚蹼
+    ctx.save();
+    ctx.translate(-15, -4);
+    // 模拟打水：缩放 X 轴 (投影长度变化) + 轻微位移
+    // 始终摆动，只是幅度不同（由 animTime 的增长速度控制）
+    let leftPhase = Math.sin(time);
+    let leftScale = 0.7 + leftPhase * 0.3; 
+    ctx.scale(leftScale, 1);
+    
+    ctx.fillStyle = c.suit;
+    ctx.beginPath();
+    ctx.moveTo(0, -2);
+    ctx.lineTo(-12, -4); // 蹼尖
+    ctx.lineTo(-12, 4);
+    ctx.lineTo(0, 2);
+    ctx.fill();
+    ctx.restore();
+
+    // 右脚蹼 (相位差 PI)
+    ctx.save();
+    ctx.translate(-15, 4);
+    let rightPhase = Math.sin(time + Math.PI);
+    let rightScale = 0.7 + rightPhase * 0.3;
+    ctx.scale(rightScale, 1);
+    
+    ctx.fillStyle = c.suit;
+    ctx.beginPath();
+    ctx.moveTo(0, -2);
+    ctx.lineTo(-12, -4); // 蹼尖
+    ctx.lineTo(-12, 4);
+    ctx.lineTo(0, 2);
+    ctx.fill();
+    ctx.restore();
+
+    // 身体
+    ctx.fillStyle = c.body;
     ctx.fillRect(-8, -4, 14, 8);
 
+    // 气瓶
+    ctx.fillStyle = c.tank;
+    ctx.beginPath(); ctx.fillRect(6, -3, 3, 6);
+
+    // 头盔
     ctx.fillStyle = '#222'; 
     ctx.beginPath(); ctx.arc(0, 0, 6, 0, Math.PI*2); ctx.fill(); 
     
-    ctx.fillStyle = '#fa0'; 
+    // 面罩
+    ctx.fillStyle = c.mask; 
     ctx.beginPath(); ctx.arc(4, 0, 5, 0, Math.PI*2); ctx.fill();
-
-    ctx.fillStyle = '#bef';
-    ctx.beginPath(); ctx.fillRect(6, -3, 3, 6);
 
     ctx.restore();
 }
 
-function getLightPolygon(sx, sy, angle, maxDist) {
+// 绘制体积光 (可见光束)
+function drawVolumetricLight(ctx, x, y, angle) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+    
+    // 模拟丁达尔效应
+    let grad = ctx.createLinearGradient(0, 0, 250, 0);
+    grad.addColorStop(0, 'rgba(200, 255, 255, 0.15)'); 
+    grad.addColorStop(1, 'rgba(200, 255, 255, 0)');
+    
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(250, 50); // 稍微宽一点
+    ctx.lineTo(250, -50);
+    ctx.fill();
+    ctx.restore();
+}
+
+function getLightPolygon(sx, sy, angle, maxDist, fovDeg = CONFIG.fov) {
     let points = [];
-    let fovRad = CONFIG.fov * Math.PI / 180;
+    let fovRad = fovDeg * Math.PI / 180;
     let startAngle = angle - fovRad/2;
     let rays = CONFIG.rayCount;
     let step = fovRad / rays;
@@ -600,19 +692,11 @@ function drawUI() {
     ctx.fillStyle = '#f00';
     ctx.fillRect(50, 60, Math.min(100, player.n2), 10);
 
-    // 扬尘条
-    ctx.fillStyle = '#8cf';
-    ctx.fillText('Silt', 20, 90);
-    ctx.fillStyle = '#222';
-    ctx.fillRect(50, 80, 100, 10);
-    ctx.fillStyle = '#b85';
-    ctx.fillRect(50, 80, Math.min(100, player.silt), 10);
-
     // 小地图 (移到左上角，仪表盘下方)
     if(state.explored && state.explored.length > 0) {
         let mapSize = 140; // 稍微大一点
         let mapX = 20;
-        let mapY = 100; // 紧接在扬尘条下方
+        let mapY = 80; // 紧接在氮气条下方 (原为100)
         
         // 背景
         ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';

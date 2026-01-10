@@ -28,9 +28,10 @@ class Particle {
             this.alpha = 0.8;
         } else { // bubble
             this.vx = (Math.random()-0.5) * 0.5;
-            this.vy = -1 - Math.random(); 
-            this.size = 1 + Math.random()*2;
+            this.vy = -2 - Math.random() * 2; // 加快上浮速度
+            this.size = 3 + Math.random()*3;
             this.alpha = 0.6;
+            this.wobble = Math.random() * Math.PI * 2; // 初始摇摆相位
         }
     }
     update() {
@@ -38,7 +39,7 @@ class Particle {
         this.y += this.vy;
         
         if(this.type === 'silt') {
-            this.life -= 0.005; // 加快消散 (原 0.0002)
+            this.life -= 0.005; 
             if(this.size < this.maxSize) this.size += 0.1;
             this.vx *= 0.96;
             this.vy *= 0.96;
@@ -49,7 +50,11 @@ class Particle {
             this.size += 0.05; 
             this.vx *= 0.95;
         } else {
-            this.life -= 0.01;
+            // 气泡摇摆
+            this.wobble += 0.1;
+            this.x += Math.sin(this.wobble) * 0.5;
+            this.life -= 0.005; // 稍微延长寿命
+            this.size *= 1.01; // 气泡上升变大
         }
     }
 }
@@ -195,10 +200,19 @@ function updateNPC() {
         state.npc.y += state.npc.vy;
         
         // 简单的避障 (NPC 不受透明墙影响)
-        if(checkCollision(state.npc.x + state.npc.vx*10, state.npc.y + state.npc.vy*10, false)) {
+        // 修改：在救援(rescue)或跟随(follow)且在深处时，忽略碰撞，防止NPC卡住
+        let ignoreCollision = state.npc.state === 'rescue' || (state.npc.state === 'follow' && state.npc.y > 600);
+        
+        if(!ignoreCollision && checkCollision(state.npc.x + state.npc.vx*10, state.npc.y + state.npc.vy*10, false)) {
              state.npc.x -= state.npc.vx;
              state.npc.y -= state.npc.vy;
         }
+    }
+
+    // NPC 水面边界限制
+    if(state.npc.y < 0) {
+        state.npc.y = 0;
+        state.npc.vy = Math.abs(state.npc.vy) * 0.5;
     }
     
     // 更新角度
@@ -257,17 +271,10 @@ function getNearestWallDist(x, y) {
     return minDist;
 }
 
-export function showStoryText(msg, color, duration = 3000) {
-    state.alertMsg = msg;
-    state.alertColor = color;
-    clearTimeout(state.msgTimer);
-    state.msgTimer = setTimeout(() => state.alertMsg = '', duration);
-}
-
 function endGame(win, reason) {
     state.screen = win ? 'win' : 'lose';
-    state.alertMsg = win ? "第二次下潜结束" : reason;
-    state.alertColor = win ? "#fff" : "#f00";
+    // 清空消息队列，显示最终消息
+    storyManager.showText(win ? "第二次下潜结束" : reason, win ? "#fff" : "#f00", 99999, { clearQueue: true, y: CONFIG.screenHeight/2 + 20 });
 }
 
 // --- 核心逻辑 ---
@@ -296,7 +303,11 @@ export function resetGameLogic() {
     state.npc.y = player.y;
     state.npc.state = 'follow';
     
-    showStoryText("难得的假期，熊子带我们去洞穴潜水", "#0ff", 4000);
+    // 初始化相机
+    state.camera = { zoom: 1, targetZoom: 1 };
+    state.antiStuck = { timer: 0, lastPos: {x:player.x, y:player.y} };
+
+    storyManager.showText("难得的假期！\n熊子带我们去洞穴潜水！", "rgba(43, 95, 206, 1)", 4000);
 }
 
 export function update() {
@@ -310,6 +321,102 @@ export function update() {
 
     updateNPC();
 
+    // --- 镜头控制 ---
+    if(!state.camera) state.camera = { zoom: 1, targetZoom: 1 };
+    let targetZoom = 1.0;
+    if(state.landmarks.tunnelEntry) {
+        let dist = Math.hypot(player.x - state.landmarks.tunnelEntry.x, player.y - state.landmarks.tunnelEntry.y);
+        // 只要接近入口或者在隧道深处（y坐标大于入口），就保持特写
+        if(dist < 200 || player.y > state.landmarks.tunnelEntry.y) {
+            targetZoom = 1.5;
+        }
+    }
+    if(state.story.stage === 4) targetZoom = 1.3;
+    state.camera.targetZoom = targetZoom;
+    state.camera.zoom += (state.camera.targetZoom - state.camera.zoom) * 0.02;
+
+    // --- 防卡死机制 (Stage 3, 5, 6) ---
+    if(state.story.stage === 3 || state.story.stage === 5 || state.story.stage === 6) {
+        if(!state.antiStuck) state.antiStuck = { timer: 0, lastPos: {x:player.x, y:player.y} };
+        if(input.move > 0) {
+            let movedDist = Math.hypot(player.x - state.antiStuck.lastPos.x, player.y - state.antiStuck.lastPos.y);
+            
+            // 判定是否尝试向下移动
+            let isTryingGoDown = Math.sin(player.targetAngle) > 0.3;
+
+            if(movedDist < 0.5) state.antiStuck.timer++;
+            else {
+                state.antiStuck.timer = 0;
+                state.antiStuck.lastPos.x = player.x;
+                state.antiStuck.lastPos.y = player.y;
+            }
+            
+            // 缩短触发时间到 20 帧 (约0.3秒) - 更容易触发
+            if(state.antiStuck.timer > 20) { 
+                let cleared = false;
+                const { tileSize } = CONFIG;
+                
+                // 1. 优先清理正前方的一个格子 (无论是否向下)
+                let clearX = player.x + Math.cos(player.angle) * 30;
+                let clearY = player.y + Math.sin(player.angle) * 30;
+                let r = Math.floor(clearY / tileSize);
+                let c = Math.floor(clearX / tileSize);
+                
+                if(state.map[r] && state.map[r][c]) {
+                    state.map[r][c] = 0;
+                    cleared = true;
+                    // 移除墙壁对象
+                    for(let i=state.walls.length-1; i>=0; i--) {
+                        let w = state.walls[i];
+                        if(Math.hypot(w.x - (c*tileSize + tileSize/2), w.y - (r*tileSize + tileSize/2)) < tileSize) {
+                            state.walls.splice(i, 1);
+                        }
+                    }
+                }
+
+                // 2. 如果没清理到，尝试清理周围最近的障碍物 (半径 50 像素内)
+                if(!cleared) {
+                    let nearestDist = 999;
+                    let nearestWall = null;
+                    let nr = -1, nc = -1;
+
+                    let pr = Math.floor(player.y / tileSize);
+                    let pc = Math.floor(player.x / tileSize);
+
+                    for(let i = pr-1; i <= pr+1; i++) {
+                        for(let j = pc-1; j <= pc+1; j++) {
+                            if(state.map[i] && state.map[i][j]) {
+                                let w = state.map[i][j];
+                                let d = Math.hypot(player.x - w.x, player.y - w.y);
+                                if(d < 60 && d < nearestDist) { // 60像素范围内
+                                    nearestDist = d;
+                                    nearestWall = w;
+                                    nr = i; nc = j;
+                                }
+                            }
+                        }
+                    }
+
+                    if(nearestWall) {
+                        state.map[nr][nc] = 0;
+                        cleared = true;
+                        let idx = state.walls.indexOf(nearestWall);
+                        if(idx > -1) state.walls.splice(idx, 1);
+                    }
+                }
+                
+                if(cleared) {
+                    triggerSilt(player.x, player.y + 20, 5); 
+                    // 只有在 Stage 3 且不是濒死时才提示，避免刷屏
+                    if(state.story.stage === 3 && Math.random() < 0.3) {
+                        storyManager.showText("松动的岩石脱落了...", "#aaa", 1000);
+                    }
+                    state.antiStuck.timer = 0;
+                }
+            }
+        } else { state.antiStuck.timer = 0; }
+    }
+
     // 1. 转向系统
     player.targetAngle = input.targetAngle;
 
@@ -320,12 +427,17 @@ export function update() {
     player.angle += angleDiff * CONFIG.turnSpeed; 
 
     // 2. 移动系统
-    // 如果被卡住，禁止移动
+    // 如果被卡住，禁止移动并强制停止速度
     if(state.story.stage === 4 || state.story.stage === 5) {
         input.move = 0;
+        player.vx = 0;
+        player.vy = 0;
+        // 模拟挣扎的微小位移
+        player.x += (Math.random()-0.5) * 1.5;
+        player.y += (Math.random()-0.5) * 1.5;
     }
 
-    let speed = CONFIG.moveSpeed * 0.3; 
+    let speed = CONFIG.moveSpeed * 0.3;
     if(input.speedUp) speed = CONFIG.moveSpeed; 
     
     // 调试加速
@@ -353,6 +465,21 @@ export function update() {
     let hitY = checkCollision(player.x, nextY, true);
     if(!hitY) player.y = nextY;
     else { player.vy *= -0.5; if(Math.abs(player.vy)>1) triggerSilt(player.x, player.y, 20); }
+
+    // 水面边界限制 (防止飞出水面)
+    if(player.y < 0) {
+        player.y = 0;
+        player.vy = Math.abs(player.vy) * 0.5; // 反弹
+    }
+
+    // 水面闲聊文案
+    if(player.y < 50 && state.story.stage !== 4 && state.story.stage !== 5 && state.story.stage !== 2) {
+        // 简单的防抖动，避免重复触发
+        if(!state.story.lastSurfaceTime || Date.now() - state.story.lastSurfaceTime > 10000) {
+             storyManager.showText("今天天气真不错！", "#fff", 3000);
+             state.story.lastSurfaceTime = Date.now();
+        }
+    }
 
     // 2. 扬尘逻辑
     let vel = Math.hypot(player.vx, player.vy);
@@ -405,7 +532,7 @@ export function update() {
         player.n2 += 0.5; 
         // Debug 模式下不死亡
         if(!state.debug.fastMove) {
-             showStoryText("上升过快！减缓速度！", "#f00", 2000);
+             storyManager.showText("上升过快！减缓速度！", "#f00", 2000);
         }
     }
 
@@ -432,8 +559,26 @@ export function update() {
         endGame(true, "成功生还");
     }
 
-    if(player.o2 <= 0) endGame(false, "氧气耗尽");
-    if(player.n2 >= 100) endGame(false, "严重减压病");
+    // 氧气耗尽判定：在濒死体验(Stage 4)和救援中(Stage 5)不触发失败
+    if(player.o2 <= 0 && state.story.stage !== 4 && state.story.stage !== 5) {
+        endGame(false, "氧气耗尽");
+    }
+    if(player.n2 >= 100 && !state.debug.fastMove) endGame(false, "严重减压病");
+
+    // 更新动画时间 (用于脚蹼动画)
+    if(!player.animTime) player.animTime = 0;
+    // 基础摆动速度 + 移动速度加成
+    let swimSpeed = Math.hypot(player.vx, player.vy);
+    player.animTime += 0.1 + swimSpeed * 0.5; 
+
+    // 水流扰动 (Idle 漂浮)
+    // 当玩家静止或速度很慢时，施加微小的扰动
+    if(input.move === 0 && swimSpeed < 0.5) {
+        let time = Date.now() / 1000;
+        // 模拟水流推力
+        player.vx += Math.sin(time) * 0.02;
+        player.vy += Math.cos(time * 0.8) * 0.02;
+    }
 
     // 5. 生态系统更新 (鱼群游动)
     if(state.fishes) {

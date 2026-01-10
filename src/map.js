@@ -33,7 +33,7 @@ export function generateMap() {
         if(currentC < 5) currentC = 5;
         if(currentC > cols-5) currentC = cols-5;
         // 宽度随机变化，模拟真实洞穴
-        let width = 2.5 + Math.random() * 3; // 稍微变窄一点 (原 3+4)
+        let width = 2.5 + Math.random() * 5; // 稍微变窄一点 (原 3+4)
         if (Math.random() < 0.3) width += 2; // 偶尔有大厅
         pathPoints.push([currentR, currentC, width]);
     }
@@ -66,10 +66,10 @@ export function generateMap() {
     // 第三段：狭窄通道 (直线向下，很窄)
     // 确保通道只有1格宽，看起来刚好能过
     let tunnelStartR = currentR;
-    for(let i=0; i<60; i++) { // 加长隧道 (原15 -> 30)
+    for(let i=0; i<40; i++) { // 加长隧道 (原15 -> 30)
         currentR += 0.8;
         // 稍微偏移一点点，保持狭窄
-        pathPoints.push([currentR, currentC, 0.9]); // 极窄 (原1.1)
+        pathPoints.push([currentR, currentC, 0.7]); // 极窄 (原0.9)
         
         // 每隔几个点记录一个导航点
         if(i % 5 === 0) {

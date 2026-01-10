@@ -1,4 +1,4 @@
-import { state, player, particles } from './state.js';
+import { state, player, particles, input } from './state.js';
 import { CONFIG } from './config.js';
 
 // 粒子类定义 (需要在这里重新定义或者从 logic.js 导出，为了解耦，建议从 logic.js 导出 Particle 类，或者在这里简单实现气泡生成)
@@ -52,6 +52,11 @@ export class StoryManager {
 
         // 阶段6: 上浮结束
         else if(state.story.stage === 6) {
+            // 模拟减压停留提示
+            if(player.y < 400 && player.y > 200 && state.story.timer % 300 === 0) {
+                 this.showText("提示：正在进行减压停留...\n保持深度。", "#0f0", 2000);
+            }
+            
             if(player.y < 60) {
                 this.endGame(true, "成功生还");
             }
@@ -59,6 +64,10 @@ export class StoryManager {
     }
 
     updateStage1(suit, tunnelEntry, tunnelEnd) {
+        // 开场闲聊与教学
+        if(state.story.timer === 120) this.showText("熊子：这里的水质很清澈，\n但要动作要慢，\n泥沙会阻挡视线。", "#00bfff", 4000);
+        if(state.story.timer === 360) this.showText("熊子：保持呼吸平稳，\n不要急促换气。", "#00bfff", 3000);
+
         // 事件1: 发现潜水服
         if(!state.story.flags.seenSuit) {
             let d = Math.hypot(player.x - suit.x, player.y - suit.y);
@@ -88,8 +97,8 @@ export class StoryManager {
             let distFromEntry = Math.hypot(state.npc.x - tunnelEntry.x, state.npc.y - tunnelEntry.y);
             
             // 增加独白，表现紧张
-            if(state.story.timer === 180) this.showText("内心：他怎么不听劝...", "#ffd700", 3000);
-            if(state.story.timer === 360) this.showText("内心：里面太窄了，他会卡住的...", "#ffd700", 3000);
+            if(state.story.timer === 180) this.showText("内心：怎么不听劝...", "#ffd700", 3000);
+            if(state.story.timer === 360) this.showText("内心：里面太窄了，你会卡住的...", "#ffd700", 3000);
             if(state.story.timer === 540) this.showText("内心：喂！听得到吗？快回来！", "#ff4444", 3000);
 
             // NPC 深入隧道后触发坍塌 (距离入口超过 400 像素，且时间足够)
@@ -132,7 +141,7 @@ export class StoryManager {
                     // 冒气泡 (从黑暗中冒出来，而不是最深处)
                     // 生成在入口下方 200-300 像素处，看起来像是从深处飘上来的
                     let bubbleX = tunnelEntry.x + (Math.random()-0.5)*20;
-                    let bubbleY = tunnelEntry.y + 250 + (Math.random()-0.5)*50;
+                    let bubbleY = tunnelEntry.y + 300 + (Math.random()-0.5)*50;
                     
                     if(window.addBubble) window.addBubble(bubbleX, bubbleY);
                     
@@ -142,9 +151,10 @@ export class StoryManager {
             }
 
             if(state.story.timer === 60) this.showText("内心：那是...气泡？", "#ffd700", 3000);
-            if(state.story.timer === 240) this.showText("内心：他在挣扎！", "#ff4444", 3000);
-            if(state.story.timer === 420) this.showText("内心：坚持住！", "#ff4444", 3000);
-            if(state.story.timer === 600) this.showText("内心：...没动静了？", "#fff", 4000);
+            if(state.story.timer === 240) this.showText("内心：他的呼吸乱了！", "#ff4444", 3000);
+            if(state.story.timer === 420) this.showText("坚持住！我来救你！", "#ff4444", 3000);
+            if(state.story.timer === 600) this.showText("内心：...", "#fff", 4000);
+            if(state.story.timer === 780) this.showText("内心：...没动静了？", "#fff", 4000);
             
             if(state.story.timer === 800) {
                 this.showText("立刻回到岸上呼叫救援！", "#ff4444", 4000);
@@ -175,12 +185,16 @@ export class StoryManager {
             state.npc.y = player.y;
             state.npc.state = 'follow';
             
-            this.showText("第二次下潜：一起寻找失踪的队友！", "#0ff", 4000);
+            this.showText("第二次下潜：一起寻找失踪的队友！", "rgba(13, 93, 8, 1)", 4000);
             console.log("[Story] Stage 3 started");
         }
     }
 
     updateStage3(tunnelEntry, tunnelEnd) {
+        // 下潜过程中的心理活动
+        if(state.story.timer === 120) this.showText("内心：一定要找到他...", "#ffd700", 2000);
+        if(state.story.timer === 300) this.showText("内心：这里太安静了...", "#ffd700", 2000);
+
         let d = Math.hypot(player.x - tunnelEntry.x, player.y - tunnelEntry.y);
         if(d < 80 && !state.story.flags.approachedTunnel) {
             state.story.flags.approachedTunnel = true;
@@ -210,42 +224,82 @@ export class StoryManager {
         }
         
         let dEnd = Math.hypot(player.x - tunnelEnd.x, player.y - tunnelEnd.y);
-        // 判定点稍微放宽一点，或者确保 tunnelEnd 在隧道深处
-        if(dEnd < 60) { // 放宽判定 40 -> 60
+        // 判定点改为深度判定：只要深入隧道一定距离就触发卡住
+        // 隧道入口 y 坐标 + 300 像素 (约7-8格)
+        if(player.y > tunnelEntry.y + 300) { 
             state.story.stage = 4;
             state.story.timer = 0;
             input.move = 0; 
             this.showText("糟了！被卡住了！", "#f00", 3000);
-            state.npc.state = 'rescue';
+            
+            // 立即隐藏 NPC，制造孤立无援感
+            state.npc.active = false;
+            state.npc.state = 'rescue'; // 状态设为救援，但暂时不显示
+            
+            // 立即开始视野收窄
+            state.story.flags.narrowVision = true;
+            
             state.story.shake = 5; // 轻微挣扎晃动
-            console.log("[Story] Player stuck");
+            console.log("[Story] Player stuck (Depth Trigger)");
         }
     }
 
     updateStage4() {
-        player.o2 -= 0.2; 
+        player.o2 -= 0.15; 
         
-        // 挣扎晃动
-        if(state.story.timer % 60 === 0) {
-            state.story.shake = 10;
+        // 气泡生成逻辑：一阵一阵 (模拟呼吸器故障或剧烈喘息)
+        this.bubbleTimer++;
+        let bubblePhase = Math.sin(this.bubbleTimer * 0.1); 
+        
+        if(bubblePhase > 0.2 && Math.random() < 0.4) {
+            // 在玩家周围生成大量气泡
+            let bubbleX = player.x + (Math.random()-0.5)*30;
+            let bubbleY = player.y + (Math.random()-0.5)*30;
+            if(window.addBubble) window.addBubble(bubbleX, bubbleY);
         }
 
-        // 屏幕变红
-        if(player.o2 < 50) state.story.redOverlay = (50 - player.o2) / 50 * 0.8;
+        // 挣扎晃动
+        if(state.story.timer % 40 === 0) {
+            state.story.shake = 8;
+        }
 
-        if(state.story.timer === 120) this.showText("我出不去了...", "#ff4444", 3000);
-        if(state.story.timer === 240) this.showText("氧气...不够了...", "#ff4444", 3000);
-        if(state.story.timer === 360) this.showText("谁来...救救我...", "#ff4444", 3000);
+        // 屏幕变红 (更早开始)
+        if(player.o2 < 70) state.story.redOverlay = (70 - player.o2) / 70 * 1.0; // 允许完全不透明
+
+        if(state.story.timer === 60) this.showText("我出不去了！！！", "#ff4444", 3000);
+        if(state.story.timer === 180) this.showText("氧气...在泄漏...", "#ff4444", 3000);
+        if(state.story.timer === 300) this.showText("谁来...救救我...", "#ff4444", 3000);
         
-        if(player.o2 < 30 && !state.story.flags.narrowVision) {
+        // 视野收窄 (确保一直开启)
+        if(!state.story.flags.narrowVision) {
             state.story.flags.narrowVision = true; 
         }
 
+        // 增加一个完全不透明的停顿期
         if(player.o2 < 5) {
-             state.story.stage = 5;
-             state.story.timer = 0;
-             this.showText("有人抓住我的脚！", "#fff", 2000);
-             console.log("[Story] Rescued");
+             // 确保红屏完全不透明
+             state.story.redOverlay = 1.0;
+             
+             // 延迟一点点进入下一阶段，给玩家一个"死亡"的错觉，并利用这段时间移动NPC
+             if(!state.story.flags.deathPause) {
+                 state.story.flags.deathPause = 0;
+             }
+             state.story.flags.deathPause++;
+             
+             if(state.story.flags.deathPause > 60) { // 停顿约1秒
+                 state.story.stage = 5;
+                 state.story.timer = 0;
+                 state.story.flags.deathPause = 0;
+                 
+                 // 惊喜时刻：NPC 瞬移出现
+                 state.npc.active = true;
+                 state.npc.x = player.x + 20; // 在右侧一点
+                 state.npc.y = player.y + 10; // 稍微下方
+                 state.npc.state = 'rescue'; 
+                 
+                 this.showText("有人抓住我的脚！", "#fff", 2000);
+                 console.log("[Story] Rescued");
+             }
         }
     }
 
