@@ -353,7 +353,10 @@ export function draw() {
     // 如果在深水区，加一点蓝绿色调
     if(depthFactor > 0.2) {
         let blueTint = Math.max(0, (1 - depthFactor) * 30);
-        lightCtx.fillStyle = `rgba(0, ${blueTint/2}, ${blueTint}, ${maskAlpha})`;
+        // 确保颜色分量为整数，避免安卓真机兼容性问题
+        let g = Math.floor(blueTint / 2);
+        let b = Math.floor(blueTint);
+        lightCtx.fillStyle = `rgba(0, ${g}, ${b}, ${maskAlpha})`;
     }
     
     lightCtx.fillRect(0, 0, canvas.width, canvas.height);
@@ -435,7 +438,7 @@ export function draw() {
     }
 
     // 红色遮罩 (濒死) - 渐变色
-    if(state.story.redOverlay > 0) {
+    if(state.story.redOverlay > 0.001) {
         // 透明度越高，颜色越暗红
         // 0.0 -> 鲜红 (255, 0, 0)
         // 1.0 -> 暗红 (61, 3, 3)
@@ -444,7 +447,9 @@ export function draw() {
         let g = Math.floor(0 * (1-t) + 3 * t);
         let b = Math.floor(0 * (1-t) + 3 * t);
         
-        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${state.story.redOverlay})`;
+        // 限制 alpha 小数位数
+        let alpha = Number(state.story.redOverlay.toFixed(3));
+        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
     

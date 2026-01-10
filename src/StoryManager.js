@@ -304,7 +304,10 @@ export class StoryManager {
     }
 
     updateStage5() {
-        state.story.redOverlay *= 0.95; // 红色消退
+        if (state.story.redOverlay > 0) {
+            state.story.redOverlay *= 0.95; // 红色消退
+            if (state.story.redOverlay < 0.01) state.story.redOverlay = 0;
+        }
 
         if(state.story.timer === 120) {
             this.showText("是队友！", "#00bfff", 2000); // 亮青色
@@ -319,6 +322,7 @@ export class StoryManager {
             this.showText("我有氧气了！", "#00bfff", 3000);
             state.npc.state = 'follow';
             state.story.stage = 6;
+            state.story.redOverlay = 0; // 强制移除红屏
         }
     }
 
