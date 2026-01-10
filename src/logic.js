@@ -87,7 +87,7 @@ function updateNPC() {
     
     let targetX = player.x;
     let targetY = player.y;
-    let speed = 1.5;
+    let speed = 2.8;
     
     // Debug 加速
     if(state.debug.fastMove) speed *= 3;
@@ -97,7 +97,7 @@ function updateNPC() {
         // 默认跟随玩家（提供氧气）
         targetX = player.x;
         targetY = player.y;
-        speed = 2.2; // 稍微快一点，确保能跟上玩家
+        speed = 3.5; // 稍微快一点，确保能跟上玩家
 
         // 获取地标
         let junction = state.landmarks.junction;
@@ -169,7 +169,7 @@ function updateNPC() {
             targetX = state.landmarks.tunnelEnd.x;
             targetY = state.landmarks.tunnelEnd.y;
         }
-        speed = 2.5; // 稍微快一点进入
+        speed = 3.5; // 稍微快一点进入
         if(state.debug.fastMove) speed *= 3;
 
         // 强制移动，忽略碰撞
@@ -230,7 +230,7 @@ function updateNPC() {
     } else if (state.npc.state === 'rescue') {
         targetX = player.x;
         targetY = player.y;
-        speed = 2.0;
+        speed = 3.5;
     }
     
     // 移动NPC

@@ -9,7 +9,7 @@ export const CONFIG = {
     ambient: 0.5,        // 环境光亮度
     lightRange: 350,      // 手电筒距离 (竖屏视野长，稍微增加距离)
     fov: 70,              // 视野角度 (竖屏稍微增加视野)
-    moveSpeed: 10,         // 移动速度
+    moveSpeed: 14,         // 移动速度
     safeAscentSpeed: 2.5, // 安全上浮速度阈值
     siltFactor: 1.0,      // 扬尘产生倍率
     rayCount: 120,        // 射线数量
