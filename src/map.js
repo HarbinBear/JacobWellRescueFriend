@@ -4,6 +4,7 @@ import { state, target } from './state.js';
 // 线性剧情地图生成
 export function generateMap() {
     state.map = [];
+    state.zones = []; // 清空区域信息
     const { rows, cols, tileSize } = CONFIG;
     
     // 1. 初始化：全墙壁
@@ -17,62 +18,203 @@ export function generateMap() {
     // 2. 挖掘主通道 (使用路径点连接)
     // 路径点: [row, col, radius]
     let pathPoints = [];
-    let centerX = Math.floor(cols/2);
+    let centerX = Math.floor(cols/2); 
+    // 增加间距，确保墙壁足够厚 (20格 * 40px = 800px > lightRange * 2)
+    let rightX = centerX + 20; 
     
-    // 入口水面
-    for(let r=0; r<8; r++) {
-        pathPoints.push([r, centerX, 6]);
+    // 辅助函数：添加路径点并进行边界检查
+    function addPoint(r, c, w) {
+        // 边界检查，保留至少 3 格墙壁
+        if (c < 3) c = 3;
+        if (c > cols - 4) c = cols - 4;
+        pathPoints.push([r, c, w]);
+        return c; // 返回修正后的 c
     }
-    
-    // 第一段：蜿蜒向下 (直到潜水服)
+
+    // --- Phase 0: 入口水面 (0-8) ---
+    for(let r=0; r<8; r++) {
+        addPoint(r, centerX, 6);
+    }
+    state.zones.push({name: 'entrance', yMin: 0, yMax: 8 * tileSize});
+
+    // --- Phase 1: 第一洞室 (8-35) ---
+    // 比较大，底部收窄
     let currentR = 8;
     let currentC = centerX;
-    for(let i=0; i<20; i++) {
-        currentR += 1.5;
-        currentC += (Math.random()-0.5)*3;
-        if(currentC < 5) currentC = 5;
-        if(currentC > cols-5) currentC = cols-5;
-        // 宽度随机变化，模拟真实洞穴
-        let width = 1 + Math.random() * 7; // 稍微变窄一点 (原 3+4)
-        if (Math.random() < 0.3) width += 2; // 偶尔有大厅
-        pathPoints.push([currentR, currentC, width]);
-    }
+    let phase1EndR = 35;
     
+    while(currentR < phase1EndR) {
+        currentR += 1.0;
+        currentC += (Math.random()-0.5)*2;
+        
+        // 底部收窄过渡
+        let width = 6 + Math.random() * 4; 
+        if (currentR > 30) {
+            width = 6 - (currentR - 30) * 0.8; // 逐渐变窄到 2 左右
+            if (width < 2.5) width = 2.5;
+            // 引导向右，为连接第二洞室做准备
+            currentC += 0.5; // 加大引导力度
+        }
+        
+        currentC = addPoint(currentR, currentC, width);
+    }
+    state.zones.push({name: 'chamber1', yMin: 8 * tileSize, yMax: 35 * tileSize});
+
+    // --- Phase 2: 潜水服通道 (35-50) ---
+    // 狭小，连接第一洞室和第二洞室(偏右)
+    // 稍微加长一点以便平滑过渡大跨度
+    let phase2EndR = 50; 
     // 记录潜水服位置
     state.landmarks.suit = {
         x: currentC * tileSize,
-        y: currentR * tileSize
+        y: (currentR + 5) * tileSize
     };
     
-    // 第二段：继续向下 (直到狭窄通道入口)
-    for(let i=0; i<15; i++) {
-        currentR += 1.5;
-        currentC += (Math.random()-0.5)*3;
-        if(currentC < 5) currentC = 5;
-        if(currentC > cols-5) currentC = cols-5;
-        let width = 2.0 + Math.random() * 2; // 变窄 (原 2.5+3)
-        pathPoints.push([currentR, currentC, width]);
+    while(currentR < phase2EndR) {
+        currentR += 1.0;
+        // 快速向右偏移，连接到 rightX
+        let targetX = rightX;
+        let diff = targetX - currentC;
+        currentC += diff * 0.2; // 加快横向移动速度
+        
+        let width = 2.0; // 狭窄
+        currentC = addPoint(currentR, currentC, width);
+    }
+    state.zones.push({name: 'suit_tunnel', yMin: 35 * tileSize, yMax: 50 * tileSize});
+
+    // --- Phase 3: 第二洞室通道 (50-75) ---
+    // 这是一个狭长的通道，位于右侧 (rightX)，与左侧的死路平行
+    let phase3EndR = 75;
+    while(currentR < phase3EndR) {
+        currentR += 1.0;
+        currentC += (Math.random()-0.5)*0.8; 
+        
+        // 强力保持在 rightX 附近
+        let pull = (rightX - currentC) * 0.15;
+        currentC += pull;
+
+        // 宽度更窄
+        let width = 2.0 + Math.random() * 1.2; 
+        
+        // 底部收窄，准备进入三岔路口
+        if (currentR > 70) {
+            width = 2.0; 
+            // 开始向左引导，去往中心的三岔路口
+            currentC -= 0.5;
+        }
+        
+        currentC = addPoint(currentR, currentC, width);
+    }
+    state.zones.push({name: 'chamber2', yMin: 50 * tileSize, yMax: 75 * tileSize});
+
+    // --- Phase 4: 三岔路口 (75) ---
+    // 这里的逻辑是：
+    // 下方是第三洞室 (centerX)
+    // 右上方是第二洞室通道 (rightX)
+    // 正上方是死路通道 (centerX)
+    
+    let junctionR = currentR;
+    // 强制修正到中心，构建三岔口连接点
+    let junctionC = centerX; 
+    
+    // 连接第二洞室通道底部到三岔路口中心
+    // 刚才 Phase 3 结束时 currentC 应该在 rightX 和 centerX 之间
+    // 这里补几步路确保连通
+    let bridgeSteps = 12; // 更长的连接，因为横向跨度变大了
+    for(let i=0; i<bridgeSteps; i++) {
+        let t = (i+1)/bridgeSteps;
+        let r = junctionR + i * 0.5; // 稍微向下一点点
+        let c = currentC * (1-t) + junctionC * t;
+        addPoint(r, c, 2.5);
+    }
+    junctionR += bridgeSteps * 0.5;
+    currentR = junctionR;
+    currentC = junctionC;
+
+    state.zones.push({name: 'junction', yMin: (junctionR-5) * tileSize, yMax: (junctionR+5) * tileSize});
+
+    // 分支 A: 死路通道 (正上方)
+    // 位于 centerX，向上延伸，是一条狭长的死路，与右边的第二洞室通道平行
+    let deadEndR = junctionR;
+    let deadEndC = centerX; // 正上方
+    
+    // 向上挖掘
+    for(let i=0; i<35; i++) { // 挖更长一点
+        deadEndR -= 1.0; 
+        deadEndC += (Math.random()-0.5)*0.6;
+        
+        // 保持在 centerX 附近
+        let pull = (centerX - deadEndC) * 0.1;
+        deadEndC += pull;
+
+        // 宽度更窄，极具迷惑性
+        let width = 2.2 + Math.random() * 1.0; 
+        
+        // 边界检查
+        if (deadEndC < 3) deadEndC = 3;
+        if (deadEndC > cols - 4) deadEndC = cols - 4;
+        
+        pathPoints.push([deadEndR, deadEndC, width]);
     }
     
-    // 记录狭窄通道入口
+    // 记录死路区域
+    state.zones.push({
+        name: 'dead_end', 
+        yMin: (junctionR - 35) * tileSize, 
+        yMax: junctionR * tileSize,
+        xMin: (centerX - 5) * tileSize,
+        xMax: (centerX + 5) * tileSize
+    });
+
+    // 分支 B: 主路 (向下) -> 第三洞室
+    // --- Phase 5: 第三洞室 (75-105) ---
+    // 位于 centerX
+    let phase5EndR = 105;
+    // currentR, currentC 已经在 junction 处准备好了
+    
+    while(currentR < phase5EndR) {
+        currentR += 1.0;
+        currentC += (Math.random()-0.5)*1.5;
+        
+        // 保持在 centerX 附近
+        let pull = (centerX - currentC) * 0.05;
+        currentC += pull;
+        
+        let width = 5 + Math.random() * 3;
+        
+        // 顶部稍微窄一点，与三岔路口连接
+        if (currentR < junctionR + 5) {
+            width = 3.5;
+        }
+        
+        // 底部收窄进入剧情隧道
+        if (currentR > 95) {
+            width = 2.0;
+        }
+
+        currentC = addPoint(currentR, currentC, width);
+    }
+    state.zones.push({name: 'chamber3', yMin: junctionR * tileSize, yMax: 105 * tileSize});
+
+    // --- Phase 6: 剧情隧道 (105-135) ---
+    // 极窄，直线
+    let phase6EndR = 135;
     state.landmarks.tunnelEntry = {
         x: currentC * tileSize,
         y: currentR * tileSize
     };
-    
-    // 记录隧道路径点供 NPC 导航
     state.landmarks.tunnelPath = [];
-
-    // 第三段：狭窄通道 (直线向下，很窄)
-    // 确保通道只有1格宽，看起来刚好能过
+    
     let tunnelStartR = currentR;
-    for(let i=0; i<40; i++) { // 加长隧道 (原15 -> 30)
+    
+    while(currentR < phase6EndR) {
         currentR += 0.8;
-        // 稍微偏移一点点，保持狭窄
-        pathPoints.push([currentR, currentC, 0.7]); // 极窄 (原0.9)
+        // 几乎直线
+        currentC += (Math.random()-0.5)*0.2;
+        let width = 0.8; // 极窄
+        currentC = addPoint(currentR, currentC, width);
         
-        // 每隔几个点记录一个导航点
-        if(i % 5 === 0) {
+        if(Math.floor(currentR) % 5 === 0) {
             state.landmarks.tunnelPath.push({
                 x: currentC * tileSize,
                 y: currentR * tileSize
@@ -80,21 +222,32 @@ export function generateMap() {
         }
     }
     
-    // 添加透明碰撞体，阻止玩家进入 (第一次下潜)
-    // 放在入口深处 (隧道开始后 10 格左右)
-    state.invisibleWalls.push({
-        x: currentC * tileSize,
-        y: (tunnelStartR + 8) * tileSize, // 入口下方8格，深入隧道
-        r: tileSize * 1.2 // 堵住路
-    });
-    
-    // 记录狭窄通道内部/终点
     state.landmarks.tunnelEnd = {
         x: currentC * tileSize,
         y: currentR * tileSize
     };
-    // 确保终点也在路径中
     state.landmarks.tunnelPath.push(state.landmarks.tunnelEnd);
+    
+    // 空气墙 (第一次下潜阻挡)
+    state.invisibleWalls.push({
+        x: currentC * tileSize,
+        y: (tunnelStartR + 10) * tileSize,
+        r: tileSize * 1.2
+    });
+    
+    state.zones.push({name: 'story_tunnel', yMin: 105 * tileSize, yMax: 135 * tileSize});
+
+    // --- Phase 7: 第四洞室 (135-150) ---
+    // 大洞室占位
+    let phase7EndR = 150;
+    while(currentR < phase7EndR) {
+        currentR += 1.0;
+        currentC += (Math.random()-0.5)*2;
+        let width = 8 + Math.random() * 4;
+        currentC = addPoint(currentR, currentC, width);
+    }
+    state.zones.push({name: 'chamber4', yMin: 135 * tileSize, yMax: 150 * tileSize});
+
 
     // 挖掘逻辑
     for(let p of pathPoints) {
@@ -141,9 +294,9 @@ export function generateMap() {
     state.plants = [];
     state.fishes = [];
     
-    // 水草
+    // 水草 (只在浅水区和第一洞室)
     for(let w of state.walls) {
-        if(w.y < 15 * tileSize) { // 稍微深一点也有水草
+        if(w.y < 30 * tileSize) { 
             if(Math.random() < 0.3) {
                 let angle = Math.random() * Math.PI * 2;
                 let dist = w.r * 0.8;
@@ -159,9 +312,9 @@ export function generateMap() {
     }
 
     // 鱼群 (只在浅水区)
-    let schools = 3;
+    let schools = 5;
     for(let s=0; s<schools; s++) {
-        let centerR = Math.floor(Math.random() * 10 + 2);
+        let centerR = Math.floor(Math.random() * 20 + 2);
         let centerC = Math.floor(cols/2 + (Math.random()-0.5)*10);
         
         if(state.map[centerR] && state.map[centerR][centerC] === 0) {
@@ -182,8 +335,6 @@ export function generateMap() {
             }
         }
     }
-    
-    // 移除原来的目标生成逻辑，因为现在是剧情驱动
 }
 
 function getNeighborCount(r, c) {

@@ -226,6 +226,63 @@ function updateNPC() {
 }
 
 // --- 辅助函数 ---
+function checkZones() {
+    if (!state.zones) return;
+    
+    for (let zone of state.zones) {
+        // 检查玩家是否在区域内
+        let inY = player.y >= zone.yMin && player.y <= zone.yMax;
+        let inX = true;
+        if (zone.xMin !== undefined) inX = inX && player.x >= zone.xMin;
+        if (zone.xMax !== undefined) inX = inX && player.x <= zone.xMax;
+        
+        if (inY && inX) {
+            // 如果进入了新区域
+            if (state.currentZone !== zone.name) {
+                state.currentZone = zone.name;
+                handleZoneEnter(zone.name);
+            }
+            break; 
+        }
+    }
+}
+
+function handleZoneEnter(zoneName) {
+    // 防止重复提示 (可选，如果希望每次进入都提示则去掉)
+    // 这里我们希望每次进入新区域都提示一下，或者只提示一次
+    // 根据需求 "进入各个区域也要有日志哈"，假设是首次进入提示
+    if (!state.story.visitedZones) state.story.visitedZones = [];
+    if (state.story.visitedZones.includes(zoneName)) return;
+    state.story.visitedZones.push(zoneName);
+
+    switch(zoneName) {
+        case 'chamber1':
+            storyManager.showText("进入第一洞室", "#fff", 3000);
+            break;
+        case 'suit_tunnel':
+            storyManager.showText("通道变窄了... 潜水服还在那里", "#ccc", 3000);
+            break;
+        case 'chamber2':
+            storyManager.showText("进入第二洞室", "#fff", 3000);
+            break;
+        case 'junction':
+            storyManager.showText("前方出现岔路口", "#f00", 4000);
+            break;
+        case 'dead_end':
+            storyManager.showText("这条路看起来很宽敞... 是出口吗？", "#fff", 3000);
+            break;
+        case 'chamber3':
+            storyManager.showText("进入第三洞室", "#fff", 3000);
+            break;
+        case 'story_tunnel':
+            storyManager.showText("极度狭窄的裂缝...", "#f00", 3000);
+            break;
+        case 'chamber4':
+            storyManager.showText("未知的深渊", "#f00", 3000);
+            break;
+    }
+}
+
 function checkCollision(x, y, isPlayer = false) {
     const { tileSize } = CONFIG;
     let r = Math.floor(y/tileSize);
@@ -296,6 +353,8 @@ export function resetGameLogic() {
         rescued: false,
         approachedTunnel: false
     };
+    state.story.visitedZones = []; // 重置已访问区域
+    state.currentZone = null;
     
     // 初始化NPC
     state.npc.active = true;
@@ -316,6 +375,8 @@ export function update() {
     // --- 剧情逻辑 ---
     storyManager.update();
     
+    checkZones(); // 检测区域
+
     // 如果是黑屏状态，跳过物理更新
     if(state.story.flags.blackScreen) return;
 

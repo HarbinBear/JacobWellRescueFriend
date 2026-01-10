@@ -19,8 +19,8 @@ export const CONFIG = {
     
     // 地图参数
     tileSize: 40,
-    cols: 60,
-    rows: 100,
+    cols: 80,
+    rows: 150,
     
     // 目标名字库
     targetNames: ["伟仔", "毛丁", "树茂", "熊", "亮子", "潘子"]

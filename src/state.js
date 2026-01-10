@@ -8,6 +8,7 @@ export const state = {
     plants: [], // 存储水草
     fishes: [], // 存储鱼群
     explored: [], // 记录已探索区域
+    zones: [], // 地图区域信息 {name, yMin, yMax, xMin, xMax}
     msgTimer: null,
     alertMsg: '',
     alertColor: '#fff',
