@@ -36,6 +36,10 @@ export const CONFIG = {
     flashlightCenterColor: 'rgba(253, 253, 37, 0.41)', // 手电筒中心光束颜色
     flashlightCenterFov: 25,      // 中心光束角度
     
+    // 自身发光参数
+    selfGlowRadius: 150,          // 自身发光半径
+    selfGlowIntensity: 0.6,       // 自身发光强度 (0-1, 越大越亮)
+    
     // 目标名字库
     targetNames: ["伟仔", "毛丁", "树茂", "熊", "亮子", "潘子"]
 };

@@ -28,8 +28,8 @@ export function initInput(onReset) {
 
         window.addEventListener('keydown', (e) => {
             if(state.screen !== 'play') {
-                // 如果是结局画面，必须等待播放完毕 (timer > 1080)
-                if (state.screen === 'ending' && (!state.endingTimer || state.endingTimer < 1080)) {
+                // 如果是结局画面，必须等待播放完毕 (timer > 1320)
+                if (state.screen === 'ending' && (!state.endingTimer || state.endingTimer < 1320)) {
                     return;
                 }
                 if(e.code === 'Space' && onReset) onReset();
@@ -60,8 +60,8 @@ export function initInput(onReset) {
 
     wx.onTouchStart((res) => {
         if(state.screen !== 'play') {
-            // 如果是结局画面，必须等待播放完毕 (timer > 1080)
-            if (state.screen === 'ending' && (!state.endingTimer || state.endingTimer < 1080)) {
+            // 如果是结局画面，必须等待播放完毕 (timer > 1320)
+            if (state.screen === 'ending' && (!state.endingTimer || state.endingTimer < 1320)) {
                 return;
             }
             if (onReset) onReset();

@@ -412,11 +412,13 @@ export function draw() {
             // 1. 手电筒光椎擦除
             drawFlashlight(lightCtx, src.x, src.y, src.angle, src.dist, 'mask');
             
-            // 2. 自身微弱光圈 (擦除遮罩)
-            let glowRadius = 40;
+            // 2. 自身发光 (擦除遮罩) - 使用配置参数
+            let glowRadius = CONFIG.selfGlowRadius;
+            let intensity = CONFIG.selfGlowIntensity;
+            
             let glowGrad = lightCtx.createRadialGradient(src.x, src.y, 0, src.x, src.y, glowRadius);
-            glowGrad.addColorStop(0, 'rgba(255, 255, 255, 0.4)'); // 中心擦除 40%
-            glowGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');   // 边缘不擦除
+            glowGrad.addColorStop(0, `rgba(255, 255, 255, ${intensity})`); 
+            glowGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');   
             
             lightCtx.fillStyle = glowGrad;
             lightCtx.beginPath();
@@ -425,25 +427,10 @@ export function draw() {
         }
     }
 
-    // 玩家深处环境适应光圈 (模拟眼睛适应黑暗)
-    // 仅针对玩家，且范围更大
-    let glowRadius = 50;
-    if (depthFactor > 0.8) glowRadius = 120; 
-
-    let selfGlow = lightCtx.createRadialGradient(
-        player.x, player.y, 0,
-        player.x, player.y, glowRadius
-    );
-    // 在深处，中心也不要完全擦除，保留一点黑暗感
-    let centerAlpha = depthFactor > 0.8 ? 'rgba(255, 255, 255, 0.3)' : 'rgba(255, 255, 255, 0.8)';
-    
-    selfGlow.addColorStop(0, centerAlpha); 
-    selfGlow.addColorStop(1, 'rgba(255, 255, 255, 0)');   
-    
-    lightCtx.fillStyle = selfGlow;
-    lightCtx.beginPath();
-    lightCtx.arc(player.x, player.y, glowRadius, 0, Math.PI*2);
-    lightCtx.fill();
+    // 玩家深处环境适应光圈 - 已移除，统一使用上方的自身发光配置
+    // let glowRadius = 50;
+    // if (depthFactor > 0.8) glowRadius = 120; 
+    // ... (旧代码已注释)
 
     // 漫反射模拟：在光线击中墙壁的地方画微弱光晕
     // 这需要获取光线多边形的顶点，这里简化处理，只在手电筒末端画一个大光晕
@@ -493,20 +480,20 @@ export function draw() {
         ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
     
-    // 隧道深处模糊遮罩
-    if(state.story.stage === 1 && state.landmarks.tunnelEntry) {
-        let entryY = state.landmarks.tunnelEntry.y;
-        let screenEntryY = (entryY - player.y) * zoom + canvas.height/2 + shakeY;
-        if(screenEntryY < canvas.height + 500) {
-            let gradientStart = Math.max(-500, screenEntryY + 50); 
-            let grad = ctx.createLinearGradient(0, gradientStart, 0, gradientStart + 400);
-            grad.addColorStop(0, 'rgba(0, 0, 0, 0)');
-            grad.addColorStop(0.4, 'rgba(0, 0, 0, 0.9)');
-            grad.addColorStop(1, 'rgba(0, 0, 0, 1)');
-            ctx.fillStyle = grad;
-            ctx.fillRect(0, gradientStart, canvas.width, canvas.height - gradientStart + 500);
-        }
-    }
+    // 隧道深处模糊遮罩 - 已移除
+    // if(state.story.stage === 1 && state.landmarks.tunnelEntry) {
+    //     let entryY = state.landmarks.tunnelEntry.y;
+    //     let screenEntryY = (entryY - player.y) * zoom + canvas.height/2 + shakeY;
+    //     if(screenEntryY < canvas.height + 500) {
+    //         let gradientStart = Math.max(-500, screenEntryY + 50); 
+    //         let grad = ctx.createLinearGradient(0, gradientStart, 0, gradientStart + 400);
+    //         grad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+    //         grad.addColorStop(0.4, 'rgba(0, 0, 0, 0.9)');
+    //         grad.addColorStop(1, 'rgba(0, 0, 0, 1)');
+    //         ctx.fillStyle = grad;
+    //         ctx.fillRect(0, gradientStart, canvas.width, canvas.height - gradientStart + 500);
+    //     }
+    // }
 
     // 3. 绘制 UI
     drawUI();
@@ -994,7 +981,7 @@ function drawEnding() {
         
         ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
         ctx.font = '20px Arial';
-        wrapText(ctx, "小潘把一个密闭的洞穴气室误当成了出口，\n最终在搅动的泥沙中彻底迷失方向，\n丧生在了黑暗之中。", canvas.width/2, canvas.height/2, 30);
+        wrapText(ctx, "小潘把一个密闭的洞穴气室\n误当成了出口，\n最终在搅动的泥沙中彻底迷失方向，\n丧生在了黑暗之中。", canvas.width/2, canvas.height/2, 30);
     }
     // 阶段 2: 4-8s (240-480帧)
     else if(timer < 480) {
@@ -1005,7 +992,7 @@ function drawEnding() {
         
         ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
         ctx.font = '20px Arial';
-        wrapText(ctx, "为了不让更多的人丧生在恐怖的雅各布井，\n当地政府最终彻底封闭了雅各布井。", canvas.width/2, canvas.height/2, 30);
+        wrapText(ctx, "为了不让更多的人\n丧生在恐怖的雅各布井，\n当地政府最终彻底封闭了雅各布井。", canvas.width/2, canvas.height/2, 30);
     }
     // 阶段 3: 8-12s (480-720帧) - 画面
     else if(timer < 720) {
@@ -1045,17 +1032,28 @@ function drawEnding() {
         ctx.font = '24px Arial';
         ctx.fillText("感谢您的体验", canvas.width/2, canvas.height/2);
     }
-    // 阶段 5: 16s+ (960+)
-    else {
+    // 阶段 5: 16-20s (960-1200帧) - 新增内容
+    else if(timer < 1200) {
         let t = timer - 960;
+        let alpha = 1;
+        if(t < 60) alpha = t / 60;
+        if(t > 180) alpha = (240 - t) / 60;
+        
+        ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+        ctx.font = '20px Arial';
+        wrapText(ctx, "当前版本持续优化中\n前往未知的深渊\n与带熊子潘子回家的故事\n未来有时间会完善。", canvas.width/2, canvas.height/2, 30);
+    }
+    // 阶段 6: 20s+ (1200+) - 制作人员
+    else {
+        let t = timer - 1200;
         let alpha = Math.min(1, t / 60);
         
         ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
         ctx.font = '20px Arial';
-        ctx.fillText("制作人员名单", canvas.width/2, canvas.height/2 - 40);
+        ctx.fillText("制作人员", canvas.width/2, canvas.height/2 - 40);
         ctx.font = '16px Arial';
-        ctx.fillText("制作人：熊子", canvas.width/2, canvas.height/2);
-        ctx.fillText("特别鸣谢：亮子", canvas.width/2, canvas.height/2 + 30);
+        ctx.fillText("小熊和他的小伙伴们", canvas.width/2, canvas.height/2);
+        // ctx.fillText("特别鸣谢：亮子", canvas.width/2, canvas.height/2 + 30);
         
         // 点击重启提示
         if(t > 120) {
