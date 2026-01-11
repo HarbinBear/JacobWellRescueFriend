@@ -28,7 +28,16 @@ export function initInput(onReset) {
 
         window.addEventListener('keydown', (e) => {
             if(state.screen === 'menu') {
-                if(e.code === 'Space' && onReset) onReset();
+                if(e.code === 'Space') {
+                    if(!state.transition.active) {
+                        state.transition.active = true;
+                        state.transition.alpha = 0;
+                        state.transition.mode = 'out';
+                        state.transition.callback = () => {
+                            if (onReset) onReset();
+                        };
+                    }
+                }
                 return;
             }
 
@@ -65,7 +74,15 @@ export function initInput(onReset) {
 
     wx.onTouchStart((res) => {
         if(state.screen === 'menu') {
-            if (onReset) onReset(); // 开始游戏
+            // 触发下水动效：先淡出变黑，然后重置游戏，再淡入
+            if(!state.transition.active) {
+                state.transition.active = true;
+                state.transition.alpha = 0;
+                state.transition.mode = 'out';
+                state.transition.callback = () => {
+                    if (onReset) onReset(); // 真正开始游戏
+                };
+            }
             return;
         }
 

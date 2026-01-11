@@ -8,8 +8,8 @@ initTextures();
 // 初始化输入监听，传入重置回调
 initInput(resetGameLogic);
 
-// 启动游戏
-resetGameLogic();
+// 启动游戏 (初始化但不开始)
+resetGameLogic(false);
 
 // 游戏主循环
 function gameLoop() {

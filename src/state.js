@@ -7,6 +7,7 @@ export const state = {
     invisibleWalls: [], // 仅对玩家生效的空气墙
     plants: [], // 存储水草
     fishes: [], // 存储鱼群
+    splashes: [], // 水花粒子
     explored: [], // 记录已探索区域
     zones: [], // 地图区域信息 {name, yMin, yMax, xMin, xMax}
     msgTimer: null,
@@ -45,6 +46,14 @@ export const state = {
     camera: {
         zoom: 1,
         targetZoom: 1
+    },
+    transition: {
+        active: false,
+        alpha: 0,
+        mode: 'none', // 'in' (fade in from black), 'out' (fade out to black)
+        timer: 0,
+        callback: null,
+        bubbles: [] // 转场气泡状态
     },
     antiStuck: {
         timer: 0,
@@ -85,7 +94,6 @@ export const touches = {
 };
 
 export function resetState() {
-    state.screen = 'play';
     state.texts = [];
     
     // 重置探索地图
@@ -106,6 +114,7 @@ export function resetState() {
     
     target.found = false;
     particles.length = 0;
+    state.splashes = [];
     
     // 初始位置 (水面中央)
     player.x = CONFIG.tileSize * (CONFIG.cols / 2);

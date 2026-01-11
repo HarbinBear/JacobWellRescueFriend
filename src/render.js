@@ -77,6 +77,9 @@ export function draw() {
     }
     ctx.stroke();
 
+    // 绘制水花 (在后层波浪之后，前层波浪之前，或者都在之后)
+    drawSplashes();
+
     // 前层波浪 (亮色，较快)
     ctx.strokeStyle = 'rgba(200, 240, 255, 0.8)';
     ctx.lineWidth = 2;
@@ -498,6 +501,59 @@ export function draw() {
     // 3. 绘制 UI
     drawUI();
     drawControls();
+
+    // 4. 转场动画
+    if(state.transition && state.transition.active) {
+        ctx.save();
+        
+        let t = state.transition.alpha;
+        
+        // --- 背景颜色 ---
+        // mode='out' (入水): 深蓝 -> 更深
+        // mode='in' (稳定): 深蓝 -> 浅蓝 (通过 alpha 降低露出游戏背景)
+        // 为了增强"变浅蓝"的感觉，我们在 in 模式下使用稍亮的蓝色底
+        let bgR = 0, bgG = 17, bgB = 51; // 深海蓝
+        if (state.transition.mode === 'in') {
+            bgR = 0; bgG = 60; bgB = 100; // 稍亮的蓝
+        }
+        
+        ctx.fillStyle = `rgba(${bgR}, ${bgG}, ${bgB}, ${t})`;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // --- 气泡动画 ---
+        // 使用 logic.js 中更新的持久化气泡状态
+        if (state.transition.bubbles) {
+            for(let b of state.transition.bubbles) {
+                // 透明度随转场进度变化
+                // 稍微随机一点透明度
+                let alpha = t * 0.6;
+                if(alpha > 1) alpha = 1;
+                
+                ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+                
+                ctx.beginPath();
+                ctx.arc(b.x, b.y, b.size, 0, Math.PI*2);
+                ctx.fill();
+                
+                // 高光
+                ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 1.5})`; // 更亮
+                ctx.beginPath();
+                ctx.arc(b.x - b.size*0.3, b.y - b.size*0.3, b.size*0.2, 0, Math.PI*2);
+                ctx.fill();
+            }
+        }
+        
+        ctx.restore();
+    }
+}
+
+function drawSplashes() {
+    for(let p of state.splashes) {
+        ctx.fillStyle = `rgba(200, 240, 255, ${p.life})`;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI*2);
+        ctx.fill();
+    }
 }
 
 // 统一的手电筒绘制函数

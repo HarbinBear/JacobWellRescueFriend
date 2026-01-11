@@ -172,25 +172,33 @@ export class StoryManager {
     }
 
     updateStage2() {
-        if(state.story.timer === 60) this.showText("上岸后...", "#fff", 3000);
+        if(state.story.timer === 60) this.showText("岸上和潘子短暂交流后，\n决定一起下隧道救熊子！", "#fff", 3000);
         if(state.story.timer === 240) {
-            // 重置开始第二次下潜
-            state.story.stage = 3;
-            state.story.flags.blackScreen = false;
-            
-            player.x = CONFIG.tileSize * (CONFIG.cols / 2);
-            player.y = 80;
-            player.o2 = 100;
-            player.n2 = 0;
-            
-            // 重置NPC为救援队友
-            state.npc.active = true;
-            state.npc.x = player.x - 30;
-            state.npc.y = player.y;
-            state.npc.state = 'follow';
-            
-            this.showText("找来同伴潘子，立刻一起下潜救熊子！", "rgba(13, 93, 8, 1)", 4000);
-            console.log("[Story] Stage 3 started");
+            // 使用转场动画进入第二次下潜
+            if(!state.transition.active) {
+                state.transition.active = true;
+                state.transition.alpha = 0;
+                state.transition.mode = 'out';
+                state.transition.callback = () => {
+                    // 重置开始第二次下潜
+                    state.story.stage = 3;
+                    state.story.flags.blackScreen = false;
+                    
+                    player.x = CONFIG.tileSize * (CONFIG.cols / 2);
+                    player.y = 80;
+                    player.o2 = 100;
+                    player.n2 = 0;
+                    
+                    // 重置NPC为救援队友
+                    state.npc.active = true;
+                    state.npc.x = player.x - 30;
+                    state.npc.y = player.y;
+                    state.npc.state = 'follow';
+                    
+                    this.showText("找来同伴潘子，立刻一起下潜救熊子！", "rgba(13, 93, 8, 1)", 4000);
+                    console.log("[Story] Stage 3 started");
+                };
+            }
         }
     }
 
@@ -200,10 +208,12 @@ export class StoryManager {
         if(state.story.timer === 300) this.showText("内心：这里太安静了...", "#ffd700", 2000);
 
         let d = Math.hypot(player.x - tunnelEntry.x, player.y - tunnelEntry.y);
-        if(d < 80 && !state.story.flags.approachedTunnel) {
+        
+        // 接近隧道口提示岩石松动
+        if(d < 150 && !state.story.flags.approachedTunnel) {
             state.story.flags.approachedTunnel = true;
             state.npc.state = 'wait'; 
-            this.showText("内心：我一定要把他救上来", "#ffd700", 3000); // 金色
+            this.showText("隧道的岩石有些松动了，可以用力掰开。", "#0f0", 3000); // 绿色提示
         }
         
         // 玩家进入坍塌处 (放宽判定范围 60 -> 100)

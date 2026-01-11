@@ -59,6 +59,58 @@ class Particle {
     }
 }
 
+class SplashParticle {
+    constructor(x, y, size, speedX, speedY) {
+        this.x = x;
+        this.y = y;
+        this.vx = speedX;
+        this.vy = speedY;
+        this.size = size;
+        this.life = 1.0;
+        this.gravity = 0.2;
+    }
+    update() {
+        this.x += this.vx;
+        this.y += this.vy;
+        this.vy += this.gravity; // 重力
+        this.life -= 0.02;
+        this.size *= 0.95;
+    }
+}
+
+export function createSplash(x, y, intensity = 1) {
+    // 水花飞溅
+    let count = 10 * intensity;
+    for(let i=0; i<count; i++) {
+        let angle = -Math.PI/2 + (Math.random()-0.5) * 1.5; // 向上扇形
+        let speed = 2 + Math.random() * 5 * intensity;
+        let vx = Math.cos(angle) * speed;
+        let vy = Math.sin(angle) * speed;
+        let size = 2 + Math.random() * 3;
+        state.splashes.push(new SplashParticle(x, y, size, vx, vy));
+    }
+    // 水面波纹 (用扁平的气泡模拟)
+    for(let i=0; i<5*intensity; i++) {
+        let p = new Particle(x + (Math.random()-0.5)*20, y, 'bubble');
+        p.vy = 0;
+        p.vx = (Math.random()-0.5) * 2;
+        p.life = 0.5;
+        particles.push(p);
+    }
+}
+
+function updateSplashes() {
+    for(let i=state.splashes.length-1; i>=0; i--) {
+        let p = state.splashes[i];
+        p.update();
+        // 如果落回水面 (y>0)，销毁或产生涟漪
+        if(p.y > 0 && p.vy > 0) {
+            p.life = 0;
+        }
+        if(p.life <= 0) state.splashes.splice(i, 1);
+    }
+}
+
 export function triggerSilt(x, y, count) {
     for(let i=0; i<count; i++) {
         particles.push(new Particle(x + (Math.random()-0.5)*15, y + (Math.random()-0.5)*15, 'silt'));
@@ -157,17 +209,33 @@ function updateNPC() {
         // 移动逻辑复用下方的通用移动代码
     }
     else if(state.npc.state === 'follow') {
-        // 跟随在玩家身后一点
-        targetX = player.x - Math.cos(player.angle) * 40;
-        targetY = player.y - Math.sin(player.angle) * 40;
-        
-        // 随机游动
-        if(Math.random() < 0.02) {
-            state.npc.targetX = (Math.random() - 0.5) * 60;
-            state.npc.targetY = (Math.random() - 0.5) * 60;
+        // 初始化随机偏移计时器
+        if(!state.npc.offsetTimer) {
+            state.npc.offsetTimer = 0;
+            state.npc.offsetX = -40;
+            state.npc.offsetY = -40;
         }
-        targetX += state.npc.targetX || 0;
-        targetY += state.npc.targetY || 0;
+        state.npc.offsetTimer++;
+        
+        // 每隔一段时间更新目标偏移，不再每帧随机，减少抖动
+        if(state.npc.offsetTimer > 60) {
+            state.npc.offsetTimer = 0;
+            // 随机在玩家身后或侧后方
+            let angle = player.angle + Math.PI + (Math.random() - 0.5) * 1.5; // 身后 90度扇形
+            let dist = 40 + Math.random() * 40; // 距离 40-80
+            state.npc.offsetX = Math.cos(angle) * dist;
+            state.npc.offsetY = Math.sin(angle) * dist;
+        }
+
+        targetX = player.x + state.npc.offsetX;
+        targetY = player.y + state.npc.offsetY;
+        
+        // 降低跟随速度，增加松弛感
+        // 如果距离太远才加速
+        let distToTarget = Math.hypot(targetX - state.npc.x, targetY - state.npc.y);
+        if(distToTarget > 100) speed = 3.5; // 落后太多，加速
+        else if(distToTarget < 20) speed = 0.5; // 到了，减速
+        else speed = 2.0; // 正常漫游速度
         
     } else if (state.npc.state === 'enter_tunnel') {
         // 使用路径点导航
@@ -417,7 +485,7 @@ function endGame(win, reason) {
 }
 
 // --- 核心逻辑 ---
-export function resetGameLogic() {
+export function resetGameLogic(startPlay = true) {
     resetState();
     generateMap();
     
@@ -450,15 +518,106 @@ export function resetGameLogic() {
     state.camera = { zoom: 1, targetZoom: 1 };
     state.antiStuck = { timer: 0, lastPos: {x:player.x, y:player.y} };
 
-    storyManager.showText("难得的假期！\n熊子带我们去雅各布井潜水！", "rgba(43, 95, 206, 1)", 4000);
+    if (startPlay) {
+        state.screen = 'play';
+        storyManager.showText("难得的假期！\n熊子带我们去雅各布井潜水！", "rgba(43, 95, 206, 1)", 4000);
+    }
 }
 
 export function update() {
+    // --- 转场逻辑 ---
+    if(state.transition && state.transition.active) {
+        // 1. 初始化气泡 (如果为空)
+        if (!state.transition.bubbles) state.transition.bubbles = [];
+        if (state.transition.bubbles.length === 0) {
+            const cx = CONFIG.screenWidth / 2;
+            const cy = CONFIG.screenHeight / 2;
+            for(let i=0; i<200; i++) {
+                let x = Math.random() * CONFIG.screenWidth;
+                let y = Math.random() * CONFIG.screenHeight;
+                let size = 10 + Math.random() * 50; // 大气泡
+                
+                // 初始速度：径向向外 + 随机扰动 (模拟扑面而来)
+                let dx = x - cx;
+                let dy = y - cy;
+                let dist = Math.hypot(dx, dy) || 1;
+                let speed = 5 + Math.random() * 10;
+                
+                let vx = (dx / dist) * speed + (Math.random() - 0.5) * 5;
+                let vy = (dy / dist) * speed + (Math.random() - 0.5) * 5;
+                
+                state.transition.bubbles.push({
+                    x, y, size, vx, vy,
+                    baseSize: size,
+                    wobble: Math.random() * Math.PI * 2
+                });
+            }
+        }
+
+        // 2. 更新气泡位置
+        for(let b of state.transition.bubbles) {
+            b.x += b.vx;
+            b.y += b.vy;
+            
+            // 摇摆
+            b.wobble += 0.1;
+            b.x += Math.sin(b.wobble) * 0.5;
+
+            // 速度控制
+            if (state.transition.mode === 'in') {
+                // 稳定阶段：过渡到向上浮动
+                // vx -> 0, vy -> -3 ~ -8
+                b.vx += (0 - b.vx) * 0.05;
+                let targetVy = -2 - (b.size / 10); // 越大浮得越快
+                b.vy += (targetVy - b.vy) * 0.05;
+            } else {
+                // 扑面阶段：保持一定的扩散，但稍微减速模拟阻力
+                b.vx *= 0.98;
+                b.vy *= 0.98;
+            }
+
+            // 边界循环 (保持屏幕有气泡)
+            if (b.y < -100) b.y = CONFIG.screenHeight + 100;
+            if (b.y > CONFIG.screenHeight + 100) b.y = -100;
+            if (b.x < -100) b.x = CONFIG.screenWidth + 100;
+            if (b.x > CONFIG.screenWidth + 100) b.x = -100;
+        }
+
+        if(state.transition.mode === 'out') {
+            state.transition.alpha += 0.02;
+            if(state.transition.alpha >= 1) {
+                state.transition.alpha = 1;
+                if(state.transition.callback) {
+                    state.transition.callback();
+                    state.transition.callback = null;
+                }
+                state.transition.mode = 'in'; // 自动切换到淡入
+                
+                // 转场结束进入场景时，触发入水水花
+                createSplash(player.x, 0, 3);
+            }
+        } else if(state.transition.mode === 'in') {
+            state.transition.alpha -= 0.02;
+            if(state.transition.alpha <= 0) {
+                state.transition.alpha = 0;
+                state.transition.active = false;
+                state.transition.mode = 'none';
+                state.transition.bubbles = []; // 清理气泡
+            }
+        }
+        // 转场期间不更新游戏逻辑，但允许背景绘制
+        return;
+    }
+
     if(state.screen === 'ending') {
         state.endingTimer++;
         return;
     }
     if(state.screen !== 'play') return;
+
+    // 记录上一帧位置用于检测穿越水面
+    let lastPlayerY = player.y;
+    let lastNpcY = state.npc.y;
 
     // --- 剧情逻辑 ---
     storyManager.update();
@@ -469,6 +628,15 @@ export function update() {
     if(state.story.flags.blackScreen) return;
 
     updateNPC();
+    updateSplashes();
+
+    // 检测 NPC 穿越水面
+    if(state.npc.active) {
+        // 入水
+        if(lastNpcY < 0 && state.npc.y >= 0) createSplash(state.npc.x, 0, 1.5);
+        // 出水
+        if(lastNpcY > 0 && state.npc.y <= 0) createSplash(state.npc.x, 0, 1.5);
+    }
 
     // --- 镜头控制 ---
     if(!state.camera) state.camera = { zoom: 1, targetZoom: 1 };
@@ -629,12 +797,27 @@ export function update() {
         player.vy = Math.abs(player.vy) * 0.5; // 反弹
     }
 
-    // 水面闲聊文案
-    if(player.y < 50 && state.story.stage !== 4 && state.story.stage !== 5 && state.story.stage !== 2) {
-        // 简单的防抖动，避免重复触发
-        if(!state.story.lastSurfaceTime || Date.now() - state.story.lastSurfaceTime > 10000) {
-             storyManager.showText("今天天气真不错！", "#fff", 3000);
-             state.story.lastSurfaceTime = Date.now();
+    // 检测玩家穿越水面
+    // 入水
+    if(lastPlayerY < 0 && player.y >= 0) createSplash(player.x, 0, 2);
+    // 出水 (由于有边界限制，player.y 很难小于0，但如果从深处快速上浮撞击水面，也应该有水花)
+    // 这里检测撞击水面边界的情况
+    if(lastPlayerY > 5 && player.y <= 5 && player.vy < -1) {
+        createSplash(player.x, 0, 2);
+    }
+
+    // 第一次下潜：洞口被堵提示
+    if(state.story.stage === 1 || state.story.stage === 2) {
+        if(state.story.flags.collapsed && state.landmarks.tunnelEntry) {
+            let dist = Math.hypot(player.x - state.landmarks.tunnelEntry.x, player.y - state.landmarks.tunnelEntry.y);
+            // 如果玩家在入口附近且试图向下游
+            if(dist < 80 && Math.sin(player.targetAngle) > 0.5 && input.move > 0) {
+                // 简单的防抖
+                if(!state.story.lastBlockMsgTime || Date.now() - state.story.lastBlockMsgTime > 3000) {
+                    storyManager.showText("洞口被巨石堵住了", "#f00", 2000);
+                    state.story.lastBlockMsgTime = Date.now();
+                }
+            }
         }
     }
 
