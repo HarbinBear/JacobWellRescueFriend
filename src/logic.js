@@ -102,13 +102,19 @@ function updateNPC() {
         // 获取地标
         let junction = state.landmarks.junction;
         let deadEnd = state.landmarks.deadEndDeep;
-        let tunnelEnd = state.landmarks.tunnelEnd;
+        let tunnelEntry = state.landmarks.tunnelEntry;
 
-        // 阻止 NPC 进入第四洞室 (如果玩家试图向下深潜)
-        if (tunnelEnd && player.y > tunnelEnd.y + 100) {
-            // NPC 停留在隧道口附近，不跟随下去
-            targetX = tunnelEnd.x;
-            targetY = tunnelEnd.y;
+        // 1. 阻止 NPC 进入隧道 (如果玩家试图向下深潜)
+        // 只要玩家深度超过隧道入口，NPC 就停在隧道入口上方
+        if (tunnelEntry && player.y > tunnelEntry.y) {
+            targetX = tunnelEntry.x;
+            targetY = tunnelEntry.y - 50; // 停在入口上方一点
+            
+            // 如果玩家深入太多，NPC 可能会在入口处徘徊
+            if (Math.random() < 0.05) {
+                targetX += (Math.random() - 0.5) * 60;
+                targetY += (Math.random() - 0.5) * 30;
+            }
         }
         else if(junction && deadEnd) {
             // 逻辑分界线：三岔路口附近
@@ -123,6 +129,19 @@ function updateNPC() {
                 // NPC 坚定地前往死路
                 targetX = deadEnd.x;
                 targetY = deadEnd.y;
+                
+                // 死路惊慌逻辑
+                let distToDeadEnd = Math.hypot(state.npc.x - deadEnd.x, state.npc.y - deadEnd.y);
+                if (distToDeadEnd < 100) {
+                    // 到达死路附近，开始惊慌游动
+                    if (Math.random() < 0.1) {
+                        state.npc.targetX = (Math.random() - 0.5) * 150;
+                        state.npc.targetY = (Math.random() - 0.5) * 100;
+                    }
+                    targetX = deadEnd.x + (state.npc.targetX || 0);
+                    targetY = deadEnd.y + (state.npc.targetY || 0);
+                    speed = 4.0; // 惊慌时速度更快
+                }
                 
                 // 玩家行为检测
                 // 如果玩家进入了右侧的第二洞室 (正确路)
@@ -243,6 +262,11 @@ function updateNPC() {
         state.npc.vy = (dy / dist) * speed;
         state.npc.x += state.npc.vx;
         state.npc.y += state.npc.vy;
+        
+        // NPC 搅动泥沙
+        if (speed > 2.0 && Math.random() < 0.1) {
+            triggerSilt(state.npc.x, state.npc.y, 1);
+        }
         
         // 简单的避障 (NPC 不受透明墙影响)
         // 修改：在救援(rescue)或跟随(follow)且在深处时，忽略碰撞，防止NPC卡住

@@ -1,7 +1,7 @@
 import { CONFIG } from './config.js';
 
 export const state = {
-    screen: 'play', // play, win, lose
+    screen: 'menu', // menu, play, win, lose, ending
     map: [],
     walls: [], // 存储墙壁的渲染圆心
     invisibleWalls: [], // 仅对玩家生效的空气墙

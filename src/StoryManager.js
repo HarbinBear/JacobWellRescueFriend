@@ -172,7 +172,7 @@ export class StoryManager {
     }
 
     updateStage2() {
-        if(state.story.timer === 60) this.showText("一段时间后...", "#fff", 3000);
+        if(state.story.timer === 60) this.showText("上岸后...", "#fff", 3000);
         if(state.story.timer === 240) {
             // 重置开始第二次下潜
             state.story.stage = 3;
@@ -189,7 +189,7 @@ export class StoryManager {
             state.npc.y = player.y;
             state.npc.state = 'follow';
             
-            this.showText("第二次下潜：一起寻找失踪的队友！", "rgba(13, 93, 8, 1)", 4000);
+            this.showText("找来同伴潘子，立刻一起下潜救熊子！", "rgba(13, 93, 8, 1)", 4000);
             console.log("[Story] Stage 3 started");
         }
     }

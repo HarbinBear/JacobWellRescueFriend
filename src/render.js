@@ -836,22 +836,24 @@ function drawUI() {
     ctx.fillStyle = '#0ff';
     ctx.font = 'bold 14px Arial';
     ctx.textAlign = 'left';
-    ctx.fillText('深度: ' + Math.floor(player.y / CONFIG.tileSize) + 'm', 20, 30);
+    ctx.fillText('潜水电脑', 20, 30);
+    ctx.font = '12px Arial';
+    ctx.fillText('深度: ' + Math.floor(player.y / CONFIG.tileSize) + 'm', 20, 50);
 
     // 氧气条 (仅在氧气瓶完好时显示)
     if(!state.story.flags.tankDamaged) {
         ctx.fillStyle = '#8cf';
         ctx.font = '12px Arial';
-        ctx.fillText('O2', 20, 50);
+        ctx.fillText('O2', 20, 70);
         ctx.fillStyle = '#222';
-        ctx.fillRect(50, 40, 100, 10);
+        ctx.fillRect(50, 60, 100, 10);
         ctx.fillStyle = '#0f0';
-        ctx.fillRect(50, 40, Math.max(0, player.o2), 10);
+        ctx.fillRect(50, 60, Math.max(0, player.o2), 10);
     } else {
         // 氧气瓶损坏提示
         ctx.fillStyle = '#f00';
-        ctx.font = '12px Arial';
-        ctx.fillText('O2 ERROR', 20, 50);
+        ctx.font = 'bold 12px Arial';
+        ctx.fillText('氧气瓶已损毁', 20, 70);
         
         // 在屏幕中间绘制肺部图标
         drawLungs(canvas.width/2, canvas.height/2 + 100, player.o2);
@@ -960,8 +962,77 @@ function drawUI() {
         ctx.fillStyle = '#fff';
         ctx.font = '20px Arial';
         ctx.fillText(state.alertMsg, canvas.width/2, canvas.height/2 + 20);
-        ctx.fillText('点击屏幕重新开始', canvas.width/2, canvas.height/2 + 60);
+        ctx.fillText('点击屏幕返回主菜单', canvas.width/2, canvas.height/2 + 60);
+    } else if(state.screen === 'menu') {
+        drawMenu();
     }
+}
+
+function drawMenu() {
+    // 动态背景
+    let time = Date.now() / 1000;
+    
+    // 深海渐变
+    let grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    grad.addColorStop(0, '#001133');
+    grad.addColorStop(1, '#000011');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // 装饰性光束
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    for(let i=0; i<3; i++) {
+        let x = canvas.width/2 + Math.sin(time * 0.5 + i*2) * 100;
+        let angle = Math.PI/2 + Math.sin(time * 0.3 + i) * 0.1;
+        
+        let rayGrad = ctx.createLinearGradient(x, 0, x, canvas.height);
+        rayGrad.addColorStop(0, 'rgba(0, 255, 255, 0.1)');
+        rayGrad.addColorStop(1, 'rgba(0, 255, 255, 0)');
+        
+        ctx.fillStyle = rayGrad;
+        ctx.beginPath();
+        ctx.moveTo(x - 50, 0);
+        ctx.lineTo(x + 50, 0);
+        ctx.lineTo(x + Math.cos(angle)*200, canvas.height);
+        ctx.lineTo(x - Math.cos(angle)*200, canvas.height);
+        ctx.fill();
+    }
+    ctx.restore();
+
+    // 标题
+    ctx.textAlign = 'center';
+    ctx.shadowColor = 'rgba(0, 255, 255, 0.5)';
+    ctx.shadowBlur = 20;
+    
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 36px Arial';
+    ctx.fillText("雅各布井", canvas.width/2, canvas.height/3);
+    ctx.font = 'bold 28px Arial';
+    ctx.fillText("救援行动", canvas.width/2, canvas.height/3 + 40);
+    
+    ctx.shadowBlur = 0;
+
+    // 开始按钮
+    let btnY = canvas.height * 0.6;
+    let btnAlpha = 0.8 + Math.sin(time * 3) * 0.2;
+    
+    ctx.fillStyle = `rgba(0, 255, 255, ${btnAlpha})`;
+    ctx.font = 'bold 24px Arial';
+    ctx.fillText("开始游戏", canvas.width/2, btnY);
+    
+    // 装饰线
+    ctx.strokeStyle = `rgba(0, 255, 255, ${btnAlpha * 0.5})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(canvas.width/2 - 60, btnY + 10);
+    ctx.lineTo(canvas.width/2 + 60, btnY + 10);
+    ctx.stroke();
+    
+    // 版本信息
+    ctx.fillStyle = '#666';
+    ctx.font = '12px Arial';
+    ctx.fillText("v1.2.0 By 熊子", canvas.width/2, canvas.height - 30);
 }
 
 function drawEnding() {

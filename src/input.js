@@ -27,12 +27,17 @@ export function initInput(onReset) {
         };
 
         window.addEventListener('keydown', (e) => {
+            if(state.screen === 'menu') {
+                if(e.code === 'Space' && onReset) onReset();
+                return;
+            }
+
             if(state.screen !== 'play') {
                 // 如果是结局画面，必须等待播放完毕 (timer > 1320)
                 if (state.screen === 'ending' && (!state.endingTimer || state.endingTimer < 1320)) {
                     return;
                 }
-                if(e.code === 'Space' && onReset) onReset();
+                if(e.code === 'Space') state.screen = 'menu';
                 return;
             }
             
@@ -59,12 +64,18 @@ export function initInput(onReset) {
     }
 
     wx.onTouchStart((res) => {
+        if(state.screen === 'menu') {
+            if (onReset) onReset(); // 开始游戏
+            return;
+        }
+
         if(state.screen !== 'play') {
             // 如果是结局画面，必须等待播放完毕 (timer > 1320)
             if (state.screen === 'ending' && (!state.endingTimer || state.endingTimer < 1320)) {
                 return;
             }
-            if (onReset) onReset();
+            // 游戏结束或失败，点击返回主菜单
+            state.screen = 'menu';
             return;
         }
 
