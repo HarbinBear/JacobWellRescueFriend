@@ -346,7 +346,7 @@ export function draw() {
     // 2. 光照遮罩计算
     lightCtx.clearRect(0, 0, canvas.width, canvas.height); 
     lightCtx.globalCompositeOperation = 'source-over';
-    lightCtx.shadowBlur = 0; 
+    // lightCtx.shadowBlur = 0; 
     
     // 深度因子：0(水面) -> 1(深渊)
     // 修改：基于配置的 darknessStartDepth
@@ -565,7 +565,7 @@ function drawFlashlight(ctx, x, y, angle, rayDist, mode = 'mask') {
     let poly = getLightPolygon(x, y, angle, rayDist, CONFIG.fov);
 
     if (mode === 'mask') {
-        ctx.shadowBlur = 30;
+        // ctx.shadowBlur = 30;
         ctx.shadowColor = "rgba(255, 255, 255, 1)";
         
         let mainGradient = ctx.createRadialGradient(x, y, 0, x, y, rayDist);
@@ -745,7 +745,7 @@ function drawLungs(x, y, o2) {
     ctx.font = 'bold 16px Arial';
     ctx.textAlign = 'center';
     ctx.shadowColor = 'rgba(0,0,0,0.8)';
-    ctx.shadowBlur = 4;
+    // ctx.shadowBlur = 4;
     ctx.fillText(Math.floor(o2) + '%', 0, 5);
     
     // 警告闪烁
@@ -1059,7 +1059,7 @@ function drawMenu() {
     // 标题
     ctx.textAlign = 'center';
     ctx.shadowColor = 'rgba(0, 255, 255, 0.5)';
-    ctx.shadowBlur = 20;
+    // ctx.shadowBlur = 20;
     
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 36px Arial';
@@ -1067,7 +1067,7 @@ function drawMenu() {
     ctx.font = 'bold 28px Arial';
     ctx.fillText("救援行动", canvas.width/2, canvas.height/3 + 40);
     
-    ctx.shadowBlur = 0;
+    // ctx.shadowBlur = 0;
 
     // 开始按钮
     let btnY = canvas.height * 0.6;
