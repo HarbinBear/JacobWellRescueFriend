@@ -1,5 +1,6 @@
 import { CONFIG } from './config.js';
 import { state, player, target, particles, touches } from './state.js';
+import { pathLength, samplePolyline, polylineNormal } from './logic.js';
 
 // 创建画布
 export const canvas = wx.createCanvas();
@@ -123,17 +124,33 @@ export function draw() {
     let viewB = player.y + viewHalfH;
 
     // 使用纹理或噪点填充墙壁，去除描边以减少球体感
-    ctx.fillStyle = '#222';
+    const { tileSize: ts } = CONFIG;
     // ctx.strokeStyle = '#333'; // 去除描边
     // ctx.lineWidth = 2;
 
+    // 计算视口对应的网格范围
+    let viewRowMin = Math.max(0, Math.floor(viewT / ts) - 1);
+    let viewRowMax = Math.min(CONFIG.rows - 1, Math.floor(viewB / ts) + 1);
+    let viewColMin = Math.max(0, Math.floor(viewL / ts) - 1);
+    let viewColMax = Math.min(CONFIG.cols - 1, Math.floor(viewR / ts) + 1);
+
+    // 先绘制内部实体方块（纯色填充，不画圆形）
+    ctx.fillStyle = '#222';
+    for(let r = viewRowMin; r <= viewRowMax; r++) {
+        if(!state.map[r]) continue;
+        for(let c = viewColMin; c <= viewColMax; c++) {
+            if(state.map[r][c] === 2) {
+                ctx.fillRect(c * ts, r * ts, ts, ts);
+            }
+        }
+    }
+
+    // 再绘制边缘岩石圆形（覆盖在方块之上，形成自然轮廓）
+    ctx.fillStyle = '#222';
     for(let w of state.walls) {
         // 简单的视口剔除
         if(w.x > viewL && w.x < viewR && w.y > viewT && w.y < viewB) {
             ctx.beginPath();
-            // 稍微变形一点，不那么圆
-            // 为了性能，还是画圆，但是通过重叠和无描边来减少球感
-            // 也可以画两个略微偏移的圆来模拟不规则
             ctx.arc(w.x, w.y, w.r, 0, Math.PI*2);
             ctx.fill();
             
@@ -298,6 +315,9 @@ export function draw() {
             ctx.restore();
         }
     }
+
+    // --- Draw ropes (world space, before characters) ---
+    drawRopesWorld();
 
     // --- 绘制体积光 (Volumetric Lights) ---
     // 提前计算光照距离 (局部变量，避免与后续冲突)
@@ -501,6 +521,7 @@ export function draw() {
     // 3. 绘制 UI
     drawUI();
     drawControls();
+    drawRopeButton();
 
     // 4. 转场动画
     if(state.transition && state.transition.active) {
@@ -845,15 +866,18 @@ function getLightPolygon(sx, sy, angle, maxDist, fovDeg = CONFIG.fov) {
             
             // 粗略检测：网格有东西
             if(state.map[r] && state.map[r][c]) {
-                // 精确检测：射线与圆相交
-                let wall = state.map[r][c];
-                // 简单的点在圆内检测 (比射线-圆相交方程快，但精度稍低，对于光照足够)
-                // 如果当前步进点进入了墙壁半径内
-                let distToWallCenter = Math.hypot(tx - wall.x, ty - wall.y);
-                if(distToWallCenter < wall.r) {
-                    // 稍微回退一点，避免光线穿入墙壁太深
+                let cell = state.map[r][c];
+                if(cell === 2) {
+                    // 内部实体：整个格子阻挡光线
                     dist = d - stepLen/2;
                     break;
+                } else if(typeof cell === 'object') {
+                    // 边缘岩石：精确圆形检测
+                    let distToWallCenter = Math.hypot(tx - cell.x, ty - cell.y);
+                    if(distToWallCenter < cell.r) {
+                        dist = d - stepLen/2;
+                        break;
+                    }
                 }
             }
         }
@@ -875,8 +899,11 @@ function isLineOfSight(x1, y1, x2, y2, maxDist) {
         let c = Math.floor(cx/tileSize);
         
         if(state.map[r] && state.map[r][c]) {
-             let wall = state.map[r][c];
-             if(Math.hypot(cx - wall.x, cy - wall.y) < wall.r) return false;
+             let cell = state.map[r][c];
+             if(cell === 2) return false; // 内部实体：直接遮挡
+             if(typeof cell === 'object') {
+                 if(Math.hypot(cx - cell.x, cy - cell.y) < cell.r) return false;
+             }
         }
     }
     return true;
@@ -1249,3 +1276,281 @@ function drawControls() {
         ctx.fillText('按住屏幕任意位置移动', canvas.width / 2, canvas.height - 50);
     }
 }
+
+
+// ============================================================
+// 绳索渲染系统
+// ============================================================
+
+// 生成松弛绳子的视觉点，模拟水中自然飘荡
+// basePath: 基础路径点 slackFactor: 1=完全松弛 0=拉直 animTime: 动画时间
+function generateSlackRopePoints(basePath, slackFactor, animTime) {
+    if(!basePath || basePath.length < 2) return basePath || [];
+    const totalLen = pathLength(basePath);
+    if(totalLen < 1) return basePath;
+
+    const segLen = CONFIG.ropeSegmentLength;
+    const steps = Math.max(2, Math.ceil(totalLen / segLen));
+    const dt = totalLen / steps;
+    const time = animTime || 0;
+
+    const points = [];
+    for(let i = 0; i <= steps; i++) {
+        const t = i * dt;
+        const fraction = totalLen > 0 ? t / totalLen : 0; // 0-1
+        const pos = samplePolyline(basePath, t);
+        const norm = polylineNormal(basePath, t);
+
+        // 悬链线下垂：中间最松，两端固定
+        const sagEnvelope = Math.sin(fraction * Math.PI); // 两端为0，中间为1
+        const sag = sagEnvelope * CONFIG.ropeSlackAmplitude * slackFactor;
+
+        // 水中重力下坠
+        const gravity = sagEnvelope * CONFIG.ropeSlackGravity * slackFactor;
+
+        // 水中波浪动画（垂直于路径方向）
+        const wave = Math.sin(fraction * Math.PI * 2 * CONFIG.ropeWaveFrequency + time * CONFIG.ropeWaveSpeed)
+                     * CONFIG.ropeWaveAmplitude * slackFactor * sagEnvelope;
+
+        // 水流缓慢漂动
+        const drift = Math.sin(fraction * Math.PI * 1.3 + time * CONFIG.ropeDriftSpeed + 0.5)
+                      * CONFIG.ropeDriftAmplitude * slackFactor * sagEnvelope;
+
+        points.push({
+            x: pos.x + norm.x * (sag + wave + drift),
+            y: pos.y + norm.y * (sag + wave + drift) + gravity
+        });
+    }
+    return points;
+}
+
+// 通过贝塞尔曲线平滑绘制绳子线条
+function strokeRopeLine(points, color, width) {
+    if(!points || points.length < 2) return;
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y);
+
+    if(points.length === 2) {
+        ctx.lineTo(points[1].x, points[1].y);
+    } else {
+        // 使用二次贝塞尔曲线中点平滑连接
+        for(let i = 1; i < points.length - 1; i++) {
+            let midX = (points[i].x + points[i+1].x) / 2;
+            let midY = (points[i].y + points[i+1].y) / 2;
+            ctx.quadraticCurveTo(points[i].x, points[i].y, midX, midY);
+        }
+        // 最后一段
+        let last = points[points.length - 1];
+        ctx.lineTo(last.x, last.y);
+    }
+    ctx.stroke();
+    ctx.restore();
+}
+
+// 在岩石锚点处绘制钉子
+function drawNail(x, y, wallX, wallY) {
+    ctx.save();
+    // 钉子方向：从岩石中心到锚点
+    let angle = Math.atan2(y - wallY, x - wallX);
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+
+    // 钉子杆
+    ctx.fillStyle = CONFIG.ropeNailColor;
+    ctx.fillRect(-2, -1.5, CONFIG.ropeNailRadius * 2, 3);
+    // 钉子头
+    ctx.beginPath();
+    ctx.arc(0, 0, CONFIG.ropeNailRadius * 0.6, 0, Math.PI * 2);
+    ctx.fillStyle = '#aaa';
+    ctx.fill();
+    ctx.strokeStyle = '#555';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.restore();
+}
+
+// 在锚点处绘制绳结
+function drawKnot(x, y) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(x, y, CONFIG.ropeKnotRadius, 0, Math.PI * 2);
+    ctx.fillStyle = CONFIG.ropeKnotColor;
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(180, 170, 120, 0.8)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    // 绳结纹理细节
+    ctx.strokeStyle = 'rgba(150, 140, 100, 0.6)';
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.moveTo(x - 2, y - 1);
+    ctx.lineTo(x + 2, y + 1);
+    ctx.moveTo(x - 2, y + 1);
+    ctx.lineTo(x + 2, y - 1);
+    ctx.stroke();
+    ctx.restore();
+}
+
+// 铺线模式下在玩家身上绘制线轮指示器
+function drawReelIndicator(x, y, angle) {
+    ctx.save();
+    ctx.translate(x, y);
+    // 在潜水员背后画一个小圆表示线轮
+    let reelX = -Math.cos(angle) * 12;
+    let reelY = -Math.sin(angle) * 12;
+    ctx.beginPath();
+    ctx.arc(reelX, reelY, CONFIG.ropeReelRadius, 0, Math.PI * 2);
+    ctx.fillStyle = CONFIG.ropeReelColor;
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(160, 150, 110, 0.8)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    // 线轴旋转纹理线条
+    let t = Date.now() / 500;
+    ctx.strokeStyle = 'rgba(230, 220, 170, 0.5)';
+    ctx.lineWidth = 0.8;
+    for(let i = 0; i < 3; i++) {
+        let a = t + i * Math.PI * 2 / 3;
+        ctx.beginPath();
+        ctx.moveTo(reelX, reelY);
+        ctx.lineTo(reelX + Math.cos(a) * CONFIG.ropeReelRadius * 0.8,
+                   reelY + Math.sin(a) * CONFIG.ropeReelRadius * 0.8);
+        ctx.stroke();
+    }
+    ctx.restore();
+}
+
+// 在世界坐标系中绘制所有绳索
+function drawRopesWorld() {
+    if(!state.rope) return;
+    const time = Date.now() / 1000;
+
+    // 绘制已完成（拉紧）的绳索
+    for(let rope of state.rope.ropes) {
+        if(!rope.path || rope.path.length < 2) continue;
+
+        // 拉紧的绳索：slackFactor=0，沿避障路径直线
+        let visualPts = generateSlackRopePoints(rope.path, rope.slackFactor || 0, time);
+        strokeRopeLine(visualPts, CONFIG.ropeTightColor, CONFIG.ropeTightWidth);
+
+        // 起点绘制钉子+绳结
+        if(rope.start && rope.startWall) {
+            drawNail(rope.start.x, rope.start.y, rope.startWall.x, rope.startWall.y);
+            drawKnot(rope.start.x, rope.start.y);
+        }
+        // 终点绘制钉子+绳结
+        if(rope.end && rope.endWall) {
+            drawNail(rope.end.x, rope.end.y, rope.endWall.x, rope.endWall.y);
+            drawKnot(rope.end.x, rope.end.y);
+        }
+    }
+
+    // 绘制当前正在铺设的绳索
+    if(state.rope.active && state.rope.current && state.rope.current.start) {
+        let cur = state.rope.current;
+        let basePath = cur.path;
+        if(!basePath || basePath.length < 2) return;
+
+        let sf = cur.slackFactor !== undefined ? cur.slackFactor : 1;
+        let animTime = cur.time || time;
+
+        let visualPts = generateSlackRopePoints(basePath, sf, animTime);
+        strokeRopeLine(visualPts, CONFIG.ropeColor, CONFIG.ropeWidth);
+
+        // 起点锚点绘制钉子+绳结
+        if(cur.start && cur.startWall) {
+            drawNail(cur.start.x, cur.start.y, cur.startWall.x, cur.startWall.y);
+            drawKnot(cur.start.x, cur.start.y);
+        }
+    }
+
+    // 铺线中在玩家身上绘制线轮
+    if(state.rope.active && player.y > 0) {
+        drawReelIndicator(player.x, player.y, player.angle);
+    }
+}
+
+// 铺线操作按钮（屏幕坐标系UI）
+function drawRopeButton() {
+    if(state.screen !== 'play') return;
+    if(!state.rope || !state.rope.ui || !state.rope.ui.visible) return;
+
+    const btnX = CONFIG.screenWidth * CONFIG.ropeButtonXRatio;
+    const btnY = CONFIG.screenHeight * CONFIG.ropeButtonYRatio;
+    const radius = CONFIG.ropeButtonRadius;
+    const progress = state.rope.ui.progress || 0;
+    const isEnd = state.rope.ui.type === 'end';
+    const time = Date.now() / 1000;
+
+    ctx.save();
+
+    // 空闲时脉冲光效（吸引注意力）
+    if(progress === 0) {
+        let glowAlpha = 0.15 + Math.sin(time * 3) * 0.1;
+        ctx.beginPath();
+        ctx.arc(btnX, btnY, radius + 8, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(230, 220, 170, ${glowAlpha})`;
+        ctx.fill();
+    }
+
+    // 按钮背景
+    ctx.beginPath();
+    ctx.arc(btnX, btnY, radius, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(20, 30, 40, 0.85)';
+    ctx.fill();
+
+    // 边框环
+    ctx.strokeStyle = isEnd ? 'rgba(255, 180, 80, 0.7)' : 'rgba(200, 220, 255, 0.6)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // 进度弧（从顶部顺时针绘制）
+    if(progress > 0) {
+        ctx.strokeStyle = isEnd ? 'rgba(255, 200, 100, 0.95)' : 'rgba(230, 220, 170, 0.95)';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(btnX, btnY, radius - 5, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2);
+        ctx.stroke();
+    }
+
+    // 图标：开始用线轴图标，结束用绳结图标
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+    if(isEnd) {
+        // 绳结图标
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(btnX, btnY - 3, 5, 0, Math.PI * 2);
+        ctx.stroke();
+        // 向下的短线
+        ctx.beginPath();
+        ctx.moveTo(btnX, btnY + 2);
+        ctx.lineTo(btnX, btnY + 10);
+        ctx.stroke();
+    } else {
+        // 线轴图标
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(btnX, btnY, 7, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(btnX, btnY, 3, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // 按钮下方标签文字
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+    ctx.font = '10px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText(isEnd ? '结束布线' : '开始布线', btnX, btnY + radius + 6);
+
+    ctx.restore();
+}
+

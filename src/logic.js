@@ -433,14 +433,22 @@ function checkCollision(x, y, isPlayer = false) {
     let r = Math.floor(y/tileSize);
     let c = Math.floor(x/tileSize);
     
-    // 检查普通墙壁
+    // 检查普通墙壁（边缘wall对象 + 内部实体）
     for(let ry = r-1; ry <= r+1; ry++) {
         for(let rc = c-1; rc <= c+1; rc++) {
-            if(state.map[ry] && state.map[ry][rc] && typeof state.map[ry][rc] === 'object') {
-                let wall = state.map[ry][rc];
-                let dist = Math.hypot(x - wall.x, y - wall.y);
-                // 碰撞半径 = 墙半径 + 玩家半径(10)
-                if(dist < wall.r + 10) return true;
+            if(!state.map[ry]) continue;
+            let cell = state.map[ry][rc];
+            if(!cell) continue;
+            if(typeof cell === 'object') {
+                // 边缘岩石：精确圆形碰撞
+                let dist = Math.hypot(x - cell.x, y - cell.y);
+                if(dist < cell.r + 10) return true;
+            } else if(cell === 2) {
+                // 内部实体：方格碰撞（整个格子都是实体）
+                let cellCx = rc * tileSize + tileSize / 2;
+                let cellCy = ry * tileSize + tileSize / 2;
+                // 用圆vs方格的简化检测：点在格子内或距格子中心小于半格+玩家半径
+                if(Math.abs(x - cellCx) < tileSize / 2 + 10 && Math.abs(y - cellCy) < tileSize / 2 + 10) return true;
             }
         }
     }
@@ -463,15 +471,428 @@ function getNearestWallDist(x, y) {
     let minDist = 999;
     for(let ry = r-2; ry <= r+2; ry++) {
         for(let rc = c-2; rc <= c+2; rc++) {
-            if(state.map[ry] && state.map[ry][rc] && typeof state.map[ry][rc] === 'object') {
-                let wall = state.map[ry][rc];
-                let dist = Math.hypot(x - wall.x, y - wall.y) - wall.r;
+            if(!state.map[ry]) continue;
+            let cell = state.map[ry][rc];
+            if(!cell) continue;
+            if(typeof cell === 'object') {
+                let dist = Math.hypot(x - cell.x, y - cell.y) - cell.r;
+                if(dist < minDist) minDist = dist;
+            } else if(cell === 2) {
+                // 内部实体：到格子中心的距离减去半格
+                let cellCx = rc * tileSize + tileSize / 2;
+                let cellCy = ry * tileSize + tileSize / 2;
+                let dist = Math.hypot(x - cellCx, y - cellCy) - tileSize / 2;
                 if(dist < minDist) minDist = dist;
             }
         }
     }
     return minDist;
 }
+
+function findNearestWall(x, y, maxDist) {
+    let nearest = null;
+    let minDist = maxDist;
+    if(!state.walls) return null;
+    for(let wall of state.walls) {
+        let dist = Math.hypot(x - wall.x, y - wall.y) - wall.r;
+        if(dist < minDist) {
+            minDist = dist;
+            nearest = wall;
+        }
+    }
+    if(!nearest) return null;
+    return { wall: nearest, dist: minDist };
+}
+
+function getAnchorPoint(wall, fromX, fromY) {
+    let angle = Math.atan2(fromY - wall.y, fromX - wall.x);
+    return {
+        x: wall.x + Math.cos(angle) * wall.r,
+        y: wall.y + Math.sin(angle) * wall.r
+    };
+}
+
+function distancePointToSegment(px, py, ax, ay, bx, by) {
+    let abx = bx - ax;
+    let aby = by - ay;
+    let apx = px - ax;
+    let apy = py - ay;
+    let abLenSq = abx * abx + aby * aby;
+    if(abLenSq === 0) {
+        return { dist: Math.hypot(px - ax, py - ay), cx: ax, cy: ay };
+    }
+    let t = (apx * abx + apy * aby) / abLenSq;
+    t = Math.max(0, Math.min(1, t));
+    let cx = ax + abx * t;
+    let cy = ay + aby * t;
+    return { dist: Math.hypot(px - cx, py - cy), cx, cy };
+}
+
+// --- 网格级别的线段碰撞检测（光栅化线段检查是否穿过实体格子） ---
+// 返回线段是否穿过实体（true=有阻挡）
+function lineHitsSolid(x1, y1, x2, y2) {
+    const { tileSize } = CONFIG;
+    let dx = x2 - x1;
+    let dy = y2 - y1;
+    let dist = Math.hypot(dx, dy);
+    if(dist < 1) return false;
+    let steps = Math.ceil(dist / (tileSize * 0.4)); // 步长约半格，确保不跳过格子
+    for(let i = 0; i <= steps; i++) {
+        let t = i / steps;
+        let px = x1 + dx * t;
+        let py = y1 + dy * t;
+        let r = Math.floor(py / tileSize);
+        let c = Math.floor(px / tileSize);
+        if(state.map[r] && state.map[r][c]) {
+            let cell = state.map[r][c];
+            if(cell === 2) return true; // 内部实体
+            if(typeof cell === 'object') {
+                // 边缘岩石：检测点到圆心距离
+                if(Math.hypot(px - cell.x, py - cell.y) < cell.r) return true;
+            }
+        }
+    }
+    return false;
+}
+
+// --- 基于网格的 A* 寻路，用于绳索绕障 ---
+// 在网格空间中找到从 start 到 end 的路径，避开所有实体格子
+// 返回像素坐标的路径点数组
+function gridAStar(startX, startY, endX, endY, padding) {
+    const { tileSize, rows, cols } = CONFIG;
+    // 将像素坐标转换为网格坐标
+    let sr = Math.floor(startY / tileSize);
+    let sc = Math.floor(startX / tileSize);
+    let er = Math.floor(endY / tileSize);
+    let ec = Math.floor(endX / tileSize);
+
+    // 边界钳位
+    sr = Math.max(0, Math.min(rows - 1, sr));
+    sc = Math.max(0, Math.min(cols - 1, sc));
+    er = Math.max(0, Math.min(rows - 1, er));
+    ec = Math.max(0, Math.min(cols - 1, ec));
+
+    // 检查格子是否可通行（当前格子是空水道即可）
+    // padding 的间距保证由后续 simplifyPath 中 lineHitsSolid 的精确检测负责
+    function isPassable(r, c) {
+        if(r < 0 || r >= rows || c < 0 || c >= cols) return false;
+        return state.map[r] && state.map[r][c] === 0;
+    }
+
+    // 起点/终点可能在岩石边缘，放宽起点终点的通行判定
+    function isPassableRelaxed(r, c) {
+        if(r < 0 || r >= rows || c < 0 || c >= cols) return false;
+        let cell = state.map[r] ? state.map[r][c] : 1;
+        return cell === 0; // 只要是空就行
+    }
+
+    // A* 算法
+    // 使用简单的二维数组追踪
+    let openSet = [];
+    let gScore = {};
+    let fScore = {};
+    let cameFrom = {};
+    let closedSet = new Set();
+
+    let key = (r, c) => r * cols + c;
+    let heuristic = (r, c) => Math.abs(r - er) + Math.abs(c - ec);
+
+    let startKey = key(sr, sc);
+    gScore[startKey] = 0;
+    fScore[startKey] = heuristic(sr, sc);
+    openSet.push({ r: sr, c: sc, f: fScore[startKey] });
+
+    // 8方向移动
+    let dirs = [
+        [-1, 0, 1], [1, 0, 1], [0, -1, 1], [0, 1, 1],
+        [-1, -1, 1.414], [-1, 1, 1.414], [1, -1, 1.414], [1, 1, 1.414]
+    ];
+
+    let maxIters = CONFIG.ropeAStarMaxIters || 3000;
+    let found = false;
+    let finalR = er, finalC = ec;
+
+    for(let iter = 0; iter < maxIters; iter++) {
+        if(openSet.length === 0) break;
+
+        // 找最小 f 值
+        let bestIdx = 0;
+        for(let i = 1; i < openSet.length; i++) {
+            if(openSet[i].f < openSet[bestIdx].f) bestIdx = i;
+        }
+        let current = openSet[bestIdx];
+        openSet.splice(bestIdx, 1);
+
+        let ck = key(current.r, current.c);
+        if(closedSet.has(ck)) continue;
+        closedSet.add(ck);
+
+        // 到达终点
+        if(current.r === er && current.c === ec) {
+            found = true;
+            break;
+        }
+
+        for(let [dr, dc, cost] of dirs) {
+            let nr = current.r + dr;
+            let nc = current.c + dc;
+            if(nr < 0 || nr >= rows || nc < 0 || nc >= cols) continue;
+
+            let nk = key(nr, nc);
+            if(closedSet.has(nk)) continue;
+
+            // 通行检测：起点终点格子放宽，其他严格
+            let pass = (nr === sr && nc === sc) || (nr === er && nc === ec)
+                ? isPassableRelaxed(nr, nc)
+                : isPassable(nr, nc);
+            if(!pass) continue;
+
+            let ng = gScore[ck] + cost;
+            if(gScore[nk] === undefined || ng < gScore[nk]) {
+                gScore[nk] = ng;
+                fScore[nk] = ng + heuristic(nr, nc);
+                cameFrom[nk] = ck;
+                openSet.push({ r: nr, c: nc, f: fScore[nk] });
+            }
+        }
+    }
+
+    if(!found) {
+        // 没找到路径，直接连线（fallback）
+        return [{ x: startX, y: startY }, { x: endX, y: endY }];
+    }
+
+    // 回溯路径
+    let path = [];
+    let ck = key(er, ec);
+    while(ck !== undefined) {
+        let r = Math.floor(ck / cols);
+        let c = ck % cols;
+        path.unshift({
+            x: c * tileSize + tileSize / 2,
+            y: r * tileSize + tileSize / 2
+        });
+        ck = cameFrom[ck];
+    }
+
+    // 替换首尾为精确坐标
+    if(path.length > 0) {
+        path[0] = { x: startX, y: startY };
+        path[path.length - 1] = { x: endX, y: endY };
+    }
+
+    // 路径简化：拉直（去掉不必要的中间点）
+    path = simplifyPath(path);
+
+    return path;
+}
+
+// 路径简化：贪心拉直，去掉不必要的中间拐点
+function simplifyPath(path) {
+    if(path.length <= 2) return path;
+    let result = [path[0]];
+    let i = 0;
+    while(i < path.length - 1) {
+        // 从 i 出发，尽可能跳到最远的 j 使得 i->j 不穿过实体
+        let farthest = i + 1;
+        for(let j = i + 2; j < path.length; j++) {
+            if(!lineHitsSolid(path[i].x, path[i].y, path[j].x, path[j].y)) {
+                farthest = j;
+            } else {
+                break;
+            }
+        }
+        result.push(path[farthest]);
+        i = farthest;
+    }
+    return result;
+}
+
+// 构建绕过岩石的路径：使用网格 A* 寻路
+function buildAvoidedPath(start, end, padding) {
+    // 先检测直线是否畅通
+    if(!lineHitsSolid(start.x, start.y, end.x, end.y)) {
+        return [{ x: start.x, y: start.y }, { x: end.x, y: end.y }];
+    }
+    // 有阻挡：使用 A* 寻路
+    return gridAStar(start.x, start.y, end.x, end.y, padding);
+}
+
+// 计算折线总长度
+function pathLength(pts) {
+    let len = 0;
+    for(let i = 1; i < pts.length; i++) {
+        len += Math.hypot(pts[i].x - pts[i-1].x, pts[i].y - pts[i-1].y);
+    }
+    return len;
+}
+
+// 在折线上按距离 t 采样一个点（t 范围为 0 到总长度）
+function samplePolyline(pts, t) {
+    let acc = 0;
+    for(let i = 1; i < pts.length; i++) {
+        let segLen = Math.hypot(pts[i].x - pts[i-1].x, pts[i].y - pts[i-1].y);
+        if(acc + segLen >= t) {
+            let frac = segLen > 0 ? (t - acc) / segLen : 0;
+            return {
+                x: pts[i-1].x + (pts[i].x - pts[i-1].x) * frac,
+                y: pts[i-1].y + (pts[i].y - pts[i-1].y) * frac
+            };
+        }
+        acc += segLen;
+    }
+    return { x: pts[pts.length-1].x, y: pts[pts.length-1].y };
+}
+
+// 获取折线某处的法线方向
+function polylineNormal(pts, t) {
+    let acc = 0;
+    for(let i = 1; i < pts.length; i++) {
+        let segLen = Math.hypot(pts[i].x - pts[i-1].x, pts[i].y - pts[i-1].y);
+        if(acc + segLen >= t || i === pts.length - 1) {
+            let dx = pts[i].x - pts[i-1].x;
+            let dy = pts[i].y - pts[i-1].y;
+            let len = Math.hypot(dx, dy) || 1;
+            return { x: -dy / len, y: dx / len };
+        }
+        acc += segLen;
+    }
+    return { x: 0, y: -1 };
+}
+
+// 开始铺线：在锚点岩石上打钉，开始拉绳
+function startRope(anchorWall) {
+    if(!anchorWall) return;
+    const anchorPoint = getAnchorPoint(anchorWall, player.x, player.y);
+    state.rope.active = true;
+    state.rope.current.start = anchorPoint;
+    state.rope.current.startWall = anchorWall;
+    state.rope.current.end = null;
+    state.rope.current.path = buildAvoidedPath(anchorPoint, { x: player.x, y: player.y }, CONFIG.ropeAvoidPadding);
+    state.rope.current.basePoints = state.rope.current.path;
+    state.rope.current.slackFactor = 1;
+    state.rope.current.mode = 'loose';
+    state.rope.current.time = 0;
+    state.rope.stillTimer = 0;
+}
+
+// 结束铺线：在终点岩石打钉，绳子收紧固定
+function endRope(anchorWall) {
+    if(!state.rope.active || !state.rope.current.start || !anchorWall) return;
+    const endPoint = getAnchorPoint(anchorWall, player.x, player.y);
+    const path = buildAvoidedPath(state.rope.current.start, endPoint, CONFIG.ropeAvoidPadding);
+    state.rope.ropes.push({
+        start: state.rope.current.start,
+        startWall: state.rope.current.startWall,
+        end: endPoint,
+        endWall: anchorWall,
+        path,
+        slackFactor: 0,
+        mode: 'tight'
+    });
+    state.rope.active = false;
+    state.rope.current = {
+        start: null,
+        startWall: null,
+        end: null,
+        path: [],
+        basePoints: [],
+        slackFactor: 1,
+        mode: 'loose',
+        time: 0
+    };
+    state.rope.stillTimer = 0;
+}
+
+// 铺线系统主更新函数
+function updateRopeSystem() {
+    if(!state.rope) return;
+    const dt = 1 / 60;
+
+    // 推进动画时间
+    if(state.rope.current) {
+        if(!state.rope.current.time) state.rope.current.time = 0;
+        state.rope.current.time += dt;
+    }
+
+    // 长按中：累计计时，更新UI进度
+    if(state.rope.hold.active) {
+        state.rope.hold.timer += dt;
+        state.rope.ui.visible = true;
+        state.rope.ui.type = state.rope.hold.type;
+        state.rope.ui.anchor = state.rope.hold.anchor;
+        state.rope.ui.progress = Math.min(1, state.rope.hold.timer / CONFIG.ropeHoldDuration);
+    }
+
+    // 铺线进行中：实时更新绳子路径（从起点到玩家当前位置）
+    if(state.rope.active && state.rope.current.start) {
+        let endPoint = { x: player.x, y: player.y };
+        if(state.rope.hold.active && state.rope.hold.type === 'end' && state.rope.hold.anchor) {
+            // 长按结束布线中：绳子向终点锚点收紧
+            endPoint = getAnchorPoint(state.rope.hold.anchor, player.x, player.y);
+            state.rope.current.end = endPoint;
+            state.rope.current.mode = 'tightening';
+            state.rope.current.slackFactor += (0 - state.rope.current.slackFactor) * CONFIG.ropeTightenLerp;
+        } else if(state.rope.current.mode === 'tightening') {
+            // 玩家中途松手：恢复松弛
+            state.rope.current.slackFactor += (1 - state.rope.current.slackFactor) * 0.2;
+            if(state.rope.current.slackFactor > 0.95) {
+                state.rope.current.slackFactor = 1;
+                state.rope.current.mode = 'loose';
+            }
+        }
+        state.rope.current.path = buildAvoidedPath(state.rope.current.start, endPoint, CONFIG.ropeAvoidPadding);
+        state.rope.current.basePoints = state.rope.current.path;
+    }
+
+    // 长按完成：执行开始/结束铺线
+    if(state.rope.hold.active && state.rope.hold.timer >= CONFIG.ropeHoldDuration) {
+        if(state.rope.hold.type === 'start') {
+            startRope(state.rope.hold.anchor);
+        } else if(state.rope.hold.type === 'end') {
+            endRope(state.rope.hold.anchor);
+        }
+        state.rope.hold.active = false;
+        state.rope.hold.type = null;
+        state.rope.hold.timer = 0;
+        state.rope.hold.touchId = null;
+        state.rope.hold.anchor = null;
+        state.rope.ui.progress = 0;
+    }
+
+    // 正在长按中，不检测按钮显示逻辑
+    if(state.rope.hold.active) return;
+
+    // 水面以上不显示铺线按钮
+    if(player.y <= 0) {
+        state.rope.ui.visible = false;
+        state.rope.ui.type = null;
+        state.rope.ui.anchor = null;
+        state.rope.stillTimer = 0;
+        return;
+    }
+
+    let nearest = findNearestWall(player.x, player.y, CONFIG.ropeAnchorDistance);
+    // 判定玩家是否静止：没有主动操作移动 且 速度低于阈值（需要容忍水流扰动导致的微小速度）
+    let speedThreshold = CONFIG.ropeStillSpeedThreshold || 1.5;
+    let isStill = input.move === 0 && Math.hypot(player.vx, player.vy) < speedThreshold;
+
+    if(nearest && isStill) state.rope.stillTimer += dt;
+    else state.rope.stillTimer = 0;
+
+    if(nearest && state.rope.stillTimer >= CONFIG.ropeStillTimeToShow) {
+        state.rope.ui.visible = true;
+        state.rope.ui.type = state.rope.active ? 'end' : 'start';
+        state.rope.ui.anchor = nearest.wall;
+    } else {
+        state.rope.ui.visible = false;
+        state.rope.ui.type = null;
+        state.rope.ui.anchor = null;
+    }
+}
+
+// 导出给渲染层使用的辅助函数
+export { pathLength, samplePolyline, polylineNormal, buildAvoidedPath, findNearestWall };
 
 function endGame(win, reason) {
     if (win) {
@@ -627,6 +1048,13 @@ export function update() {
     // 如果是黑屏状态，跳过物理更新
     if(state.story.flags.blackScreen) return;
 
+    if(state.rope && state.rope.hold && state.rope.hold.active) {
+        input.move = 0;
+        input.speedUp = false;
+        player.vx = 0;
+        player.vy = 0;
+    }
+
     updateNPC();
     updateSplashes();
 
@@ -711,11 +1139,21 @@ export function update() {
                     for(let i = pr-1; i <= pr+1; i++) {
                         for(let j = pc-1; j <= pc+1; j++) {
                             if(state.map[i] && state.map[i][j]) {
-                                let w = state.map[i][j];
-                                let d = Math.hypot(player.x - w.x, player.y - w.y);
+                                let cell = state.map[i][j];
+                                // 计算到该格子的距离
+                                let cx, cy;
+                                if(typeof cell === 'object') {
+                                    cx = cell.x;
+                                    cy = cell.y;
+                                } else {
+                                    // 内部实体(值=2)：用格子中心坐标
+                                    cx = j * tileSize + tileSize / 2;
+                                    cy = i * tileSize + tileSize / 2;
+                                }
+                                let d = Math.hypot(player.x - cx, player.y - cy);
                                 if(d < 60 && d < nearestDist) { // 60像素范围内
                                     nearestDist = d;
-                                    nearestWall = w;
+                                    nearestWall = cell;
                                     nr = i; nc = j;
                                 }
                             }
@@ -805,6 +1243,8 @@ export function update() {
     if(lastPlayerY > 5 && player.y <= 5 && player.vy < -1) {
         createSplash(player.x, 0, 2);
     }
+
+    updateRopeSystem();
 
     // 第一次下潜：洞口被堵提示
     if(state.story.stage === 1 || state.story.stage === 2) {

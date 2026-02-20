@@ -96,6 +96,25 @@ export function initInput(onReset) {
             return;
         }
 
+        if(state.rope && state.rope.ui && state.rope.ui.visible) {
+            const btnX = CONFIG.screenWidth * CONFIG.ropeButtonXRatio;
+            const btnY = CONFIG.screenHeight * CONFIG.ropeButtonYRatio;
+            for (let t of res.touches) {
+                const dx = t.clientX - btnX;
+                const dy = t.clientY - btnY;
+                if (Math.hypot(dx, dy) <= CONFIG.ropeButtonRadius) {
+                    state.rope.hold.active = true;
+                    state.rope.hold.type = state.rope.ui.type;
+                    state.rope.hold.timer = 0;
+                    state.rope.hold.touchId = t.identifier;
+                    state.rope.hold.anchor = state.rope.ui.anchor;
+                    input.move = 0;
+                    input.speedUp = false;
+                    return;
+                }
+            }
+        }
+
         // 单摇杆逻辑：只处理第一个触摸点作为摇杆
         if (touches.joystickId === null && res.touches.length > 0) {
             const t = res.touches[0];
@@ -110,6 +129,15 @@ export function initInput(onReset) {
     });
 
     wx.onTouchMove((res) => {
+        if (state.rope && state.rope.hold && state.rope.hold.active) {
+            for (let t of res.touches) {
+                if (t.identifier === state.rope.hold.touchId) {
+                    input.move = 0;
+                    input.speedUp = false;
+                    return;
+                }
+            }
+        }
         for(let t of res.touches) {
             if(t.identifier === touches.joystickId) {
                 touches.curr = { x: t.clientX, y: t.clientY };
@@ -155,6 +183,13 @@ export function initInput(onReset) {
 
 function handleTouchEnd(changedTouches) {
     for(let t of changedTouches) {
+        if(state.rope && state.rope.hold && t.identifier === state.rope.hold.touchId) {
+            state.rope.hold.active = false;
+            state.rope.hold.type = null;
+            state.rope.hold.timer = 0;
+            state.rope.hold.touchId = null;
+            state.rope.ui.progress = 0;
+        }
         if(t.identifier === touches.joystickId) {
             touches.joystickId = null;
             input.move = 0;

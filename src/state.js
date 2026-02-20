@@ -63,6 +63,34 @@ export const state = {
         suit: {x:0, y:0},
         tunnelEntry: {x:0, y:0},
         tunnelEnd: {x:0, y:0}
+    },
+    rope: {
+        ropes: [],
+        active: false,
+        current: {
+            start: null,
+            startWall: null,
+            end: null,
+            path: [],
+            basePoints: [],
+            slackFactor: 1,
+            mode: 'loose',
+            time: 0
+        },
+        ui: {
+            visible: false,
+            type: null,
+            progress: 0,
+            anchor: null
+        },
+        hold: {
+            active: false,
+            type: null,
+            timer: 0,
+            touchId: null,
+            anchor: null
+        },
+        stillTimer: 0
     }
 };
 
@@ -115,7 +143,36 @@ export function resetState() {
     target.found = false;
     particles.length = 0;
     state.splashes = [];
-    
+
+    state.rope = {
+        ropes: [],
+        active: false,
+        current: {
+            start: null,
+            startWall: null,
+            end: null,
+            path: [],
+            basePoints: [],
+            slackFactor: 1,
+            mode: 'loose',
+            time: 0
+        },
+        ui: {
+            visible: false,
+            type: null,
+            progress: 0,
+            anchor: null
+        },
+        hold: {
+            active: false,
+            type: null,
+            timer: 0,
+            touchId: null,
+            anchor: null
+        },
+        stillTimer: 0
+    };
+
     // 初始位置 (水面中央)
     player.x = CONFIG.tileSize * (CONFIG.cols / 2);
     player.y = CONFIG.tileSize * 2;

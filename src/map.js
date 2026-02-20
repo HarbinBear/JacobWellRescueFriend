@@ -1,315 +1,335 @@
 import { CONFIG } from './config.js';
 import { state, target } from './state.js';
 
+// 默认洞穴段配置（可通过 CONFIG.caveSegments 覆盖）
+// 每段: { name, startRow, endRow, centerCol(可选), width, widthVariance, drift, narrowStart(可选), narrowEndWidth(可选), targetCol(可选), pullStrength(可选) }
+function getDefaultCaveSegments(cols) {
+    const cx = Math.floor(cols / 2);
+    const rx = cx + 20;
+    return [
+        // Phase 0: 入口水面
+        { name: 'entrance', startRow: 0, endRow: 8, centerCol: cx, width: 6, widthVariance: 0, drift: 0, zone: 'entrance' },
+        // Phase 1: 第一洞室 - 较宽，底部收窄
+        { name: 'chamber1', startRow: 8, endRow: 35, centerCol: cx, width: 6, widthVariance: 4, drift: 1,
+          narrowStart: 30, narrowEndWidth: 2.5, narrowDrift: 0.5, zone: 'chamber1' },
+        // Phase 2: 潜水服通道 - 狭小，向右偏移连接第二洞室
+        { name: 'suit_tunnel', startRow: 35, endRow: 50, targetCol: rx, pullStrength: 0.2, width: 2.0, widthVariance: 0, drift: 0,
+          zone: 'suit_tunnel', landmark: 'suit', landmarkOffset: 5 },
+        // Phase 3: 第二洞室通道 - 偏右，狭长
+        { name: 'chamber2', startRow: 50, endRow: 75, centerCol: rx, width: 2.0, widthVariance: 1.2, drift: 0.4, pullStrength: 0.15,
+          narrowStart: 70, narrowEndWidth: 2.0, narrowDrift: -0.5, zone: 'chamber2' },
+        // Phase 4: 三岔路口桥接 - 连接到中心
+        { name: 'junction_bridge', startRow: 75, endRow: 81, targetCol: cx, pullStrength: 0.3, width: 2.5, widthVariance: 0, drift: 0,
+          zone: 'junction', isJunction: true },
+        // 分支 A: 死路（向上）
+        { name: 'dead_end', startRow: 81, endRow: 81, upward: true, length: 35, centerCol: cx, width: 2.2, widthVariance: 1.0, drift: 0.3,
+          pullStrength: 0.1, zone: 'dead_end' },
+        // Phase 5: 第三洞室
+        { name: 'chamber3', startRow: 81, endRow: 105, centerCol: cx, width: 5, widthVariance: 3, drift: 0.75, pullStrength: 0.05,
+          topNarrowRows: 5, topNarrowWidth: 3.5, narrowStart: 95, narrowEndWidth: 2.0, zone: 'chamber3' },
+        // Phase 6: 剧情隧道 - 极窄
+        { name: 'story_tunnel', startRow: 105, endRow: 135, width: 0.8, widthVariance: 0, drift: 0.1, rowStep: 0.8,
+          zone: 'story_tunnel', landmark: 'tunnelEntry' },
+        // Phase 7: 第四洞室
+        { name: 'chamber4', startRow: 135, endRow: 150, width: 8, widthVariance: 4, drift: 1, zone: 'chamber4' }
+    ];
+}
+
+// 判断一个格子是否是边缘（至少有一个相邻格子是空的）
+function isBorderTile(map, r, c, rows, cols) {
+    for (let dr = -1; dr <= 1; dr++) {
+        for (let dc = -1; dc <= 1; dc++) {
+            if (dr === 0 && dc === 0) continue;
+            let nr = r + dr;
+            let nc = c + dc;
+            // 地图边界外不算空
+            if (nr < 0 || nr >= rows || nc < 0 || nc >= cols) continue;
+            if (map[nr][nc] === 0) return true;
+        }
+    }
+    return false;
+}
+
 // 线性剧情地图生成
 export function generateMap() {
     state.map = [];
-    state.zones = []; // 清空区域信息
+    state.zones = [];
     const { rows, cols, tileSize } = CONFIG;
-    
-    // 1. 初始化：全墙壁
-    for(let r=0; r<rows; r++) {
+    const centerX = Math.floor(cols / 2);
+
+    // 1. 初始化：全墙壁 (1=实体, 0=空)
+    for (let r = 0; r < rows; r++) {
         state.map[r] = [];
-        for(let c=0; c<cols; c++) {
+        for (let c = 0; c < cols; c++) {
             state.map[r][c] = 1;
         }
     }
 
-    // 2. 挖掘主通道 (使用路径点连接)
-    // 路径点: [row, col, radius]
-    let pathPoints = [];
-    let centerX = Math.floor(cols/2); 
-    // 增加间距，确保墙壁足够厚 (20格 * 40px = 800px > lightRange * 2)
-    let rightX = centerX + 20; 
-    
+    // 2. 获取洞穴段配置
+    const segments = (CONFIG.caveSegments && CONFIG.caveSegments.length > 0)
+        ? CONFIG.caveSegments
+        : getDefaultCaveSegments(cols);
+
+    // 收集所有路径点用于挖掘
+    let pathPoints = []; // [row, col, radius]
+
     // 辅助函数：添加路径点并进行边界检查
     function addPoint(r, c, w) {
-        // 边界检查，保留至少 3 格墙壁
         if (c < 3) c = 3;
         if (c > cols - 4) c = cols - 4;
         pathPoints.push([r, c, w]);
-        return c; // 返回修正后的 c
+        return c;
     }
 
-    // --- Phase 0: 入口水面 (0-8) ---
-    for(let r=0; r<8; r++) {
-        addPoint(r, centerX, 6);
-    }
-    state.zones.push({name: 'entrance', yMin: 0, yMax: 8 * tileSize});
-
-    // --- Phase 1: 第一洞室 (8-35) ---
-    // 比较大，底部收窄
-    let currentR = 8;
+    // 记录上一段结束时的位置，用于段间连接
+    let currentR = 0;
     let currentC = centerX;
-    let phase1EndR = 35;
-    
-    while(currentR < phase1EndR) {
-        currentR += 1.0;
-        currentC += (Math.random()-0.5)*2;
-        
-        // 底部收窄过渡
-        let width = 6 + Math.random() * 4; 
-        if (currentR > 30) {
-            width = 6 - (currentR - 30) * 0.8; // 逐渐变窄到 2 左右
-            if (width < 2.5) width = 2.5;
-            // 引导向右，为连接第二洞室做准备
-            currentC += 0.5; // 加大引导力度
-        }
-        
-        currentC = addPoint(currentR, currentC, width);
-    }
-    state.zones.push({name: 'chamber1', yMin: 8 * tileSize, yMax: 35 * tileSize});
+    let junctionR = 0;
+    let junctionC = centerX;
 
-    // --- Phase 2: 潜水服通道 (35-50) ---
-    // 狭小，连接第一洞室和第二洞室(偏右)
-    // 稍微加长一点以便平滑过渡大跨度
-    let phase2EndR = 50; 
-    // 记录潜水服位置
-    state.landmarks.suit = {
-        x: currentC * tileSize,
-        y: (currentR + 5) * tileSize
-    };
-    
-    while(currentR < phase2EndR) {
-        currentR += 1.0;
-        // 快速向右偏移，连接到 rightX
-        let targetX = rightX;
-        let diff = targetX - currentC;
-        currentC += diff * 0.2; // 加快横向移动速度
-        
-        let width = 2.0; // 狭窄
-        currentC = addPoint(currentR, currentC, width);
-    }
-    state.zones.push({name: 'suit_tunnel', yMin: 35 * tileSize, yMax: 50 * tileSize});
-
-    // --- Phase 3: 第二洞室通道 (50-75) ---
-    // 这是一个狭长的通道，位于右侧 (rightX)，与左侧的死路平行
-    let phase3EndR = 75;
-    while(currentR < phase3EndR) {
-        currentR += 1.0;
-        currentC += (Math.random()-0.5)*0.8; 
-        
-        // 强力保持在 rightX 附近
-        let pull = (rightX - currentC) * 0.15;
-        currentC += pull;
-
-        // 宽度更窄
-        let width = 2.0 + Math.random() * 1.2; 
-        
-        // 底部收窄，准备进入三岔路口
-        if (currentR > 70) {
-            width = 2.0; 
-            // 开始向左引导，去往中心的三岔路口
-            currentC -= 0.5;
-        }
-        
-        currentC = addPoint(currentR, currentC, width);
-    }
-    state.zones.push({name: 'chamber2', yMin: 50 * tileSize, yMax: 75 * tileSize});
-
-    // --- Phase 4: 三岔路口 (75) ---
-    // 这里的逻辑是：
-    // 下方是第三洞室 (centerX)
-    // 右上方是第二洞室通道 (rightX)
-    // 正上方是死路通道 (centerX)
-    
-    let junctionR = currentR;
-    // 强制修正到中心，构建三岔口连接点
-    let junctionC = centerX; 
-    
-    // 记录三岔路口地标
-    state.landmarks.junction = {
-        x: junctionC * tileSize,
-        y: junctionR * tileSize
-    };
-    
-    // 连接第二洞室通道底部到三岔路口中心
-    // 刚才 Phase 3 结束时 currentC 应该在 rightX 和 centerX 之间
-    // 这里补几步路确保连通
-    let bridgeSteps = 12; // 更长的连接，因为横向跨度变大了
-    for(let i=0; i<bridgeSteps; i++) {
-        let t = (i+1)/bridgeSteps;
-        let r = junctionR + i * 0.5; // 稍微向下一点点
-        let c = currentC * (1-t) + junctionC * t;
-        addPoint(r, c, 2.5);
-    }
-    junctionR += bridgeSteps * 0.5;
-    currentR = junctionR;
-    currentC = junctionC;
-
-    state.zones.push({name: 'junction', yMin: (junctionR-5) * tileSize, yMax: (junctionR+5) * tileSize});
-
-    // 分支 A: 死路通道 (正上方)
-    // 位于 centerX，向上延伸，是一条狭长的死路，与右边的第二洞室通道平行
-    let deadEndR = junctionR;
-    let deadEndC = centerX; // 正上方
-    
-    // 向上挖掘
-    for(let i=0; i<35; i++) { // 挖更长一点
-        deadEndR -= 1.0; 
-        deadEndC += (Math.random()-0.5)*0.6;
-        
-        // 保持在 centerX 附近
-        let pull = (centerX - deadEndC) * 0.1;
-        deadEndC += pull;
-
-        // 宽度更窄，极具迷惑性
-        let width = 2.2 + Math.random() * 1.0; 
-        
-        // 边界检查
-        if (deadEndC < 3) deadEndC = 3;
-        if (deadEndC > cols - 4) deadEndC = cols - 4;
-        
-        pathPoints.push([deadEndR, deadEndC, width]);
-    }
-    
-    // 记录死路深处地标 (用于NPC导航)
-    state.landmarks.deadEndDeep = {
-        x: deadEndC * tileSize,
-        y: deadEndR * tileSize
-    };
-    
-    // 记录死路区域
-    state.zones.push({
-        name: 'dead_end', 
-        yMin: (junctionR - 35) * tileSize, 
-        yMax: junctionR * tileSize,
-        xMin: (centerX - 5) * tileSize,
-        xMax: (centerX + 5) * tileSize
-    });
-
-    // 分支 B: 主路 (向下) -> 第三洞室
-    // --- Phase 5: 第三洞室 (75-105) ---
-    // 位于 centerX
-    let phase5EndR = 105;
-    // currentR, currentC 已经在 junction 处准备好了
-    
-    while(currentR < phase5EndR) {
-        currentR += 1.0;
-        currentC += (Math.random()-0.5)*1.5;
-        
-        // 保持在 centerX 附近
-        let pull = (centerX - currentC) * 0.05;
-        currentC += pull;
-        
-        let width = 5 + Math.random() * 3;
-        
-        // 顶部稍微窄一点，与三岔路口连接
-        if (currentR < junctionR + 5) {
-            width = 3.5;
-        }
-        
-        // 底部收窄进入剧情隧道
-        if (currentR > 95) {
-            width = 2.0;
+    for (let seg of segments) {
+        // 死路分支（向上挖掘）特殊处理
+        if (seg.upward) {
+            let deadR = seg.startRow;
+            let deadC = seg.centerCol || centerX;
+            for (let i = 0; i < (seg.length || 35); i++) {
+                deadR -= 1.0;
+                deadC += (Math.random() - 0.5) * (seg.drift || 0.3) * 2;
+                if (seg.pullStrength) {
+                    deadC += ((seg.centerCol || centerX) - deadC) * seg.pullStrength;
+                }
+                let w = seg.width + Math.random() * (seg.widthVariance || 0);
+                if (deadC < 3) deadC = 3;
+                if (deadC > cols - 4) deadC = cols - 4;
+                pathPoints.push([deadR, deadC, w]);
+            }
+            // 记录死路地标
+            state.landmarks.deadEndDeep = {
+                x: deadC * tileSize,
+                y: deadR * tileSize
+            };
+            // 记录死路区域
+            if (seg.zone) {
+                state.zones.push({
+                    name: seg.zone,
+                    yMin: deadR * tileSize,
+                    yMax: seg.startRow * tileSize,
+                    xMin: ((seg.centerCol || centerX) - 5) * tileSize,
+                    xMax: ((seg.centerCol || centerX) + 5) * tileSize
+                });
+            }
+            continue;
         }
 
-        currentC = addPoint(currentR, currentC, width);
-    }
-    state.zones.push({name: 'chamber3', yMin: junctionR * tileSize, yMax: 105 * tileSize});
+        // 三岔路口标记
+        if (seg.isJunction) {
+            junctionR = seg.endRow;
+            junctionC = seg.targetCol || centerX;
+            // 桥接段：从当前位置平滑过渡到目标位置
+            let bridgeSteps = Math.ceil((seg.endRow - seg.startRow) * 2);
+            for (let i = 0; i < bridgeSteps; i++) {
+                let t = (i + 1) / bridgeSteps;
+                let r = seg.startRow + (seg.endRow - seg.startRow) * t;
+                let c = currentC * (1 - t) + junctionC * t;
+                addPoint(r, c, seg.width);
+            }
+            currentR = seg.endRow;
+            currentC = junctionC;
+            state.landmarks.junction = {
+                x: junctionC * tileSize,
+                y: junctionR * tileSize
+            };
+            if (seg.zone) {
+                state.zones.push({
+                    name: seg.zone,
+                    yMin: (junctionR - 5) * tileSize,
+                    yMax: (junctionR + 5) * tileSize
+                });
+            }
+            continue;
+        }
 
-    // --- Phase 6: 剧情隧道 (105-135) ---
-    // 极窄，直线
-    let phase6EndR = 135;
-    state.landmarks.tunnelEntry = {
-        x: currentC * tileSize,
-        y: currentR * tileSize
-    };
-    state.landmarks.tunnelPath = [];
-    
-    let tunnelStartR = currentR;
-    
-    while(currentR < phase6EndR) {
-        currentR += 0.8;
-        // 几乎直线
-        currentC += (Math.random()-0.5)*0.2;
-        let width = 0.8; // 极窄
-        currentC = addPoint(currentR, currentC, width);
-        
-        if(Math.floor(currentR) % 5 === 0) {
-            state.landmarks.tunnelPath.push({
+        // 通用段处理
+        let segStartR = seg.startRow;
+        let segEndR = seg.endRow;
+        let rowStep = seg.rowStep || 1.0;
+
+        // 如果段有固定起始列，用它；否则沿用上一段结束位置
+        if (seg.startRow <= currentR + 1) {
+            // 连续段
+        } else {
+            currentR = seg.startRow;
+        }
+        if (segStartR === 0) {
+            currentR = 0;
+            currentC = seg.centerCol || centerX;
+        }
+
+        // 固定宽度段（入口等）
+        if (seg.name === 'entrance') {
+            for (let r = segStartR; r < segEndR; r++) {
+                addPoint(r, seg.centerCol || centerX, seg.width);
+            }
+            currentR = segEndR;
+            currentC = seg.centerCol || centerX;
+        } else {
+            // 动态挖掘
+            while (currentR < segEndR) {
+                currentR += rowStep;
+                currentC += (Math.random() - 0.5) * (seg.drift || 0) * 2;
+
+                // 目标吸引
+                if (seg.targetCol !== undefined && seg.pullStrength) {
+                    currentC += (seg.targetCol - currentC) * seg.pullStrength;
+                } else if (seg.centerCol !== undefined && seg.pullStrength) {
+                    currentC += (seg.centerCol - currentC) * seg.pullStrength;
+                }
+
+                let w = seg.width + Math.random() * (seg.widthVariance || 0);
+
+                // 顶部窄化
+                if (seg.topNarrowRows && currentR < segStartR + seg.topNarrowRows) {
+                    w = seg.topNarrowWidth || w;
+                }
+
+                // 底部收窄
+                if (seg.narrowStart && currentR > seg.narrowStart) {
+                    let narrowProgress = (currentR - seg.narrowStart) / (segEndR - seg.narrowStart);
+                    w = w - (w - (seg.narrowEndWidth || 2)) * narrowProgress;
+                    if (w < (seg.narrowEndWidth || 2)) w = seg.narrowEndWidth || 2;
+                    if (seg.narrowDrift) {
+                        currentC += seg.narrowDrift;
+                    }
+                }
+
+                currentC = addPoint(currentR, currentC, w);
+            }
+        }
+
+        // 记录地标
+        if (seg.landmark === 'suit') {
+            state.landmarks.suit = {
                 x: currentC * tileSize,
-                y: currentR * tileSize
+                y: (seg.startRow + (seg.landmarkOffset || 5)) * tileSize
+            };
+        } else if (seg.landmark === 'tunnelEntry') {
+            state.landmarks.tunnelEntry = {
+                x: currentC * tileSize,
+                y: seg.startRow * tileSize
+            };
+            // 隧道路径点
+            state.landmarks.tunnelPath = [];
+            // 遍历该段path点记录路径
+        }
+
+        // 记录区域
+        if (seg.zone && !seg.isJunction) {
+            state.zones.push({
+                name: seg.zone,
+                yMin: segStartR * tileSize,
+                yMax: segEndR * tileSize
             });
         }
     }
-    
-    state.landmarks.tunnelEnd = {
-        x: currentC * tileSize,
-        y: currentR * tileSize
-    };
-    state.landmarks.tunnelPath.push(state.landmarks.tunnelEnd);
-    
-    // 空气墙 (第一次下潜阻挡)
-    state.invisibleWalls.push({
-        x: currentC * tileSize,
-        y: (tunnelStartR + 10) * tileSize,
-        r: tileSize * 1.2
-    });
-    
-    state.zones.push({name: 'story_tunnel', yMin: 105 * tileSize, yMax: 135 * tileSize});
 
-    // --- Phase 7: 第四洞室 (135-150) ---
-    // 大洞室占位
-    let phase7EndR = 150;
-    while(currentR < phase7EndR) {
-        currentR += 1.0;
-        currentC += (Math.random()-0.5)*2;
-        let width = 8 + Math.random() * 4;
-        currentC = addPoint(currentR, currentC, width);
+    // 隧道路径点和终点（从pathPoints中提取story_tunnel段的数据）
+    state.landmarks.tunnelPath = [];
+    let tunnelSeg = segments.find(s => s.name === 'story_tunnel');
+    if (tunnelSeg) {
+        for (let p of pathPoints) {
+            if (p[0] >= tunnelSeg.startRow && p[0] <= tunnelSeg.endRow) {
+                if (Math.floor(p[0]) % 5 === 0) {
+                    state.landmarks.tunnelPath.push({ x: p[1] * tileSize, y: p[0] * tileSize });
+                }
+            }
+        }
+        // 隧道终点
+        let lastTunnelPoint = null;
+        for (let p of pathPoints) {
+            if (p[0] >= tunnelSeg.startRow && p[0] <= tunnelSeg.endRow) {
+                lastTunnelPoint = p;
+            }
+        }
+        if (lastTunnelPoint) {
+            state.landmarks.tunnelEnd = {
+                x: lastTunnelPoint[1] * tileSize,
+                y: lastTunnelPoint[0] * tileSize
+            };
+            state.landmarks.tunnelPath.push(state.landmarks.tunnelEnd);
+        }
+
+        // 空气墙（第一次下潜阻挡）
+        state.invisibleWalls.push({
+            x: state.landmarks.tunnelEntry.x,
+            y: (tunnelSeg.startRow + 10) * tileSize,
+            r: tileSize * 1.2
+        });
     }
-    state.zones.push({name: 'chamber4', yMin: 135 * tileSize, yMax: 150 * tileSize});
 
-
-    // 挖掘逻辑
-    for(let p of pathPoints) {
+    // 3. 挖掘通道（优化：只处理路径点半径内的格子而非全图）
+    for (let p of pathPoints) {
         let [pr, pc, radius] = p;
-        for(let r=0; r<rows; r++) {
-            for(let c=0; c<cols; c++) {
-                let dist = Math.hypot(r-pr, c-pc);
-                if(dist < radius) {
+        let rMin = Math.max(0, Math.floor(pr - radius) - 1);
+        let rMax = Math.min(rows - 1, Math.ceil(pr + radius) + 1);
+        let cMin = Math.max(0, Math.floor(pc - radius) - 1);
+        let cMax = Math.min(cols - 1, Math.ceil(pc + radius) + 1);
+        for (let r = rMin; r <= rMax; r++) {
+            for (let c = cMin; c <= cMax; c++) {
+                let dist = Math.hypot(r - pr, c - pc);
+                if (dist < radius) {
                     state.map[r][c] = 0;
                 }
             }
         }
     }
-    
+
     // 顶部水面清理
-    for(let r=0; r<6; r++) {
-        for(let c=1; c<cols-1; c++) {
+    for (let r = 0; r < 6; r++) {
+        for (let c = 1; c < cols - 1; c++) {
             state.map[r][c] = 0;
         }
     }
 
-    // 3. 生成墙壁渲染数据
+    // 4. 生成墙壁渲染数据 —— 仅边缘岩石生成 wall 对象
     state.walls = [];
-    for(let r=0; r<rows; r++) {
-        for(let c=0; c<cols; c++) {
-            if(state.map[r][c] === 1) {
-                let offsetX = (Math.random() - 0.5) * tileSize * 0.6;
-                let offsetY = (Math.random() - 0.5) * tileSize * 0.6;
-                let radius = tileSize * (0.6 + Math.random() * 0.4);
-                
-                let wall = {
-                    x: c * tileSize + tileSize/2 + offsetX,
-                    y: r * tileSize + tileSize/2 + offsetY,
-                    r: radius
-                };
-                
-                state.walls.push(wall);
-                state.map[r][c] = wall;
+    for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+            if (state.map[r][c] === 1) {
+                let border = isBorderTile(state.map, r, c, rows, cols);
+                if (border) {
+                    // 边缘岩石：生成渲染用圆形对象
+                    let offsetX = (Math.random() - 0.5) * tileSize * 0.6;
+                    let offsetY = (Math.random() - 0.5) * tileSize * 0.6;
+                    let radius = tileSize * (0.6 + Math.random() * 0.4);
+
+                    let wall = {
+                        x: c * tileSize + tileSize / 2 + offsetX,
+                        y: r * tileSize + tileSize / 2 + offsetY,
+                        r: radius,
+                        row: r,
+                        col: c,
+                        isBorder: true
+                    };
+
+                    state.walls.push(wall);
+                    state.map[r][c] = wall;
+                } else {
+                    // 内部实体：标记为填充但不生成 wall 对象
+                    // 用数字 2 表示内部实体（碰撞检测需要但不渲染圆形）
+                    state.map[r][c] = 2;
+                }
             }
         }
     }
 
-    // 4. 生成浅水区生态
+    // 5. 生成浅水区生态
     state.plants = [];
     state.fishes = [];
-    
-    // 水草 (只在浅水区和第一洞室)
-    for(let w of state.walls) {
-        if(w.y < 30 * tileSize) { 
-            if(Math.random() < 0.3) {
+
+    // 水草（只在浅水区和第一洞室的边缘岩石上）
+    for (let w of state.walls) {
+        if (w.y < 30 * tileSize) {
+            if (Math.random() < 0.3) {
                 let angle = Math.random() * Math.PI * 2;
                 let dist = w.r * 0.8;
                 state.plants.push({
@@ -323,22 +343,22 @@ export function generateMap() {
         }
     }
 
-    // 鱼群 (只在浅水区)
+    // 鱼群（只在浅水区）
     let schools = 5;
-    for(let s=0; s<schools; s++) {
+    for (let s = 0; s < schools; s++) {
         let centerR = Math.floor(Math.random() * 20 + 2);
-        let centerC = Math.floor(cols/2 + (Math.random()-0.5)*10);
-        
-        if(state.map[centerR] && state.map[centerR][centerC] === 0) {
+        let centerC = Math.floor(cols / 2 + (Math.random() - 0.5) * 10);
+
+        if (state.map[centerR] && state.map[centerR][centerC] === 0) {
             let count = Math.floor(Math.random() * 5) + 3;
             let colors = ['#ff7f50', '#ffd700', '#00bfff'];
             let schoolColor = colors[Math.floor(Math.random() * colors.length)];
-            
-            for(let i=0; i<count; i++) {
+
+            for (let i = 0; i < count; i++) {
                 state.fishes.push({
-                    x: centerC * tileSize + tileSize/2 + (Math.random()-0.5)*tileSize*2,
-                    y: centerR * tileSize + tileSize/2 + (Math.random()-0.5)*tileSize*2,
-                    vx: (Math.random() - 0.5) * 1.0, 
+                    x: centerC * tileSize + tileSize / 2 + (Math.random() - 0.5) * tileSize * 2,
+                    y: centerR * tileSize + tileSize / 2 + (Math.random() - 0.5) * tileSize * 2,
+                    vx: (Math.random() - 0.5) * 1.0,
                     vy: (Math.random() - 0.5) * 0.3,
                     size: 4 + Math.random() * 3,
                     color: schoolColor,
@@ -351,15 +371,14 @@ export function generateMap() {
 
 function getNeighborCount(r, c) {
     let count = 0;
-    for(let i=-1; i<=1; i++) {
-        for(let j=-1; j<=1; j++) {
-            if(i===0 && j===0) continue;
-            let nr = r+i;
-            let nc = c+j;
-            // 边界外视为墙
-            if(nr < 0 || nr >= state.map.length || nc < 0 || nc >= state.map[0].length) {
+    for (let i = -1; i <= 1; i++) {
+        for (let j = -1; j <= 1; j++) {
+            if (i === 0 && j === 0) continue;
+            let nr = r + i;
+            let nc = c + j;
+            if (nr < 0 || nr >= state.map.length || nc < 0 || nc >= state.map[0].length) {
                 count++;
-            } else if(state.map[nr][nc] === 1) {
+            } else if (state.map[nr][nc] !== 0) {
                 count++;
             }
         }

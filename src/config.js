@@ -39,7 +39,37 @@ export const CONFIG = {
     // 自身发光参数
     selfGlowRadius: 150,          // 自身发光半径
     selfGlowIntensity: 0.6,       // 自身发光强度 (0-1, 越大越亮)
-    
+
+    // Rope gameplay
+    ropeAnchorDistance: 60,        // 靠近岩石多近才能锚定（距岩石表面的像素距离）
+    ropeStillTimeToShow: 0.8,      // 静止多少秒后显示铺线按钮
+    ropeStillSpeedThreshold: 1.5,  // 判定静止的速度阈值（低于此值视为静止）
+    ropeHoldDuration: 1.2,         // 长按多少秒完成铺线/结束操作
+    ropeButtonRadius: 32,          // UI按钮半径
+    ropeButtonXRatio: 0.82,        // UI按钮X位置比例（占屏幕宽度）
+    ropeButtonYRatio: 0.75,        // UI按钮Y位置比例（占屏幕高度）
+    ropeSlackAmplitude: 14,        // 松弛绳子垂坠幅度（垂直于路径的偏移）
+    ropeSlackGravity: 10,          // 绳子在水中的重力下坠量
+    ropeWaveAmplitude: 6,          // 绳子波浪动画幅度
+    ropeWaveFrequency: 1.6,        // 绳子波浪频率（沿绳长方向）
+    ropeWaveSpeed: 2.2,            // 绳子波浪动画速度
+    ropeDriftAmplitude: 4,         // 水流缓慢漂动幅度
+    ropeDriftSpeed: 0.8,           // 水流缓慢漂动速度
+    ropeSegmentLength: 12,         // 绳子渲染分段长度（越小越平滑）
+    ropeAvoidPadding: 12,          // 绳子绕岩石的额外间距
+    ropePathMaxIters: 12,          // 旧绕障最大迭代次数（已弃用，改用A*）
+    ropeAStarMaxIters: 3000,       // A*寻路最大迭代次数
+    ropeColor: 'rgba(230, 220, 170, 0.9)',   // 铺线中绳子颜色
+    ropeTightColor: 'rgba(230, 220, 170, 1.0)', // 拉紧绳子颜色
+    ropeWidth: 2.5,                // 铺线中绳子宽度
+    ropeTightWidth: 2,             // 拉紧绳子宽度
+    ropeNailRadius: 4,             // 钉子半径
+    ropeNailColor: '#888',         // 钉子颜色
+    ropeKnotRadius: 3,             // 绳结半径
+    ropeKnotColor: 'rgba(230, 220, 170, 0.95)', // 绳结颜色
+    ropeTightenLerp: 0.12,         // 收紧绳子的插值系数
+    ropeReelRadius: 8,             // 玩家身上线轮指示器半径
+    ropeReelColor: 'rgba(200, 190, 140, 0.7)', // 线轮指示器颜色
     // 目标名字库
     targetNames: ["伟仔", "毛丁", "树茂", "熊", "亮子", "潘子"]
 };
