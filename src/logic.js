@@ -10,7 +10,7 @@ class Particle {
     constructor(x, y, type) {
         this.x = x; this.y = y;
         this.type = type; 
-        this.life = 1.0;
+        this.life = CONFIG.siltLife;
         if(type === 'silt') {
             let angle = Math.random() * Math.PI * 2;
             let speed = Math.random() * 0.5;
@@ -24,7 +24,7 @@ class Particle {
             this.vx = (Math.random()-0.5) * 0.5;
             this.vy = -0.5 - Math.random(); 
             this.size = 2 + Math.random() * 3;
-            this.life = 2.0;
+            this.life = CONFIG.bloodLife;
             this.alpha = 0.8;
         } else { // bubble
             this.vx = (Math.random()-0.5) * 0.5;

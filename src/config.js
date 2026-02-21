@@ -16,6 +16,8 @@ export const CONFIG = {
     safeAscentSpeed: 2.5, // 安全上浮速度阈值
     siltFactor: 1.0,      // 扬尘产生倍率
     rayCount: 120,        // 射线数量
+    siltLife: 1,         // 扬尘生命周期
+    bloodLife: 2,         // 血迹生命周期
     turnSpeed: 0.08,      // 转向速度 (单摇杆操作可能需要更灵敏的转向)
     acceleration: 0.005,   // 加速度
     waterDrag: 0.98,       // 水阻力
@@ -48,10 +50,10 @@ export const CONFIG = {
     ambientPerceptionRadius: 80,   // 周围环境感知半径（非手电筒方向也能微弱看到近距离东西）
     ambientPerceptionIntensity: 0.35, // 周围环境感知强度 (0-1)
 
-    // 泥沙遮挡光线参数（Beer-Lambert 光吸收模型）
-    siltSampleSteps: 28,            // 沿射线的采样步数（越多越精确，越消耗性能）
-    siltAbsorptionCoeff: 0.4,    // 泥沙粒子的光吸收系数（越大泥沙遮挡越强）
-    siltInfluenceRadius: 40,       // 泥沙粒子对射线的影响半径（像素，越大越"糊"）
+    // 泥沙遮挡光线参数（Beer-Lambert 光吸收模型 + 空间哈希加速）
+    siltSampleSteps: 28,            // 沿射线的采样步数（影响距离分辨率：步数越多，泥沙前亮后暗的过渡越细腻）
+    siltAbsorptionCoeff: 0.5,      // 泥沙粒子的光吸收系数（越大泥沙遮挡越强，建议 0.05~0.5）
+    siltInfluenceRadius: 40,        // 泥沙粒子对射线的横向影响半径（像素，也是空间哈希网格粒度）
 
     // Rope gameplay
     ropeAnchorDistance: 60,        // 靠近岩石多近才能锚定（距岩石表面的像素距离）
