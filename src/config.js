@@ -39,6 +39,11 @@ export const CONFIG = {
     // 自身发光参数
     selfGlowRadius: 150,          // 自身发光半径
     selfGlowIntensity: 0.6,       // 自身发光强度 (0-1, 越大越亮)
+    
+    // 视野与遮挡参数
+    lightEdgeFeather: 25,          // 光照边缘羽化距离（像素，越大边缘越柔和）
+    ambientPerceptionRadius: 80,   // 周围环境感知半径（非手电筒方向也能微弱看到近距离东西）
+    ambientPerceptionIntensity: 0.35, // 周围环境感知强度 (0-1)
 
     // Rope gameplay
     ropeAnchorDistance: 60,        // 靠近岩石多近才能锚定（距岩石表面的像素距离）

@@ -134,13 +134,15 @@ export function draw() {
     let viewColMin = Math.max(0, Math.floor(viewL / ts) - 1);
     let viewColMax = Math.min(CONFIG.cols - 1, Math.floor(viewR / ts) + 1);
 
-    // 先绘制内部实体方块（纯色填充，不画圆形）
-    ctx.fillStyle = '#222';
+    // 绘制内部实体填充（无缝纯色，不显示格子边界）
+    // 用稍大于 tileSize 的矩形消除格子接缝
+    ctx.fillStyle = '#1a1a1a';
     for(let r = viewRowMin; r <= viewRowMax; r++) {
         if(!state.map[r]) continue;
         for(let c = viewColMin; c <= viewColMax; c++) {
             if(state.map[r][c] === 2) {
-                ctx.fillRect(c * ts, r * ts, ts, ts);
+                // 用 +1 像素的尺寸消除相邻格子之间的接缝
+                ctx.fillRect(c * ts - 0.5, r * ts - 0.5, ts + 1, ts + 1);
             }
         }
     }
@@ -366,15 +368,10 @@ export function draw() {
     // 2. 光照遮罩计算
     lightCtx.clearRect(0, 0, canvas.width, canvas.height); 
     lightCtx.globalCompositeOperation = 'source-over';
-    // lightCtx.shadowBlur = 0; 
     
     // 深度因子：0(水面) -> 1(深渊)
-    // 修改：基于配置的 darknessStartDepth
     let depthFactor = 0;
     if (player.y < CONFIG.darknessStartDepth) {
-        // 第一洞室区域：保持较亮
-        // 0 -> 1.0
-        // darknessStartDepth -> 0.0
         depthFactor = player.y / CONFIG.darknessStartDepth;
     } else {
         depthFactor = 1.0;
@@ -382,21 +379,21 @@ export function draw() {
     
     // 基础环境光
     let baseAmbient = CONFIG.ambientLightSurface * (1 - depthFactor);
-    // 确保深处也有最低限度的环境光 (CONFIG.ambientLightDeep)
     if (baseAmbient < CONFIG.ambientLightDeep) baseAmbient = CONFIG.ambientLightDeep;
-    
     let currentAmbient = baseAmbient;
     
-    // 遮罩颜色
+    // 遮罩颜色（深处偏深蓝-黑色，浅处偏蓝色调）
     let maskAlpha = Math.max(0, 1 - currentAmbient);
-    
-    lightCtx.fillStyle = `rgba(0, 0, 0, ${maskAlpha})`;
-    // 深处完全黑，不带色调，模拟真实洞穴
-    if(depthFactor < 0.2) {
-        let blueTint = Math.max(0, (1 - depthFactor) * 30);
-        let g = Math.floor(blueTint / 2);
+
+    // 遮罩底层颜色：浅处带蓝色调，深处纯黑
+    if(depthFactor < 0.3) {
+        let blueTint = Math.max(0, (1 - depthFactor * 3) * 25);
+        let g = Math.floor(blueTint / 3);
         let b = Math.floor(blueTint);
         lightCtx.fillStyle = `rgba(0, ${g}, ${b}, ${maskAlpha})`;
+    } else {
+        // 深处：极暗的深蓝色而非纯黑，更有水下氛围
+        lightCtx.fillStyle = `rgba(2, 4, 10, ${maskAlpha})`;
     }
     
     lightCtx.fillRect(0, 0, canvas.width, canvas.height);
@@ -409,11 +406,11 @@ export function draw() {
         let factor = Math.max(0, player.o2 / 80);
         rayDist = 20 + factor * 80; 
         let alpha = 0.95 + (1-factor) * 0.05; 
-        lightCtx.fillStyle = `rgba(0, 0, 0, ${alpha})`;
+        lightCtx.fillStyle = `rgba(2, 4, 10, ${alpha})`;
         lightCtx.fillRect(0, 0, canvas.width, canvas.height);
     } else if(state.story.flags.narrowVision) {
         rayDist = 30; 
-        lightCtx.fillStyle = 'rgba(0, 0, 0, 0.95)'; 
+        lightCtx.fillStyle = 'rgba(2, 4, 10, 0.95)'; 
         lightCtx.fillRect(0, 0, canvas.width, canvas.height);
     }
 
@@ -441,24 +438,30 @@ export function draw() {
             
             let glowGrad = lightCtx.createRadialGradient(src.x, src.y, 0, src.x, src.y, glowRadius);
             glowGrad.addColorStop(0, `rgba(255, 255, 255, ${intensity})`); 
+            glowGrad.addColorStop(0.5, `rgba(255, 255, 255, ${intensity * 0.5})`); 
             glowGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');   
             
             lightCtx.fillStyle = glowGrad;
             lightCtx.beginPath();
             lightCtx.arc(src.x, src.y, glowRadius, 0, Math.PI*2);
             lightCtx.fill();
+
+            // 3. 周围环境感知光（360度的微弱光环，模拟人眼在水中的周边视觉）
+            // 这使得即使手电不照的方向也能看到近距离的东西
+            let ambientPerception = CONFIG.ambientPerceptionRadius || 80;
+            let ambientIntensity = CONFIG.ambientPerceptionIntensity || 0.35;
+            let ambGrad = lightCtx.createRadialGradient(src.x, src.y, 0, src.x, src.y, ambientPerception);
+            ambGrad.addColorStop(0, `rgba(255, 255, 255, ${ambientIntensity})`);
+            ambGrad.addColorStop(0.6, `rgba(255, 255, 255, ${ambientIntensity * 0.4})`);
+            ambGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+            lightCtx.fillStyle = ambGrad;
+            lightCtx.beginPath();
+            lightCtx.arc(src.x, src.y, ambientPerception, 0, Math.PI*2);
+            lightCtx.fill();
         }
     }
 
-    // 玩家深处环境适应光圈 - 已移除，统一使用上方的自身发光配置
-    // let glowRadius = 50;
-    // if (depthFactor > 0.8) glowRadius = 120; 
-    // ... (旧代码已注释)
-
-    // 漫反射模拟：在光线击中墙壁的地方画微弱光晕
-    // 这需要获取光线多边形的顶点，这里简化处理，只在手电筒末端画一个大光晕
-    // 但为了性能，暂时不遍历所有顶点。
-    // 可以简单地在玩家前方一定距离画一个极淡的擦除圆，模拟光线散射
+    // 漫反射模拟：在玩家前方一定距离画一个极淡的擦除圆
     let scatterDist = rayDist * 0.6;
     let scatterX = player.x + Math.cos(player.angle) * scatterDist;
     let scatterY = player.y + Math.sin(player.angle) * scatterDist;
@@ -467,7 +470,7 @@ export function draw() {
         scatterX, scatterY, 0,
         scatterX, scatterY, rayDist * 0.8
     );
-    scatterGlow.addColorStop(0, 'rgba(255, 255, 255, 0.1)'); // 非常微弱的擦除
+    scatterGlow.addColorStop(0, 'rgba(255, 255, 255, 0.1)');
     scatterGlow.addColorStop(1, 'rgba(255, 255, 255, 0)');
     
     lightCtx.fillStyle = scatterGlow;
@@ -485,6 +488,47 @@ export function draw() {
     lightCtx.restore();
 
     ctx.drawImage(lightLayer, 0, 0);
+
+    // 泥沙雾效果：当扬尘浓度高时，在照亮的视野范围内叠加半透明浑浊雾层
+    // 直接在主画布上绘制（在光照遮罩之后）
+    if(player.silt > 5 && player.y > 600) {
+        ctx.save();
+        ctx.translate(canvas.width/2 + shakeX, canvas.height/2 + shakeY);
+        ctx.scale(zoom, zoom);
+        ctx.translate(-player.x, -player.y);
+
+        // 泥沙雾的浓度和范围
+        let siltAlpha = Math.min(0.55, player.silt / 120);
+        let siltRange = rayDist * 0.9;
+
+        // 前方泥沙雾（光照区域内变浑浊）
+        let fogCx = player.x + Math.cos(player.angle) * rayDist * 0.3;
+        let fogCy = player.y + Math.sin(player.angle) * rayDist * 0.3;
+        let siltGrad = ctx.createRadialGradient(fogCx, fogCy, 0, fogCx, fogCy, siltRange);
+        siltGrad.addColorStop(0, `rgba(90, 75, 55, ${siltAlpha * 0.6})`);
+        siltGrad.addColorStop(0.4, `rgba(70, 60, 45, ${siltAlpha * 0.35})`);
+        siltGrad.addColorStop(0.8, `rgba(50, 40, 30, ${siltAlpha * 0.1})`);
+        siltGrad.addColorStop(1, `rgba(40, 35, 25, 0)`);
+        
+        ctx.fillStyle = siltGrad;
+        ctx.beginPath();
+        ctx.arc(fogCx, fogCy, siltRange, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 周围的轻微浑浊（模拟悬浮泥沙遮挡360度视野）
+        if(player.silt > 20) {
+            let ambSiltAlpha = Math.min(0.3, (player.silt - 20) / 150);
+            let ambSiltGrad = ctx.createRadialGradient(player.x, player.y, 10, player.x, player.y, 100);
+            ambSiltGrad.addColorStop(0, `rgba(80, 65, 45, ${ambSiltAlpha})`);
+            ambSiltGrad.addColorStop(1, `rgba(60, 50, 35, 0)`);
+            ctx.fillStyle = ambSiltGrad;
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, 100, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        ctx.restore();
+    }
 
     // 黑屏过渡
     if(state.story.flags.blackScreen) {
@@ -582,16 +626,16 @@ function drawFlashlight(ctx, x, y, angle, rayDist, mode = 'mask') {
     ctx.save();
     
     // 计算光照多边形 (无论哪种模式都使用射线检测，防止穿墙)
-    // 增加射线数量以获得更平滑的边缘
     let poly = getLightPolygon(x, y, angle, rayDist, CONFIG.fov);
 
     if (mode === 'mask') {
-        // ctx.shadowBlur = 30;
-        ctx.shadowColor = "rgba(255, 255, 255, 1)";
-        
+        // 光照遮罩模式：擦除黑暗
+
+        // 第 1 层：主光照区域（稍微缩小的内层，完全擦除）
         let mainGradient = ctx.createRadialGradient(x, y, 0, x, y, rayDist);
         mainGradient.addColorStop(0, 'rgba(255, 255, 255, 1.0)');    
-        mainGradient.addColorStop(0.6, 'rgba(255, 255, 255, 0.9)');  
+        mainGradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.95)');  
+        mainGradient.addColorStop(0.85, 'rgba(255, 255, 255, 0.6)');  
         mainGradient.addColorStop(1, 'rgba(255, 255, 255, 0)');      
         
         ctx.fillStyle = mainGradient;
@@ -600,9 +644,34 @@ function drawFlashlight(ctx, x, y, angle, rayDist, mode = 'mask') {
         for(let p of poly) ctx.lineTo(p.x, p.y);
         ctx.closePath();
         ctx.fill();
+
+        // 第 2 层：边缘羽化（更大范围的扩展多边形，很弱的擦除形成柔和过渡）
+        // 计算扩展后的多边形顶点（每个顶点向外推一段距离）
+        let featherDist = CONFIG.lightEdgeFeather || 25;
+        let featherPoly = poly.map(p => {
+            let dx = p.x - x;
+            let dy = p.y - y;
+            let len = Math.hypot(dx, dy) || 1;
+            return {
+                x: p.x + (dx / len) * featherDist,
+                y: p.y + (dy / len) * featherDist
+            };
+        });
+
+        let featherGrad = ctx.createRadialGradient(x, y, 0, x, y, rayDist + featherDist);
+        featherGrad.addColorStop(0, 'rgba(255, 255, 255, 0.4)');
+        featherGrad.addColorStop(0.7, 'rgba(255, 255, 255, 0.2)');
+        featherGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+
+        ctx.fillStyle = featherGrad;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        for(let p of featherPoly) ctx.lineTo(p.x, p.y);
+        ctx.closePath();
+        ctx.fill();
+
     } else if (mode === 'volumetric') {
         // 体积光也使用多边形裁剪，防止穿墙
-        // 使用 screen 混合模式实现光照叠加，避免覆盖
         ctx.globalCompositeOperation = 'screen';
         
         // 1. 大范围泛光 (淡黄色)
@@ -618,7 +687,6 @@ function drawFlashlight(ctx, x, y, angle, rayDist, mode = 'mask') {
         ctx.fill();
         
         // 2. 中心高亮光束 (更窄，更亮)
-        // 修复：确保中心光束可见且不穿墙
         let centerPoly = getLightPolygon(x, y, angle, rayDist, CONFIG.flashlightCenterFov);
         let centerGrad = ctx.createRadialGradient(x, y, 0, x, y, rayDist);
         centerGrad.addColorStop(0, CONFIG.flashlightCenterColor); 
@@ -841,47 +909,121 @@ function drawLungLobe(ctx, x, y, w, h, o2, isLeft) {
     ctx.restore();
 }
 
+// 射线与圆的精确相交检测
+// 返回射线从 (ox,oy) 方向 (dx,dy) 与圆心 (cx,cy) 半径 cr 的最近交点距离
+// 如果不相交返回 Infinity
+function rayCircleIntersect(ox, oy, dx, dy, cx, cy, cr) {
+    let fx = ox - cx;
+    let fy = oy - cy;
+    let a = dx * dx + dy * dy; // 应该是 1 如果方向已归一化
+    let b = 2 * (fx * dx + fy * dy);
+    let c = fx * fx + fy * fy - cr * cr;
+    let discriminant = b * b - 4 * a * c;
+    if (discriminant < 0) return Infinity;
+    let sqrtD = Math.sqrt(discriminant);
+    let t1 = (-b - sqrtD) / (2 * a);
+    let t2 = (-b + sqrtD) / (2 * a);
+    // 取最近的正解
+    // t1 是最近交点：如果 t1 > 0 表示射线从圆外射入，正常遮挡
+    // 如果 t1 <= 0 说明起点在圆内或圆后方，跳过此圆不算遮挡
+    if (t1 > 0) return t1;
+    return Infinity;
+}
+
+// 射线与轴对齐方格的相交检测
+// 方格中心 (cx,cy)，半尺寸 halfSize
+// 返回最近交点距离，不相交返回 Infinity
+function rayBoxIntersect(ox, oy, dx, dy, cx, cy, halfSize) {
+    let minX = cx - halfSize, maxX = cx + halfSize;
+    let minY = cy - halfSize, maxY = cy + halfSize;
+    let tmin = -Infinity, tmax = Infinity;
+
+    if (Math.abs(dx) > 1e-8) {
+        let t1 = (minX - ox) / dx;
+        let t2 = (maxX - ox) / dx;
+        if (t1 > t2) { let tmp = t1; t1 = t2; t2 = tmp; }
+        tmin = Math.max(tmin, t1);
+        tmax = Math.min(tmax, t2);
+    } else {
+        if (ox < minX || ox > maxX) return Infinity;
+    }
+    if (Math.abs(dy) > 1e-8) {
+        let t1 = (minY - oy) / dy;
+        let t2 = (maxY - oy) / dy;
+        if (t1 > t2) { let tmp = t1; t1 = t2; t2 = tmp; }
+        tmin = Math.max(tmin, t1);
+        tmax = Math.min(tmax, t2);
+    } else {
+        if (oy < minY || oy > maxY) return Infinity;
+    }
+    if (tmin > tmax || tmax < 0) return Infinity;
+    // 只在射线从外部射入时（tmin > 0）才遮挡；起点在方块内则跳过
+    return tmin > 0 ? tmin : Infinity;
+}
+
 function getLightPolygon(sx, sy, angle, maxDist, fovDeg = CONFIG.fov) {
     let points = [];
     let fovRad = fovDeg * Math.PI / 180;
-    let startAngle = angle - fovRad/2;
+    let startAngle = angle - fovRad / 2;
     let rays = CONFIG.rayCount;
     let step = fovRad / rays;
     const { tileSize } = CONFIG;
+    const halfTile = tileSize / 2;
 
-    for(let i=0; i<=rays; i++) {
-        let a = startAngle + i * step;
-        let dx = Math.cos(a);
-        let dy = Math.sin(a);
-        
-        let dist = maxDist;
-        let stepLen = 5; 
-        
-        // 射线步进检测
-        for(let d=0; d<maxDist; d+=stepLen) {
-            let tx = sx + dx * d;
-            let ty = sy + dy * d;
-            let r = Math.floor(ty/tileSize);
-            let c = Math.floor(tx/tileSize);
-            
-            // 粗略检测：网格有东西
-            if(state.map[r] && state.map[r][c]) {
-                let cell = state.map[r][c];
-                if(cell === 2) {
-                    // 内部实体：整个格子阻挡光线
-                    dist = d - stepLen/2;
-                    break;
-                } else if(typeof cell === 'object') {
-                    // 边缘岩石：精确圆形检测
-                    let distToWallCenter = Math.hypot(tx - cell.x, ty - cell.y);
-                    if(distToWallCenter < cell.r) {
-                        dist = d - stepLen/2;
-                        break;
-                    }
+    // 计算需要检测的网格范围（以光源为中心，maxDist 为半径）
+    let rMin = Math.max(0, Math.floor((sy - maxDist) / tileSize) - 1);
+    let rMax = Math.min(CONFIG.rows - 1, Math.floor((sy + maxDist) / tileSize) + 1);
+    let cMin = Math.max(0, Math.floor((sx - maxDist) / tileSize) - 1);
+    let cMax = Math.min(CONFIG.cols - 1, Math.floor((sx + maxDist) / tileSize) + 1);
+
+    // 预收集光源范围内的所有障碍物（边缘圆形 + 内部方块）
+    let obstacles = [];
+    for (let r = rMin; r <= rMax; r++) {
+        if (!state.map[r]) continue;
+        for (let c = cMin; c <= cMax; c++) {
+            let cell = state.map[r][c];
+            if (!cell) continue;
+            if (typeof cell === 'object') {
+                // 边缘岩石（圆形）
+                let dx = cell.x - sx;
+                let dy = cell.y - sy;
+                if (dx * dx + dy * dy < (maxDist + cell.r) * (maxDist + cell.r)) {
+                    obstacles.push({ type: 'circle', x: cell.x, y: cell.y, r: cell.r });
+                }
+            } else if (cell === 2) {
+                // 内部实体（方块）
+                let cx = c * tileSize + halfTile;
+                let cy = r * tileSize + halfTile;
+                let dx = cx - sx;
+                let dy = cy - sy;
+                if (dx * dx + dy * dy < (maxDist + tileSize) * (maxDist + tileSize)) {
+                    obstacles.push({ type: 'box', x: cx, y: cy, half: halfTile });
                 }
             }
         }
-        points.push({x: sx + dx * dist, y: sy + dy * dist});
+    }
+
+    for (let i = 0; i <= rays; i++) {
+        let a = startAngle + i * step;
+        let dx = Math.cos(a);
+        let dy = Math.sin(a);
+
+        let closestDist = maxDist;
+
+        // 对每条射线检测所有障碍物
+        for (let obs of obstacles) {
+            let hitDist;
+            if (obs.type === 'circle') {
+                hitDist = rayCircleIntersect(sx, sy, dx, dy, obs.x, obs.y, obs.r);
+            } else {
+                hitDist = rayBoxIntersect(sx, sy, dx, dy, obs.x, obs.y, obs.half);
+            }
+            if (hitDist < closestDist) {
+                closestDist = hitDist;
+            }
+        }
+
+        points.push({ x: sx + dx * closestDist, y: sy + dy * closestDist });
     }
     return points;
 }
@@ -889,18 +1031,22 @@ function getLightPolygon(sx, sy, angle, maxDist, fovDeg = CONFIG.fov) {
 function isLineOfSight(x1, y1, x2, y2, maxDist) {
     let dist = Math.hypot(x2-x1, y2-y1);
     if(dist > maxDist) return false;
-    let steps = dist / 20;
     const { tileSize } = CONFIG;
-    for(let i=0; i<steps; i++) {
-        let t = i/steps;
-        let cx = x1 + (x2-x1)*t;
-        let cy = y1 + (y2-y1)*t;
-        let r = Math.floor(cy/tileSize);
-        let c = Math.floor(cx/tileSize);
+    let dx = x2 - x1;
+    let dy = y2 - y1;
+    // 步进检测间距更小确保不漏过
+    let stepLen = tileSize * 0.35;
+    let steps = Math.ceil(dist / stepLen);
+    for(let i=0; i<=steps; i++) {
+        let t = i / steps;
+        let cx = x1 + dx * t;
+        let cy = y1 + dy * t;
+        let r = Math.floor(cy / tileSize);
+        let c = Math.floor(cx / tileSize);
         
         if(state.map[r] && state.map[r][c]) {
              let cell = state.map[r][c];
-             if(cell === 2) return false; // 内部实体：直接遮挡
+             if(cell === 2) return false;
              if(typeof cell === 'object') {
                  if(Math.hypot(cx - cell.x, cy - cell.y) < cell.r) return false;
              }
