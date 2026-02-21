@@ -324,7 +324,8 @@ export function draw() {
     // --- 绘制体积光 (Volumetric Lights) ---
     // 提前计算光照距离 (局部变量，避免与后续冲突)
     let vSiltVis = Math.max(0.1, 1 - (player.silt / 80)); 
-    let vRayDist = CONFIG.lightRange * vSiltVis;
+    // let vRayDist = CONFIG.lightRange * vSiltVis;
+    let vRayDist = CONFIG.lightRange;
     
     // 濒死视野调整
     if(state.story.stage === 4 && state.story.flags.narrowVision) {
@@ -336,12 +337,24 @@ export function draw() {
 
     // 统一处理玩家和NPC的体积光
     const lightSources = [
-        { x: player.x, y: player.y, angle: player.angle, active: player.y > 600, dist: vRayDist },
-        { x: state.npc ? state.npc.x : 0, y: state.npc ? state.npc.y : 0, angle: state.npc ? state.npc.angle : 0, active: state.npc && state.npc.active && state.npc.y > 600, dist: vRayDist * 0.9 }
+        { 
+            x: player.x, 
+            y: player.y, 
+            angle: player.angle, 
+            active: player.y > 600, 
+            dist: vRayDist 
+        },
+        { 
+            x: state.npc ? state.npc.x : 0, 
+            y: state.npc ? state.npc.y : 0, 
+            angle: state.npc ? state.npc.angle : 0, 
+            active: state.npc && state.npc.active && state.npc.y > 600 && CONFIG.bShowNpcFlashLight, 
+            dist: vRayDist * 0.9 
+        }
     ];
 
     for(let src of lightSources) {
-        if(src.active) {
+        if(src && src.active) {
             drawFlashlight(ctx, src.x, src.y, src.angle, src.dist, 'volumetric');
         }
     }
@@ -398,8 +411,9 @@ export function draw() {
     
     lightCtx.fillRect(0, 0, canvas.width, canvas.height);
 
-    let siltVis = Math.max(0.1, 1 - (player.silt / 80)); 
-    let rayDist = CONFIG.lightRange * siltVis;
+    // 泥沙遮挡改为逐射线衰减（在drawFlashlight中通过computeSiltAttenuation实现），
+    // 不再全局缩短光照距离
+    let rayDist = CONFIG.lightRange;
 
     // 濒死视野效果
     if(state.story.stage === 4 && state.story.flags.narrowVision) {
@@ -423,14 +437,32 @@ export function draw() {
     
     // 定义需要绘制光照的角色列表
     const maskSources = [
-        { x: player.x, y: player.y, angle: player.angle, active: player.y > 600, dist: rayDist },
-        { x: state.npc ? state.npc.x : 0, y: state.npc ? state.npc.y : 0, angle: state.npc ? state.npc.angle : 0, active: state.npc && state.npc.active && state.npc.y > 600, dist: rayDist * 0.9 }
+        { 
+            x: player.x, 
+            y: player.y, 
+            angle: player.angle, 
+            active: player.y > 600, 
+            dist: rayDist 
+        },
+        {   
+            x: state.npc ? state.npc.x : 0, 
+            y: state.npc ? state.npc.y : 0, 
+            angle: state.npc ? state.npc.angle : 0, 
+            active: state.npc && state.npc.active && state.npc.y > 600 && CONFIG.bShowNpcFlashLight, 
+            dist: rayDist * 0.9 
+        }
     ];
 
     for(let src of maskSources) {
         if(src.active) {
-            // 1. 手电筒光椎擦除
-            drawFlashlight(lightCtx, src.x, src.y, src.angle, src.dist, 'mask');
+            // 计算该光源方向上的泥沙衰减（只有玩家光源考虑泥沙，NPC暂不考虑）
+            let siltAtten = null;
+            if (src.x === player.x && src.y === player.y && player.silt > 0) {
+                siltAtten = computeSiltAttenuation(src.x, src.y, src.angle, src.dist, CONFIG.fov);
+            }
+
+            // 1. 手电筒光椎擦除（传入泥沙衰减数据）
+            drawFlashlight(lightCtx, src.x, src.y, src.angle, src.dist, 'mask', siltAtten);
             
             // 2. 自身发光 (擦除遮罩) - 使用配置参数
             let glowRadius = CONFIG.selfGlowRadius;
@@ -488,47 +520,6 @@ export function draw() {
     lightCtx.restore();
 
     ctx.drawImage(lightLayer, 0, 0);
-
-    // 泥沙雾效果：当扬尘浓度高时，在照亮的视野范围内叠加半透明浑浊雾层
-    // 直接在主画布上绘制（在光照遮罩之后）
-    if(player.silt > 5 && player.y > 600) {
-        ctx.save();
-        ctx.translate(canvas.width/2 + shakeX, canvas.height/2 + shakeY);
-        ctx.scale(zoom, zoom);
-        ctx.translate(-player.x, -player.y);
-
-        // 泥沙雾的浓度和范围
-        let siltAlpha = Math.min(0.55, player.silt / 120);
-        let siltRange = rayDist * 0.9;
-
-        // 前方泥沙雾（光照区域内变浑浊）
-        let fogCx = player.x + Math.cos(player.angle) * rayDist * 0.3;
-        let fogCy = player.y + Math.sin(player.angle) * rayDist * 0.3;
-        let siltGrad = ctx.createRadialGradient(fogCx, fogCy, 0, fogCx, fogCy, siltRange);
-        siltGrad.addColorStop(0, `rgba(90, 75, 55, ${siltAlpha * 0.6})`);
-        siltGrad.addColorStop(0.4, `rgba(70, 60, 45, ${siltAlpha * 0.35})`);
-        siltGrad.addColorStop(0.8, `rgba(50, 40, 30, ${siltAlpha * 0.1})`);
-        siltGrad.addColorStop(1, `rgba(40, 35, 25, 0)`);
-        
-        ctx.fillStyle = siltGrad;
-        ctx.beginPath();
-        ctx.arc(fogCx, fogCy, siltRange, 0, Math.PI * 2);
-        ctx.fill();
-
-        // 周围的轻微浑浊（模拟悬浮泥沙遮挡360度视野）
-        if(player.silt > 20) {
-            let ambSiltAlpha = Math.min(0.3, (player.silt - 20) / 150);
-            let ambSiltGrad = ctx.createRadialGradient(player.x, player.y, 10, player.x, player.y, 100);
-            ambSiltGrad.addColorStop(0, `rgba(80, 65, 45, ${ambSiltAlpha})`);
-            ambSiltGrad.addColorStop(1, `rgba(60, 50, 35, 0)`);
-            ctx.fillStyle = ambSiltGrad;
-            ctx.beginPath();
-            ctx.arc(player.x, player.y, 100, 0, Math.PI * 2);
-            ctx.fill();
-        }
-
-        ctx.restore();
-    }
 
     // 黑屏过渡
     if(state.story.flags.blackScreen) {
@@ -622,53 +613,139 @@ function drawSplashes() {
 }
 
 // 统一的手电筒绘制函数
-function drawFlashlight(ctx, x, y, angle, rayDist, mode = 'mask') {
+// siltAtten: 可选的泥沙衰减数组（每条射线的透射率 0~1），影响光照穿透力
+function drawFlashlight(ctx, x, y, angle, rayDist, mode = 'mask', siltAtten = null) {
     ctx.save();
-    
+
+    // 如果有泥沙衰减，计算每条射线的有效光照距离
+    let perRayDist = null;
+    if (siltAtten) {
+        let rays = CONFIG.rayCount;
+        perRayDist = new Float32Array(rays + 1);
+        for (let i = 0; i <= rays; i++) {
+            // 光照有效距离 = 基础距离 × 透射率
+            // 但不是线性截断，而是用透射率控制光照能到达的最远距离
+            // 即使透射率很低，近处仍然可见（只是远处看不见了）
+            perRayDist[i] = rayDist * siltAtten[i];
+        }
+    }
+
     // 计算光照多边形 (无论哪种模式都使用射线检测，防止穿墙)
-    let poly = getLightPolygon(x, y, angle, rayDist, CONFIG.fov);
+    // 传入逐射线最大距离，让泥沙浓密的方向光照距离缩短
+    let poly = getLightPolygon(x, y, angle, rayDist, CONFIG.fov, perRayDist);
 
     if (mode === 'mask') {
         // 光照遮罩模式：擦除黑暗
 
-        // 第 1 层：主光照区域（稍微缩小的内层，完全擦除）
-        let mainGradient = ctx.createRadialGradient(x, y, 0, x, y, rayDist);
-        mainGradient.addColorStop(0, 'rgba(255, 255, 255, 1.0)');    
-        mainGradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.95)');  
-        mainGradient.addColorStop(0.85, 'rgba(255, 255, 255, 0.6)');  
-        mainGradient.addColorStop(1, 'rgba(255, 255, 255, 0)');      
-        
-        ctx.fillStyle = mainGradient;
-        ctx.beginPath();
-        ctx.moveTo(x, y);
-        for(let p of poly) ctx.lineTo(p.x, p.y);
-        ctx.closePath();
-        ctx.fill();
+        // 分扇区绘制：为了让每条射线有独立的衰减效果，
+        // 我们逐扇区绘制三角形，每个三角形的透明度由该方向的泥沙透射率决定
+        if (siltAtten) {
+            for (let i = 0; i < poly.length - 1; i++) {
+                let p0 = poly[i];
+                let p1 = poly[i + 1];
+                // 取两条相邻射线的衰减平均值
+                let atten = (siltAtten[i] + siltAtten[i + 1]) / 2;
+                // 衰减影响光照亮度：透射率越低，擦除越弱，区域越暗
+                let baseAlpha = Math.max(0, atten);
+                
+                if (baseAlpha < 0.01) continue; // 完全被遮挡的方向不画
 
-        // 第 2 层：边缘羽化（更大范围的扩展多边形，很弱的擦除形成柔和过渡）
-        // 计算扩展后的多边形顶点（每个顶点向外推一段距离）
-        let featherDist = CONFIG.lightEdgeFeather || 25;
-        let featherPoly = poly.map(p => {
-            let dx = p.x - x;
-            let dy = p.y - y;
-            let len = Math.hypot(dx, dy) || 1;
-            return {
-                x: p.x + (dx / len) * featherDist,
-                y: p.y + (dy / len) * featherDist
-            };
-        });
+                // 计算此扇区的最远距离（取两个端点中较远的）
+                let d0 = p0.dist || Math.hypot(p0.x - x, p0.y - y);
+                let d1 = p1.dist || Math.hypot(p1.x - x, p1.y - y);
+                let sectorDist = Math.max(d0, d1);
 
-        let featherGrad = ctx.createRadialGradient(x, y, 0, x, y, rayDist + featherDist);
-        featherGrad.addColorStop(0, 'rgba(255, 255, 255, 0.4)');
-        featherGrad.addColorStop(0.7, 'rgba(255, 255, 255, 0.2)');
-        featherGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+                // 创建以光源为中心的径向渐变
+                let grad = ctx.createRadialGradient(x, y, 0, x, y, sectorDist || 1);
+                grad.addColorStop(0, `rgba(255, 255, 255, ${baseAlpha})`);
+                grad.addColorStop(0.5, `rgba(255, 255, 255, ${baseAlpha * 0.95})`);
+                grad.addColorStop(0.85, `rgba(255, 255, 255, ${baseAlpha * 0.6})`);
+                grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
 
-        ctx.fillStyle = featherGrad;
-        ctx.beginPath();
-        ctx.moveTo(x, y);
-        for(let p of featherPoly) ctx.lineTo(p.x, p.y);
-        ctx.closePath();
-        ctx.fill();
+                ctx.fillStyle = grad;
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+                ctx.lineTo(p0.x, p0.y);
+                ctx.lineTo(p1.x, p1.y);
+                ctx.closePath();
+                ctx.fill();
+            }
+
+            // 羽化层也逐扇区绘制
+            let featherDist = CONFIG.lightEdgeFeather || 25;
+            for (let i = 0; i < poly.length - 1; i++) {
+                let atten = (siltAtten[i] + siltAtten[i + 1]) / 2;
+                if (atten < 0.05) continue;
+
+                let p0 = poly[i];
+                let p1 = poly[i + 1];
+                // 向外扩展
+                let dx0 = p0.x - x, dy0 = p0.y - y;
+                let len0 = Math.hypot(dx0, dy0) || 1;
+                let dx1 = p1.x - x, dy1 = p1.y - y;
+                let len1 = Math.hypot(dx1, dy1) || 1;
+
+                let fp0x = p0.x + (dx0 / len0) * featherDist;
+                let fp0y = p0.y + (dy0 / len0) * featherDist;
+                let fp1x = p1.x + (dx1 / len1) * featherDist;
+                let fp1y = p1.y + (dy1 / len1) * featherDist;
+
+                let sectorDist = Math.max(len0, len1) + featherDist;
+                let featherAlpha = atten * 0.4;
+
+                let featherGrad = ctx.createRadialGradient(x, y, 0, x, y, sectorDist);
+                featherGrad.addColorStop(0, `rgba(255, 255, 255, ${featherAlpha})`);
+                featherGrad.addColorStop(0.7, `rgba(255, 255, 255, ${featherAlpha * 0.5})`);
+                featherGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+
+                ctx.fillStyle = featherGrad;
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+                ctx.lineTo(fp0x, fp0y);
+                ctx.lineTo(fp1x, fp1y);
+                ctx.closePath();
+                ctx.fill();
+            }
+        } else {
+            // 无泥沙衰减时，保持原来的简单绘制方式
+            // 第 1 层：主光照区域
+            let mainGradient = ctx.createRadialGradient(x, y, 0, x, y, rayDist);
+            mainGradient.addColorStop(0, 'rgba(255, 255, 255, 1.0)');
+            mainGradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.95)');
+            mainGradient.addColorStop(0.85, 'rgba(255, 255, 255, 0.6)');
+            mainGradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+
+            ctx.fillStyle = mainGradient;
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            for (let p of poly) ctx.lineTo(p.x, p.y);
+            ctx.closePath();
+            ctx.fill();
+
+            // 第 2 层：边缘羽化
+            let featherDist = CONFIG.lightEdgeFeather || 25;
+            let featherPoly = poly.map(p => {
+                let dx = p.x - x;
+                let dy = p.y - y;
+                let len = Math.hypot(dx, dy) || 1;
+                return {
+                    x: p.x + (dx / len) * featherDist,
+                    y: p.y + (dy / len) * featherDist
+                };
+            });
+
+            let featherGrad = ctx.createRadialGradient(x, y, 0, x, y, rayDist + featherDist);
+            featherGrad.addColorStop(0, 'rgba(255, 255, 255, 0.4)');
+            featherGrad.addColorStop(0.7, 'rgba(255, 255, 255, 0.2)');
+            featherGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+
+            ctx.fillStyle = featherGrad;
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            for (let p of featherPoly) ctx.lineTo(p.x, p.y);
+            ctx.closePath();
+            ctx.fill();
+        }
 
     } else if (mode === 'volumetric') {
         // 体积光也使用多边形裁剪，防止穿墙
@@ -961,7 +1038,89 @@ function rayBoxIntersect(ox, oy, dx, dy, cx, cy, halfSize) {
     return tmin > 0 ? tmin : Infinity;
 }
 
-function getLightPolygon(sx, sy, angle, maxDist, fovDeg = CONFIG.fov) {
+// 计算每条射线方向上泥沙粒子的累积衰减
+// 返回一个长度为 (rays+1) 的数组，每个元素是该射线方向上的有效光照距离比例 (0~1)
+// 1.0 = 无衰减（无泥沙），0.0 = 完全遮挡
+function computeSiltAttenuation(sx, sy, angle, maxDist, fovDeg) {
+    let fovRad = fovDeg * Math.PI / 180;
+    let startAngle = angle - fovRad / 2;
+    let rays = CONFIG.rayCount;
+    let step = fovRad / rays;
+
+    // 采样步数和步长
+    let sampleSteps = CONFIG.siltSampleSteps || 8;
+    let stepDist = maxDist / sampleSteps;
+    // 每个泥沙粒子的吸收系数
+    let absorptionCoeff = CONFIG.siltAbsorptionCoeff || 0.008;
+    // 吸收影响半径（泥沙粒子对射线的影响范围）
+    let influenceRadius = CONFIG.siltInfluenceRadius || 50;
+    let influenceRadiusSq = influenceRadius * influenceRadius;
+
+    // 收集当前所有活着的、在光照范围内的泥沙粒子
+    let siltParticles = [];
+    let maxRange = maxDist + influenceRadius; // 最远采样点 + 影响半径
+    let maxRangeSq = maxRange * maxRange;
+    for (let p of particles) {
+        if (p.type !== 'silt' || p.life <= 0) continue;
+        // 粗筛：只保留在光照范围内的粒子
+        let dx = p.x - sx;
+        let dy = p.y - sy;
+        if (dx * dx + dy * dy < maxRangeSq) {
+            siltParticles.push(p);
+        }
+    }
+
+    // 如果没有泥沙粒子，直接返回全1数组（无衰减）
+    if (siltParticles.length === 0) {
+        let result = new Float32Array(rays + 1);
+        result.fill(1.0);
+        return result;
+    }
+
+    let attenuation = new Float32Array(rays + 1);
+
+    for (let i = 0; i <= rays; i++) {
+        let a = startAngle + i * step;
+        let cosA = Math.cos(a);
+        let sinA = Math.sin(a);
+
+        // 沿射线方向从近到远采样，累积泥沙的吸收量
+        let totalAbsorption = 0;
+
+        for (let s = 1; s <= sampleSteps; s++) {
+            let sampleDist = s * stepDist;
+            let sampleX = sx + cosA * sampleDist;
+            let sampleY = sy + sinA * sampleDist;
+
+            // 计算此采样点附近的泥沙密度
+            let localDensity = 0;
+            for (let p of siltParticles) {
+                let dx = p.x - sampleX;
+                let dy = p.y - sampleY;
+                let distSq = dx * dx + dy * dy;
+                if (distSq < influenceRadiusSq) {
+                    // 高斯衰减：越近的粒子影响越大
+                    let dist = Math.sqrt(distSq);
+                    let falloff = 1.0 - dist / influenceRadius;
+                    // 粒子的遮挡贡献 = 透明度 × 大小 × 距离衰减
+                    localDensity += p.alpha * p.size * falloff;
+                }
+            }
+
+            // Beer-Lambert 定律的离散形式：光通过介质后强度指数衰减
+            totalAbsorption += localDensity * absorptionCoeff * stepDist;
+        }
+
+        // 将累积吸收量转化为光的透射率 (Beer-Lambert)
+        // transmittance = e^(-absorption)
+        attenuation[i] = Math.exp(-totalAbsorption);
+    }
+
+    return attenuation;
+}
+
+// perRayMaxDist: 可选的每条射线独立最大距离数组
+function getLightPolygon(sx, sy, angle, maxDist, fovDeg = CONFIG.fov, perRayMaxDist = null) {
     let points = [];
     let fovRad = fovDeg * Math.PI / 180;
     let startAngle = angle - fovRad / 2;
@@ -1008,7 +1167,9 @@ function getLightPolygon(sx, sy, angle, maxDist, fovDeg = CONFIG.fov) {
         let dx = Math.cos(a);
         let dy = Math.sin(a);
 
-        let closestDist = maxDist;
+        // 该射线的最大距离：如果有逐射线数组就用它，否则用统一的maxDist
+        let rayMax = perRayMaxDist ? perRayMaxDist[i] : maxDist;
+        let closestDist = rayMax;
 
         // 对每条射线检测所有障碍物
         for (let obs of obstacles) {
@@ -1023,7 +1184,7 @@ function getLightPolygon(sx, sy, angle, maxDist, fovDeg = CONFIG.fov) {
             }
         }
 
-        points.push({ x: sx + dx * closestDist, y: sy + dy * closestDist });
+        points.push({ x: sx + dx * closestDist, y: sy + dy * closestDist, dist: closestDist });
     }
     return points;
 }

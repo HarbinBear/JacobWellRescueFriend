@@ -5,6 +5,9 @@ export const CONFIG = {
     screenWidth: systemInfo.windowWidth,
     screenHeight: systemInfo.windowHeight,
     
+    // 调试
+    bShowNpcFlashLight: false,
+
     // 游戏参数
     ambient: 0.5,        // 环境光亮度
     lightRange: 350,      // 手电筒距离 (竖屏视野长，稍微增加距离)
@@ -44,6 +47,11 @@ export const CONFIG = {
     lightEdgeFeather: 25,          // 光照边缘羽化距离（像素，越大边缘越柔和）
     ambientPerceptionRadius: 80,   // 周围环境感知半径（非手电筒方向也能微弱看到近距离东西）
     ambientPerceptionIntensity: 0.35, // 周围环境感知强度 (0-1)
+
+    // 泥沙遮挡光线参数（Beer-Lambert 光吸收模型）
+    siltSampleSteps: 28,            // 沿射线的采样步数（越多越精确，越消耗性能）
+    siltAbsorptionCoeff: 0.4,    // 泥沙粒子的光吸收系数（越大泥沙遮挡越强）
+    siltInfluenceRadius: 40,       // 泥沙粒子对射线的影响半径（像素，越大越"糊"）
 
     // Rope gameplay
     ropeAnchorDistance: 60,        // 靠近岩石多近才能锚定（距岩石表面的像素距离）
