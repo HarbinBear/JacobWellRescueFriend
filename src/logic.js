@@ -112,7 +112,14 @@ function updateSplashes() {
 }
 
 export function triggerSilt(x, y, count) {
-    for(let i=0; i<count; i++) {
+    // 只有靠近岩石的地方才会生成泥沙（距离岩壁超过阈值则不生成）
+    let maxWallDist = CONFIG.siltSpawnMaxWallDist || 80;
+    let wallDist = getNearestWallDist(x, y);
+    if (wallDist > maxWallDist) return; // 远离岩石，不生成泥沙
+    // 根据到岩石的距离调整生成数量（越近越多）
+    let distFactor = 1.0 - Math.min(wallDist / maxWallDist, 1.0);
+    let actualCount = Math.ceil(count * distFactor);
+    for(let i=0; i<actualCount; i++) {
         particles.push(new Particle(x + (Math.random()-0.5)*15, y + (Math.random()-0.5)*15, 'silt'));
     }
 }
@@ -128,7 +135,12 @@ function updateParticles() {
     for(let i=particles.length-1; i>=0; i--) {
         let p = particles[i];
         p.update();
-        if(p.life <= 0) particles.splice(i, 1);
+        // 泥沙粒子：当有效透明度足够低时才移除（连续渐变消失）
+        if (p.type === 'silt') {
+            if (p.alpha * p.life <= 0.005) particles.splice(i, 1);
+        } else {
+            if(p.life <= 0) particles.splice(i, 1);
+        }
     }
 }
 

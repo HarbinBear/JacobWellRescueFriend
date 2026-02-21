@@ -50,12 +50,13 @@ export const CONFIG = {
     ambientPerceptionRadius: 80,   // 周围环境感知半径（非手电筒方向也能微弱看到近距离东西）
     ambientPerceptionIntensity: 0.35, // 周围环境感知强度 (0-1)
 
-    // 泥沙遮挡光线参数（Beer-Lambert 光吸收模型 + 空间哈希加速）
-    siltSampleSteps: 28,            // 沿射线的采样步数（影响距离分辨率：步数越多，泥沙前亮后暗的过渡越细腻）
-    siltAbsorptionCoeff: 0.5,      // 泥沙粒子的光吸收系数（越大泥沙遮挡越强，建议 0.05~0.5）
-    siltInfluenceRadius: 40,        // 泥沙粒子对射线的横向影响半径（像素，也是空间哈希网格粒度）
+    // 泥沙光线遮挡参数（线性截断 + 逐粒子射线投影）
+    siltSampleSteps: 16,            // 每条射线沿距离方向的采样步数（越多越精细）
+    siltAbsorptionCoeff: 0.8,       // 泥沙吸收强度（线性截断：τ≥1完全遮挡，推荐0.3~1.5）
+    siltInfluenceRadius: 30,        // 每个泥沙粒子对射线的横向影响半径（像素）
+    siltSpawnMaxWallDist: 80,       // 生成泥沙的最大岩壁距离（像素）
 
-    // Rope gameplay
+    // 绳索系统参数
     ropeAnchorDistance: 60,        // 靠近岩石多近才能锚定（距岩石表面的像素距离）
     ropeStillTimeToShow: 0.8,      // 静止多少秒后显示铺线按钮
     ropeStillSpeedThreshold: 1.5,  // 判定静止的速度阈值（低于此值视为静止）

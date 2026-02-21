@@ -274,7 +274,10 @@ export function draw() {
     // 绘制粒子
     for(let p of particles) {
         if(p.type === 'silt') {
-            ctx.fillStyle = `rgba(120, 100, 80, ${p.alpha})`;
+            // 泥沙可见度 = 基础alpha × life，life连续衰减到0，粒子渐渐变淡消失
+            let siltAlpha = p.alpha * Math.max(0, p.life);
+            if (siltAlpha < 0.005) continue;
+            ctx.fillStyle = `rgba(120, 100, 80, ${siltAlpha})`;
             ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); ctx.fill();
         } else if (p.type === 'blood') {
             ctx.fillStyle = `rgba(200, 0, 0, ${p.life * 0.8})`;
@@ -627,6 +630,14 @@ function drawFlashlight(ctx, x, y, angle, rayDist, mode = 'mask', siltData = nul
             // ===== 有泥沙时：逐扇区、逐距离段绘制，实现"泥沙前亮、泥沙后暗"效果 =====
             let { perStep, rays, steps, stride, stepDist } = siltData;
 
+            // 基础亮度计算（径向衰减：近处全亮，远处渐暗）
+            /** @param {number} dr - 距离比（0~1） */
+            let calcBrightness = (dr) => {
+                if (dr < 0.5) return 1.0;
+                if (dr < 0.85) return 1.0 - (dr - 0.5) / 0.35 * 0.4;
+                return 0.6 * (1 - (dr - 0.85) / 0.15);
+            };
+
             for (let i = 0; i < poly.length - 1; i++) {
                 let p0 = poly[i];
                 let p1 = poly[i + 1];
@@ -646,13 +657,18 @@ function drawFlashlight(ctx, x, y, angle, rayDist, mode = 'mask', siltData = nul
                     let farDist = Math.min((s + 1) * stepDist, maxLen);
                     if (nearDist >= maxLen) break;
 
-                    // 该段的透射率 = 两条相邻射线在此步的平均透射率
-                    let trans0 = perStep[i * stride + s];
-                    let trans1 = perStep[Math.min(i + 1, rays) * stride + s];
-                    let transAvg = (trans0 + trans1) / 2;
+                    // 近端和远端的透射率（取两条相邻射线的平均）
+                    let nearTrans0 = perStep[i * stride + s];
+                    let nearTrans1 = perStep[Math.min(i + 1, rays) * stride + s];
+                    let nearTransAvg = (nearTrans0 + nearTrans1) / 2;
 
-                    // 透射率太低就不画了
-                    if (transAvg < 0.01) continue;
+                    let farS = Math.min(s + 1, steps);
+                    let farTrans0 = perStep[i * stride + farS];
+                    let farTrans1 = perStep[Math.min(i + 1, rays) * stride + farS];
+                    let farTransAvg = (farTrans0 + farTrans1) / 2;
+
+                    // 近端和远端都太暗就跳过
+                    if (nearTransAvg < 0.01 && farTransAvg < 0.01) continue;
 
                     // 内外弧的4个顶点（近端弧 + 远端弧 组成梯形）
                     let nearRatio0 = Math.min(nearDist / len0, 1);
@@ -669,19 +685,28 @@ function drawFlashlight(ctx, x, y, angle, rayDist, mode = 'mask', siltData = nul
                     let fx1 = x + dx1 * farRatio1;
                     let fy1 = y + dy1 * farRatio1;
 
-                    // 基础亮度（径向衰减：近处全亮，远处渐暗）
-                    let midDist = (nearDist + farDist) / 2;
-                    let distRatio = midDist / rayDist;
-                    let baseBrightness;
-                    if (distRatio < 0.5) baseBrightness = 1.0;
-                    else if (distRatio < 0.85) baseBrightness = 1.0 - (distRatio - 0.5) / 0.35 * 0.4;
-                    else baseBrightness = 0.6 * (1 - (distRatio - 0.85) / 0.15);
+                    // 近端和远端的基础亮度（径向衰减）
+                    let nearDistRatio = nearDist / rayDist;
+                    let farDistRatio = farDist / rayDist;
 
-                    // 最终alpha = 基础亮度 × 泥沙透射率
-                    let alpha = baseBrightness * transAvg;
-                    if (alpha < 0.005) continue;
+                    let nearAlpha = calcBrightness(nearDistRatio) * nearTransAvg;
+                    let farAlpha = calcBrightness(farDistRatio) * farTransAvg;
 
-                    ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+                    // 两端都太暗就跳过
+                    if (nearAlpha < 0.005 && farAlpha < 0.005) continue;
+
+                    // 用线性渐变从近端alpha过渡到远端alpha，消除段间阶梯感
+                    // 渐变方向：从梯形近端中点 → 远端中点
+                    let nearMidX = (nx0 + nx1) / 2;
+                    let nearMidY = (ny0 + ny1) / 2;
+                    let farMidX = (fx0 + fx1) / 2;
+                    let farMidY = (fy0 + fy1) / 2;
+
+                    let grad = ctx.createLinearGradient(nearMidX, nearMidY, farMidX, farMidY);
+                    grad.addColorStop(0, `rgba(255, 255, 255, ${nearAlpha})`);
+                    grad.addColorStop(1, `rgba(255, 255, 255, ${farAlpha})`);
+
+                    ctx.fillStyle = grad;
                     ctx.beginPath();
                     ctx.moveTo(nx0, ny0);
                     ctx.lineTo(fx0, fy0);
@@ -1057,70 +1082,52 @@ function rayBoxIntersect(ox, oy, dx, dy, cx, cy, halfSize) {
 }
 
 // ============ 泥沙空间哈希网格 ============
-// 把泥沙粒子按网格分桶，避免每条射线遍历所有粒子
-let _siltGrid = null;       // { cellSize, invCell, cols, rows, ox, oy, buckets: Map<key, particle[]> }
-let _siltGridFrame = -1;    // 上次构建的帧号，避免同一帧重复构建
+// ============ 蓝噪声纹理（仅生成一次） ============
+// 64x64 蓝噪声纹理，值域 [0, 1)，使用 Interleaved Gradient Noise 公式生成
+let _blueNoiseTex = null;
+const BLUE_NOISE_SIZE = 64;
 
-function buildSiltGrid(sx, sy, maxRange) {
-    // 网格粒度 = 泥沙影响半径，这样一个粒子最多影响周围 3x3 个桶
-    let cellSize = CONFIG.siltInfluenceRadius || 50;
-    let invCell = 1.0 / cellSize;
-    // 网格覆盖范围：以光源为中心，maxRange为半径的正方形
-    let ox = sx - maxRange;
-    let oy = sy - maxRange;
-    let side = maxRange * 2;
-    let cols = Math.ceil(side * invCell) + 1;
-    let rows = Math.ceil(side * invCell) + 1;
-
-    let buckets = new Map();
-
-    // let maxRangeSq = maxRange * maxRange;
-    for (let p of particles) {
-        if (p.type !== 'silt' || p.life <= 0) continue;
-        let dx = p.x - sx;
-        let dy = p.y - sy;
-        // if (dx * dx + dy * dy >= maxRange) continue;
-
-        // 粒子可能影响周围多个桶（因为扩散半径），但只插入自身所在桶
-        // 查询时会查周围 3x3 桶
-        let gc = Math.floor((p.x - ox) * invCell);
-        let gr = Math.floor((p.y - oy) * invCell);
-        if (gc < 0 || gc >= cols || gr < 0 || gr >= rows) continue;
-        let key = gr * cols + gc;
-        let bucket = buckets.get(key);
-        if (!bucket) { bucket = []; buckets.set(key, bucket); }
-        bucket.push(p);
-    }
-
-    _siltGrid = { cellSize, invCell, cols, rows, ox, oy, buckets };
-    return _siltGrid;
-}
-
-// 查询某点附近的泥沙粒子（查周围 3x3 桶）
-function querySiltNear(grid, px, py) {
-    let gc = Math.floor((px - grid.ox) * grid.invCell);
-    let gr = Math.floor((py - grid.oy) * grid.invCell);
-    let result = [];
-    for (let dr = -1; dr <= 1; dr++) {
-        let r2 = gr + dr;
-        if (r2 < 0 || r2 >= grid.rows) continue;
-        for (let dc = -1; dc <= 1; dc++) {
-            let c2 = gc + dc;
-            if (c2 < 0 || c2 >= grid.cols) continue;
-            let bucket = grid.buckets.get(r2 * grid.cols + c2);
-            if (bucket) {
-                for (let p of bucket) result.push(p);
-            }
+function getBlueNoise() {
+    if (_blueNoiseTex) return _blueNoiseTex;
+    let size = BLUE_NOISE_SIZE;
+    let tex = new Float32Array(size * size);
+    // IGN(x,y) = fract(52.9829189 * fract(0.06711056*x + 0.00583715*y))
+    // 该公式来自 Jorge Jimenez SIGGRAPH 2014，频谱特征接近蓝噪声
+    for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+            let v = 52.9829189 * (0.06711056 * x + 0.00583715 * y);
+            tex[y * size + x] = v - Math.floor(v);
         }
     }
-    return result;
+    _blueNoiseTex = tex;
+    return tex;
+}
+
+// 帧计数器，用于蓝噪声时间维度偏移
+let _blueNoiseFrame = 0;
+
+/**
+ * 从蓝噪声纹理采样，每帧自动偏移实现时间抗锯齿。
+ * @param {number} u - 纹理坐标 u（自动取模）
+ * @param {number} v - 纹理坐标 v（自动取模）
+ * @returns {number} [0, 1) 范围的蓝噪声值
+ */
+function sampleBlueNoise(u, v) {
+    let tex = getBlueNoise();
+    let size = BLUE_NOISE_SIZE;
+    // 每帧偏移一个质数，避免固定噪声模式
+    let offset = _blueNoiseFrame * 7;
+    let ix = ((Math.floor(u) % size) + size + offset) % size;
+    let iy = ((Math.floor(v) % size) + size) % size;
+    return tex[iy * size + ix];
 }
 
 // ============ 泥沙逐射线逐距离段衰减计算 ============
-// 返回二维结构：{ perStep: Float32Array[(rays+1) * (steps+1)], rays, steps }
-// perStep[i * (steps+1) + s] = 射线i在第s步处的累积透射率 (0~1)
-// 这样 drawFlashlight 可以逐段绘制不同亮度
+// 返回二维结构：{ perStep: Float32Array[(rays+1) * (steps+1)], rays, steps, ... }
+// perStep[i * stride + s] = 射线i在第s步处的累积透射率 (0~1)
+// drawFlashlight 逐段绘制不同亮度，段内做线性插值以实现平滑过渡
 function computeSiltAttenuation(sx, sy, angle, maxDist, fovDeg) {
+    _blueNoiseFrame++;
     let fovRad = fovDeg * Math.PI / 180;
     let startAngle = angle - fovRad / 2;
     let rays = CONFIG.rayCount;
@@ -1128,90 +1135,136 @@ function computeSiltAttenuation(sx, sy, angle, maxDist, fovDeg) {
 
     let steps = CONFIG.siltSampleSteps || 12;
     let stepDist = maxDist / steps;
-    let absorptionCoeff = CONFIG.siltAbsorptionCoeff || 0.15;
-    let influenceRadius = CONFIG.siltInfluenceRadius || 50;
-    let influenceRadiusSq = influenceRadius * influenceRadius;
+    let absorptionCoeff = CONFIG.siltAbsorptionCoeff || 3.0;
+    let influenceRadius = CONFIG.siltInfluenceRadius || 30;
 
-    // 构建空间哈希网格
+    // --- 第1步：收集光照范围内的所有泥沙粒子 ---
     let maxRange = maxDist + influenceRadius;
-    let grid = buildSiltGrid(sx, sy, maxRange);
-
-    // 如果没有泥沙粒子，返回全1
-    if (grid.buckets.size === 0) {
-        return null; // null表示无泥沙，调用方直接跳过
+    let maxRangeSq = maxRange * maxRange;
+    /** @type {Array<{x:number, y:number, alpha:number, life:number, size:number}>} */
+    let siltList = [];
+    for (let p of particles) {
+        if (p.type !== 'silt') continue;
+        let conc = p.alpha * p.life;
+        if (conc <= 0.005) continue;
+        let dx = p.x - sx;
+        let dy = p.y - sy;
+        if (dx * dx + dy * dy > maxRangeSq) continue;
+        siltList.push(p);
     }
 
-    // perStep[i * stride + s] = 射线i在距离 s*stepDist 处的累积透射率
+    if (siltList.length === 0) {
+        return null; // 没有泥沙粒子，跳过
+    }
+
+    // --- 第2步：为每条射线的每个距离步累积光学深度 ---
     let stride = steps + 1;
-    let perStep = new Float32Array((rays + 1) * stride);
-    perStep.fill(1.0);
+    let opticalDepth = new Float32Array((rays + 1) * stride);
 
+    // 预计算射线方向（带蓝噪声角度抖动和起点径向偏移）
+    // 注意：这里的蓝噪声坐标必须与 getLightPolygon 中一致（都用 (i, 0)），
+    // 否则扇区和衰减数据的射线方向不匹配
+    let rayDirs = new Float32Array((rays + 1) * 2);
+    /** @type {Float32Array} 每条射线的起点径向偏移量（像素） */
+    let rayStartOffset = new Float32Array(rays + 1);
     for (let i = 0; i <= rays; i++) {
+        // 蓝噪声角度抖动，坐标 (i, 0)，与 getLightPolygon 保持一致
+        let bn = sampleBlueNoise(i, 0);
         let a = startAngle + i * rayStep;
-        let cosA = Math.cos(a);
-        let sinA = Math.sin(a);
+        a += (bn - 0.5) * rayStep * 0.4; // ±20% rayStep 抖动
+        rayDirs[i * 2] = Math.cos(a);
+        rayDirs[i * 2 + 1] = Math.sin(a);
 
-        let cumulativeAbsorption = 0;
+        // 蓝噪声起点径向偏移，坐标 (i, 32)
+        let bn2 = sampleBlueNoise(i, 32);
+        rayStartOffset[i] = (bn2 - 0.5) * stepDist * 0.5; // ±25% stepDist 径向抖动
+    }
+
+    // --- 第3步：将每个泥沙粒子的贡献分配到对应的射线和距离步上 ---
+    for (let p of siltList) {
+        let relX = p.x - sx;
+        let relY = p.y - sy;
+
+        // 粒子浓度 = alpha × life（连续衰减到0）
+        let concentration = p.alpha * p.life;
+
+        // 有效遮挡半径：粒子越大遮挡面积越大
+        let effectiveRadius = p.size * 0.5 + influenceRadius * 0.3;
+
+        // 计算该粒子可能影响的射线范围
+        let pAngle = Math.atan2(relY, relX);
+        let pDist = Math.sqrt(relX * relX + relY * relY);
+        if (pDist < 1) continue;
+        // 粒子从光源看过去的张角
+        let angularExtent = Math.atan2(effectiveRadius, pDist);
+
+        // 处理 ±π 边界：将粒子角度归一化到射线角度范围
+        let midAngle = startAngle + fovRad / 2;
+        let da = pAngle - midAngle;
+        da = da - Math.round(da / (2 * Math.PI)) * 2 * Math.PI;
+        let wrappedAngle = midAngle + da;
+
+        // 转换为射线索引范围
+        let minAngle = wrappedAngle - angularExtent;
+        let maxAngle = wrappedAngle + angularExtent;
+        let iMin = Math.floor((minAngle - startAngle) / rayStep) - 1;
+        let iMax = Math.ceil((maxAngle - startAngle) / rayStep) + 1;
+        iMin = Math.max(0, iMin);
+        iMax = Math.min(rays, iMax);
+
+        // 将粒子投影到每条受影响的射线上
+        for (let i = iMin; i <= iMax; i++) {
+            let cosA = rayDirs[i * 2];
+            let sinA = rayDirs[i * 2 + 1];
+
+            // 粒子在射线上的投影距离
+            let projT = relX * cosA + relY * sinA;
+            if (projT < 0) continue; // 在光源后方
+            if (projT > maxDist) continue; // 超出光照范围
+
+            // 到射线的垂直距离
+            let perpX = relX - projT * cosA;
+            let perpY = relY - projT * sinA;
+            let perpDistSq = perpX * perpX + perpY * perpY;
+            let effectiveRadiusSq = effectiveRadius * effectiveRadius;
+            if (perpDistSq >= effectiveRadiusSq) continue;
+
+            // 横向衰减：平滑二次曲线
+            let perpDist = Math.sqrt(perpDistSq);
+            let lateralFalloff = 1.0 - (perpDist / effectiveRadius) * (perpDist / effectiveRadius);
+
+            // 该粒子的光学深度贡献
+            // 浓度(0~0.5) × 横向衰减(0~1) × 尺寸因子
+            let sizeFactor = p.size / 15.0; // 15px 为参考尺寸
+            let contribution = concentration * lateralFalloff * sizeFactor * absorptionCoeff;
+
+            // 确定该粒子落入哪个距离步
+            // 应用蓝噪声起点径向偏移
+            let adjustedProjT = projT - rayStartOffset[i];
+            let stepIdx = Math.floor(adjustedProjT / stepDist);
+            if (stepIdx < 1) stepIdx = 1;
+            if (stepIdx > steps) stepIdx = steps;
+
+            // 累加到对应的距离步（后续通过前缀和传播到更远的步）
+            let base = i * stride;
+            opticalDepth[base + stepIdx] += contribution;
+        }
+    }
+
+    // --- 第4步：前缀和累积 + 线性透射率硬截断 ---
+    // 线性衰减公式：透射率 = max(0, 1 - τ)
+    // 当 τ ≥ 1 时光完全被遮挡（归零），不像 exp(-τ) 永远趋近0
+    let perStep = new Float32Array((rays + 1) * stride);
+    for (let i = 0; i <= rays; i++) {
         let base = i * stride;
+        let cumulativeTau = 0;
         perStep[base] = 1.0; // 距离0处透射率=1
-
         for (let s = 1; s <= steps; s++) {
-            let sampleDist = s * stepDist;
-            let sampleX = sx + cosA * sampleDist;
-            let sampleY = sy + sinA * sampleDist;
-
-            // 使用空间哈希查询附近粒子
-            let nearby = querySiltNear(grid, sampleX, sampleY);
-
-            let localDensity = 0;
-            for (let p of nearby) {
-                // 方向性过滤：计算粒子到射线的垂直距离
-                // 射线方程：P = (sx, sy) + t * (cosA, sinA)
-                // 粒子投影到射线上的参数 t
-                let relX = p.x - sx;
-                let relY = p.y - sy;
-                let projT = relX * cosA + relY * sinA;
-
-                // 粒子必须在射线的正方向上（在光源前方）
-                if (projT < 0) continue;
-
-                // 粒子到射线的垂直距离
-                let perpX = relX - projT * cosA;
-                let perpY = relY - projT * sinA;
-                let perpDistSq = perpX * perpX + perpY * perpY;
-
-                // 粒子的有效遮挡半径 = 扩散面积(size) + 基础影响半径
-                // size 在不断增长（模拟扩散），life 在不断衰减（浓度降低）
-                let effectiveRadius = p.size + influenceRadius * 0.3;
-                let effectiveRadiusSq = effectiveRadius * effectiveRadius;
-
-                if (perpDistSq >= effectiveRadiusSq) continue;
-
-                // 还需要检查粒子沿射线方向的距离是否在当前步的范围内
-                // 粒子投影距离 projT 应该大致在 [(s-1)*stepDist, (s+1)*stepDist] 范围内
-                let stepStart = (s - 1) * stepDist;
-                let stepEnd = (s + 1) * stepDist;
-                if (projT < stepStart || projT > stepEnd) continue;
-
-                // 计算遮挡贡献
-                let perpDist = Math.sqrt(perpDistSq);
-                // 横向衰减：垂直距离越远影响越小
-                // let lateralFalloff = 1.0 - perpDist / effectiveRadius;
-                let lateralFalloff = 1.0;
-                // 粒子浓度 = alpha × life（life连续衰减，不会突然消失）
-                // 粒子面积贡献 = size（扩散越大遮挡面积越大，但浓度会降低）
-                // let concentration = p.alpha * p.life;
-                let concentration = 1.0;
-                // 遮挡面积 = size 的平方根（面积与半径的关系）
-                let areaCoverage = Math.sqrt(p.size);
-
-                localDensity += concentration * areaCoverage * lateralFalloff;
-            }
-
-            // Beer-Lambert 累积：每步的吸收量叠加到总累积上
-            cumulativeAbsorption += localDensity * absorptionCoeff * stepDist;
-            // 当前步的透射率
-            perStep[base + s] = Math.exp(-cumulativeAbsorption);
+            cumulativeTau += opticalDepth[base + s];
+            // 线性截断：τ≥1 时透射率直接归零
+            let t = 1.0 - cumulativeTau;
+            if (t < 0) t = 0;
+            perStep[base + s] = t;
         }
     }
 
@@ -1262,6 +1315,9 @@ function getLightPolygon(sx, sy, angle, maxDist, fovDeg = CONFIG.fov) {
 
     for (let i = 0; i <= rays; i++) {
         let a = startAngle + i * step;
+        // 蓝噪声角度抖动（坐标 (i, 0)，必须与 computeSiltAttenuation 保持一致）
+        let bn = sampleBlueNoise(i, 0);
+        a += (bn - 0.5) * step * 0.4;
         let dx = Math.cos(a);
         let dy = Math.sin(a);
 
