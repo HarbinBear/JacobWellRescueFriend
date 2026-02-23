@@ -326,8 +326,6 @@ export function draw() {
 
     // --- 绘制体积光 (Volumetric Lights) ---
     // 提前计算光照距离 (局部变量，避免与后续冲突)
-    let vSiltVis = Math.max(0.1, 1 - (player.silt / 80)); 
-    // let vRayDist = CONFIG.lightRange * vSiltVis;
     let vRayDist = CONFIG.lightRange;
     
     // 濒死视野调整
@@ -352,7 +350,7 @@ export function draw() {
             y: state.npc ? state.npc.y : 0, 
             angle: state.npc ? state.npc.angle : 0, 
             active: state.npc && state.npc.active && state.npc.y > 600 && CONFIG.bShowNpcFlashLight, 
-            dist: vRayDist * 0.9 
+            dist: vRayDist * 0.5 
         }
     ];
 
@@ -540,21 +538,6 @@ export function draw() {
         ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
-    
-    // 隧道深处模糊遮罩 - 已移除
-    // if(state.story.stage === 1 && state.landmarks.tunnelEntry) {
-    //     let entryY = state.landmarks.tunnelEntry.y;
-    //     let screenEntryY = (entryY - player.y) * zoom + canvas.height/2 + shakeY;
-    //     if(screenEntryY < canvas.height + 500) {
-    //         let gradientStart = Math.max(-500, screenEntryY + 50); 
-    //         let grad = ctx.createLinearGradient(0, gradientStart, 0, gradientStart + 400);
-    //         grad.addColorStop(0, 'rgba(0, 0, 0, 0)');
-    //         grad.addColorStop(0.4, 'rgba(0, 0, 0, 0.9)');
-    //         grad.addColorStop(1, 'rgba(0, 0, 0, 1)');
-    //         ctx.fillStyle = grad;
-    //         ctx.fillRect(0, gradientStart, canvas.width, canvas.height - gradientStart + 500);
-    //     }
-    // }
 
     // 3. 绘制 UI
     drawUI();
@@ -1003,11 +986,11 @@ function drawLungLobe(ctx, x, y, w, h, o2, isLeft) {
     let fillY = h/2 - fillHeight;
     
     // 颜色：充足时鲜红，不足时暗红闪烁
-    let lungColor = '#e00'; // 鲜红
+    let lungColor = 'rgba(237, 106, 106, 1)'; // 鲜红
     if (o2 < 30) {
         // 低氧闪烁
         let flash = Math.floor(Date.now() / 200) % 2 === 0;
-        lungColor = flash ? '#f00' : '#800';
+        lungColor = flash ? 'rgba(237, 106, 106, 1)' : 'rgba(98, 54, 54, 1)';
     }
     
     ctx.fillStyle = lungColor;
