@@ -1,9 +1,9 @@
-import { CONFIG } from './config.js';
-import { state, target } from './state.js';
+import { CONFIG } from './config';
+import { state, target } from './state';  
 
 // 默认洞穴段配置（可通过 CONFIG.caveSegments 覆盖）
 // 每段: { name, startRow, endRow, centerCol(可选), width, widthVariance, drift, narrowStart(可选), narrowEndWidth(可选), targetCol(可选), pullStrength(可选) }
-function getDefaultCaveSegments(cols) {
+function getDefaultCaveSegments(cols: number) {
     const cx = Math.floor(cols / 2);
     const rx = cx + 20;
     return [
@@ -36,7 +36,7 @@ function getDefaultCaveSegments(cols) {
 }
 
 // 判断一个格子是否是边缘（至少有一个相邻格子是空的）
-function isBorderTile(map, r, c, rows, cols) {
+function isBorderTile(map: any[][], r: number, c: number, rows: number, cols: number): boolean {
     for (let dr = -1; dr <= 1; dr++) {
         for (let dc = -1; dc <= 1; dc++) {
             if (dr === 0 && dc === 0) continue;
@@ -66,15 +66,15 @@ export function generateMap() {
     }
 
     // 2. 获取洞穴段配置
-    const segments = (CONFIG.caveSegments && CONFIG.caveSegments.length > 0)
-        ? CONFIG.caveSegments
+    const segments = ((CONFIG as any).caveSegments && (CONFIG as any).caveSegments.length > 0)
+        ? (CONFIG as any).caveSegments
         : getDefaultCaveSegments(cols);
 
     // 收集所有路径点用于挖掘
-    let pathPoints = []; // [row, col, radius]
+    let pathPoints: [number, number, number][] = []; // [row, col, radius]
 
     // 辅助函数：添加路径点并进行边界检查
-    function addPoint(r, c, w) {
+    function addPoint(r: number, c: number, w: number): number {
         if (c < 3) c = 3;
         if (c > cols - 4) c = cols - 4;
         pathPoints.push([r, c, w]);
@@ -234,7 +234,7 @@ export function generateMap() {
 
     // 隧道路径点和终点（从pathPoints中提取story_tunnel段的数据）
     state.landmarks.tunnelPath = [];
-    let tunnelSeg = segments.find(s => s.name === 'story_tunnel');
+    let tunnelSeg = segments.find((s: any) => s.name === 'story_tunnel');
     if (tunnelSeg) {
         for (let p of pathPoints) {
             if (p[0] >= tunnelSeg.startRow && p[0] <= tunnelSeg.endRow) {
@@ -244,7 +244,7 @@ export function generateMap() {
             }
         }
         // 隧道终点
-        let lastTunnelPoint = null;
+        let lastTunnelPoint: [number, number, number] | null = null;
         for (let p of pathPoints) {
             if (p[0] >= tunnelSeg.startRow && p[0] <= tunnelSeg.endRow) {
                 lastTunnelPoint = p;
@@ -369,7 +369,7 @@ export function generateMap() {
     }
 }
 
-function getNeighborCount(r, c) {
+function getNeighborCount(r: number, c: number): number {
     let count = 0;
     for (let i = -1; i <= 1; i++) {
         for (let j = -1; j <= 1; j++) {

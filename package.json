@@ -1,0 +1,13 @@
+{
+  "name": "jacob-well-rescue-friend",
+  "version": "1.0.0",
+  "description": "雅各布井救援游戏 - 微信小游戏",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "clean": "rmdir /s /q dist 2>nul || true"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3"
+  }
+}

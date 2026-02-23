@@ -1,19 +1,19 @@
-import { CONFIG } from './config.js';
-
+import { CONFIG } from './config';
+import { Particle } from './Logic';
 export const state = {
     screen: 'menu', // menu, play, win, lose, ending
-    map: [],
-    walls: [], // 存储墙壁的渲染圆心
-    invisibleWalls: [], // 仅对玩家生效的空气墙
-    plants: [], // 存储水草
-    fishes: [], // 存储鱼群
-    splashes: [], // 水花粒子
-    explored: [], // 记录已探索区域
-    zones: [], // 地图区域信息 {name, yMin, yMax, xMin, xMax}
-    msgTimer: null,
+    map: [] as any[][],
+    walls: [] as any[], // 存储墙壁的渲染圆心
+    invisibleWalls: [] as any[], // 仅对玩家生效的空气墙
+    plants: [] as any[], // 存储水草
+    fishes: [] as any[], // 存储鱼群
+    splashes: [] as any[], // 水花粒子
+    explored: [] as boolean[][], // 记录已探索区域
+    zones: [] as any[], // 地图区域信息 {name, yMin, yMax, xMin, xMax}
+    msgTimer: null as number | null,
     alertMsg: '',
     alertColor: '#fff',
-    texts: [],
+    texts: [] as any[],
     // 剧情相关状态
     story: {
         stage: 0, // 0:未开始, 1:第一次下潜, 2:黑屏过渡, 3:第二次下潜, 4:濒死, 5:获救, 6:结束
@@ -28,10 +28,14 @@ export const state = {
             narrowVision: false,
             rescued: false,
             approachedTunnel: false,
-            tankDamaged: false
-        }
+            tankDamaged: false,
+            deathPause: 0 as number | false
+        },
+        visitedZones: [] as string[], // 已访问的区域列表
+        lastBlockMsgTime: 0 // 上次显示阻挡消息的时间
     },
     endingTimer: 0, // 结局动画计时器
+    currentZone: null as string | null, // 当前所在区域
     debug: {
         fastMove: false
     },
@@ -40,8 +44,12 @@ export const state = {
         x: 0, y: 0,
         vx: 0, vy: 0,
         angle: 0,
-        state: 'follow', // follow, wait, enter_tunnel, dead
-        targetX: 0, targetY: 0
+        state: 'follow' as string, // follow, wait, enter_tunnel, dead
+        targetX: 0, targetY: 0,
+        pathIndex: 0,
+        offsetTimer: 0, // 随机偏移计时器
+        offsetX: -40,   // 随机偏移X
+        offsetY: -40    // 随机偏移Y
     },
     camera: {
         zoom: 1,
@@ -50,10 +58,10 @@ export const state = {
     transition: {
         active: false,
         alpha: 0,
-        mode: 'none', // 'in' (fade in from black), 'out' (fade out to black)
+        mode: 'none' as string, // 'in' (fade in from black), 'out' (fade out to black)
         timer: 0,
-        callback: null,
-        bubbles: [] // 转场气泡状态
+        callback: null as (() => void) | null,
+        bubbles: [] as any[] // 转场气泡状态
     },
     antiStuck: {
         timer: 0,
@@ -62,33 +70,36 @@ export const state = {
     landmarks: {
         suit: {x:0, y:0},
         tunnelEntry: {x:0, y:0},
-        tunnelEnd: {x:0, y:0}
+        tunnelEnd: {x:0, y:0},
+        tunnelPath: [] as any[],
+        junction: {x:0, y:0},
+        deadEndDeep: {x:0, y:0}
     },
     rope: {
-        ropes: [],
+        ropes: [] as any[],
         active: false,
         current: {
-            start: null,
-            startWall: null,
-            end: null,
-            path: [],
-            basePoints: [],
+            start: null as any,
+            startWall: null as any,
+            end: null as any,
+            path: [] as any[],
+            basePoints: [] as any[],
             slackFactor: 1,
-            mode: 'loose',
+            mode: 'loose' as string,
             time: 0
         },
         ui: {
             visible: false,
-            type: null,
+            type: null as string | null,
             progress: 0,
-            anchor: null
+            anchor: null as any
         },
         hold: {
             active: false,
-            type: null,
+            type: null as string | null,
             timer: 0,
-            touchId: null,
-            anchor: null
+            touchId: null as number | null,
+            anchor: null as any
         },
         stillTimer: 0
     }
@@ -102,21 +113,22 @@ export const player = {
     o2: 100,
     n2: 0,
     silt: 0,
-    hasTarget: false
+    hasTarget: false,
+    animTime: 0 // 动画时间（用于脚蹼动画）
 };
 
 export const target = { x: 0, y: 0, found: false, name: '' };
 
-export const particles = []; // 扬尘与气泡
+export const particles: Particle[] = []; // 扬尘与气泡
 
 export const input = {
     move: 0, // 0: stop, 1: forward
     speedUp: false, // shift
     targetAngle: Math.PI/2
-};
+}; 
 
 export const touches = {
-    joystickId: null,
+    joystickId: null as number | null,
     start: { x: 0, y: 0 },
     curr: { x: 0, y: 0 }
 };

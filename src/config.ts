@@ -87,5 +87,5 @@ export const CONFIG = {
     ropeReelRadius: 8,             // 玩家身上线轮指示器半径
     ropeReelColor: 'rgba(200, 190, 140, 0.7)', // 线轮指示器颜色
     // 目标名字库
-    targetNames: ["伟仔", "毛丁", "树茂", "熊", "亮子", "潘子"]
+    targetNames: ["伟仔", "毛丁", "树茂", "熊", "亮子", "潘子"] as string[]
 };

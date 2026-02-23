@@ -1,16 +1,21 @@
-import { CONFIG } from './config.js';
-import { state, player, target, particles, input, resetState } from './state.js';
-import { generateMap } from './map.js';
-import { StoryManager } from './StoryManager.js';
+import { CONFIG } from './config';
+import { state, player, target, particles, input, resetState } from './state';
+import { generateMap } from './map';
+import { StoryManager } from './StoryManager';
 
 const storyManager = new StoryManager();
 
 // --- 粒子系统 ---
-class Particle {
-    constructor(x, y, type) {
+export class Particle {
+    x: number; y: number; type: string; life: number;
+    vx: number; vy: number; size: number; maxSize: number;
+    alpha: number; wobble: number;
+    constructor(x: number, y: number, type: string) {
         this.x = x; this.y = y;
         this.type = type; 
         this.life = CONFIG.siltLife;
+        this.vx = 0; this.vy = 0; this.size = 0; this.maxSize = 0;
+        this.alpha = 0; this.wobble = 0;
         if(type === 'silt') {
             let angle = Math.random() * Math.PI * 2;
             let speed = Math.random() * 0.5;
@@ -60,7 +65,9 @@ class Particle {
 }
 
 class SplashParticle {
-    constructor(x, y, size, speedX, speedY) {
+    x: number; y: number; vx: number; vy: number;
+    size: number; life: number; gravity: number;
+    constructor(x: number, y: number, size: number, speedX: number, speedY: number) {
         this.x = x;
         this.y = y;
         this.vx = speedX;
@@ -78,7 +85,7 @@ class SplashParticle {
     }
 }
 
-export function createSplash(x, y, intensity = 1) {
+export function createSplash(x: number, y: number, intensity: number = 1) {
     // 水花飞溅
     let count = 10 * intensity;
     for(let i=0; i<count; i++) {
@@ -111,7 +118,7 @@ function updateSplashes() {
     }
 }
 
-export function triggerSilt(x, y, count) {
+export function triggerSilt(x: number, y: number, count: number) {
     // 只有靠近岩石的地方才会生成泥沙（距离岩壁超过阈值则不生成）
     let maxWallDist = CONFIG.siltSpawnMaxWallDist || 80;
     let wallDist = getNearestWallDist(x, y);
@@ -126,7 +133,7 @@ export function triggerSilt(x, y, count) {
 
 // 挂载到 GameGlobal 供 StoryManager 使用
 GameGlobal.triggerSilt = triggerSilt;
-GameGlobal.addBubble = function(x, y) {
+GameGlobal.addBubble = function(x: number, y: number) {
     particles.push(new Particle(x + (Math.random()-0.5)*10, y + (Math.random()-0.5)*10, 'bubble'));
 };
 
@@ -396,7 +403,7 @@ function checkZones() {
     }
 }
 
-function handleZoneEnter(zoneName) {
+function handleZoneEnter(zoneName: string) {
     // 防止重复提示 (可选，如果希望每次进入都提示则去掉)
     // 这里我们希望每次进入新区域都提示一下，或者只提示一次
     // 根据需求 "进入各个区域也要有日志哈"，假设是首次进入提示
@@ -440,7 +447,7 @@ function handleZoneEnter(zoneName) {
     }
 }
 
-function checkCollision(x, y, isPlayer = false) {
+function checkCollision(x: number, y: number, isPlayer: boolean = false): boolean {
     const { tileSize } = CONFIG;
     let r = Math.floor(y/tileSize);
     let c = Math.floor(x/tileSize);
@@ -476,7 +483,7 @@ function checkCollision(x, y, isPlayer = false) {
     return false;
 }
 
-function getNearestWallDist(x, y) {
+function getNearestWallDist(x: number, y: number): number {
     const { tileSize } = CONFIG;
     let r = Math.floor(y/tileSize);
     let c = Math.floor(x/tileSize);
@@ -501,8 +508,8 @@ function getNearestWallDist(x, y) {
     return minDist;
 }
 
-function findNearestWall(x, y, maxDist) {
-    let nearest = null;
+function findNearestWall(x: number, y: number, maxDist: number): any {
+    let nearest: any = null;
     let minDist = maxDist;
     if(!state.walls) return null;
     for(let wall of state.walls) {
@@ -516,7 +523,7 @@ function findNearestWall(x, y, maxDist) {
     return { wall: nearest, dist: minDist };
 }
 
-function getAnchorPoint(wall, fromX, fromY) {
+function getAnchorPoint(wall: any, fromX: number, fromY: number) {
     let angle = Math.atan2(fromY - wall.y, fromX - wall.x);
     return {
         x: wall.x + Math.cos(angle) * wall.r,
@@ -524,7 +531,7 @@ function getAnchorPoint(wall, fromX, fromY) {
     };
 }
 
-function distancePointToSegment(px, py, ax, ay, bx, by) {
+function distancePointToSegment(px: number, py: number, ax: number, ay: number, bx: number, by: number) {
     let abx = bx - ax;
     let aby = by - ay;
     let apx = px - ax;
@@ -542,7 +549,7 @@ function distancePointToSegment(px, py, ax, ay, bx, by) {
 
 // --- 网格级别的线段碰撞检测（光栅化线段检查是否穿过实体格子） ---
 // 返回线段是否穿过实体（true=有阻挡）
-function lineHitsSolid(x1, y1, x2, y2) {
+function lineHitsSolid(x1: number, y1: number, x2: number, y2: number): boolean {
     const { tileSize } = CONFIG;
     let dx = x2 - x1;
     let dy = y2 - y1;
@@ -570,7 +577,7 @@ function lineHitsSolid(x1, y1, x2, y2) {
 // --- 基于网格的 A* 寻路，用于绳索绕障 ---
 // 在网格空间中找到从 start 到 end 的路径，避开所有实体格子
 // 返回像素坐标的路径点数组
-function gridAStar(startX, startY, endX, endY, padding) {
+function gridAStar(startX: number, startY: number, endX: number, endY: number, padding: number): any[] {
     const { tileSize, rows, cols } = CONFIG;
     // 将像素坐标转换为网格坐标
     let sr = Math.floor(startY / tileSize);
@@ -586,13 +593,13 @@ function gridAStar(startX, startY, endX, endY, padding) {
 
     // 检查格子是否可通行（当前格子是空水道即可）
     // padding 的间距保证由后续 simplifyPath 中 lineHitsSolid 的精确检测负责
-    function isPassable(r, c) {
+    function isPassable(r: number, c: number): boolean {
         if(r < 0 || r >= rows || c < 0 || c >= cols) return false;
         return state.map[r] && state.map[r][c] === 0;
     }
 
     // 起点/终点可能在岩石边缘，放宽起点终点的通行判定
-    function isPassableRelaxed(r, c) {
+    function isPassableRelaxed(r: number, c: number): boolean {
         if(r < 0 || r >= rows || c < 0 || c >= cols) return false;
         let cell = state.map[r] ? state.map[r][c] : 1;
         return cell === 0; // 只要是空就行
@@ -600,14 +607,14 @@ function gridAStar(startX, startY, endX, endY, padding) {
 
     // A* 算法
     // 使用简单的二维数组追踪
-    let openSet = [];
-    let gScore = {};
-    let fScore = {};
-    let cameFrom = {};
+    let openSet: any[] = [];
+    let gScore: any = {};
+    let fScore: any = {};
+    let cameFrom: any = {};
     let closedSet = new Set();
 
-    let key = (r, c) => r * cols + c;
-    let heuristic = (r, c) => Math.abs(r - er) + Math.abs(c - ec);
+    let key = (r: number, c: number) => r * cols + c;
+    let heuristic = (r: number, c: number) => Math.abs(r - er) + Math.abs(c - ec);
 
     let startKey = key(sr, sc);
     gScore[startKey] = 0;
@@ -675,8 +682,8 @@ function gridAStar(startX, startY, endX, endY, padding) {
     }
 
     // 回溯路径
-    let path = [];
-    let ck = key(er, ec);
+    let path: any[] = [];
+    let ck: any = key(er, ec);
     while(ck !== undefined) {
         let r = Math.floor(ck / cols);
         let c = ck % cols;
@@ -700,7 +707,7 @@ function gridAStar(startX, startY, endX, endY, padding) {
 }
 
 // 路径简化：贪心拉直，去掉不必要的中间拐点
-function simplifyPath(path) {
+function simplifyPath(path: any[]): any[] {
     if(path.length <= 2) return path;
     let result = [path[0]];
     let i = 0;
@@ -721,7 +728,7 @@ function simplifyPath(path) {
 }
 
 // 构建绕过岩石的路径：使用网格 A* 寻路
-function buildAvoidedPath(start, end, padding) {
+export function buildAvoidedPath(start: any, end: any, padding: number): any[] {
     // 先检测直线是否畅通
     if(!lineHitsSolid(start.x, start.y, end.x, end.y)) {
         return [{ x: start.x, y: start.y }, { x: end.x, y: end.y }];
@@ -731,7 +738,7 @@ function buildAvoidedPath(start, end, padding) {
 }
 
 // 计算折线总长度
-function pathLength(pts) {
+export function pathLength(pts: any[]): number {
     let len = 0;
     for(let i = 1; i < pts.length; i++) {
         len += Math.hypot(pts[i].x - pts[i-1].x, pts[i].y - pts[i-1].y);
@@ -740,7 +747,7 @@ function pathLength(pts) {
 }
 
 // 在折线上按距离 t 采样一个点（t 范围为 0 到总长度）
-function samplePolyline(pts, t) {
+export function samplePolyline(pts: any[], t: number): any {
     let acc = 0;
     for(let i = 1; i < pts.length; i++) {
         let segLen = Math.hypot(pts[i].x - pts[i-1].x, pts[i].y - pts[i-1].y);
@@ -757,7 +764,7 @@ function samplePolyline(pts, t) {
 }
 
 // 获取折线某处的法线方向
-function polylineNormal(pts, t) {
+export function polylineNormal(pts: any[], t: number): any {
     let acc = 0;
     for(let i = 1; i < pts.length; i++) {
         let segLen = Math.hypot(pts[i].x - pts[i-1].x, pts[i].y - pts[i-1].y);
@@ -773,7 +780,7 @@ function polylineNormal(pts, t) {
 }
 
 // 开始铺线：在锚点岩石上打钉，开始拉绳
-function startRope(anchorWall) {
+function startRope(anchorWall: any) {
     if(!anchorWall) return;
     const anchorPoint = getAnchorPoint(anchorWall, player.x, player.y);
     state.rope.active = true;
@@ -789,7 +796,7 @@ function startRope(anchorWall) {
 }
 
 // 结束铺线：在终点岩石打钉，绳子收紧固定
-function endRope(anchorWall) {
+function endRope(anchorWall: any) {
     if(!state.rope.active || !state.rope.current.start || !anchorWall) return;
     const endPoint = getAnchorPoint(anchorWall, player.x, player.y);
     const path = buildAvoidedPath(state.rope.current.start, endPoint, CONFIG.ropeAvoidPadding);
@@ -904,21 +911,21 @@ function updateRopeSystem() {
 }
 
 // 导出给渲染层使用的辅助函数
-export { pathLength, samplePolyline, polylineNormal, buildAvoidedPath, findNearestWall };
+export { findNearestWall };
 
-function endGame(win, reason) {
+function endGame(win: boolean, reason: string) {
     if (win) {
         state.screen = 'ending';
         state.endingTimer = 0;
     } else {
         state.screen = 'lose';
         // 清空消息队列，显示最终消息
-        storyManager.showText(reason, "#f00", 99999, { clearQueue: true, y: CONFIG.screenHeight/2 + 20 });
+        storyManager.showText(reason, "#f00", 99999);
     }
 }
 
 // --- 核心逻辑 ---
-export function resetGameLogic(startPlay = true) {
+export function resetGameLogic(startPlay: boolean = true) {
     resetState();
     generateMap();
     
@@ -935,7 +942,8 @@ export function resetGameLogic(startPlay = true) {
         narrowVision: false,
         rescued: false,
         approachedTunnel: false,
-        tankDamaged: false
+        tankDamaged: false,
+        deathPause: 0
     };
     state.story.visitedZones = []; // 重置已访问区域
     state.currentZone = null;
@@ -1142,7 +1150,7 @@ export function update() {
                 // 2. 如果没清理到，尝试清理周围最近的障碍物 (半径 50 像素内)
                 if(!cleared) {
                     let nearestDist = 999;
-                    let nearestWall = null;
+                    let nearestWall: any = null;
                     let nr = -1, nc = -1;
 
                     let pr = Math.floor(player.y / tileSize);
@@ -1339,10 +1347,6 @@ export function update() {
 
     if(player.vy < -CONFIG.safeAscentSpeed && depthM > 8) {
         player.n2 += 0.5; 
-        // Debug 模式下不死亡
-        // if(!state.debug.fastMove) {
-        //      storyManager.showText("上升过快！减缓速度！", "#f00", 2000);
-        // }
     }
 
     // 更新探索地图
@@ -1380,8 +1384,6 @@ export function update() {
     // 基础摆动速度 + 移动速度加成
     // 降低速度系数，使其更自然
     let swimSpeed = Math.hypot(player.vx, player.vy);
-    // 假设 input.move 是摇杆偏移量 (0-1)，如果能获取到的话。
-    // 这里 swimSpeed 已经反映了最终速度。
     player.animTime += 0.05 + swimSpeed * 0.05; 
 
     // 水流扰动 (Idle 漂浮)

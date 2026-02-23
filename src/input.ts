@@ -1,8 +1,8 @@
-import { CONFIG } from './config.js';
-import { state, input, touches } from './state.js';
+import { CONFIG } from './config';
+import { state, input, touches } from './state';
 
-export function initInput(onReset) {
-    // PC 调试键盘支持
+export function initInput(onReset: (() => void) | null) {
+    // PC 调试键盘支持 
     if (typeof window !== 'undefined' && window.addEventListener) {
         const keys = { w: false, a: false, s: false, d: false, shift: false };
         
@@ -181,7 +181,7 @@ export function initInput(onReset) {
     });
 }
 
-function handleTouchEnd(changedTouches) {
+function handleTouchEnd(changedTouches: wx.Touch[]) {
     for(let t of changedTouches) {
         if(state.rope && state.rope.hold && t.identifier === state.rope.hold.touchId) {
             state.rope.hold.active = false;

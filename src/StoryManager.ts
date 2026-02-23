@@ -1,5 +1,5 @@
-import { state, player, particles, input } from './state.js';
-import { CONFIG } from './config.js';
+import { state, player, particles, input } from './state';
+import { CONFIG } from './config';
 
 // 粒子类定义 (需要在这里重新定义或者从 logic.js 导出，为了解耦，建议从 logic.js 导出 Particle 类，或者在这里简单实现气泡生成)
 // 由于 logic.js 依赖 state.js，这里如果再依赖 logic.js 可能会循环引用。
@@ -11,6 +11,10 @@ import { CONFIG } from './config.js';
 // 我们可以先写 StoryManager，假设 logic.js 会导出 addParticle。
 
 export class StoryManager {
+    timer: number;
+    subTimer: number;
+    bubbleTimer: number;
+
     constructor() {
         this.timer = 0;
         this.subTimer = 0;
@@ -63,7 +67,7 @@ export class StoryManager {
         }
     }
 
-    updateStage1(suit, tunnelEntry, tunnelEnd) {
+    updateStage1(suit: any, tunnelEntry: any, tunnelEnd: any) {
         // 开场闲聊与教学
         // if(state.story.timer === 120) this.showText("小熊：这里的水质很清澈，\n但要动作要慢，\n泥沙会阻挡视线。", "#00bfff", 4000);
         // if(state.story.timer === 360) this.showText("小熊：保持呼吸平稳，\n不要急促换气。", "#00bfff", 3000);
@@ -73,7 +77,7 @@ export class StoryManager {
             let d = Math.hypot(player.x - suit.x, player.y - suit.y);
             if(d < 200) {
                 state.story.flags.seenSuit = true;
-                this.showText("内心：好像是废弃很久的潜水服，为什么会在这里？", "#ffd700", 4000); // 金色
+                this.showText("好像是废弃很久的潜水服，为什么会在这里？", "#ffd700", 4000); // 金色
                 console.log("[Story] Found suit");
             }
         }
@@ -202,7 +206,7 @@ export class StoryManager {
         }
     }
 
-    updateStage3(tunnelEntry, tunnelEnd) {
+    updateStage3(tunnelEntry: any, tunnelEnd: any) {
         // 下潜过程中的心理活动
         if(state.story.timer === 120) this.showText("内心：一定要找到他...", "#ffd700", 2000);
         if(state.story.timer === 300) this.showText("内心：这里太安静了...", "#ffd700", 2000);
@@ -298,9 +302,9 @@ export class StoryManager {
              if(!state.story.flags.deathPause) {
                  state.story.flags.deathPause = 0;
              }
-             state.story.flags.deathPause++;
+             (state.story.flags.deathPause as number)++;
              
-             if(state.story.flags.deathPause > 60) { // 停顿约1秒
+             if((state.story.flags.deathPause as number) > 60) { // 停顿约1秒
                  state.story.stage = 5;
                  state.story.timer = 0;
                  state.story.flags.deathPause = 0;
@@ -344,14 +348,14 @@ export class StoryManager {
         }
     }
 
-    showText(msg, color, duration = 3000) {
+    showText(msg: string, color: string, duration: number = 3000) {
         state.alertMsg = msg;
         state.alertColor = color;
         clearTimeout(state.msgTimer);
         state.msgTimer = setTimeout(() => state.alertMsg = '', duration);
     }
 
-    endGame(win, reason) {
+    endGame(win: boolean, reason: string) {
         if (win) {
             state.screen = 'ending';
             state.endingTimer = 0;
