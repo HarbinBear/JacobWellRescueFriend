@@ -1,5 +1,5 @@
-import { initTextures, draw } from './src/render';
-import { resetGameLogic, update } from './src/logic';
+import { initTextures, draw } from './src/Render';
+import { resetGameLogic, update } from './src/Logic';
 import { initInput } from './src/input';
 
 // 初始化纹理

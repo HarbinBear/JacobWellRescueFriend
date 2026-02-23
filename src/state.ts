@@ -1,5 +1,5 @@
 import { CONFIG } from './config';
-import { Particle } from './Logic';
+import { Particle } from './Particle';
 export const state = {
     screen: 'menu', // menu, play, win, lose, ending
     map: [] as any[][],

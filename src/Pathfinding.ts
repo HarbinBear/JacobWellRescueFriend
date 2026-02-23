@@ -1,0 +1,212 @@
+import { CONFIG } from './config';
+import { state } from './state';
+
+// --- Grid-level line segment collision detection ---
+// Returns true if the segment passes through a solid cell
+function lineHitsSolid(x1: number, y1: number, x2: number, y2: number): boolean {
+    const { tileSize } = CONFIG;
+    let dx = x2 - x1;
+    let dy = y2 - y1;
+    let dist = Math.hypot(dx, dy);
+    if(dist < 1) return false;
+    let steps = Math.ceil(dist / (tileSize * 0.4));
+    for(let i = 0; i <= steps; i++) {
+        let t = i / steps;
+        let px = x1 + dx * t;
+        let py = y1 + dy * t;
+        let r = Math.floor(py / tileSize);
+        let c = Math.floor(px / tileSize);
+        if(state.map[r] && state.map[r][c]) {
+            let cell = state.map[r][c];
+            if(cell === 2) return true;
+            if(typeof cell === 'object') {
+                if(Math.hypot(px - cell.x, py - cell.y) < cell.r) return true;
+            }
+        }
+    }
+    return false;
+}
+
+// --- Grid-based A* pathfinding for rope obstacle avoidance ---
+function gridAStar(startX: number, startY: number, endX: number, endY: number, padding: number): any[] {
+    const { tileSize, rows, cols } = CONFIG;
+    let sr = Math.floor(startY / tileSize);
+    let sc = Math.floor(startX / tileSize);
+    let er = Math.floor(endY / tileSize);
+    let ec = Math.floor(endX / tileSize);
+
+    sr = Math.max(0, Math.min(rows - 1, sr));
+    sc = Math.max(0, Math.min(cols - 1, sc));
+    er = Math.max(0, Math.min(rows - 1, er));
+    ec = Math.max(0, Math.min(cols - 1, ec));
+
+    function isPassable(r: number, c: number): boolean {
+        if(r < 0 || r >= rows || c < 0 || c >= cols) return false;
+        return state.map[r] && state.map[r][c] === 0;
+    }
+
+    function isPassableRelaxed(r: number, c: number): boolean {
+        if(r < 0 || r >= rows || c < 0 || c >= cols) return false;
+        let cell = state.map[r] ? state.map[r][c] : 1;
+        return cell === 0;
+    }
+
+    let openSet: any[] = [];
+    let gScore: any = {};
+    let fScore: any = {};
+    let cameFrom: any = {};
+    let closedSet = new Set();
+
+    let key = (r: number, c: number) => r * cols + c;
+    let heuristic = (r: number, c: number) => Math.abs(r - er) + Math.abs(c - ec);
+
+    let startKey = key(sr, sc);
+    gScore[startKey] = 0;
+    fScore[startKey] = heuristic(sr, sc);
+    openSet.push({ r: sr, c: sc, f: fScore[startKey] });
+
+    let dirs = [
+        [-1, 0, 1], [1, 0, 1], [0, -1, 1], [0, 1, 1],
+        [-1, -1, 1.414], [-1, 1, 1.414], [1, -1, 1.414], [1, 1, 1.414]
+    ];
+
+    let maxIters = CONFIG.ropeAStarMaxIters || 3000;
+    let found = false;
+    let finalR = er, finalC = ec;
+
+    for(let iter = 0; iter < maxIters; iter++) {
+        if(openSet.length === 0) break;
+
+        let bestIdx = 0;
+        for(let i = 1; i < openSet.length; i++) {
+            if(openSet[i].f < openSet[bestIdx].f) bestIdx = i;
+        }
+        let current = openSet[bestIdx];
+        openSet.splice(bestIdx, 1);
+
+        let ck = key(current.r, current.c);
+        if(closedSet.has(ck)) continue;
+        closedSet.add(ck);
+
+        if(current.r === er && current.c === ec) {
+            found = true;
+            break;
+        }
+
+        for(let [dr, dc, cost] of dirs) {
+            let nr = current.r + dr;
+            let nc = current.c + dc;
+            if(nr < 0 || nr >= rows || nc < 0 || nc >= cols) continue;
+
+            let nk = key(nr, nc);
+            if(closedSet.has(nk)) continue;
+
+            let pass = (nr === sr && nc === sc) || (nr === er && nc === ec)
+                ? isPassableRelaxed(nr, nc)
+                : isPassable(nr, nc);
+            if(!pass) continue;
+
+            let ng = gScore[ck] + cost;
+            if(gScore[nk] === undefined || ng < gScore[nk]) {
+                gScore[nk] = ng;
+                fScore[nk] = ng + heuristic(nr, nc);
+                cameFrom[nk] = ck;
+                openSet.push({ r: nr, c: nc, f: fScore[nk] });
+            }
+        }
+    }
+
+    if(!found) {
+        return [{ x: startX, y: startY }, { x: endX, y: endY }];
+    }
+
+    let path: any[] = [];
+    let ck: any = key(er, ec);
+    while(ck !== undefined) {
+        let r = Math.floor(ck / cols);
+        let c = ck % cols;
+        path.unshift({
+            x: c * tileSize + tileSize / 2,
+            y: r * tileSize + tileSize / 2
+        });
+        ck = cameFrom[ck];
+    }
+
+    if(path.length > 0) {
+        path[0] = { x: startX, y: startY };
+        path[path.length - 1] = { x: endX, y: endY };
+    }
+
+    path = simplifyPath(path);
+    return path;
+}
+
+// Path simplification: greedy straightening
+function simplifyPath(path: any[]): any[] {
+    if(path.length <= 2) return path;
+    let result = [path[0]];
+    let i = 0;
+    while(i < path.length - 1) {
+        let farthest = i + 1;
+        for(let j = i + 2; j < path.length; j++) {
+            if(!lineHitsSolid(path[i].x, path[i].y, path[j].x, path[j].y)) {
+                farthest = j;
+            } else {
+                break;
+            }
+        }
+        result.push(path[farthest]);
+        i = farthest;
+    }
+    return result;
+}
+
+// Build obstacle-avoiding path using grid A*
+export function buildAvoidedPath(start: any, end: any, padding: number): any[] {
+    if(!lineHitsSolid(start.x, start.y, end.x, end.y)) {
+        return [{ x: start.x, y: start.y }, { x: end.x, y: end.y }];
+    }
+    return gridAStar(start.x, start.y, end.x, end.y, padding);
+}
+
+// Calculate total polyline length
+export function pathLength(pts: any[]): number {
+    let len = 0;
+    for(let i = 1; i < pts.length; i++) {
+        len += Math.hypot(pts[i].x - pts[i-1].x, pts[i].y - pts[i-1].y);
+    }
+    return len;
+}
+
+// Sample a point on a polyline at distance t (0 to total length)
+export function samplePolyline(pts: any[], t: number): any {
+    let acc = 0;
+    for(let i = 1; i < pts.length; i++) {
+        let segLen = Math.hypot(pts[i].x - pts[i-1].x, pts[i].y - pts[i-1].y);
+        if(acc + segLen >= t) {
+            let frac = segLen > 0 ? (t - acc) / segLen : 0;
+            return {
+                x: pts[i-1].x + (pts[i].x - pts[i-1].x) * frac,
+                y: pts[i-1].y + (pts[i].y - pts[i-1].y) * frac
+            };
+        }
+        acc += segLen;
+    }
+    return { x: pts[pts.length-1].x, y: pts[pts.length-1].y };
+}
+
+// Get the normal direction of a polyline at distance t
+export function polylineNormal(pts: any[], t: number): any {
+    let acc = 0;
+    for(let i = 1; i < pts.length; i++) {
+        let segLen = Math.hypot(pts[i].x - pts[i-1].x, pts[i].y - pts[i-1].y);
+        if(acc + segLen >= t || i === pts.length - 1) {
+            let dx = pts[i].x - pts[i-1].x;
+            let dy = pts[i].y - pts[i-1].y;
+            let len = Math.hypot(dx, dy) || 1;
+            return { x: -dy / len, y: dx / len };
+        }
+        acc += segLen;
+    }
+    return { x: 0, y: -1 };
+}
