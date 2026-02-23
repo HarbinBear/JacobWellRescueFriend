@@ -15,7 +15,7 @@ export const CONFIG = {
     moveSpeed: 14,         // 移动速度
     safeAscentSpeed: 2.5, // 安全上浮速度阈值
     siltFactor: 1.0,      // 扬尘产生倍率
-    rayCount: 120,        // 射线数量
+    rayCount: 60,        // 射线数量
     siltLife: 1,         // 扬尘生命周期
     bloodLife: 2,         // 血迹生命周期
     turnSpeed: 0.08,      // 转向速度 (单摇杆操作可能需要更灵敏的转向)
@@ -35,7 +35,7 @@ export const CONFIG = {
     
     // 光照参数
     ambientLightSurface: 1.0,     // 水面/浅层环境光亮度
-    ambientLightDeep: 0.2,       // 深层最低环境光亮度
+    ambientLightDeep: 0,       // 深层最低环境光亮度
     darknessStartDepth: 2500,     // 开始变暗的深度 (第一洞室底部)
     flashlightColor: 'rgba(255, 247, 160, 0.2)', // 手电筒泛光颜色
     flashlightCenterColor: 'rgba(253, 253, 37, 0.41)', // 手电筒中心光束颜色
@@ -53,7 +53,7 @@ export const CONFIG = {
     // 泥沙光线遮挡参数（线性截断 + 逐粒子射线投影）
     siltSampleSteps: 16,            // 每条射线沿距离方向的采样步数（越多越精细）
     siltAbsorptionCoeff: 0.8,       // 泥沙吸收强度（线性截断：τ≥1完全遮挡，推荐0.3~1.5）
-    siltInfluenceRadius: 30,        // 每个泥沙粒子对射线的横向影响半径（像素）
+    siltInfluenceRadius: 10,        // 每个泥沙粒子对射线的横向影响半径（像素）
     siltSpawnMaxWallDist: 80,       // 生成泥沙的最大岩壁距离（像素）
 
     // 绳索系统参数

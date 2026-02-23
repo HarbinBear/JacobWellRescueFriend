@@ -271,14 +271,10 @@ export function draw() {
         ctx.fillText(target.name, target.x, target.y - 12);
     }
 
-    // 绘制粒子
+    // 绘制粒子（泥沙单独在光照层之后绘制，以盖住光照）
     for(let p of particles) {
         if(p.type === 'silt') {
-            // 泥沙可见度 = 基础alpha × life，life连续衰减到0，粒子渐渐变淡消失
-            let siltAlpha = p.alpha * Math.max(0, p.life);
-            if (siltAlpha < 0.005) continue;
-            ctx.fillStyle = `rgba(120, 100, 80, ${siltAlpha})`;
-            ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); ctx.fill();
+            continue; // 泥沙在光照层合并后单独绘制
         } else if (p.type === 'blood') {
             ctx.fillStyle = `rgba(200, 0, 0, ${p.life * 0.8})`;
             ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); ctx.fill();
@@ -521,6 +517,20 @@ export function draw() {
     lightCtx.restore();
 
     ctx.drawImage(lightLayer, 0, 0);
+
+    // 绘制泥沙粒子（在光照层之上，使泥沙盖住光照）
+    ctx.save();
+    ctx.translate(canvas.width/2 + shakeX, canvas.height/2 + shakeY);
+    ctx.scale(zoom, zoom);
+    ctx.translate(-player.x, -player.y);
+    for(let p of particles) {
+        if(p.type !== 'silt') continue;
+        let siltAlpha = p.alpha * Math.max(0, p.life);
+        if (siltAlpha < 0.005) continue;
+        ctx.fillStyle = `rgba(120, 100, 80, ${siltAlpha})`;
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); ctx.fill();
+    }
+    ctx.restore();
 
     // 黑屏过渡
     if(state.story.flags.blackScreen) {
@@ -1122,8 +1132,17 @@ function computeSiltAttenuation(sx, sy, angle, maxDist, fovDeg) {
     let influenceRadius = CONFIG.siltInfluenceRadius || 30;
 
     // --- 第1步：收集光照范围内的所有泥沙粒子 ---
+    // 只收集灯光方向前方扇形区域内的粒子，并排除离光源太近的粒子（避免抖动）
     let maxRange = maxDist + influenceRadius;
     let maxRangeSq = maxRange * maxRange;
+    // 最小遮挡距离：太近的粒子不参与遮挡计算，避免玩家周围泥沙引起抖动
+    let minOccludeDistSq = (influenceRadius * 2) * (influenceRadius * 2);
+    // 灯光方向向量
+    let lightDirX = Math.cos(angle);
+    let lightDirY = Math.sin(angle);
+    // 扇形半角（稍微扩大一点，覆盖FOV边缘的粒子）
+    let halfFovRad = fovRad / 2 + 0.15; // 额外扩展约8.6度，避免边缘截断
+    let cosHalfFov = Math.cos(halfFovRad);
     /** @type {Array<{x:number, y:number, alpha:number, life:number, size:number}>} */
     let siltList = [];
     for (let p of particles) {
@@ -1132,7 +1151,14 @@ function computeSiltAttenuation(sx, sy, angle, maxDist, fovDeg) {
         if (conc <= 0.005) continue;
         let dx = p.x - sx;
         let dy = p.y - sy;
-        if (dx * dx + dy * dy > maxRangeSq) continue;
+        let distSq = dx * dx + dy * dy;
+        if (distSq > maxRangeSq) continue;
+        // 排除离光源太近的粒子（避免抖动）
+        if (distSq < minOccludeDistSq) continue;
+        // 只收集灯光方向前方扇形区域内的粒子
+        let dist = Math.sqrt(distSq);
+        let dotProduct = (dx * lightDirX + dy * lightDirY) / dist; // cos(粒子与灯光方向的夹角)
+        if (dotProduct < cosHalfFov) continue; // 不在扇形范围内
         siltList.push(p);
     }
 
