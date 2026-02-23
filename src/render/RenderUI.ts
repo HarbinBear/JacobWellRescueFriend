@@ -1,5 +1,5 @@
-import { CONFIG } from './config';
-import { state, player, target, touches } from './state';
+import { CONFIG } from '../core/config';
+import { state, player, target, touches } from '../core/state';
 import { ctx, canvas } from './Canvas';
 import { drawDiver, drawLungs, drawDiverSilhouette } from './RenderDiver';
 

@@ -1,4 +1,4 @@
-import { CONFIG } from './config';
+import { CONFIG } from '../core/config';
 
 // Create canvas
 export const canvas = wx.createCanvas();

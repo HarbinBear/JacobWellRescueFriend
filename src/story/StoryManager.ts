@@ -1,5 +1,5 @@
-import { state, player, particles, input } from './state';
-import { CONFIG } from './config';
+import { state, player, particles, input } from '../core/state';
+import { CONFIG } from '../core/config';
 
 // 粒子类定义 (需要在这里重新定义或者从 logic.js 导出，为了解耦，建议从 logic.js 导出 Particle 类，或者在这里简单实现气泡生成)
 // 由于 logic.js 依赖 state.js，这里如果再依赖 logic.js 可能会循环引用。

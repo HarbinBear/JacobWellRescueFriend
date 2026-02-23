@@ -1,7 +1,7 @@
-import { CONFIG } from './config';
-import { state, player } from './state';
+import { CONFIG } from '../core/config';
+import { state, player } from '../core/state';
 import { ctx, canvas } from './Canvas';
-import { pathLength, samplePolyline, polylineNormal } from './Pathfinding';
+import { pathLength, samplePolyline, polylineNormal } from '../logic/Pathfinding';
 
 function generateSlackRopePoints(basePath: any[], slackFactor: number, animTime: number): any[] {
     if(!basePath || basePath.length < 2) return basePath || [];

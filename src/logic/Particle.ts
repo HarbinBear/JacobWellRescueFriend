@@ -1,5 +1,5 @@
-import { CONFIG } from './config';
-import { state, player, particles } from './state';
+import { CONFIG } from '../core/config';
+import { state, player, particles } from '../core/state';
 
 // --- Particle System ---
 export class Particle {

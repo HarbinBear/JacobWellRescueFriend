@@ -1,5 +1,5 @@
-import { CONFIG } from './config';
-import { state } from './state';
+import { CONFIG } from '../core/config';
+import { state } from '../core/state';
 
 // --- Grid-level line segment collision detection ---
 // Returns true if the segment passes through a solid cell

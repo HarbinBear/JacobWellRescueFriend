@@ -1,5 +1,5 @@
-import { CONFIG } from './config';
-import { state, player, target, particles, touches } from './state';
+import { CONFIG } from '../core/config';
+import { state, player, target, particles, touches } from '../core/state';
 import { canvas, ctx } from './Canvas';
 import { drawFlashlight, computeSiltAttenuation, isLineOfSight } from './RenderLight';
 import { drawDiver } from './RenderDiver';

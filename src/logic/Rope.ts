@@ -1,5 +1,5 @@
-import { CONFIG } from './config';
-import { state, player, input } from './state';
+import { CONFIG } from '../core/config';
+import { state, player, input } from '../core/state';
 import { buildAvoidedPath } from './Pathfinding';
 import { triggerSilt } from './Particle';
 

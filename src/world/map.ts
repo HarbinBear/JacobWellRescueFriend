@@ -1,5 +1,5 @@
-import { CONFIG } from './config';
-import { state, target } from './state';  
+import { CONFIG } from '../core/config';
+import { state, target } from '../core/state';
 
 // 默认洞穴段配置（可通过 CONFIG.caveSegments 覆盖）
 // 每段: { name, startRow, endRow, centerCol(可选), width, widthVariance, drift, narrowStart(可选), narrowEndWidth(可选), targetCol(可选), pullStrength(可选) }

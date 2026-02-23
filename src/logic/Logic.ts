@@ -1,7 +1,7 @@
-import { CONFIG } from './config';
-import { state, player, particles, input, resetState } from './state';
-import { generateMap } from './map';
-import { StoryManager } from './StoryManager';
+import { CONFIG } from '../core/config';
+import { state, player, particles, input, resetState } from '../core/state';
+import { generateMap } from '../world/map';
+import { StoryManager } from '../story/StoryManager';
 import { Particle, createSplash, updateSplashes, triggerSilt, updateParticles } from './Particle';
 import { updateRopeSystem, findNearestWall } from './Rope';
 

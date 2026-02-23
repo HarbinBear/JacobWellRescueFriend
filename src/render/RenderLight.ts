@@ -1,5 +1,5 @@
-import { CONFIG } from './config';
-import { state } from './state';
+import { CONFIG } from '../core/config';
+import { state } from '../core/state';
 
 // Ray-circle intersection
 export function rayCircleIntersect(ox: number, oy: number, dx: number, dy: number, cx: number, cy: number, cr: number): number {

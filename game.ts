@@ -1,6 +1,6 @@
-import { initTextures, draw } from './src/Render';
-import { resetGameLogic, update } from './src/Logic';
-import { initInput } from './src/input';
+import { initTextures, draw } from './src/render/Render';
+import { resetGameLogic, update } from './src/logic/Logic';
+import { initInput } from './src/core/input';
 
 // 初始化纹理
 initTextures();
