@@ -6,6 +6,7 @@ export const CONFIG = {
     screenHeight: systemInfo.windowHeight,
     
     // 调试
+    debug: true,              // 调试模式：显示小地图和实时坐标
     bShowNpcFlashLight: false,
 
     // 游戏参数

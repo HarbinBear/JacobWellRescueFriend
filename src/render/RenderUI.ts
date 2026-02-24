@@ -24,27 +24,48 @@ export function drawUI() {
         drawLungs(ctx, canvas.width/2, canvas.height/2 + 100, player.o2);
     }
 
-    // Mini map
-    if(state.explored && state.explored.length > 0) {
-        let mapSize=140, mapX=20, mapY=60;
-        ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(mapX,mapY,mapSize,mapSize);
-        ctx.strokeStyle='#445'; ctx.strokeRect(mapX,mapY,mapSize,mapSize);
-        let scaleX=mapSize/CONFIG.cols, scaleY=mapSize/CONFIG.rows;
-        for(let r=0;r<CONFIG.rows;r++) {
-            for(let c=0;c<CONFIG.cols;c++) {
-                if(state.explored[r]&&state.explored[r][c]) {
-                    ctx.fillStyle = state.map[r][c] ? '#555' : 'rgba(50,100,150,0.5)';
-                    ctx.fillRect(mapX+c*scaleX, mapY+r*scaleY, scaleX, scaleY);
+    // Mini map & debug HUD (debug mode only)
+    if(CONFIG.debug) {
+        // Mini map
+        if(state.explored && state.explored.length > 0) {
+            let mapSize=140, mapX=20, mapY=60;
+            ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(mapX,mapY,mapSize,mapSize);
+            ctx.strokeStyle='#445'; ctx.strokeRect(mapX,mapY,mapSize,mapSize);
+            let scaleX=mapSize/CONFIG.cols, scaleY=mapSize/CONFIG.rows;
+            for(let r=0;r<CONFIG.rows;r++) {
+                for(let c=0;c<CONFIG.cols;c++) {
+                    if(state.explored[r]&&state.explored[r][c]) {
+                        ctx.fillStyle = state.map[r][c] ? '#555' : 'rgba(50,100,150,0.5)';
+                        ctx.fillRect(mapX+c*scaleX, mapY+r*scaleY, scaleX, scaleY);
+                    }
                 }
             }
+            ctx.fillStyle='#0f0';
+            ctx.beginPath(); ctx.arc(mapX+(player.x/CONFIG.tileSize)*scaleX, mapY+(player.y/CONFIG.tileSize)*scaleY, 2, 0, Math.PI*2); ctx.fill();
+            let tr=Math.floor(target.y/CONFIG.tileSize), tc=Math.floor(target.x/CONFIG.tileSize);
+            if(target.found||(state.explored[tr]&&state.explored[tr][tc])) {
+                ctx.fillStyle='#f0f';
+                ctx.beginPath(); ctx.arc(mapX+(target.x/CONFIG.tileSize)*scaleX, mapY+(target.y/CONFIG.tileSize)*scaleY, 2, 0, Math.PI*2); ctx.fill();
+            }
         }
-        ctx.fillStyle='#0f0';
-        ctx.beginPath(); ctx.arc(mapX+(player.x/CONFIG.tileSize)*scaleX, mapY+(player.y/CONFIG.tileSize)*scaleY, 2, 0, Math.PI*2); ctx.fill();
-        let tr=Math.floor(target.y/CONFIG.tileSize), tc=Math.floor(target.x/CONFIG.tileSize);
-        if(target.found||(state.explored[tr]&&state.explored[tr][tc])) {
-            ctx.fillStyle='#f0f';
-            ctx.beginPath(); ctx.arc(mapX+(target.x/CONFIG.tileSize)*scaleX, mapY+(target.y/CONFIG.tileSize)*scaleY, 2, 0, Math.PI*2); ctx.fill();
-        }
+
+        // Real-time position HUD
+        let col = Math.floor(player.x / CONFIG.tileSize);
+        let row = Math.floor(player.y / CONFIG.tileSize);
+        let px = Math.floor(player.x);
+        let py = Math.floor(player.y);
+        ctx.save();
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillRect(canvas.width - 210, 10, 200, 52);
+        ctx.strokeStyle = '#0ff';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(canvas.width - 210, 10, 200, 52);
+        ctx.fillStyle = '#0ff';
+        ctx.font = '12px monospace';
+        ctx.textAlign = 'left';
+        ctx.fillText(`tile: col=${col}, row=${row}`, canvas.width - 200, 30);
+        ctx.fillText(`pixel: x=${px}, y=${py}`, canvas.width - 200, 50);
+        ctx.restore();
     }
 
     // Story text display

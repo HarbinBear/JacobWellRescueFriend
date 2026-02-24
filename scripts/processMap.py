@@ -85,10 +85,7 @@ def process_map():
         img = img.rotate(-90, expand=True)
         print(f"顺时针旋转90°后尺寸: {img.size[0]} x {img.size[1]}")
 
-    # 自动裁剪黑边
-    print("自动裁剪黑边...")
-    img = auto_crop(img, BRIGHTNESS_THRESHOLD)
-    print(f"裁剪后尺寸: {img.size[0]} x {img.size[1]}")
+    # 不裁剪，保留原始边界（防止穿帮）
 
     # 缩放到目标尺寸（cols x rows）
     img = img.resize((TARGET_COLS, TARGET_ROWS), Image.LANCZOS)
