@@ -35,7 +35,7 @@ export const CONFIG = {
     
     // 光照参数
     ambientLightSurface: 1.0,     // 水面/浅层环境光亮度
-    ambientLightDeep: 0,       // 深层最低环境光亮度
+    ambientLightDeep: 0.1,       // 深层最低环境光亮度
     darknessStartDepth: 2500,     // 开始变暗的深度 (第一洞室底部)
     flashlightColor: 'rgba(255, 247, 160, 0.2)', // 手电筒泛光颜色
     flashlightCenterColor: 'rgba(253, 253, 37, 0.41)', // 手电筒中心光束颜色

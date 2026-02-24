@@ -185,9 +185,10 @@ export function resetState() {
         stillTimer: 0
     };
 
-    // 初始位置 (水面中央)
-    player.x = CONFIG.tileSize * (CONFIG.cols / 2);
-    player.y = CONFIG.tileSize * 2;
+    // 初始位置：使用地图入口水道坐标，找不到时 fallback 到中央
+    const entrance = (state.landmarks as any).entrance;
+    player.x = entrance ? entrance.x : CONFIG.tileSize * (CONFIG.cols / 2);
+    player.y = entrance ? entrance.y : CONFIG.tileSize * 2;
     player.angle = Math.PI/2;
     player.targetAngle = Math.PI/2;
     input.targetAngle = Math.PI/2;
