@@ -7,10 +7,10 @@ import { updateRopeSystem, findNearestWall } from './Rope';
 
 const storyManager = new StoryManager();
 
-// Export findNearestWall for render layer
+// 导出 findNearestWall 供渲染层使用
 export { findNearestWall };
 
-// --- Story & NPC Logic ---
+// --- 剧情 & NPC 逻辑 ---
 
 function updateNPC() {
     if(!state.npc.active) return;
@@ -199,7 +199,7 @@ function updateNPC() {
     }
 }
 
-// --- Zone helpers ---
+// --- 区域辅助函数 ---
 function checkZones() {
     if (!state.zones) return;
     
@@ -255,7 +255,7 @@ function handleZoneEnter(zoneName: string) {
     }
 }
 
-// --- Collision detection ---
+// --- 碰撞检测 ---
 export function checkCollision(x: number, y: number, isPlayer: boolean = false): boolean {
     const { tileSize } = CONFIG;
     let r = Math.floor(y/tileSize);
@@ -321,7 +321,7 @@ function endGame(win: boolean, reason: string) {
     }
 }
 
-// --- Core Logic ---
+// --- 核心逻辑 ---
 export function resetGameLogic(startPlay: boolean = true) {
     resetState();
     generateMap();
@@ -360,7 +360,7 @@ export function resetGameLogic(startPlay: boolean = true) {
 }
 
 export function update() {
-    // --- Transition logic ---
+    // --- 过渡逻辑 ---
     if(state.transition && state.transition.active) {
         if (!state.transition.bubbles) state.transition.bubbles = [];
         if (state.transition.bubbles.length === 0) {
@@ -462,7 +462,7 @@ export function update() {
         if(lastNpcY > 0 && state.npc.y <= 0) createSplash(state.npc.x, 0, 1.5);
     }
 
-    // --- Camera control ---
+    // --- 摄像机控制 ---
     if(!state.camera) state.camera = { zoom: 1, targetZoom: 1 };
     let targetZoom = 1.0;
     if(state.landmarks.tunnelEntry) {
@@ -475,7 +475,7 @@ export function update() {
     state.camera.targetZoom = targetZoom;
     state.camera.zoom += (state.camera.targetZoom - state.camera.zoom) * 0.02;
 
-    // --- Anti-stuck mechanism (Stage 3, 5, 6) ---
+    // --- 防卡墙机制（第 3、5、6 阶段）---
     let inTunnel = false;
     if (state.landmarks.tunnelEntry && state.landmarks.tunnelEnd) {
         inTunnel =  player.y >= state.landmarks.tunnelEntry.y - 600 && 
@@ -565,7 +565,7 @@ export function update() {
         } else { state.antiStuck.timer = 0; }
     }
 
-    // 1. Steering system
+    // 1. 转向系统
     player.targetAngle = input.targetAngle;
 
     let angleDiff = player.targetAngle - player.angle;
@@ -574,7 +574,7 @@ export function update() {
     
     player.angle += angleDiff * CONFIG.turnSpeed; 
 
-    // 2. Movement system
+    // 2. 移动系统
     if(state.story.stage === 4 || state.story.stage === 5) {
         input.move = 0;
         player.vx = 0;
@@ -619,7 +619,7 @@ export function update() {
 
     updateRopeSystem();
 
-    // First dive: blocked tunnel entrance prompt
+    // 首次潜水：封堵的洞口提示
     if(state.story.stage === 1 || state.story.stage === 2) {
         if(state.story.flags.collapsed && state.landmarks.tunnelEntry) {
             let dist = Math.hypot(player.x - state.landmarks.tunnelEntry.x, player.y - state.landmarks.tunnelEntry.y);
@@ -632,7 +632,7 @@ export function update() {
         }
     }
 
-    // 2. Silt logic
+    // 2. 泥沙逻辑
     let vel = Math.hypot(player.vx, player.vy);
     let wallDist = getNearestWallDist(player.x, player.y);
     
@@ -665,7 +665,7 @@ export function update() {
 
     player.silt = Math.max(0, player.silt - 0.15); 
 
-    // 3. Gas logic
+    // 3. 气体逻辑
     let o2Consumption = CONFIG.o2ConsumptionBase;
     if(vel > 1.5) o2Consumption += CONFIG.o2ConsumptionMove;
 
@@ -698,7 +698,7 @@ export function update() {
         player.n2 += 0.5; 
     }
 
-    // Update exploration map
+    // 更新探索地图
     let exploreRadius = Math.ceil(CONFIG.lightRange / CONFIG.tileSize);
     let pr = Math.floor(player.y / CONFIG.tileSize);
     let pc = Math.floor(player.x / CONFIG.tileSize);
@@ -713,7 +713,7 @@ export function update() {
         }
     }
 
-    // Surface check (y < 20 = surfaced)
+    // 浮出水面检测（y < 20 = 浮出）
     if(player.y < 20 && state.story.stage === 6) {
         endGame(true, "成功生还");
     }
@@ -722,19 +722,19 @@ export function update() {
         endGame(false, "氧气耗尽");
     }
 
-    // Update animation time (for flipper animation)
+    // 更新动画时间（用于脚踼动画）
     if(!player.animTime) player.animTime = 0;
     let swimSpeed = Math.hypot(player.vx, player.vy);
     player.animTime += 0.05 + swimSpeed * 0.05; 
 
-    // Water current disturbance (idle floating)
+    // 水流扰动（静止漂浮）
     if(input.move === 0 && swimSpeed < 0.5) {
         let time = Date.now() / 1000;
         player.vx += Math.sin(time) * 0.02;
         player.vy += Math.cos(time * 0.8) * 0.02;
     }
 
-    // 5. Ecosystem update (fish movement)
+    // 5. 生态更新（鱼类移动）
     if(state.fishes) {
         for(let fish of state.fishes) {
             if(fish.angle === undefined) fish.angle = Math.atan2(fish.vy, fish.vx);

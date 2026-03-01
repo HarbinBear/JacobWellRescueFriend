@@ -3,7 +3,7 @@ import { state, player, input } from '../core/state';
 import { buildAvoidedPath } from './Pathfinding';
 import { triggerSilt } from './Particle';
 
-// Helper: find nearest wall within maxDist
+// 辅助函数：在 maxDist 范围内找最近的墙壁
 export function findNearestWall(x: number, y: number, maxDist: number): any {
     let nearest: any = null;
     let minDist = maxDist;
@@ -27,7 +27,7 @@ function getAnchorPoint(wall: any, fromX: number, fromY: number) {
     };
 }
 
-// Start laying rope: pin at anchor rock
+// 开始铺绳：将锚点固定在锁定岩石上
 function startRope(anchorWall: any) {
     if(!anchorWall) return;
     const anchorPoint = getAnchorPoint(anchorWall, player.x, player.y);
@@ -43,7 +43,7 @@ function startRope(anchorWall: any) {
     state.rope.stillTimer = 0;
 }
 
-// End laying rope: pin at end rock, tighten and fix
+// 结束铺绳：将末端固定在岩石上，拉紧并锁定
 function endRope(anchorWall: any) {
     if(!state.rope.active || !state.rope.current.start || !anchorWall) return;
     const endPoint = getAnchorPoint(anchorWall, player.x, player.y);
@@ -71,7 +71,7 @@ function endRope(anchorWall: any) {
     state.rope.stillTimer = 0;
 }
 
-// Rope system main update
+// 绳索系统主更新
 export function updateRopeSystem() {
     if(!state.rope) return;
     const dt = 1 / 60;

@@ -1,7 +1,7 @@
 import { CONFIG } from '../core/config';
 import { state } from '../core/state';
 
-// Ray-circle intersection
+// 射线-圆相交检测
 export function rayCircleIntersect(ox: number, oy: number, dx: number, dy: number, cx: number, cy: number, cr: number): number {
     let fx = ox-cx, fy = oy-cy;
     let a = dx*dx + dy*dy;
@@ -13,7 +13,7 @@ export function rayCircleIntersect(ox: number, oy: number, dx: number, dy: numbe
     return t1 > 0 ? t1 : Infinity;
 }
 
-// Ray-AABB intersection
+// 射线-AABB相交检测
 export function rayBoxIntersect(ox: number, oy: number, dx: number, dy: number, cx: number, cy: number, halfSize: number): number {
     let minX = cx-halfSize, maxX = cx+halfSize, minY = cy-halfSize, maxY = cy+halfSize;
     let tmin = -Infinity, tmax = Infinity;
@@ -31,7 +31,7 @@ export function rayBoxIntersect(ox: number, oy: number, dx: number, dy: number, 
     return tmin > 0 ? tmin : Infinity;
 }
 
-// ============ Blue noise texture (generated once) ============
+// ============ 蓝噪声纹理（生成一次）============
 let _blueNoiseTex: Float32Array | null = null;
 const BLUE_NOISE_SIZE = 64;
 
@@ -60,7 +60,7 @@ export function sampleBlueNoise(u: number, v: number): number {
     return tex[iy * size + ix];
 }
 
-// ============ Per-ray per-step silt attenuation ============
+// ============ 逐射线逐步长泥沙衰减 ============
 export function computeSiltAttenuation(sx: number, sy: number, angle: number, maxDist: number, fovDeg: number, particles: any[]): any {
     _blueNoiseFrame++;
     let fovRad = fovDeg * Math.PI / 180;
@@ -201,8 +201,8 @@ export function isLineOfSight(x1: number, y1: number, x2: number, y2: number, ma
     return true;
 }
 
-// Unified flashlight drawing function
-// siltData: optional silt attenuation data (from computeSiltAttenuation), null = no silt
+// 统一的手电筒绘制函数
+// siltData: 可选的泥沙衰减数据（来自 computeSiltAttenuation），null 表示无泥沙
 export function drawFlashlight(renderCtx: CanvasRenderingContext2D, x: number, y: number, angle: number, rayDist: number, mode: string = 'mask', siltData: any = null) {
     renderCtx.save();
 
@@ -272,7 +272,7 @@ export function drawFlashlight(renderCtx: CanvasRenderingContext2D, x: number, y
                 }
             }
 
-            // Feather layer
+            // 边缘缺口处理
             let featherDist = CONFIG.lightEdgeFeather || 25;
             for (let i = 0; i < poly.length - 1; i++) {
                 let finalTrans = (perStep[i * stride + steps] + perStep[Math.min(i+1,rays) * stride + steps]) / 2;
@@ -290,7 +290,7 @@ export function drawFlashlight(renderCtx: CanvasRenderingContext2D, x: number, y
                 renderCtx.fill();
             }
         } else {
-            // No silt: simple radial gradient
+            // 无泥沙：简单径向渐变
             let mainGradient = renderCtx.createRadialGradient(x, y, 0, x, y, rayDist);
             mainGradient.addColorStop(0,    'rgba(255,255,255,1.0)');
             mainGradient.addColorStop(0.5,  'rgba(255,255,255,0.95)');
@@ -303,7 +303,7 @@ export function drawFlashlight(renderCtx: CanvasRenderingContext2D, x: number, y
             renderCtx.closePath();
             renderCtx.fill();
 
-            // Edge feather
+            // 边缘缺口
             let featherDist = CONFIG.lightEdgeFeather || 25;
             let featherPoly = poly.map((p: any) => {
                 let dx = p.x-x, dy = p.y-y, len = Math.hypot(dx,dy)||1;

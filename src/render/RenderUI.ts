@@ -24,9 +24,9 @@ export function drawUI() {
         drawLungs(ctx, canvas.width/2, canvas.height/2 + 100, player.o2);
     }
 
-    // Mini map & debug HUD (debug mode only)
+    // 小地图 & 调试信息（仅调试模式）
     if(CONFIG.debug) {
-        // Mini map
+        // 小地图
         if(state.explored && state.explored.length > 0) {
             let mapSize=140, mapX=20, mapY=60;
             ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(mapX,mapY,mapSize,mapSize);
@@ -49,7 +49,7 @@ export function drawUI() {
             }
         }
 
-        // Real-time position HUD
+        // 实时位置信息
         let col = Math.floor(player.x / CONFIG.tileSize);
         let row = Math.floor(player.y / CONFIG.tileSize);
         let px = Math.floor(player.x);
@@ -68,7 +68,7 @@ export function drawUI() {
         ctx.restore();
     }
 
-    // Story text display
+    // 剧情文字显示
     if(state.alertMsg) {
         ctx.fillStyle = state.alertColor;
         ctx.font = 'bold 20px Arial';

@@ -6,17 +6,17 @@ import { drawDiver } from './RenderDiver';
 import { drawUI, drawControls } from './RenderUI';
 import { drawRopesWorld, drawRopeButton } from './RenderRope';
 
-// Re-export canvas and ctx for backward compatibility
+// 向后兼容，重新导出 canvas 和 ctx
 export { canvas, ctx };
 
-// Resource cache
-const wallPatternCanvas = wx.createCanvas(); // Rock texture
-const lightLayer = wx.createCanvas(); // Light mask layer
+// 资源缓存
+const wallPatternCanvas = wx.createCanvas(); // 岩石纹理
+const lightLayer = wx.createCanvas(); // 光照遮罩层
 lightLayer.width = canvas.width;
 lightLayer.height = canvas.height;
 const lightCtx = lightLayer.getContext('2d');
 
-// --- Pre-generate rock texture ---
+// --- 预生成岩石纹理 ---
 export function initTextures() {
     wallPatternCanvas.width = 100;
     wallPatternCanvas.height = 100;
@@ -40,28 +40,28 @@ function drawSplashes() {
     }
 }
 
-// --- Main render function ---
+// --- 主渲染函数 ---
 export function draw() {
     let zoom = state.camera ? state.camera.zoom : 1;
     
-    // Screen shake
+    // 屏幕震动
     let shakeX = 0, shakeY = 0;
     if(state.story.shake > 0) {
         shakeX = (Math.random() - 0.5) * state.story.shake;
         shakeY = (Math.random() - 0.5) * state.story.shake;
     }
 
-    // 1. Draw base world
+    // 1. 绘制基础世界
     ctx.fillStyle = '#252a30'; 
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     ctx.save();
-    // Camera transform: center scale
+    // 摄像机变换：居中缩放
     ctx.translate(canvas.width/2 + shakeX, canvas.height/2 + shakeY);
     ctx.scale(zoom, zoom);
     ctx.translate(-player.x, -player.y);
 
-    // Draw water surface background (bright sky and shallow water gradient)
+    // 绘制水面背景（明亮天空和浅水渐变）
     let skyGradient = ctx.createLinearGradient(0, -800, 0, 600);
     skyGradient.addColorStop(0, '#87CEEB');
     skyGradient.addColorStop(0.5, '#E0F7FA');
@@ -71,10 +71,10 @@ export function draw() {
     ctx.fillStyle = skyGradient;
     ctx.fillRect(-2000, -1000, 6000, 1600);
 
-    // Draw water surface line (multi-layer waves)
+    // 绘制水面线（多层波浪）
     let time = Date.now() / 1000;
     
-    // Back layer waves (darker, slower)
+    // 后层波浪（较暗，较慢）
     ctx.strokeStyle = 'rgba(100, 200, 255, 0.3)';
     ctx.lineWidth = 3;
     ctx.beginPath();
@@ -84,10 +84,10 @@ export function draw() {
     }
     ctx.stroke();
 
-    // Draw splashes (between back and front waves)
+    // 绘制水花（在前后波浪之间）
     drawSplashes();
 
-    // Front layer waves (bright, faster)
+    // 前层波浪（明亮，较快）
     ctx.strokeStyle = 'rgba(200, 240, 255, 0.8)';
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -97,7 +97,7 @@ export function draw() {
     }
     ctx.stroke();
 
-    // Draw god rays (only visible in shallow water)
+    // 绘制丁达尔光（仅在浅水区可见）
     if(player.y < 600) {
         ctx.save();
         ctx.globalCompositeOperation = 'screen';
@@ -120,7 +120,7 @@ export function draw() {
         ctx.restore();
     }
 
-    // Draw walls (using state.walls for irregular layout support)
+    // 绘制墙壁（使用 state.walls 支持不规则布局）
     let viewHalfW = (canvas.width/2) / zoom + 100;
     let viewHalfH = (canvas.height/2) / zoom + 100;
     let viewL = player.x - viewHalfW;
@@ -135,7 +135,7 @@ export function draw() {
     let viewColMin = Math.max(0, Math.floor(viewL / ts) - 1);
     let viewColMax = Math.min(CONFIG.cols - 1, Math.floor(viewR / ts) + 1);
 
-    // Draw solid interior fill (seamless, no grid borders)
+    // 绘制实心内部填充（无缝，无网格边框）
     ctx.fillStyle = '#1a1a1a';
     for(let r = viewRowMin; r <= viewRowMax; r++) {
         if(!state.map[r]) continue;
@@ -146,7 +146,7 @@ export function draw() {
         }
     }
 
-    // Draw edge rock circles (on top of blocks, forming natural contour)
+    // 绘制边缘岩石圆（叠加在方块上，形成自然轮廓）
     ctx.fillStyle = '#222';
     for(let w of state.walls) {
         if(w.x > viewL && w.x < viewR && w.y > viewT && w.y < viewB) {
@@ -162,7 +162,7 @@ export function draw() {
         }
     }
 
-    // Draw seaweed
+    // 绘制海草
     if(state.plants) {
         for(let p of state.plants) {
             if(p.x > viewL && p.x < viewR && p.y > viewT && p.y < viewB) {
@@ -177,7 +177,7 @@ export function draw() {
         }
     }
 
-    // Draw fish
+    // 绘制鱼
     if(state.fishes) {
         for(let f of state.fishes) {
             if(f.x > viewL && f.x < viewR && f.y > viewT && f.y < viewB) {
@@ -223,7 +223,7 @@ export function draw() {
         }
     }
 
-    // Draw environment texts
+    // 绘制环境文字
     if(state.texts) {
         ctx.textAlign = 'center';
         for(let t of state.texts) {
@@ -233,7 +233,7 @@ export function draw() {
         }
     }
 
-    // Draw target
+    // 绘制目标
     if(target.found || player.hasTarget) {
         ctx.fillStyle = '#0ff';
         ctx.beginPath(); ctx.arc(target.x, target.y, 8, 0, Math.PI*2); ctx.fill();
@@ -257,7 +257,7 @@ export function draw() {
         ctx.fillText(target.name, target.x, target.y - 12);
     }
 
-    // Draw particles (silt drawn separately after light layer)
+    // 绘制粒子（泥沙在光照层之后单独绘制）
     for(let p of particles) {
         if(p.type === 'silt') {
             continue;
@@ -279,7 +279,7 @@ export function draw() {
         }
     }
 
-    // Draw abandoned diving suit
+    // 绘制废弃潜水服
     if(state.landmarks && state.landmarks.suit) {
         let s = state.landmarks.suit;
         if(s.x > viewL && s.x < viewR && s.y > viewT && s.y < viewB) {
@@ -298,10 +298,10 @@ export function draw() {
         }
     }
 
-    // --- Draw ropes (world space, before characters) ---
+    // --- 绘制绳索（世界空间，在角色之前）---
     drawRopesWorld();
 
-    // --- Draw volumetric lights ---
+    // --- 绘制体积光 ---
     let vRayDist = CONFIG.lightRange;
     
     if(state.story.stage === 4 && state.story.flags.narrowVision) {
@@ -334,9 +334,9 @@ export function draw() {
         }
     }
 
-    // --- Draw characters ---
+    // --- 绘制角色 ---
 
-    // Draw NPC
+    // 绘制 NPC
     if(state.npc && state.npc.active) {
         const npcColors = {
             suit: '#333',
@@ -347,13 +347,13 @@ export function draw() {
         drawDiver(ctx, state.npc.x, state.npc.y, state.npc.angle, npcColors, Date.now()/150);
     }
 
-    // Draw player
+    // 绘制玩家
     let hasTank = !state.story.flags.tankDamaged;
     drawDiver(ctx, player.x, player.y, player.angle, null, player.animTime, hasTank);
 
     ctx.restore();
 
-    // 2. Light mask calculation
+    // 2. 光照遮罩计算
     lightCtx.clearRect(0, 0, canvas.width, canvas.height); 
     lightCtx.globalCompositeOperation = 'source-over';
     
@@ -454,7 +454,7 @@ export function draw() {
         }
     }
 
-    // Diffuse scatter simulation
+    // 漫散射模拟
     let scatterDist = rayDist * 0.6;
     let scatterX = player.x + Math.cos(player.angle) * scatterDist;
     let scatterY = player.y + Math.sin(player.angle) * scatterDist;
@@ -481,7 +481,7 @@ export function draw() {
 
     ctx.drawImage(lightLayer as unknown as CanvasImageSource, 0, 0);
 
-    // Draw silt particles (above light layer, so silt covers light)
+    // 绘制泥沙粒子（在光照层之上，使泥沙遮盖光照）
     ctx.save();
     ctx.translate(canvas.width/2 + shakeX, canvas.height/2 + shakeY);
     ctx.scale(zoom, zoom);
@@ -495,13 +495,13 @@ export function draw() {
     }
     ctx.restore();
 
-    // Black screen transition
+    // 黑屏过渡
     if(state.story.flags.blackScreen) {
         ctx.fillStyle = '#000';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
 
-    // Red overlay (near death)
+    // 红色叠加（濒死状态）
     if(state.story.redOverlay > 0.001) {
         let t = state.story.redOverlay;
         let r = Math.floor(255 * (1-t) + 61 * t);
@@ -512,12 +512,12 @@ export function draw() {
         ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
 
-    // 3. Draw UI
+    // 3. 绘制 UI
     drawUI();
     drawControls();
     drawRopeButton();
 
-    // 4. Transition animation
+    // 4. 过渡动画
     if(state.transition && state.transition.active) {
         ctx.save();
         

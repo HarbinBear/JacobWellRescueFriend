@@ -1,8 +1,8 @@
 import { CONFIG } from '../core/config';
 import { state } from '../core/state';
 
-// --- Grid-level line segment collision detection ---
-// Returns true if the segment passes through a solid cell
+// --- 网格级线段碰撞检测 ---
+// 如果线段穿过实心格则返回 true
 function lineHitsSolid(x1: number, y1: number, x2: number, y2: number): boolean {
     const { tileSize } = CONFIG;
     let dx = x2 - x1;
@@ -27,7 +27,7 @@ function lineHitsSolid(x1: number, y1: number, x2: number, y2: number): boolean 
     return false;
 }
 
-// --- Grid-based A* pathfinding for rope obstacle avoidance ---
+// --- 基于网格的 A* 寻路（绕过绳索障碍物）---
 function gridAStar(startX: number, startY: number, endX: number, endY: number, padding: number): any[] {
     const { tileSize, rows, cols } = CONFIG;
     let sr = Math.floor(startY / tileSize);
@@ -141,7 +141,7 @@ function gridAStar(startX: number, startY: number, endX: number, endY: number, p
     return path;
 }
 
-// Path simplification: greedy straightening
+// 路径简化：贪心拉直
 function simplifyPath(path: any[]): any[] {
     if(path.length <= 2) return path;
     let result = [path[0]];
@@ -161,7 +161,7 @@ function simplifyPath(path: any[]): any[] {
     return result;
 }
 
-// Build obstacle-avoiding path using grid A*
+// 使用网格 A* 构建绕障路径
 export function buildAvoidedPath(start: any, end: any, padding: number): any[] {
     if(!lineHitsSolid(start.x, start.y, end.x, end.y)) {
         return [{ x: start.x, y: start.y }, { x: end.x, y: end.y }];
@@ -169,7 +169,7 @@ export function buildAvoidedPath(start: any, end: any, padding: number): any[] {
     return gridAStar(start.x, start.y, end.x, end.y, padding);
 }
 
-// Calculate total polyline length
+// 计算折线总长度
 export function pathLength(pts: any[]): number {
     let len = 0;
     for(let i = 1; i < pts.length; i++) {
@@ -178,7 +178,7 @@ export function pathLength(pts: any[]): number {
     return len;
 }
 
-// Sample a point on a polyline at distance t (0 to total length)
+// 在折线上按距离 t 采样一个点（0 到总长度）
 export function samplePolyline(pts: any[], t: number): any {
     let acc = 0;
     for(let i = 1; i < pts.length; i++) {
@@ -195,7 +195,7 @@ export function samplePolyline(pts: any[], t: number): any {
     return { x: pts[pts.length-1].x, y: pts[pts.length-1].y };
 }
 
-// Get the normal direction of a polyline at distance t
+// 获取折线在距离 t 处的法线方向
 export function polylineNormal(pts: any[], t: number): any {
     let acc = 0;
     for(let i = 1; i < pts.length; i++) {

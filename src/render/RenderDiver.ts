@@ -1,4 +1,4 @@
-// Unified diver drawing function
+// 统一的潜水员绘制函数
 export function drawDiver(renderCtx: CanvasRenderingContext2D, x: number, y: number, angle: number, colors: any = null, animTime: number = 0, hasTank: boolean = true) {
     renderCtx.save();
     
@@ -12,7 +12,7 @@ export function drawDiver(renderCtx: CanvasRenderingContext2D, x: number, y: num
 
     let time = animTime || Date.now() / 150;
     
-    // Left flipper
+    // 左脚踼
     renderCtx.save();
     renderCtx.translate(-15, -4);
     let leftScale = 0.7 + Math.sin(time) * 0.3;
@@ -23,7 +23,7 @@ export function drawDiver(renderCtx: CanvasRenderingContext2D, x: number, y: num
     renderCtx.fill();
     renderCtx.restore();
 
-    // Right flipper
+    // 右脚踼
     renderCtx.save();
     renderCtx.translate(-15, 4);
     let rightScale = 0.7 + Math.sin(time + Math.PI) * 0.3;
@@ -34,11 +34,11 @@ export function drawDiver(renderCtx: CanvasRenderingContext2D, x: number, y: num
     renderCtx.fill();
     renderCtx.restore();
 
-    // Body
+    // 身体
     renderCtx.fillStyle = c.body;
     renderCtx.fillRect(-8, -5, 16, 10);
 
-    // Tank
+    // 气瓶
     if(hasTank) {
         renderCtx.fillStyle = '#111'; 
         renderCtx.fillRect(-3, -7, 6, 14);
@@ -57,7 +57,7 @@ export function drawDiver(renderCtx: CanvasRenderingContext2D, x: number, y: num
         renderCtx.fillRect(5, -9, 4, 2);
     }
 
-    // Head
+    // 头部
     renderCtx.fillStyle = '#dcb';
     renderCtx.beginPath(); renderCtx.arc(0, 0, 7, 0, Math.PI*2); renderCtx.fill();
     renderCtx.fillStyle = '#222';
@@ -65,7 +65,7 @@ export function drawDiver(renderCtx: CanvasRenderingContext2D, x: number, y: num
     renderCtx.arc(0, 0, 7.5, Math.PI/2, -Math.PI/2, true);
     renderCtx.fill();
 
-    // Mask
+    // 面镜
     renderCtx.fillStyle = c.mask; 
     renderCtx.strokeStyle = '#111';
     renderCtx.lineWidth = 1;
@@ -74,7 +74,7 @@ export function drawDiver(renderCtx: CanvasRenderingContext2D, x: number, y: num
     renderCtx.fill();
     renderCtx.stroke();
     
-    // Mask reflection
+    // 面镜反光
     renderCtx.fillStyle = 'rgba(255, 255, 255, 0.6)';
     renderCtx.beginPath();
     renderCtx.ellipse(5, -2, 1, 2, 0.5, 0, Math.PI*2);
@@ -92,7 +92,7 @@ export function drawLungs(renderCtx: CanvasRenderingContext2D, x: number, y: num
     
     const w = 40, h = 60, gap = 6;
     
-    // Trachea
+    // 气管
     renderCtx.fillStyle = '#888';
     renderCtx.beginPath();
     renderCtx.moveTo(-3, -h/2 - 10); renderCtx.lineTo(3, -h/2 - 10);

@@ -1,7 +1,7 @@
 import { CONFIG } from '../core/config';
 import { state, player, particles } from '../core/state';
 
-// --- Particle System ---
+// --- 粒子系统 ---
 export class Particle {
     x: number; y: number; type: string; life: number;
     vx: number; vy: number; size: number; maxSize: number;
@@ -21,13 +21,13 @@ export class Particle {
             this.maxSize = 20 + Math.random() * 20; 
             this.alpha = 0.3 + Math.random() * 0.2;
         } else if (type === 'blood') {
-            // blood is no longer used but kept for compatibility
+            // blood 已不再使用，保留以兼容
             this.vx = (Math.random()-0.5) * 0.5;
             this.vy = -0.5 - Math.random(); 
             this.size = 2 + Math.random() * 3;
             this.life = CONFIG.bloodLife;
             this.alpha = 0.8;
-        } else { // bubble
+        } else { // 气泡
             this.vx = (Math.random()-0.5) * 0.5;
             this.vy = -2 - Math.random() * 2;
             this.size = 3 + Math.random()*3;
@@ -51,7 +51,7 @@ export class Particle {
             this.size += 0.05; 
             this.vx *= 0.95;
         } else {
-            // bubble wobble
+            // 气泡摇摆
             this.wobble += 0.1;
             this.x += Math.sin(this.wobble) * 0.5;
             this.life -= 0.005;
@@ -122,7 +122,7 @@ export function triggerSilt(x: number, y: number, count: number) {
     }
 }
 
-// Mount to GameGlobal for StoryManager
+// 挂载到 GameGlobal 供 StoryManager 使用
 GameGlobal.triggerSilt = triggerSilt;
 GameGlobal.addBubble = function(x: number, y: number) {
     particles.push(new Particle(x + (Math.random()-0.5)*10, y + (Math.random()-0.5)*10, 'bubble'));
@@ -141,7 +141,7 @@ export function updateParticles() {
     }
 }
 
-// Helper: get nearest wall distance (used by triggerSilt)
+// 辅助函数：获取最近墙壁距离（由 triggerSilt 使用）
 function getNearestWallDist(x: number, y: number): number {
     const { tileSize } = CONFIG;
     let r = Math.floor(y/tileSize);
