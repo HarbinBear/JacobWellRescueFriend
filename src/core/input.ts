@@ -2,20 +2,24 @@ import { CONFIG } from './config';
 import { state, input, touches } from './state';
 
 // 计算章节卡片的点击区域（与RenderUI中的布局保持一致）
-function getChapterCardBounds(cw: number, ch: number) {
+function getChapterCardBounds(cw, ch) {
     let cardW = cw * 0.82;
-    let cardH = ch * 0.33;
+    let cardH = ch * 0.22; // 四张卡片时稍小一些
     let cardX = (cw - cardW) / 2;
-    let gap = ch * 0.04;
+    let gap = ch * 0.025;
     let card1Y = 70;
     let card2Y = card1Y + cardH + gap;
+    let card3Y = card2Y + cardH + gap;
+    let card4Y = card3Y + cardH + gap;
     return [
         { cardX, cardY: card1Y, cardW, cardH },
-        { cardX, cardY: card2Y, cardW, cardH }
+        { cardX, cardY: card2Y, cardW, cardH },
+        { cardX, cardY: card3Y, cardW, cardH },
+        { cardX, cardY: card4Y, cardW, cardH }
     ];
 }
 
-export function initInput(onReset: ((startStage?: number) => void) | null) {
+export function initInput(onReset) {
     // PC 调试键盘支持 
     if (typeof window !== 'undefined' && window.addEventListener) {
         const keys = { w: false, a: false, s: false, d: false, shift: false };
@@ -58,6 +62,25 @@ export function initInput(onReset: ((startStage?: number) => void) | null) {
             }
 
             if(state.screen !== 'play') {
+                // 第二关结局：分页剧情
+                if (state.screen === 'ending' && state.story.flags.stage2Ending) {
+                    if (!state.endingTimer || state.endingTimer < 1200) return;
+                    if(e.code === 'Space' && !state.transition.active) {
+                        state.transition.active = true;
+                        state.transition.alpha = 0;
+                        state.transition.mode = 'out';
+                        state.transition.callback = () => {
+                            if (onReset) onReset(7);
+                        };
+                    }
+                    return;
+                }
+                // 熊子死亡结局
+                if (state.screen === 'ending' && state.story.flags.bearDied) {
+                    if (!state.endingTimer || state.endingTimer < 1200) return;
+                    if(e.code === 'Space') { state.screen = 'menu'; state.menuScreen = 'main'; }
+                    return;
+                }
                 // 如果是结局画面，必须等待播放完毕 (timer > 1320)
                 if (state.screen === 'ending' && (!state.endingTimer || state.endingTimer < 1320)) {
                     return;
@@ -107,7 +130,7 @@ export function initInput(onReset: ((startStage?: number) => void) | null) {
                 for(let i = 0; i < bounds.length; i++) {
                     const b = bounds[i];
                     if(tx >= b.cardX && tx <= b.cardX + b.cardW && ty >= b.cardY && ty <= b.cardY + b.cardH) {
-                        let startStage = i === 0 ? 1 : 3;
+                        let startStage = i === 0 ? 1 : (i === 1 ? 3 : (i === 2 ? 7 : 9));
                         if(!state.transition.active) {
                             state.transition.active = true;
                             state.transition.alpha = 0;
@@ -160,6 +183,27 @@ export function initInput(onReset: ((startStage?: number) => void) | null) {
         }
 
         if(state.screen !== 'play') {
+            // 第二关结局：分页剧情，等到最后一页（timer > 1200）才能点击
+            if (state.screen === 'ending' && state.story.flags.stage2Ending) {
+                if (!state.endingTimer || state.endingTimer < 1200) return;
+                // 点击进入第三关
+                if(!state.transition.active) {
+                    state.transition.active = true;
+                    state.transition.alpha = 0;
+                    state.transition.mode = 'out';
+                    state.transition.callback = () => {
+                        if (onReset) onReset(7);
+                    };
+                }
+                return;
+            }
+            // 熊子死亡结局：等到最后一页才能点击
+            if (state.screen === 'ending' && state.story.flags.bearDied) {
+                if (!state.endingTimer || state.endingTimer < 1200) return;
+                state.screen = 'menu';
+                state.menuScreen = 'main';
+                return;
+            }
             // 如果是结局画面，必须等待播放完毕 (timer > 1320)
             if (state.screen === 'ending' && (!state.endingTimer || state.endingTimer < 1320)) {
                 return;
@@ -255,7 +299,7 @@ export function initInput(onReset: ((startStage?: number) => void) | null) {
     });
 }
 
-function handleTouchEnd(changedTouches: wx.Touch[]) {
+function handleTouchEnd(changedTouches) {
     for(let t of changedTouches) {
         if(state.rope && state.rope.hold && t.identifier === state.rope.hold.touchId) {
             state.rope.hold.active = false;

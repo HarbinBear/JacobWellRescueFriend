@@ -316,7 +316,7 @@ export function draw() {
             x: player.x, 
             y: player.y, 
             angle: player.angle, 
-            active: player.y > 600, 
+            active: player.y > 600 && flashlightActive, 
             dist: vRayDist 
         },
         { 
@@ -383,6 +383,19 @@ export function draw() {
 
     let rayDist = CONFIG.lightRange;
 
+    // 第三关：手电筒损坏闪烁效果
+    let flashlightActive = true;
+    if(state.story.flags.flashlightBroken) {
+        let t = Date.now() / 1000;
+        // 不规律闪烁：用多个不同频率的正弦叠加
+        let flicker = Math.sin(t * 7.3) * Math.sin(t * 13.7) * Math.sin(t * 3.1);
+        flashlightActive = flicker > -0.3; // 大部分时间亮着，偏暗时关闭
+        if(flashlightActive) {
+            // 亮度也不稳定
+            rayDist = CONFIG.lightRange * (0.5 + Math.abs(flicker) * 0.5);
+        }
+    }
+
     if(state.story.stage === 4 && state.story.flags.narrowVision) {
         let factor = Math.max(0, player.o2 / 80);
         rayDist = 20 + factor * 80; 
@@ -407,7 +420,7 @@ export function draw() {
             x: player.x, 
             y: player.y, 
             angle: player.angle, 
-            active: player.y > 600, 
+            active: player.y > 600 && flashlightActive, 
             dist: rayDist 
         },
         {   
@@ -479,7 +492,7 @@ export function draw() {
 
     lightCtx.restore(); 
 
-    ctx.drawImage(lightLayer as unknown as CanvasImageSource, 0, 0);
+    ctx.drawImage(lightLayer, 0, 0);
 
     // 绘制泥沙粒子（在光照层之上，使泥沙遮盖光照）
     ctx.save();

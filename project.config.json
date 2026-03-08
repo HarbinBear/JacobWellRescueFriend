@@ -14,7 +14,7 @@
     "compileWorklet": false,
     "uglifyFileName": false,
     "uploadWithSourceMap": true,
-    "enhance": false,
+    "enhance": true,
     "packNpmManually": false,
     "packNpmRelationList": [],
     "minifyWXSS": true,
@@ -32,7 +32,7 @@
     }
   },
   "compileType": "game",
-  "libVersion": "2.19.4",
+  "libVersion": "3.13.1",
   "appid": "wxbce3ffa0838ce605",
   "projectname": "JacobWellRescueFriend",
   "condition": {

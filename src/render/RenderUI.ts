@@ -4,7 +4,7 @@ import { ctx, canvas } from './Canvas';
 import { drawDiver, drawLungs, drawDiverSilhouette } from './RenderDiver';
 
 // 兼容微信小游戏的圆角矩形（手动绘制，避免roundRect兼容性问题）
-function rrect(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+function rrect(c, x, y, w, h, r) {
     r = Math.min(r, w / 2, h / 2);
     c.moveTo(x + r, y);
     c.lineTo(x + w - r, y);
@@ -118,7 +118,7 @@ export function drawUI(){
 
 
 // ---- 章节配图绘制 ----
-function drawChapterImage1(x: number, y: number, w: number, h: number, time: number) {
+function drawChapterImage1(x, y, w, h, time) {
     ctx.save();
     ctx.beginPath();
     rrect(ctx, x, y, w, h, 10);
@@ -223,7 +223,7 @@ function drawChapterImage1(x: number, y: number, w: number, h: number, time: num
     ctx.restore();
 }
 
-function drawChapterImage2(x: number, y: number, w: number, h: number, time: number) {
+function drawChapterImage2(x, y, w, h, time) {
     ctx.save();
     ctx.beginPath();
     rrect(ctx, x, y, w, h, 10);
@@ -310,6 +310,169 @@ function drawChapterImage2(x: number, y: number, w: number, h: number, time: num
         ctx.fill();
     }
     ctx.restore();
+
+    ctx.restore();
+}
+
+function drawChapterImage3(x, y, w, h, time) {
+    ctx.save();
+    ctx.beginPath();
+    rrect(ctx, x, y, w, h, 10);
+    ctx.clip();
+
+    // 背景：极深的黑暗
+    let bg = ctx.createLinearGradient(x, y, x, y + h);
+    bg.addColorStop(0, '#050a10');
+    bg.addColorStop(1, '#020508');
+    ctx.fillStyle = bg;
+    ctx.fillRect(x, y, w, h);
+
+    // 手电筒闪烁效果（不规律）
+    let flickerVal = Math.sin(time * 7.3) * Math.sin(time * 13.7) * Math.sin(time * 3.1);
+    let flashOn = flickerVal > -0.3;
+    let flashIntensity = flashOn ? (0.5 + Math.abs(flickerVal) * 0.5) : 0;
+
+    if(flashIntensity > 0.05) {
+        // 手电筒光锥
+        let flashX = x + w * 0.5;
+        let flashY = y + h * 0.85;
+        let flashGrad = ctx.createRadialGradient(flashX, flashY, 0, flashX, flashY, h * 0.7);
+        flashGrad.addColorStop(0, `rgba(255,250,200,${0.3 * flashIntensity})`);
+        flashGrad.addColorStop(0.4, `rgba(200,230,255,${0.15 * flashIntensity})`);
+        flashGrad.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = flashGrad;
+        ctx.beginPath();
+        ctx.moveTo(flashX - 12, flashY);
+        ctx.lineTo(flashX - 70, flashY - h * 0.6);
+        ctx.lineTo(flashX + 70, flashY - h * 0.6);
+        ctx.lineTo(flashX + 12, flashY);
+        ctx.fill();
+    }
+
+    // 岩壁（两侧）
+    ctx.fillStyle = '#1a1a1a';
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + w * 0.25, y);
+    ctx.lineTo(x + w * 0.2, y + h);
+    ctx.lineTo(x, y + h);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(x + w, y);
+    ctx.lineTo(x + w * 0.75, y);
+    ctx.lineTo(x + w * 0.8, y + h);
+    ctx.lineTo(x + w, y + h);
+    ctx.fill();
+
+    // 潜水员（独自，底部）
+    let diverX3 = x + w * 0.5;
+    let diverY3 = y + h * 0.85;
+    ctx.save();
+    ctx.translate(diverX3, diverY3);
+    ctx.rotate(-Math.PI * 0.5 + Math.sin(time * 0.8) * 0.05);
+    ctx.fillStyle = '#2a3a4a';
+    ctx.beginPath(); ctx.ellipse(0, 0, 10, 6, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#fa0';
+    ctx.beginPath(); ctx.arc(-8, -2, 4, 0, Math.PI * 2); ctx.fill();
+    // 手电筒（偶尔闪烁）
+    if(flashOn) {
+        ctx.fillStyle = `rgba(255,250,200,${0.8 * flashIntensity})`;
+        ctx.beginPath(); ctx.arc(10, 0, 3, 0, Math.PI * 2); ctx.fill();
+    }
+    // 气泡
+    for(let i = 0; i < 3; i++) {
+        let bx3 = 5 + i * 4 + Math.sin(time * 4 + i) * 2;
+        let by3 = -8 - i * 6 - ((time * 20 + i * 15) % 30);
+        ctx.fillStyle = `rgba(200,240,255,${0.6 - i * 0.15})`;
+        ctx.beginPath();
+        ctx.arc(bx3, by3, 2, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    ctx.restore();
+
+    // 问号（表示迷失）
+    if(Math.sin(time * 2) > 0) {
+        ctx.fillStyle = `rgba(255,200,100,${0.4 + Math.sin(time * 2) * 0.3})`;
+        ctx.font = `bold ${Math.floor(h * 0.15)}px Arial`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('?', x + w * 0.5, y + h * 0.35);
+    }
+
+    ctx.restore();
+}
+
+function drawChapterImage4(x, y, w, h, time) {
+    ctx.save();
+    ctx.beginPath();
+    rrect(ctx, x, y, w, h, 10);
+    ctx.clip();
+
+    // 背景：极深的黑暗，带红色调
+    let bg = ctx.createLinearGradient(x, y, x, y + h);
+    bg.addColorStop(0, '#080005');
+    bg.addColorStop(1, '#020002');
+    ctx.fillStyle = bg;
+    ctx.fillRect(x, y, w, h);
+
+    // 远处隐约的发光体（未知生物）
+    let glowX = x + w * 0.35;
+    let glowY = y + h * 0.3;
+    let glowPulse = 0.5 + Math.sin(time * 1.8) * 0.3;
+    let glowGrad = ctx.createRadialGradient(glowX, glowY, 0, glowX, glowY, h * 0.35);
+    glowGrad.addColorStop(0, `rgba(255,50,50,${0.4 * glowPulse})`);
+    glowGrad.addColorStop(0.4, `rgba(180,20,20,${0.15 * glowPulse})`);
+    glowGrad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = glowGrad;
+    ctx.fillRect(x, y, w, h);
+
+    // 未知生物轮廓（模糊的大型阴影）
+    ctx.save();
+    ctx.globalAlpha = 0.3 + Math.sin(time * 0.7) * 0.1;
+    ctx.fillStyle = '#1a0000';
+    ctx.beginPath();
+    ctx.ellipse(glowX, glowY, w * 0.22, h * 0.18, Math.sin(time * 0.3) * 0.2, 0, Math.PI * 2);
+    ctx.fill();
+    // 眼睛（两个红点）
+    let eyeSpacing = w * 0.06;
+    ctx.fillStyle = `rgba(255,80,80,${0.8 * glowPulse})`;
+    ctx.beginPath(); ctx.arc(glowX - eyeSpacing, glowY - h * 0.02, 3, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(glowX + eyeSpacing, glowY - h * 0.02, 3, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+
+    // 岩壁（两侧）
+    ctx.fillStyle = '#0d0d0d';
+    ctx.beginPath();
+    ctx.moveTo(x, y); ctx.lineTo(x + w * 0.2, y); ctx.lineTo(x + w * 0.15, y + h); ctx.lineTo(x, y + h); ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(x + w, y); ctx.lineTo(x + w * 0.8, y); ctx.lineTo(x + w * 0.85, y + h); ctx.lineTo(x + w, y + h); ctx.fill();
+
+    // 潜水员（底部，手电筒时亮时暗）
+    let flickerVal = Math.sin(time * 7.3) * Math.sin(time * 13.7);
+    let flashOn = flickerVal > -0.2;
+    let diverX4 = x + w * 0.72;
+    let diverY4 = y + h * 0.82;
+    ctx.save();
+    ctx.translate(diverX4, diverY4);
+    ctx.rotate(-Math.PI * 0.5 + Math.sin(time * 0.8) * 0.08);
+    ctx.fillStyle = '#2a3a4a';
+    ctx.beginPath(); ctx.ellipse(0, 0, 10, 6, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#fa0';
+    ctx.beginPath(); ctx.arc(-8, -2, 4, 0, Math.PI * 2); ctx.fill();
+    if(flashOn) {
+        ctx.fillStyle = `rgba(255,250,200,${0.7 * Math.abs(flickerVal)})`;
+        ctx.beginPath(); ctx.arc(10, 0, 3, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+
+    // 感叹号（表示惊吓）
+    if(Math.sin(time * 3) > 0.3) {
+        ctx.fillStyle = `rgba(255,100,100,${0.5 + Math.sin(time * 3) * 0.3})`;
+        ctx.font = `bold ${Math.floor(h * 0.18)}px Arial`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('!', x + w * 0.72, y + h * 0.55);
+    }
 
     ctx.restore();
 }
@@ -474,7 +637,7 @@ export function drawMenu() {
     ctx.fillText("v1.2.0  By 熊子", canvas.width / 2, canvas.height - 22);
 }
 
-function drawChapterSelect(time: number) {
+function drawChapterSelect(time) {
     // 背景：深海渐变 + 动态粒子
     let grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
     grad.addColorStop(0, '#001a33');
@@ -518,13 +681,15 @@ function drawChapterSelect(time: number) {
     ctx.textAlign = 'center';
     ctx.fillText("章节选择", canvas.width / 2, 26);
 
-    // 章节卡片布局
+    // 章节卡片布局（四章，滚动显示）
     let cardW = canvas.width * 0.82;
-    let cardH = canvas.height * 0.33;
+    let cardH = canvas.height * 0.22; // 四张时稍小
     let cardX = (canvas.width - cardW) / 2;
-    let gap = canvas.height * 0.04;
+    let gap = canvas.height * 0.025;
     let card1Y = 70;
     let card2Y = card1Y + cardH + gap;
+    let card3Y = card2Y + cardH + gap;
+    let card4Y = card3Y + cardH + gap;
 
     // ---- 卡片1：固执的熊子 ----
     drawChapterCard(
@@ -545,13 +710,33 @@ function drawChapterSelect(time: number) {
         time,
         (x, y, w, h, t) => drawChapterImage2(x, y, w, h, t)
     );
+
+    // ---- 卡片3：还要继续吗？ ----
+    drawChapterCard(
+        cardX, card3Y, cardW, cardH,
+        3, "还要继续吗？",
+        "第三章 · 孤身深入",
+        "亮子独自再次下潜，手电筒却出了问题...",
+        time,
+        (x, y, w, h, t) => drawChapterImage3(x, y, w, h, t)
+    );
+
+    // ---- 卡片4：那是什么！ ----
+    drawChapterCard(
+        cardX, card4Y, cardW, cardH,
+        4, "那是什么！",
+        "第四章 · 未知的深渊",
+        "黑暗中，有什么东西在靠近...",
+        time,
+        (x, y, w, h, t) => drawChapterImage4(x, y, w, h, t)
+    );
 }
 
 function drawChapterCard(
-    x: number, y: number, w: number, h: number,
-    chapter: number, title: string, subtitle: string, desc: string,
-    time: number,
-    drawImg: (x: number, y: number, w: number, h: number, t: number) => void
+    x, y, w, h,
+    chapter, title, subtitle, desc,
+    time,
+    drawImg
 ) {
     // 卡片阴影
     ctx.save();
@@ -654,7 +839,7 @@ function drawChapterCard(
     ctx.fillText("▶  进入章节", btnX2 + 14, btnY2 + btnH2 / 2);
 }
 
-function wrapTextLines(text: string, maxWidth: number, renderCtx: CanvasRenderingContext2D): string[] {
+function wrapTextLines(text, maxWidth, renderCtx) {
     let words = text.split('');
     let line = '';
     let lines: string[] = [];
@@ -671,29 +856,42 @@ function wrapTextLines(text: string, maxWidth: number, renderCtx: CanvasRenderin
     return lines;
 }
 
+function endingGetAlpha(t, start, end) {
+    let local = t - start;
+    let dur = end - start;
+    if(local < 60) return local/60;
+    if(local > dur-60) return (dur-local)/60;
+    return 1;
+}
+
 function drawEnding() {
     ctx.fillStyle = '#000'; ctx.fillRect(0, 0, canvas.width, canvas.height);
     let timer = state.endingTimer || 0;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
 
-    function getAlpha(t: number, start: number, end: number): number {
-        let local = t - start;
-        let dur = end - start;
-        if(local < 60) return local/60;
-        if(local > dur-60) return (dur-local)/60;
-        return 1;
+    // 第三关：熊子死亡结局
+    if(state.story.flags.bearDied) {
+        drawBearDiedEnding(timer);
+        return;
     }
 
+    // 第二关结局：第二三关衔接分页剧情
+    if(state.story.flags.stage2Ending) {
+        drawStage2to3Ending(timer);
+        return;
+    }
+
+    // 旧结局（保留兜底）
     if(timer < 240) {
-        ctx.fillStyle = `rgba(255,255,255,${getAlpha(timer,0,240)})`;
+        ctx.fillStyle = `rgba(255,255,255,${endingGetAlpha(timer,0,240)})`;
         ctx.font = '20px Arial';
         wrapText(ctx, "小潘把一个密闭的洞穴气室\n误当成了出口，\n最终在搅动的泥沙中彻底迷失方向，\n丧生在了黑暗之中。", canvas.width/2, canvas.height/2, 30);
     } else if(timer < 480) {
-        ctx.fillStyle = `rgba(255,255,255,${getAlpha(timer,240,480)})`;
+        ctx.fillStyle = `rgba(255,255,255,${endingGetAlpha(timer,240,480)})`;
         ctx.font = '20px Arial';
         wrapText(ctx, "为了不让更多的人\n丧生在恐怖的雅各布井，\n当地政府最终彻底封闭了雅各布井。", canvas.width/2, canvas.height/2, 30);
     } else if(timer < 720) {
-        let alpha = getAlpha(timer, 480, 720);
+        let alpha = endingGetAlpha(timer, 480, 720);
         ctx.save(); ctx.globalAlpha = alpha;
         drawDiverSilhouette(ctx, canvas.width/2-60, canvas.height/2, '#555');
         drawDiverSilhouette(ctx, canvas.width/2+60, canvas.height/2+20, '#555', true);
@@ -703,10 +901,10 @@ function drawEnding() {
         ctx.fillStyle = '#333'; ctx.fillRect(canvas.width/2+80, canvas.height/2+30, 20, 10);
         ctx.restore();
     } else if(timer < 960) {
-        ctx.fillStyle = `rgba(255,255,255,${getAlpha(timer,720,960)})`;
+        ctx.fillStyle = `rgba(255,255,255,${endingGetAlpha(timer,720,960)})`;
         ctx.font = '24px Arial'; ctx.fillText("感谢您的体验", canvas.width/2, canvas.height/2);
     } else if(timer < 1200) {
-        ctx.fillStyle = `rgba(255,255,255,${getAlpha(timer,960,1200)})`;
+        ctx.fillStyle = `rgba(255,255,255,${endingGetAlpha(timer,960,1200)})`;
         ctx.font = '20px Arial';
         wrapText(ctx, "当前版本持续优化中\n前往未知的深渊\n与带熊子潘子回家的故事\n未来有时间会完善。", canvas.width/2, canvas.height/2, 30);
     } else {
@@ -722,7 +920,150 @@ function drawEnding() {
     }
 }
 
-function wrapText(renderCtx: CanvasRenderingContext2D, text: string, x: number, y: number, lineHeight: number) {
+// 第二关结局：第二三关衔接分页剧情
+function drawStage2to3Ending(timer) {
+    // 第1页 (0-300): 小潘在慌乱中迷失方向
+    if(timer < 300) {
+        ctx.fillStyle = `rgba(255,255,255,${endingGetAlpha(timer,0,300)})`;
+        ctx.font = '20px Arial';
+        wrapText(ctx, "小潘在慌乱中迷失方向，\n错把一条向上的死路\n当成是上岸的路。", canvas.width/2, canvas.height/2, 32);
+    }
+    // 第2页 (300-600): 好在小潘及时醒悟
+    else if(timer < 600) {
+        ctx.fillStyle = `rgba(255,255,255,${endingGetAlpha(timer,300,600)})`;
+        ctx.font = '20px Arial';
+        wrapText(ctx, "好在小潘及时醒悟过来，\n跟着亮子逃脱了\n迷宫般的洞穴。", canvas.width/2, canvas.height/2, 32);
+    }
+    // 第3页 (600-900): 亮子劫后余生，但来不及高兴
+    else if(timer < 900) {
+        ctx.fillStyle = `rgba(255,255,255,${endingGetAlpha(timer,600,900)})`;
+        ctx.font = '20px Arial';
+        wrapText(ctx, "亮子刚刚劫后余生，\n但来不及高兴，\n因为距离熊子消失在那大裂缝中，\n已经过去了半小时。", canvas.width/2, canvas.height/2, 32);
+    }
+    // 第4页 (900-1200): 入水动画 + 亮子再次出发
+    else if(timer < 1200) {
+        let alpha = endingGetAlpha(timer, 900, 1200);
+        let t = timer - 900;
+        ctx.save();
+        ctx.globalAlpha = alpha;
+
+        // 水面背景
+        let waterGrad = ctx.createLinearGradient(0, canvas.height*0.4, 0, canvas.height);
+        waterGrad.addColorStop(0, '#001a33');
+        waterGrad.addColorStop(1, '#000811');
+        ctx.fillStyle = waterGrad;
+        ctx.fillRect(0, canvas.height*0.4, canvas.width, canvas.height*0.6);
+
+        // 水面波纹
+        ctx.strokeStyle = 'rgba(100,220,255,0.4)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        for(let wx = 0; wx < canvas.width; wx += 8) {
+            ctx.lineTo(wx, canvas.height*0.4 + Math.sin(wx/40 + t*0.05)*4);
+        }
+        ctx.stroke();
+
+        // 入水动画：潜水员从上方落入水中
+        let diverY = canvas.height*0.3 + Math.min(t * 0.8, canvas.height*0.25);
+        let splashAlpha = Math.max(0, 1 - t/60);
+        if(t > 30) {
+            // 水花
+            ctx.fillStyle = `rgba(150,220,255,${splashAlpha})`;
+            for(let i = 0; i < 8; i++) {
+                let angle = (i / 8) * Math.PI * 2;
+                let r = 20 + (t-30) * 0.5;
+                ctx.beginPath();
+                ctx.arc(canvas.width/2 + Math.cos(angle)*r, canvas.height*0.4 + Math.sin(angle)*r*0.3, 3, 0, Math.PI*2);
+                ctx.fill();
+            }
+        }
+        drawDiverSilhouette(ctx, canvas.width/2, diverY, '#4af');
+        ctx.restore();
+
+        ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+        ctx.font = 'bold 20px Arial';
+        ctx.fillText("亮子不敢再多想，", canvas.width/2, canvas.height*0.15);
+        ctx.font = '18px Arial';
+        ctx.fillText("简单调整后，再次出发！", canvas.width/2, canvas.height*0.22);
+    }
+    // 第5页 (1200+): 点击进入第三关
+    else {
+        let t = timer - 1200;
+        let alpha = Math.min(1, t/60);
+        ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+        ctx.font = 'bold 22px Arial';
+        ctx.fillText("第三章", canvas.width/2, canvas.height/2 - 30);
+        ctx.font = '18px Arial';
+        ctx.fillText("黑暗中的独行", canvas.width/2, canvas.height/2 + 10);
+        if(t > 90) {
+            ctx.fillStyle = `rgba(0,220,255,${Math.abs(Math.sin(t/30))})`;
+            ctx.font = '14px Arial';
+            ctx.fillText("点击屏幕继续", canvas.width/2, canvas.height - 50);
+        }
+    }
+}
+
+// 第三关：熊子死亡结局
+function drawBearDiedEnding(timer) {
+    // 第1页 (0-300): 黑暗中的独白
+    if(timer < 300) {
+        ctx.fillStyle = `rgba(180,180,180,${endingGetAlpha(timer,0,300)})`;
+        ctx.font = '20px Arial';
+        wrapText(ctx, "亮子最终没能找到熊子。", canvas.width/2, canvas.height/2, 32);
+    }
+    // 第2页 (300-600): 熊子的结局
+    else if(timer < 600) {
+        ctx.fillStyle = `rgba(200,200,200,${endingGetAlpha(timer,300,600)})`;
+        ctx.font = '20px Arial';
+        wrapText(ctx, "熊子独自困在那道大裂缝中，\n氧气耗尽，\n永远留在了雅各布井的黑暗里。", canvas.width/2, canvas.height/2, 32);
+    }
+    // 第3页 (600-900): 剪影
+    else if(timer < 900) {
+        let alpha = endingGetAlpha(timer, 600, 900);
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        // 黑暗背景中的孤独剪影
+        let darkGrad = ctx.createRadialGradient(canvas.width/2, canvas.height/2, 0, canvas.width/2, canvas.height/2, 200);
+        darkGrad.addColorStop(0, 'rgba(20,30,40,1)');
+        darkGrad.addColorStop(1, 'rgba(0,0,0,1)');
+        ctx.fillStyle = darkGrad;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        // 熊子剪影（静止，朝下）
+        ctx.save();
+        ctx.translate(canvas.width/2, canvas.height/2);
+        ctx.rotate(Math.PI/2);
+        ctx.fillStyle = '#333';
+        ctx.beginPath(); ctx.ellipse(0, 0, 14, 8, 0, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#444';
+        ctx.beginPath(); ctx.arc(-10, -3, 6, 0, Math.PI*2); ctx.fill();
+        ctx.restore();
+        ctx.fillStyle = '#f44';
+        ctx.font = '14px Arial';
+        ctx.fillText("（熊子）", canvas.width/2, canvas.height/2 - 60);
+        ctx.restore();
+    }
+    // 第4页 (900-1200): 结语
+    else if(timer < 1200) {
+        ctx.fillStyle = `rgba(200,200,200,${endingGetAlpha(timer,900,1200)})`;
+        ctx.font = '20px Arial';
+        wrapText(ctx, "为了不让更多的人\n丧生在恐怖的雅各布井，\n当地政府最终彻底封闭了雅各布井。", canvas.width/2, canvas.height/2, 32);
+    }
+    // 第5页 (1200+): 返回主菜单
+    else {
+        let t = timer - 1200;
+        let alpha = Math.min(1, t/60);
+        ctx.fillStyle = `rgba(180,180,180,${alpha})`;
+        ctx.font = '20px Arial';
+        ctx.fillText("感谢您的体验", canvas.width/2, canvas.height/2 - 20);
+        if(t > 90) {
+            ctx.fillStyle = `rgba(255,255,255,${Math.abs(Math.sin(t/30))})`;
+            ctx.font = '14px Arial';
+            ctx.fillText("点击屏幕返回主菜单", canvas.width/2, canvas.height - 50);
+        }
+    }
+}
+
+function wrapText(renderCtx, text, x, y, lineHeight) {
     let lines = text.split('\n');
     let startY = y - (lines.length-1)*lineHeight/2;
     for(let i=0; i<lines.length; i++) renderCtx.fillText(lines[i], x, startY + i*lineHeight);

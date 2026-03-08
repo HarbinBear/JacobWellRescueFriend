@@ -73,7 +73,7 @@ export function generateMap() {
         for (let c = 0; c < cols; c++) {
             if (state.map[r][c] === 0) {
                 entranceCol = c;
-                (state.landmarks as any).entrance = {
+                state.landmarks.entrance = {
                     x: c * tileSize + tileSize / 2 + tileSize * 4,
                     y: r * tileSize + tileSize / 2
                 };

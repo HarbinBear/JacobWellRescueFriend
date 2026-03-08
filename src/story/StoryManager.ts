@@ -11,10 +11,6 @@ import { CONFIG } from '../core/config';
 // 我们可以先写 StoryManager，假设 logic.js 会导出 addParticle。
 
 export class StoryManager {
-    timer: number;
-    subTimer: number;
-    bubbleTimer: number;
-
     constructor() {
         this.timer = 0;
         this.subTimer = 0;
@@ -54,20 +50,23 @@ export class StoryManager {
             this.updateStage5();
         }
 
-        // 阶段6: 上浮结束
+        // 阶段6: 第二关结局过渡剧情（上岸后的分页剧情）
         else if(state.story.stage === 6) {
-            // 模拟减压停留提示
-            if(player.y < 400 && player.y > 200 && state.story.timer % 300 === 0) {
-                 this.showText("提示：正在进行减压停留...\n保持深度。", "#0f0", 2000);
-            }
-            
-            if(player.y < 60) {
-                this.endGame(true, "ending");
-            }
+            this.updateStage6();
+        }
+
+        // 阶段7: 第三关下潜
+        else if(state.story.stage === 7) {
+            this.updateStage7();
+        }
+
+        // 阶段9: 第四关
+        else if(state.story.stage === 9) {
+            this.updateStage9();
         }
     }
 
-    updateStage1(suit: any, tunnelEntry: any, tunnelEnd: any) {
+    updateStage1(suit, tunnelEntry, tunnelEnd) {
         // 开场闲聊与教学
         // if(state.story.timer === 120) this.showText("小熊：这里的水质很清澈，\n但要动作要慢，\n泥沙会阻挡视线。", "#00bfff", 4000);
         // if(state.story.timer === 360) this.showText("小熊：保持呼吸平稳，\n不要急促换气。", "#00bfff", 3000);
@@ -199,7 +198,7 @@ export class StoryManager {
                     // 清除第一关放置的透明墙，第二关玩家可以进入缝隙
                     state.invisibleWalls = [];
                     
-                    const entrance = (state.landmarks as any).entrance;
+                    const entrance = state.landmarks.entrance;
                     player.x = entrance ? entrance.x : CONFIG.tileSize * (CONFIG.cols / 2);
                     player.y = entrance ? entrance.y : 80;
                     player.o2 = 100;
@@ -218,7 +217,7 @@ export class StoryManager {
         }
     }
 
-    updateStage3(tunnelEntry: any, tunnelEnd: any) {
+    updateStage3(tunnelEntry, tunnelEnd) {
         // 下潜过程中的心理活动
         if(state.story.timer === 120) this.showText("内心：一定要找到他...", "#ffd700", 2000);
         if(state.story.timer === 300) this.showText("内心：这里太安静了...", "#ffd700", 2000);
@@ -313,9 +312,9 @@ export class StoryManager {
              if(!state.story.flags.deathPause) {
                  state.story.flags.deathPause = 0;
              }
-             (state.story.flags.deathPause as number)++;
+             state.story.flags.deathPause++;
              
-             if((state.story.flags.deathPause as number) > 60) { // 停顿约1秒
+             if(state.story.flags.deathPause > 60) { // 停顿约1秒
                  state.story.stage = 5;
                  state.story.timer = 0;
                  state.story.flags.deathPause = 0;
@@ -356,18 +355,43 @@ export class StoryManager {
             // NPC救人后，独自游向假烟囱（394,2700）死路
             state.npc.state = 'to_dead_end';
             state.story.stage = 6;
+            state.story.timer = 0;
             state.story.redOverlay = 0; // 强制移除红屏
         }
     }
 
-    showText(msg: string, color: string, duration: number = 3000) {
+    updateStage6() {
+        // 第二关结局过渡：玩家上岸后的分页剧情
+        // 此阶段由 Logic.ts 中的浮出水面检测触发，进入 ending 屏幕
+        // 在 RenderUI.ts 的 drawEnding 中处理分页剧情
+        
+        // 模拟减压停留提示
+        if(player.y < 400 && player.y > 200 && state.story.timer % 300 === 0) {
+            this.showText("提示：正在进行减压停留...\n保持深度。", "#0f0", 2000);
+        }
+    }
+
+    updateStage7() {
+        // 第三关：只有玩家自己下潜
+        if(state.story.timer === 120) this.showText("内心：熊子，我来了...", "#ffd700", 2000);
+        if(state.story.timer === 300) this.showText("内心：这里太静了...", "#ffd700", 2000);
+    }
+
+    updateStage9() {
+        // 第四关：进入未知深渊
+        if(state.story.timer === 60) this.showText("内心：熊子就在前面某处...", "#ffd700", 2000);
+        if(state.story.timer === 240) this.showText("内心：手电筒还在闪烁，但我不能停下来。", "#ffd700", 3000);
+    }
+
+    showText(msg, color, duration) {
+        if(duration === undefined) duration = 3000;
         state.alertMsg = msg;
         state.alertColor = color;
         clearTimeout(state.msgTimer);
         state.msgTimer = setTimeout(() => state.alertMsg = '', duration);
     }
 
-    endGame(win: boolean, reason: string) {
+    endGame(win, reason) {
         if (win) {
             state.screen = 'ending';
             state.endingTimer = 0;

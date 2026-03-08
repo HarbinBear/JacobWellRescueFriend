@@ -46,6 +46,35 @@ if(state.debug.fastMove) speed *= CONFIG.debugSpeedMultiplier;
         }
         return;
     }
+    else if(state.npc.state === 'catch_up') {
+        // 第二关：小潘发现走错路，快速追上玩家
+        targetX = player.x;
+        targetY = player.y;
+        speed = 4.5;
+        if(state.debug.fastMove) speed *= CONFIG.debugSpeedMultiplier;
+        
+        let dx = targetX - state.npc.x;
+        let dy = targetY - state.npc.y;
+        let dist = Math.hypot(dx, dy);
+        
+        if(dist < 60) {
+            // 追上玩家后切回 follow 状态
+            state.npc.state = 'follow';
+        }
+        
+        if(dist > 5) {
+            state.npc.vx = (dx / dist) * speed;
+            state.npc.vy = (dy / dist) * speed;
+            state.npc.x += state.npc.vx;
+            state.npc.y += state.npc.vy;
+        }
+        
+        if(Math.abs(state.npc.vx) > 0.1 || Math.abs(state.npc.vy) > 0.1) {
+            let targetAngle = Math.atan2(state.npc.vy, state.npc.vx);
+            state.npc.angle = targetAngle;
+        }
+        return;
+    }
     else if(state.story.flags.rescued) {
         // 获救后NPC跟随玩家上浮
         targetX = player.x;
@@ -208,7 +237,7 @@ function checkZones() {
     }
 }
 
-function handleZoneEnter(zoneName: string) {
+function handleZoneEnter(zoneName) {
     if (!state.story.visitedZones) state.story.visitedZones = [];
     if (state.story.visitedZones.includes(zoneName)) return;
     state.story.visitedZones.push(zoneName);
@@ -245,7 +274,8 @@ function handleZoneEnter(zoneName: string) {
 }
 
 // --- 碰撞检测 ---
-export function checkCollision(x: number, y: number, isPlayer: boolean = false): boolean {
+export function checkCollision(x, y, isPlayer) {
+    if(isPlayer === undefined) isPlayer = false;
     const { tileSize } = CONFIG;
     let r = Math.floor(y/tileSize);
     let c = Math.floor(x/tileSize);
@@ -276,7 +306,7 @@ export function checkCollision(x: number, y: number, isPlayer: boolean = false):
     return false;
 }
 
-export function getNearestWallDist(x: number, y: number): number {
+export function getNearestWallDist(x, y) {
     const { tileSize } = CONFIG;
     let r = Math.floor(y/tileSize);
     let c = Math.floor(x/tileSize);
@@ -300,7 +330,7 @@ export function getNearestWallDist(x: number, y: number): number {
     return minDist;
 }
 
-function endGame(win: boolean, reason: string) {
+function endGame(win, reason) {
     if (win) {
         state.screen = 'ending';
         state.endingTimer = 0;
@@ -311,7 +341,9 @@ function endGame(win: boolean, reason: string) {
 }
 
 // --- 核心逻辑 ---
-export function resetGameLogic(startStage: number = 1, startPlay: boolean = true) {
+export function resetGameLogic(startStage, startPlay) {
+    if(startStage === undefined) startStage = 1;
+    if(startPlay === undefined) startPlay = true;
     resetState();
     generateMap();
     
@@ -320,16 +352,25 @@ export function resetGameLogic(startStage: number = 1, startPlay: boolean = true
     state.story.shake = 0;
     state.story.redOverlay = 0;
     state.story.flags = {
-        seenSuit: false,
-        npcEntered: false,
-        collapsed: startStage >= 3, // 第二关开始时缝隙已坍塌过
-        blackScreen: false,
-        narrowVision: false,
-        rescued: false,
-        approachedTunnel: startStage >= 3,
-        tankDamaged: false,
-        deathPause: 0
-    };
+            seenSuit: false,
+            npcEntered: false,
+            collapsed: startStage >= 3, // 第二关开始时缝隙已坍塌过
+            blackScreen: false,
+            narrowVision: false,
+            rescued: false,
+            approachedTunnel: startStage >= 3,
+            tankDamaged: false,
+            deathPause: 0,
+            npcWrongWay: false,
+            flashlightBroken: false,
+            flashlightBrokenOsShown: false,
+            tryingToSurface: false,
+            surfaceOsShown: false,
+            reachedChamber23Junction: false,
+            chamber23OsShown: false,
+            bearDied: false,
+            stage2Ending: false
+        };
     state.story.visitedZones = [];
     state.currentZone = null;
     state.endingTimer = 0;
@@ -338,6 +379,16 @@ export function resetGameLogic(startStage: number = 1, startPlay: boolean = true
     state.npc.x = player.x - 30;
     state.npc.y = player.y;
     state.npc.state = 'follow';
+    
+    // 第三关：只有玩家自己下潜，没有NPC
+    if(startStage >= 7) {
+        state.npc.active = false;
+    }
+    
+    // 第四关：同样没有NPC
+    if(startStage >= 9) {
+        state.npc.active = false;
+    }
     
     // 第二关开始时清除透明墙，玩家可以进入缝隙
     if(startStage >= 3) {
@@ -349,7 +400,14 @@ export function resetGameLogic(startStage: number = 1, startPlay: boolean = true
 
     if (startPlay) {
         state.screen = 'play';
-        if(startStage >= 3) {
+        if(startStage >= 9) {
+            storyManager.showText("内心：熊子，我来了...", "rgba(200, 100, 0, 1)", 3000);
+            setTimeout(() => {
+                storyManager.showText("内心：这里比上面更深，更黑...", "#ffd700", 3000);
+            }, 3500);
+        } else if(startStage >= 7) {
+            storyManager.showText("不敢再多想，简单调整后，再次出发！", "rgba(200, 100, 0, 1)", 4000);
+        } else if(startStage >= 3) {
             storyManager.showText("找来同伴潘子，立刻一起下潜救熊子！", "rgba(13, 93, 8, 1)", 4000);
         } else {
             storyManager.showText("难得的假期！\n熊子带我们去雅各布井潜水！", "rgba(43, 95, 206, 1)", 4000);
@@ -480,7 +538,7 @@ export function update() {
                     player.y <= state.landmarks.tunnelEnd.y;
     }
 
-    if((state.story.stage === 3 || state.story.stage === 5 || state.story.stage === 6) && inTunnel) {
+    if((state.story.stage === 3 || state.story.stage === 5 || state.story.stage === 6 || state.story.stage === 7) && inTunnel) {
         if(!state.antiStuck) state.antiStuck = { timer: 0, lastPos: {x:player.x, y:player.y} };
         if(input.move > 0) {
             let movedDist = Math.hypot(player.x - state.antiStuck.lastPos.x, player.y - state.antiStuck.lastPos.y);
@@ -617,6 +675,80 @@ if(state.debug.fastMove) speed *= CONFIG.debugSpeedMultiplier;
 
     updateRopeSystem();
 
+    // 第二关：小潘发现走错路检测（玩家到达第一二洞室连接处）
+    if(state.story.stage === 3 && state.npc.active && !state.story.flags.npcWrongWay) {
+        let junction = state.landmarks.chamber12Junction;
+        let distToJunction = Math.hypot(player.x - junction.x, player.y - junction.y);
+        if(distToJunction < 200) {
+            state.story.flags.npcWrongWay = true;
+            // 小潘切换到快速追上状态
+            state.npc.state = 'catch_up';
+            storyManager.showText("小潘：等等！我走错了！", "#4af", 3000);
+        }
+    }
+
+    // 第三关：手电筒损坏检测（经过第一二洞室连接处时触发）
+    if(state.story.stage === 7 && !state.story.flags.flashlightBroken) {
+        let junction = state.landmarks.chamber12Junction;
+        let distToJunction = Math.hypot(player.x - junction.x, player.y - junction.y);
+        if(distToJunction < 200) {
+            state.story.flags.flashlightBroken = true;
+            state.story.flags.flashlightBrokenOsShown = false;
+            storyManager.showText("怎么回事！！！？", "#ff4444", 2000);
+            setTimeout(() => {
+                storyManager.showText("呀！手电筒刚刚被石头砖了！！", "#ffd700", 3000);
+            }, 2000);
+        }
+    }
+
+    // 第三关：玩家试图上岸检测
+    if(state.story.stage === 7 && state.story.flags.flashlightBroken && !state.story.flags.tryingToSurface) {
+        // 玩家向上游一段（y < 600）且还没到二三洞室连接处
+        if(player.y < 600 && !state.story.flags.reachedChamber23Junction) {
+            state.story.flags.tryingToSurface = true;
+            if(!state.story.flags.surfaceOsShown) {
+                state.story.flags.surfaceOsShown = true;
+                storyManager.showText("内心：对不起了熊子，我真的尽力了。哎呀让你那么冒失，等救援队来救你吧", "#ffd700", 5000);
+            }
+        }
+    }
+
+    // 第三关：玩家上岸后熊子死亡结局
+    if(state.story.stage === 7 && state.story.flags.tryingToSurface && player.y < 20) {
+        state.story.stage = 8;
+        state.story.timer = 0;
+        state.screen = 'ending';
+        state.endingTimer = 0;
+        // 标记为熊子死亡结局
+        state.story.flags.bearDied = true;
+    }
+
+    // 第三关：到达二三洞室连接处（大缝隙）
+    if(state.story.stage === 7 && state.story.flags.flashlightBroken && !state.story.flags.reachedChamber23Junction) {
+        let junction23 = state.landmarks.chamber23Junction;
+        let distToJunction23 = Math.hypot(player.x - junction23.x, player.y - junction23.y);
+        if(distToJunction23 < 200) {
+            state.story.flags.reachedChamber23Junction = true;
+            // 玩家改变主意，继续深入，清除上岸意图
+            state.story.flags.tryingToSurface = false;
+            if(!state.story.flags.chamber23OsShown) {
+                state.story.flags.chamber23OsShown = true;
+                storyManager.showText("内心：坚持住熊子，我一定会救你出来！", "#00ff88", 4000);
+            }
+        }
+    }
+
+    // 第三关：通过二三洞室连接处后进入第四关
+    if(state.story.stage === 7 && state.story.flags.reachedChamber23Junction) {
+        let junction23 = state.landmarks.chamber23Junction;
+        // 玩家继续向下走，远离连接处后进入第四关
+        if(player.y > junction23.y + 300) {
+            state.story.stage = 9; // 第四关
+            state.story.timer = 0;
+            storyManager.showText("什么东西！", "#ff4444", 3000);
+        }
+    }
+
     // 首次潜水：玩家固定进不去缝隙入口
     if(state.story.stage === 1 || state.story.stage === 2) {
         if(state.landmarks.tunnelEntry) {
@@ -717,10 +849,13 @@ if(state.debug.fastMove) speed *= CONFIG.debugSpeedMultiplier;
 
     // 浮出水面检测（y < 20 = 浮出）
     if(player.y < 20 && state.story.stage === 6) {
-        endGame(true, "成功生还");
+        // 第二关结局：进入第二三关过渡剧情
+        state.story.stage = 6;
+        state.screen = 'ending';
+        state.endingTimer = 0;
+        state.story.flags.stage2Ending = true;
     }
-
-    if(player.o2 <= 0 && state.story.stage !== 4 && state.story.stage !== 5) {
+    if(player.o2 <= 0 && state.story.stage !== 4 && state.story.stage !== 5 && state.story.stage !== 7) {
         endGame(false, "氧气耗尽");
     }
 

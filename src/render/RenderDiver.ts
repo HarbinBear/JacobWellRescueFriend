@@ -46,8 +46,8 @@ export function drawDiver(renderCtx: CanvasRenderingContext2D, x: number, y: num
         renderCtx.strokeStyle = '#000';
         renderCtx.lineWidth = 1;
         renderCtx.beginPath(); 
-        if ((renderCtx as any).roundRect) {
-            (renderCtx as any).roundRect(3, -7, 9, 14, [3]);
+        if (renderCtx.roundRect) {
+            renderCtx.roundRect(3, -7, 9, 14, [3]);
         } else {
             renderCtx.rect(3, -7, 9, 14);
         }
