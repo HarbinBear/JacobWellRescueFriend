@@ -681,15 +681,33 @@ function drawChapterSelect(time) {
     ctx.textAlign = 'center';
     ctx.fillText("章节选择", canvas.width / 2, 26);
 
-    // 章节卡片布局（四章，滚动显示）
+    // 章节卡片布局（四章，可滚动）
     let cardW = canvas.width * 0.82;
-    let cardH = canvas.height * 0.22; // 四张时稍小
+    let cardH = canvas.height * 0.22;
     let cardX = (canvas.width - cardW) / 2;
     let gap = canvas.height * 0.025;
-    let card1Y = 70;
+    let listTop = 58; // 可滚动区域顶部（标题栏下方）
+    let listBottom = canvas.height; // 可滚动区域底部
+    let scrollY = state.chapterScrollY || 0;
+
+    // 计算总内容高度，用于限制滚动范围
+    let totalContentH = 4 * cardH + 3 * gap + 20; // 20 = bottom padding
+    let maxScroll = Math.max(0, totalContentH - (listBottom - listTop - 12));
+
+    // 限制滚动范围
+    if(scrollY < 0) { scrollY = 0; state.chapterScrollY = 0; }
+    if(scrollY > maxScroll) { scrollY = maxScroll; state.chapterScrollY = maxScroll; }
+
+    let card1Y = listTop + 12 - scrollY;
     let card2Y = card1Y + cardH + gap;
     let card3Y = card2Y + cardH + gap;
     let card4Y = card3Y + cardH + gap;
+
+    // 裁剪到可滚动区域，防止卡片绘制到标题栏上
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, listTop, canvas.width, listBottom - listTop);
+    ctx.clip();
 
     // ---- 卡片1：固执的熊子 ----
     drawChapterCard(
@@ -730,6 +748,23 @@ function drawChapterSelect(time) {
         time,
         (x, y, w, h, t) => drawChapterImage4(x, y, w, h, t)
     );
+
+    ctx.restore();
+
+    // 右侧滚动条指示器
+    if(maxScroll > 0) {
+        let trackX = canvas.width - 6;
+        let trackTop = listTop + 4;
+        let trackH = listBottom - listTop - 8;
+        let thumbH = Math.max(30, trackH * (trackH / (totalContentH)));
+        let thumbY = trackTop + (scrollY / maxScroll) * (trackH - thumbH);
+        ctx.save();
+        ctx.fillStyle = 'rgba(0,180,220,0.18)';
+        ctx.fillRect(trackX - 3, trackTop, 6, trackH);
+        ctx.fillStyle = 'rgba(0,200,255,0.55)';
+        ctx.fillRect(trackX - 3, thumbY, 6, thumbH);
+        ctx.restore();
+    }
 }
 
 function drawChapterCard(

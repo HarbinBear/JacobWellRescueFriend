@@ -2,6 +2,7 @@ import { CONFIG } from './config';
 export const state = {
     screen: 'menu', // menu, play, win, lose, ending
     menuScreen: 'main', // main, chapter
+    chapterScrollY: 0, // chapter select page scroll offset
     map: [],
     walls: [], // 存储墙壁的渲染圆心
     invisibleWalls: [], // 仅对玩家生效的空气墙

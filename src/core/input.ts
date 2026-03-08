@@ -1,13 +1,23 @@
 import { CONFIG } from './config';
 import { state, input, touches } from './state';
 
-// 计算章节卡片的点击区域（与RenderUI中的布局保持一致）
-function getChapterCardBounds(cw, ch) {
+// 章节页滑动状态
+let chapterTouchStartY = 0;
+let chapterTouchStartScrollY = 0;
+let chapterTouchMoved = false;
+
+// 主菜单触摸起始位置（用于 touchEnd 判断点击）
+let menuTouchStartX = 0;
+let menuTouchStartY = 0;
+
+// 计算章节卡片的点击区域（与RenderUI中的布局保持一致，需传入scrollY偏移）
+function getChapterCardBounds(cw, ch, scrollY) {
     let cardW = cw * 0.82;
-    let cardH = ch * 0.22; // 四张卡片时稍小一些
+    let cardH = ch * 0.22;
     let cardX = (cw - cardW) / 2;
     let gap = ch * 0.025;
-    let card1Y = 70;
+    let listTop = 58;
+    let card1Y = listTop + 12 - scrollY;
     let card2Y = card1Y + cardH + gap;
     let card3Y = card2Y + cardH + gap;
     let card4Y = card3Y + cardH + gap;
@@ -120,65 +130,16 @@ export function initInput(onReset) {
             const ch = CONFIG.screenHeight;
 
             if(state.menuScreen === 'chapter') {
-                // 返回按钮（左上角区域）
-                if(tx < 90 && ty < 52) {
-                    state.menuScreen = 'main';
-                    return;
-                }
-                // 章节卡片点击
-                const bounds = getChapterCardBounds(cw, ch);
-                for(let i = 0; i < bounds.length; i++) {
-                    const b = bounds[i];
-                    if(tx >= b.cardX && tx <= b.cardX + b.cardW && ty >= b.cardY && ty <= b.cardY + b.cardH) {
-                        let startStage = i === 0 ? 1 : (i === 1 ? 3 : (i === 2 ? 7 : 9));
-                        if(!state.transition.active) {
-                            state.transition.active = true;
-                            state.transition.alpha = 0;
-                            state.transition.mode = 'out';
-                            state.transition.callback = () => {
-                                if (onReset) onReset(startStage);
-                            };
-                        }
-                        return;
-                    }
-                }
+                // 记录触摸起始位置，用于判断是滑动还是点击
+                chapterTouchStartY = ty;
+                chapterTouchStartScrollY = state.chapterScrollY || 0;
+                chapterTouchMoved = false;
                 return;
             }
 
-            // 主菜单：检测"开始游戏"按钮区域
-            let btnY = ch * 0.56;
-            let btnW = 180, btnH = 50;
-            let btnX = cw / 2 - btnW / 2;
-            if(tx >= btnX && tx <= btnX + btnW && ty >= btnY - btnH / 2 && ty <= btnY + btnH / 2) {
-                if(!state.transition.active) {
-                    state.transition.active = true;
-                    state.transition.alpha = 0;
-                    state.transition.mode = 'out';
-                    state.transition.callback = () => {
-                        if (onReset) onReset(1);
-                    };
-                }
-                return;
-            }
-
-            // 检测"章节选择"按钮区域
-            let chBtnY = ch * 0.7;
-            let chBtnW = 160, chBtnH = 44;
-            let chBtnX = cw / 2 - chBtnW / 2;
-            if(tx >= chBtnX && tx <= chBtnX + chBtnW && ty >= chBtnY - chBtnH / 2 && ty <= chBtnY + chBtnH / 2) {
-                state.menuScreen = 'chapter';
-                return;
-            }
-
-            // 点击其他区域也触发开始游戏（兼容旧逻辑）
-            if(!state.transition.active) {
-                state.transition.active = true;
-                state.transition.alpha = 0;
-                state.transition.mode = 'out';
-                state.transition.callback = () => {
-                    if (onReset) onReset(1);
-                };
-            }
+            // 主菜单：只记录起始位置，等 touchEnd 再判断点击
+            menuTouchStartX = tx;
+            menuTouchStartY = ty;
             return;
         }
 
@@ -247,6 +208,22 @@ export function initInput(onReset) {
     });
 
     wx.onTouchMove((res) => {
+        if(state.screen === 'menu' && state.menuScreen === 'chapter') {
+            const touch = res.touches[0];
+            const dy = touch.clientY - chapterTouchStartY;
+            if(Math.abs(dy) > 5) chapterTouchMoved = true;
+            const ch = CONFIG.screenHeight;
+            const cardH = ch * 0.22;
+            const gap = ch * 0.025;
+            const totalContentH = 4 * cardH + 3 * gap + 20;
+            const listH = ch - 58;
+            const maxScroll = Math.max(0, totalContentH - listH + 12);
+            let newScroll = chapterTouchStartScrollY - dy;
+            if(newScroll < 0) newScroll = 0;
+            if(newScroll > maxScroll) newScroll = maxScroll;
+            state.chapterScrollY = newScroll;
+            return;
+        }
         if (state.rope && state.rope.hold && state.rope.hold.active) {
             for (let t of res.touches) {
                 if (t.identifier === state.rope.hold.touchId) {
@@ -291,6 +268,78 @@ export function initInput(onReset) {
     });
 
     wx.onTouchEnd((res) => {
+        if(state.screen === 'menu') {
+            const touch = res.changedTouches[0];
+            const tx = touch.clientX;
+            const ty = touch.clientY;
+            const cw = CONFIG.screenWidth;
+            const ch = CONFIG.screenHeight;
+
+            if(state.menuScreen === 'main') {
+                // 判断手指没有明显移动（防止滑动误触）
+                const moved = Math.hypot(tx - menuTouchStartX, ty - menuTouchStartY) > 10;
+                if(!moved) {
+                    // 检测"开始游戏"按钮
+                    let btnY = ch * 0.56;
+                    let btnW = 180, btnH = 50;
+                    let btnX = cw / 2 - btnW / 2;
+                    if(tx >= btnX && tx <= btnX + btnW && ty >= btnY - btnH / 2 && ty <= btnY + btnH / 2) {
+                        if(!state.transition.active) {
+                            state.transition.active = true;
+                            state.transition.alpha = 0;
+                            state.transition.mode = 'out';
+                            state.transition.callback = () => {
+                                if (onReset) onReset(1);
+                            };
+                        }
+                        return;
+                    }
+                    // 检测"章节选择"按钮
+                    let chBtnY = ch * 0.7;
+                    let chBtnW = 160, chBtnH = 44;
+                    let chBtnX = cw / 2 - chBtnW / 2;
+                    if(tx >= chBtnX && tx <= chBtnX + chBtnW && ty >= chBtnY - chBtnH / 2 && ty <= chBtnY + chBtnH / 2) {
+                        state.menuScreen = 'chapter';
+                        state.chapterScrollY = 0;
+                        return;
+                    }
+                }
+                return;
+            }
+
+            if(state.menuScreen === 'chapter') {
+                // 如果没有发生明显滑动，则判断为点击
+                if(!chapterTouchMoved) {
+                    // 返回按钮（左上角区域）
+                    if(tx < 90 && ty < 52) {
+                        state.menuScreen = 'main';
+                        state.chapterScrollY = 0;
+                        return;
+                    }
+                    // 章节卡片点击（需在可滚动区域内）
+                    if(ty >= 58) {
+                        const bounds = getChapterCardBounds(cw, ch, state.chapterScrollY || 0);
+                        for(let i = 0; i < bounds.length; i++) {
+                            const b = bounds[i];
+                            if(tx >= b.cardX && tx <= b.cardX + b.cardW && ty >= b.cardY && ty <= b.cardY + b.cardH) {
+                                let startStage = i === 0 ? 1 : (i === 1 ? 3 : (i === 2 ? 7 : 9));
+                                if(!state.transition.active) {
+                                    state.transition.active = true;
+                                    state.transition.alpha = 0;
+                                    state.transition.mode = 'out';
+                                    state.transition.callback = () => {
+                                        if (onReset) onReset(startStage);
+                                    };
+                                }
+                                return;
+                            }
+                        }
+                    }
+                }
+                return;
+            }
+            return;
+        }
         handleTouchEnd(res.changedTouches);
     });
 
