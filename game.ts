@@ -5,11 +5,11 @@ import { initInput } from './src/core/input';
 // 初始化纹理
 initTextures();
 
-// 初始化输入监听，传入重置回调
-initInput(resetGameLogic);
+// 初始化输入监听，传入重置回调（支持从指定关卡开始）
+initInput((startStage: number = 1) => resetGameLogic(startStage, true));
 
 // 启动游戏 (初始化但不开始)
-resetGameLogic(false);
+resetGameLogic(1, false);
 
 // 游戏主循环
 function gameLoop() {

@@ -2,6 +2,7 @@ import { CONFIG } from './config';
 import { Particle } from '../logic/Particle';
 export const state = {
     screen: 'menu', // menu, play, win, lose, ending
+    menuScreen: 'main' as string, // main, chapter
     map: [] as any[][],
     walls: [] as any[], // 存储墙壁的渲染圆心
     invisibleWalls: [] as any[], // 仅对玩家生效的空气墙

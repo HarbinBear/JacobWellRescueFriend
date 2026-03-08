@@ -51,6 +51,7 @@ if(state.debug.fastMove) speed *= CONFIG.debugSpeedMultiplier;
         targetX = player.x;
         targetY = player.y;
         speed = 3.5;
+        if(state.debug.fastMove) speed *= CONFIG.debugSpeedMultiplier;
     }
     else if(state.npc.state === 'follow') {
         if(!state.npc.offsetTimer) {
@@ -75,6 +76,7 @@ if(state.debug.fastMove) speed *= CONFIG.debugSpeedMultiplier;
         if(distToTarget > 100) speed = 3.5;
         else if(distToTarget < 20) speed = 0.5;
         else speed = 2.0;
+        if(state.debug.fastMove) speed *= CONFIG.debugSpeedMultiplier;
         
     } else if (state.npc.state === 'enter_tunnel') {
         if(!state.npc.pathIndex) state.npc.pathIndex = 0;
@@ -147,6 +149,7 @@ if(state.debug.fastMove) speed *= CONFIG.debugSpeedMultiplier;
         targetX = player.x;
         targetY = player.y;
         speed = 3.5;
+        if(state.debug.fastMove) speed *= CONFIG.debugSpeedMultiplier;
     }
     
     let dx = targetX - state.npc.x;
@@ -308,22 +311,22 @@ function endGame(win: boolean, reason: string) {
 }
 
 // --- 核心逻辑 ---
-export function resetGameLogic(startPlay: boolean = true) {
+export function resetGameLogic(startStage: number = 1, startPlay: boolean = true) {
     resetState();
     generateMap();
     
-    state.story.stage = 1;
+    state.story.stage = startStage;
     state.story.timer = 0;
     state.story.shake = 0;
     state.story.redOverlay = 0;
     state.story.flags = {
         seenSuit: false,
         npcEntered: false,
-        collapsed: false,
+        collapsed: startStage >= 3, // 第二关开始时缝隙已坍塌过
         blackScreen: false,
         narrowVision: false,
         rescued: false,
-        approachedTunnel: false,
+        approachedTunnel: startStage >= 3,
         tankDamaged: false,
         deathPause: 0
     };
@@ -336,12 +339,21 @@ export function resetGameLogic(startPlay: boolean = true) {
     state.npc.y = player.y;
     state.npc.state = 'follow';
     
+    // 第二关开始时清除透明墙，玩家可以进入缝隙
+    if(startStage >= 3) {
+        state.invisibleWalls = [];
+    }
+    
     state.camera = { zoom: 1, targetZoom: 1 };
     state.antiStuck = { timer: 0, lastPos: {x:player.x, y:player.y} };
 
     if (startPlay) {
         state.screen = 'play';
-        storyManager.showText("难得的假期！\n熊子带我们去雅各布井潜水！", "rgba(43, 95, 206, 1)", 4000);
+        if(startStage >= 3) {
+            storyManager.showText("找来同伴潘子，立刻一起下潜救熊子！", "rgba(13, 93, 8, 1)", 4000);
+        } else {
+            storyManager.showText("难得的假期！\n熊子带我们去雅各布井潜水！", "rgba(43, 95, 206, 1)", 4000);
+        }
     }
 }
 

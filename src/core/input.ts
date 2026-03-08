@@ -1,7 +1,21 @@
 import { CONFIG } from './config';
 import { state, input, touches } from './state';
 
-export function initInput(onReset: (() => void) | null) {
+// 计算章节卡片的点击区域（与RenderUI中的布局保持一致）
+function getChapterCardBounds(cw: number, ch: number) {
+    let cardW = cw * 0.82;
+    let cardH = ch * 0.33;
+    let cardX = (cw - cardW) / 2;
+    let gap = ch * 0.04;
+    let card1Y = 70;
+    let card2Y = card1Y + cardH + gap;
+    return [
+        { cardX, cardY: card1Y, cardW, cardH },
+        { cardX, cardY: card2Y, cardW, cardH }
+    ];
+}
+
+export function initInput(onReset: ((startStage?: number) => void) | null) {
     // PC 调试键盘支持 
     if (typeof window !== 'undefined' && window.addEventListener) {
         const keys = { w: false, a: false, s: false, d: false, shift: false };
@@ -29,12 +43,14 @@ export function initInput(onReset: (() => void) | null) {
         window.addEventListener('keydown', (e) => {
             if(state.screen === 'menu') {
                 if(e.code === 'Space') {
-                    if(!state.transition.active) {
+                    if(state.menuScreen === 'chapter') {
+                        state.menuScreen = 'main';
+                    } else if(!state.transition.active) {
                         state.transition.active = true;
                         state.transition.alpha = 0;
                         state.transition.mode = 'out';
                         state.transition.callback = () => {
-                            if (onReset) onReset();
+                            if (onReset) onReset(1);
                         };
                     }
                 }
@@ -74,13 +90,70 @@ export function initInput(onReset: (() => void) | null) {
 
     wx.onTouchStart((res) => {
         if(state.screen === 'menu') {
-            // 触发下水动效：先淡出变黑，然后重置游戏，再淡入
+            const touch = res.touches[0];
+            const tx = touch.clientX;
+            const ty = touch.clientY;
+            const cw = CONFIG.screenWidth;
+            const ch = CONFIG.screenHeight;
+
+            if(state.menuScreen === 'chapter') {
+                // 返回按钮（左上角区域）
+                if(tx < 90 && ty < 52) {
+                    state.menuScreen = 'main';
+                    return;
+                }
+                // 章节卡片点击
+                const bounds = getChapterCardBounds(cw, ch);
+                for(let i = 0; i < bounds.length; i++) {
+                    const b = bounds[i];
+                    if(tx >= b.cardX && tx <= b.cardX + b.cardW && ty >= b.cardY && ty <= b.cardY + b.cardH) {
+                        let startStage = i === 0 ? 1 : 3;
+                        if(!state.transition.active) {
+                            state.transition.active = true;
+                            state.transition.alpha = 0;
+                            state.transition.mode = 'out';
+                            state.transition.callback = () => {
+                                if (onReset) onReset(startStage);
+                            };
+                        }
+                        return;
+                    }
+                }
+                return;
+            }
+
+            // 主菜单：检测"开始游戏"按钮区域
+            let btnY = ch * 0.56;
+            let btnW = 180, btnH = 50;
+            let btnX = cw / 2 - btnW / 2;
+            if(tx >= btnX && tx <= btnX + btnW && ty >= btnY - btnH / 2 && ty <= btnY + btnH / 2) {
+                if(!state.transition.active) {
+                    state.transition.active = true;
+                    state.transition.alpha = 0;
+                    state.transition.mode = 'out';
+                    state.transition.callback = () => {
+                        if (onReset) onReset(1);
+                    };
+                }
+                return;
+            }
+
+            // 检测"章节选择"按钮区域
+            let chBtnY = ch * 0.7;
+            let chBtnW = 160, chBtnH = 44;
+            let chBtnX = cw / 2 - chBtnW / 2;
+            if(tx >= chBtnX && tx <= chBtnX + chBtnW && ty >= chBtnY - chBtnH / 2 && ty <= chBtnY + chBtnH / 2) {
+                state.menuScreen = 'chapter';
+                return;
+            }
+
+            // 点击其他区域也触发开始游戏（兼容旧逻辑）
             if(!state.transition.active) {
                 state.transition.active = true;
                 state.transition.alpha = 0;
                 state.transition.mode = 'out';
                 state.transition.callback = () => {
-                    if (onReset) onReset(); // 真正开始游戏
+                    if (onReset) onReset(1);
                 };
             }
             return;
@@ -93,6 +166,7 @@ export function initInput(onReset: (() => void) | null) {
             }
             // 游戏结束或失败，点击返回主菜单
             state.screen = 'menu';
+            state.menuScreen = 'main';
             return;
         }
 

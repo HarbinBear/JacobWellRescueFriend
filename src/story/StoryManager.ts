@@ -199,8 +199,9 @@ export class StoryManager {
                     // 清除第一关放置的透明墙，第二关玩家可以进入缝隙
                     state.invisibleWalls = [];
                     
-                    player.x = CONFIG.tileSize * (CONFIG.cols / 2);
-                    player.y = 80;
+                    const entrance = (state.landmarks as any).entrance;
+                    player.x = entrance ? entrance.x : CONFIG.tileSize * (CONFIG.cols / 2);
+                    player.y = entrance ? entrance.y : 80;
                     player.o2 = 100;
                     player.n2 = 0;
                     
