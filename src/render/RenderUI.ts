@@ -56,15 +56,15 @@ export function drawUI() {
         let py = Math.floor(player.y);
         ctx.save();
         ctx.fillStyle = 'rgba(0,0,0,0.6)';
-        ctx.fillRect(canvas.width - 210, 10, 200, 52);
+        ctx.fillRect(canvas.width - 210, 80, 200, 52);
         ctx.strokeStyle = '#0ff';
         ctx.lineWidth = 1;
-        ctx.strokeRect(canvas.width - 210, 10, 200, 52);
+        ctx.strokeRect(canvas.width - 210, 80, 200, 52);
         ctx.fillStyle = '#0ff';
         ctx.font = '12px monospace';
         ctx.textAlign = 'left';
-        ctx.fillText(`tile: col=${col}, row=${row}`, canvas.width - 200, 30);
-        ctx.fillText(`pixel: x=${px}, y=${py}`, canvas.width - 200, 50);
+        ctx.fillText(`tile: col=${col}, row=${row}`, canvas.width - 200, 90);
+        ctx.fillText(`pixel: x=${px}, y=${py}`, canvas.width - 200, 110);
         ctx.restore();
     }
 

@@ -82,6 +82,14 @@ export function generateMap() {
         }
     }
 
+    // 根据新地图手动设置剧情关键地标
+    // tunnelEntry (a): 缝隙入口，第一关NPC独自下潜触发点，第二关玩家进入触发濒死剧情
+    state.landmarks.tunnelEntry = { x: 1800, y: 5300 };
+    // tunnelEnd (b): 缝隙中间，第二关玩家被卡住/濒死的位置
+    state.landmarks.tunnelEnd = { x: 2000, y: 5600 };
+    // deadEndDeep: 假烟囱（394,2700），第二关NPC救人后独自游向此处
+    state.landmarks.deadEndDeep = { x: 394, y: 2700 };
+
     // 3. 生成墙壁渲染数据 —— 仅边缘岩石生成 wall 对象
     state.walls = [];
     for (let r = 0; r < rows; r++) {

@@ -37,7 +37,7 @@ export const state = {
     endingTimer: 0, // 结局动画计时器
     currentZone: null as string | null, // 当前所在区域
     debug: {
-        fastMove: false
+        fastMove: true
     },
     npc: {
         active: false,

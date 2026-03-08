@@ -82,7 +82,7 @@ export class StoryManager {
             }
         }
         
-        // 事件2: 到达狭窄通道
+        // 事件2: 到达狭窄通道 —— 玩家靠近入口a，NPC独自进入，玩家固定进不去
         if(!state.story.flags.npcEntered) {
             let d = Math.hypot(player.x - tunnelEntry.x, player.y - tunnelEntry.y);
             if(d < 100) {
@@ -90,8 +90,15 @@ export class StoryManager {
                 state.npc.state = 'enter_tunnel';
                 state.npc.pathIndex = 0; // 重置路径索引
                 this.showText("内心：太危险了！别进去！", "#ff4444", 3000); // 亮红
-                state.story.timer = 0; 
-                console.log("[Story] NPC entering tunnel");
+                state.story.timer = 0;
+                
+                // 第一关：在入口a处放置透明墙，固定阻止玩家进入
+                state.invisibleWalls = [{
+                    x: tunnelEntry.x,
+                    y: tunnelEntry.y,
+                    r: 60
+                }];
+                console.log("[Story] NPC entering tunnel, invisible wall placed at entry");
             }
         }
         
@@ -105,8 +112,9 @@ export class StoryManager {
             if(state.story.timer === 360) this.showText("内心：里面太窄了，你会卡住的...", "#ffd700", 3000);
             if(state.story.timer === 540) this.showText("内心：喂！听得到吗？快回来！", "#ff4444", 3000);
 
-            // NPC 深入隧道后触发坍塌 (距离入口超过 400 像素，且时间足够)
-            if(distFromEntry > 400 && state.story.timer > 300) {
+            // NPC 深入隧道后触发坍塌 (距离入口超过 200 像素，或已接近终点，且时间足够)
+            let distFromEnd = Math.hypot(state.npc.x - tunnelEnd.x, state.npc.y - tunnelEnd.y);
+            if((distFromEntry > 200 || distFromEnd < 300) && state.story.timer > 300) {
                 state.story.flags.collapsed = true;
                 state.npc.active = false; 
                 state.story.timer = 0; 
@@ -188,6 +196,9 @@ export class StoryManager {
                     state.story.stage = 3;
                     state.story.flags.blackScreen = false;
                     
+                    // 清除第一关放置的透明墙，第二关玩家可以进入缝隙
+                    state.invisibleWalls = [];
+                    
                     player.x = CONFIG.tileSize * (CONFIG.cols / 2);
                     player.y = 80;
                     player.o2 = 100;
@@ -242,9 +253,8 @@ export class StoryManager {
         }
         
         let dEnd = Math.hypot(player.x - tunnelEnd.x, player.y - tunnelEnd.y);
-        // 判定点改为深度判定：只要深入隧道一定距离就触发卡住
-        // 隧道入口 y 坐标 + 300 像素 (约7-8格)
-        if(player.y > tunnelEntry.y + 300) { 
+        // 第二关：玩家到达缝隙中间位置b（tunnelEnd）附近时触发濒死剧情
+        if(dEnd < 200) { 
             state.story.stage = 4;
             state.story.timer = 0;
             input.move = 0; 
@@ -258,7 +268,7 @@ export class StoryManager {
             state.story.flags.narrowVision = true;
             
             state.story.shake = 5; // 轻微挣扎晃动
-            console.log("[Story] Player stuck (Depth Trigger)");
+            console.log("[Story] Player stuck at tunnelEnd (b point)");
         }
     }
 
@@ -342,7 +352,8 @@ export class StoryManager {
         }
         if(state.story.timer === 400) { // 稍微延后一点
             this.showText("靠近队友补充氧气！", "#00bfff", 3000);
-            state.npc.state = 'follow'; // 这里的 follow 会被 logic.js 中的 rescued 逻辑接管
+            // NPC救人后，独自游向假烟囱（394,2700）死路
+            state.npc.state = 'to_dead_end';
             state.story.stage = 6;
             state.story.redOverlay = 0; // 强制移除红屏
         }

@@ -19,52 +19,38 @@ function updateNPC() {
     let targetY = player.y;
     let speed = 2.8;
     
-    if(state.debug.fastMove) speed *= 3;
+if(state.debug.fastMove) speed *= CONFIG.debugSpeedMultiplier;
     
-    if(state.story.flags.rescued) {
+    if(state.npc.state === 'to_dead_end') {
+        // 第二关NPC救人后，独自游向假烟囱(394,2700)死路
+        let deadEnd = state.landmarks.deadEndDeep;
+        targetX = deadEnd.x;
+        targetY = deadEnd.y;
+        speed = 3.5;
+if(state.debug.fastMove) speed *= CONFIG.debugSpeedMultiplier;
+        
+        let dx = targetX - state.npc.x;
+        let dy = targetY - state.npc.y;
+        let dist = Math.hypot(dx, dy);
+        
+        if(dist > 5) {
+            state.npc.vx = (dx / dist) * speed;
+            state.npc.vy = (dy / dist) * speed;
+            state.npc.x += state.npc.vx;
+            state.npc.y += state.npc.vy;
+        }
+        
+        if(Math.abs(state.npc.vx) > 0.1 || Math.abs(state.npc.vy) > 0.1) {
+            let targetAngle = Math.atan2(state.npc.vy, state.npc.vx);
+            state.npc.angle = targetAngle;
+        }
+        return;
+    }
+    else if(state.story.flags.rescued) {
+        // 获救后NPC跟随玩家上浮
         targetX = player.x;
         targetY = player.y;
         speed = 3.5;
-
-        let junction = state.landmarks.junction;
-        let deadEnd = state.landmarks.deadEndDeep;
-        let tunnelEntry = state.landmarks.tunnelEntry;
-
-        if (tunnelEntry && player.y > tunnelEntry.y) {
-            targetX = tunnelEntry.x;
-            targetY = tunnelEntry.y - 50;
-            
-            if (Math.random() < 0.05) {
-                targetX += (Math.random() - 0.5) * 60;
-                targetY += (Math.random() - 0.5) * 30;
-            }
-        }
-        else if(junction && deadEnd) {
-            if(player.y > junction.y + 5 * CONFIG.tileSize) {
-                targetX = player.x;
-                targetY = player.y - 60;
-            } 
-            else {
-                targetX = deadEnd.x;
-                targetY = deadEnd.y;
-                
-                let distToDeadEnd = Math.hypot(state.npc.x - deadEnd.x, state.npc.y - deadEnd.y);
-                if (distToDeadEnd < 100) {
-                    if (Math.random() < 0.1) {
-                        state.npc.targetX = (Math.random() - 0.5) * 150;
-                        state.npc.targetY = (Math.random() - 0.5) * 100;
-                    }
-                    targetX = deadEnd.x + (state.npc.targetX || 0);
-                    targetY = deadEnd.y + (state.npc.targetY || 0);
-                    speed = 4.0;
-                }
-                
-                if(player.y < junction.y && player.x > junction.x + 5 * CONFIG.tileSize) {
-                    targetX = junction.x;
-                    targetY = junction.y;
-                }
-            }
-        }
     }
     else if(state.npc.state === 'follow') {
         if(!state.npc.offsetTimer) {
@@ -107,7 +93,7 @@ function updateNPC() {
             targetY = state.landmarks.tunnelEnd.y;
         }
         speed = 3.5;
-        if(state.debug.fastMove) speed *= 3;
+if(state.debug.fastMove) speed *= CONFIG.debugSpeedMultiplier;
 
         let dx = targetX - state.npc.x;
         let dy = targetY - state.npc.y;
@@ -586,7 +572,7 @@ export function update() {
     let speed = CONFIG.moveSpeed * 0.3;
     if(input.speedUp) speed = CONFIG.moveSpeed; 
     
-    if(state.debug.fastMove) speed *= 3;
+if(state.debug.fastMove) speed *= CONFIG.debugSpeedMultiplier;
 
     if(input.move > 0) {
         player.vx += Math.cos(player.targetAngle) * speed * CONFIG.acceleration;
@@ -619,13 +605,17 @@ export function update() {
 
     updateRopeSystem();
 
-    // 首次潜水：封堵的洞口提示
+    // 首次潜水：玩家固定进不去缝隙入口
     if(state.story.stage === 1 || state.story.stage === 2) {
-        if(state.story.flags.collapsed && state.landmarks.tunnelEntry) {
+        if(state.landmarks.tunnelEntry) {
             let dist = Math.hypot(player.x - state.landmarks.tunnelEntry.x, player.y - state.landmarks.tunnelEntry.y);
-            if(dist < 80 && Math.sin(player.targetAngle) > 0.5 && input.move > 0) {
+            if(dist < 80 && input.move > 0) {
                 if(!state.story.lastBlockMsgTime || Date.now() - state.story.lastBlockMsgTime > 3000) {
-                    storyManager.showText("洞口被巨石堵住了", "#f00", 2000);
+                    if(state.story.flags.collapsed) {
+                        storyManager.showText("洞口被巨石堵住了", "#f00", 2000);
+                    } else {
+                        storyManager.showText("缝隙太窄了，根本挤不进去！", "#f00", 2000);
+                    }
                     state.story.lastBlockMsgTime = Date.now();
                 }
             }

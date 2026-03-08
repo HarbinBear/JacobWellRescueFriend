@@ -7,6 +7,7 @@ export const CONFIG = {
     
     // 调试
     debug: true,              // 调试模式：显示小地图和实时坐标
+    debugSpeedMultiplier: 5,  // 调试模式下的移动速度系数
     bShowNpcFlashLight: false,
 
     // 游戏参数
