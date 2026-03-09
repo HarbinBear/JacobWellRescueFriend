@@ -11,6 +11,10 @@ import { CONFIG } from '../core/config';
 // 我们可以先写 StoryManager，假设 logic.js 会导出 addParticle。
 
 export class StoryManager {
+    timer: number;
+    subTimer: number;
+    bubbleTimer: number;
+
     constructor() {
         this.timer = 0;
         this.subTimer = 0;

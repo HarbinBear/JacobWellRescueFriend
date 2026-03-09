@@ -101,6 +101,7 @@ export const state = {
         tunnelPath: [],
         junction: {x:0, y:0},
         deadEndDeep: {x:0, y:0},
+        entrance: {x:0, y:0},
         // 第一二洞室连接处（row20, col63）
         chamber12Junction: {x: CONFIG.chamber12JunctionX, y: CONFIG.chamber12JunctionY},
         // 二三洞室连接处（大缝隙）

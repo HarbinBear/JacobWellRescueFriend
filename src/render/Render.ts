@@ -58,6 +58,7 @@ function drawSplashes() {
 // --- 主渲染函数 ---
 export function draw() {
     let zoom = state.camera ? state.camera.zoom : 1;
+    let flashlightActive = true;
     
     // 屏幕震动
     let shakeX = 0, shakeY = 0;
@@ -399,7 +400,6 @@ export function draw() {
     let rayDist = CONFIG.lightRange;
 
     // 第三关：手电筒损坏闪烁效果
-    let flashlightActive = true;
     if(state.story.flags.flashlightBroken) {
         // 手电筒固定灭（靠近二三洞室连接处后）
         if(state.story.flags.flashlightFixedOff) {
@@ -513,7 +513,7 @@ export function draw() {
 
     lightCtx.restore(); 
 
-    ctx.drawImage(lightLayer, 0, 0);
+    ctx.drawImage(lightLayer as unknown as CanvasImageSource, 0, 0);
 
     // 绘制灰色物体（氧气罐造型）
     // 鱼眼出现前：模糊隐约；鱼眼出现后：清晰可见
