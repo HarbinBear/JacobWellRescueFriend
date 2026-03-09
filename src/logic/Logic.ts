@@ -368,6 +368,18 @@ export function resetGameLogic(startStage, startPlay) {
             surfaceOsShown: false,
             reachedChamber23Junction: false,
             chamber23OsShown: false,
+        // 第三关：手电筒固定灭（靠近灰色物体后）
+            flashlightFixedOff: false,
+            flashlightOffStartTime: 0,
+            // 第三关：恐怖鱼眼闪现
+            fishEyeTriggered: false,
+            fishEyeFlashTimer: 0,
+            fishEyeFlashStartTime: 0,
+            // 第三关：放弃救援按钮
+            abandonBtnVisible: false,
+            abandonBtnScheduledTime: 0,
+            abandonBtnHolding: false,
+            abandonBtnHoldStartTime: 0,
             bearDied: false,
             stage2Ending: false
         };
@@ -385,9 +397,15 @@ export function resetGameLogic(startStage, startPlay) {
         state.npc.active = false;
     }
     
-    // 第四关：同样没有NPC
+    // 第四关：同样没有NPC，出生点在二三洞室连接处另一侧
     if(startStage >= 9) {
         state.npc.active = false;
+        // 第四关出生点：二三洞室连接处下方（刚进入第三洞室）
+        let j23 = state.landmarks.chamber23Junction;
+        player.x = j23.x;
+        player.y = j23.y + CONFIG.chapter4SpawnOffsetY;
+        // 第四关手电筒已经是坏的状态（从第三关延续）
+        state.story.flags.flashlightBroken = true;
     }
     
     // 第二关开始时清除透明墙，玩家可以进入缝隙
@@ -687,6 +705,22 @@ if(state.debug.fastMove) speed *= CONFIG.debugSpeedMultiplier;
         }
     }
 
+    // 第三关：放弃救援按钮长按计时（用时间戳，不依赖帧率）
+    if(state.story.flags.abandonBtnHolding && state.story.flags.abandonBtnVisible && state.story.stage === 7) {
+        let now = Date.now();
+        let elapsed = (now - state.story.flags.abandonBtnHoldStartTime) / 1000;
+        if(elapsed >= CONFIG.abandonBtnHoldDuration) {
+            state.story.flags.abandonBtnHolding = false;
+            state.story.flags.abandonBtnHoldStartTime = 0;
+            state.story.flags.abandonBtnVisible = false;
+            state.story.flags.bearDied = true;
+            state.story.stage = 8;
+            state.story.timer = 0;
+            state.screen = 'ending';
+            state.endingTimer = 0;
+        }
+    }
+
     // 第三关：手电筒损坏检测（经过第一二洞室连接处时触发）
     if(state.story.stage === 7 && !state.story.flags.flashlightBroken) {
         let junction = state.landmarks.chamber12Junction;
@@ -723,7 +757,63 @@ if(state.debug.fastMove) speed *= CONFIG.debugSpeedMultiplier;
         state.story.flags.bearDied = true;
     }
 
-    // 第三关：到达二三洞室连接处（大缝隙）
+    // 第三关：靠近灰色物体（氧气罐）时手电筒固定灭
+    if(state.story.stage === 7 && state.story.flags.flashlightBroken && !state.story.flags.flashlightFixedOff) {
+        let distToGrayThing = Math.hypot(player.x - CONFIG.grayThingX, player.y - CONFIG.grayThingY);
+        if(distToGrayThing < CONFIG.flashlightFixedOffTriggerDist) {
+            state.story.flags.flashlightFixedOff = true;
+            state.story.flags.flashlightOffStartTime = Date.now();
+        }
+    }
+
+    // 第三关：手电筒固定灭后的计时逻辑（用时间戳）
+    if(state.story.stage === 7 && state.story.flags.flashlightFixedOff) {
+        let now = Date.now();
+        let elapsed = (now - state.story.flags.flashlightOffStartTime) / 1000;
+
+        // 鱼眼触发：玩家靠近灰色物体（氧气罐）时手电筒突然亮一下，闪现鱼眼
+        if(!state.story.flags.fishEyeTriggered) {
+            let distToGrayThing = Math.hypot(player.x - CONFIG.grayThingX, player.y - CONFIG.grayThingY);
+            if(distToGrayThing < CONFIG.fishEyeTriggerDist) {
+                state.story.flags.fishEyeTriggered = true;
+                state.story.flags.fishEyeFlashStartTime = now; // 记录鱼眼开始时间
+                state.story.flags.fishEyeFlashTimer = 1; // 标记鱼眼激活（>0表示激活）
+                state.story.flags.flashlightOffStartTime = now; // 鱼眼触发后重置计时
+                // 鱼眼触发后2秒显示放弃按钮
+                state.story.flags.abandonBtnScheduledTime = now + CONFIG.abandonBtnAppearDelay * 1000;
+            }
+        }
+
+        // 鱼眼闪现计时（用时间戳控制持续时间）
+        if(state.story.flags.fishEyeFlashTimer > 0) {
+            let flashElapsed = (now - state.story.flags.fishEyeFlashStartTime) / 1000;
+            if(flashElapsed >= CONFIG.fishEyeFlashDuration) {
+                state.story.flags.fishEyeFlashTimer = 0; // 鱼眼结束
+            } else {
+                // 用剩余比例表示进度（1.0 -> 0）
+                state.story.flags.fishEyeFlashTimer = 1 - flashElapsed / CONFIG.fishEyeFlashDuration;
+            }
+        }
+
+        // 鱼眼触发后，到达预定时间显示放弃按钮
+        if(state.story.flags.fishEyeTriggered && 
+           state.story.flags.abandonBtnScheduledTime > 0 &&
+           now >= state.story.flags.abandonBtnScheduledTime &&
+           !state.story.flags.abandonBtnVisible) {
+            state.story.flags.abandonBtnVisible = true;
+            state.story.flags.abandonBtnScheduledTime = 0;
+        }
+
+        // 鱼眼触发后，经过配置秒数后手电筒重新亮起（恢复闪烁状态）
+        if(state.story.flags.fishEyeTriggered) {
+            let resumeElapsed = (now - state.story.flags.flashlightOffStartTime) / 1000;
+            if(resumeElapsed >= CONFIG.flashlightResumeDuration) {
+                state.story.flags.flashlightFixedOff = false;
+            }
+        }
+    }
+
+    // 第三关：到达二三洞室连接处（大缝隙结尾，进入第三洞室）
     if(state.story.stage === 7 && state.story.flags.flashlightBroken && !state.story.flags.reachedChamber23Junction) {
         let junction23 = state.landmarks.chamber23Junction;
         let distToJunction23 = Math.hypot(player.x - junction23.x, player.y - junction23.y);
@@ -731,9 +821,19 @@ if(state.debug.fastMove) speed *= CONFIG.debugSpeedMultiplier;
             state.story.flags.reachedChamber23Junction = true;
             // 玩家改变主意，继续深入，清除上岸意图
             state.story.flags.tryingToSurface = false;
+            // 通过连接处后，放弃按钮消失，手电筒恢复正常
+            state.story.flags.abandonBtnVisible = false;
+            state.story.flags.flashlightFixedOff = false;
+            state.story.flags.flashlightBroken = false; // 手电筒恢复正常
             if(!state.story.flags.chamber23OsShown) {
                 state.story.flags.chamber23OsShown = true;
                 storyManager.showText("内心：坚持住熊子，我一定会救你出来！", "#00ff88", 4000);
+                setTimeout(() => {
+                    storyManager.showText("内心：原来是幻觉，那只是我刚刚掉那儿的氧气罐。。。", "#ffd700", 4000);
+                    setTimeout(() => {
+                        storyManager.showText("内心：我以为是什么呢吓死了。", "#ffd700", 3500);
+                    }, 4500);
+                }, 4500);
             }
         }
     }
@@ -742,7 +842,7 @@ if(state.debug.fastMove) speed *= CONFIG.debugSpeedMultiplier;
     if(state.story.stage === 7 && state.story.flags.reachedChamber23Junction) {
         let junction23 = state.landmarks.chamber23Junction;
         // 玩家继续向下走，远离连接处后进入第四关
-        if(player.y > junction23.y + 300) {
+        if(player.y > junction23.y + CONFIG.chapter4SpawnOffsetY) {
             state.story.stage = 9; // 第四关
             state.story.timer = 0;
             storyManager.showText("什么东西！", "#ff4444", 3000);

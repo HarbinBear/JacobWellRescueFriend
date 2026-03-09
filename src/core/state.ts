@@ -42,6 +42,18 @@ export const state = {
             // 第三关：到达二三洞室连接处
             reachedChamber23Junction: false,
             chamber23OsShown: false,
+            // 第三关：手电筒固定灭（靠近灰色物体后）
+            flashlightFixedOff: false,
+            flashlightOffStartTime: 0, // 手电筒固定灭的开始时间戳
+            // 第三关：恐怖鱼眼闪现
+            fishEyeTriggered: false,
+            fishEyeFlashTimer: 0,       // 鱼眼闪现进度（1.0->0）
+            fishEyeFlashStartTime: 0,   // 鱼眼开始闪现的时间戳
+            // 第三关：放弃救援按钮
+            abandonBtnVisible: false,
+            abandonBtnScheduledTime: 0, // 预定显示放弃按钮的时间戳
+            abandonBtnHolding: false,
+            abandonBtnHoldStartTime: 0, // 开始长按的时间戳
             // 结局标记
             bearDied: false,
             stage2Ending: false
@@ -90,9 +102,9 @@ export const state = {
         junction: {x:0, y:0},
         deadEndDeep: {x:0, y:0},
         // 第一二洞室连接处（row20, col63）
-        chamber12Junction: {x: 63 * 40 + 20, y: 20 * 40 + 20},
+        chamber12Junction: {x: CONFIG.chamber12JunctionX, y: CONFIG.chamber12JunctionY},
         // 二三洞室连接处（大缝隙）
-        chamber23Junction: {x: 1800, y: 5300}
+        chamber23Junction: {x: CONFIG.chamber23JunctionX, y: CONFIG.chamber23JunctionY}
     },
     rope: {
         ropes: [],

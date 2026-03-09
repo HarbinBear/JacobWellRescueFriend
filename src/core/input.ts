@@ -6,6 +6,9 @@ let chapterTouchStartY = 0;
 let chapterTouchStartScrollY = 0;
 let chapterTouchMoved = false;
 
+// 放弃救援按钮长按状态
+let abandonTouchId = null;
+
 // 主菜单触摸起始位置（用于 touchEnd 判断点击）
 let menuTouchStartX = 0;
 let menuTouchStartY = 0;
@@ -197,6 +200,23 @@ export function initInput(onReset) {
         // 单摇杆逻辑：只处理第一个触摸点作为摇杆
         if (touches.joystickId === null && res.touches.length > 0) {
             const t = res.touches[0];
+
+            // 检测放弃救援按钮长按
+            if(state.story.flags.abandonBtnVisible && state.story.stage === 7) {
+                const cw = CONFIG.screenWidth;
+                const ch = CONFIG.screenHeight;
+                const btnW = 200, btnH = 64;
+                const btnX = cw / 2 - btnW / 2;
+                const btnY = ch * 0.28 - btnH / 2;
+                if(t.clientX >= btnX && t.clientX <= btnX + btnW &&
+                   t.clientY >= btnY && t.clientY <= btnY + btnH) {
+                    abandonTouchId = t.identifier;
+                    state.story.flags.abandonBtnHolding = true;
+                    state.story.flags.abandonBtnHoldStartTime = Date.now();
+                    return;
+                }
+            }
+
             touches.joystickId = t.identifier;
             touches.start = { x: t.clientX, y: t.clientY };
             touches.curr = { x: t.clientX, y: t.clientY };
@@ -208,6 +228,7 @@ export function initInput(onReset) {
     });
 
     wx.onTouchMove((res) => {
+        // 放弃按钮长按计时（在 update 循环中处理，这里不需要）
         if(state.screen === 'menu' && state.menuScreen === 'chapter') {
             const touch = res.touches[0];
             const dy = touch.clientY - chapterTouchStartY;
@@ -350,6 +371,12 @@ export function initInput(onReset) {
 
 function handleTouchEnd(changedTouches) {
     for(let t of changedTouches) {
+        // 放弃按钮松手
+        if(t.identifier === abandonTouchId) {
+            abandonTouchId = null;
+            state.story.flags.abandonBtnHolding = false;
+            state.story.flags.abandonBtnHoldStartTime = 0;
+        }
         if(state.rope && state.rope.hold && t.identifier === state.rope.hold.touchId) {
             state.rope.hold.active = false;
             state.rope.hold.type = null;

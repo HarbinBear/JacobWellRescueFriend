@@ -89,5 +89,27 @@ export const CONFIG = {
     ropeReelRadius: 8,             // 玩家身上线轮指示器半径
     ropeReelColor: 'rgba(200, 190, 140, 0.7)', // 线轮指示器颜色
     // 目标名字库
-    targetNames: ["伟仔", "毛丁", "树茂", "熊", "亮子", "潘子"]
+    targetNames: ["伟仔", "毛丁", "树茂", "熊", "亮子", "潘子"],
+
+    // ===== 第三关关键点位配置 =====
+    // 第一二洞室连接处（row20, col63）
+    chamber12JunctionX: 718,
+    chamber12JunctionY: 2380,
+    // 二三洞室连接处结尾（大缝隙出口，第三洞室入口）
+    chamber23JunctionX: 2266,
+    chamber23JunctionY: 5700,
+    // 第四关出生点（二三洞室连接处另一侧，刚进入第三洞室）
+    chapter4SpawnOffsetY: 350,      // 相对于二三洞室连接处向下偏移的距离
+
+    // ===== 第三关恐怖事件配置 =====
+    fishEyeFlashDuration: 0.3,      // 鱼眼闪现持续秒数
+    flashlightFixedOffTriggerDist: 350,  // 距灰色物体多近时手电筒固定灭（像素）
+    fishEyeTriggerDist: 120,        // 距灰色物体多近时触发鱼眼闪现（像素）
+    abandonBtnAppearDelay: 2.0,     // 鱼眼出现后多少秒显示放弃按钮
+    abandonBtnHoldDuration: 3.0,    // 长按放弃按钮需要多少秒
+    flashlightResumeDuration: 5.0,  // 鱼眼触发后多少秒手电筒重新亮起
+    // 灰色物体（二三洞室连接处开始处的石头上）
+    grayThingX: 1870,               // 灰色物体X坐标（连接处开始处）
+    grayThingY: 5480,               // 灰色物体Y坐标（连接处开始处）
+    grayThingVisibleDist: 400,      // 灰色物体在多少像素内开始可见
 };

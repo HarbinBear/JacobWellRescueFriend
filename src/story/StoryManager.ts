@@ -220,7 +220,6 @@ export class StoryManager {
     updateStage3(tunnelEntry, tunnelEnd) {
         // 下潜过程中的心理活动
         if(state.story.timer === 120) this.showText("内心：一定要找到他...", "#ffd700", 2000);
-        if(state.story.timer === 300) this.showText("内心：这里太安静了...", "#ffd700", 2000);
 
         let d = Math.hypot(player.x - tunnelEntry.x, player.y - tunnelEntry.y);
         
@@ -374,7 +373,6 @@ export class StoryManager {
     updateStage7() {
         // 第三关：只有玩家自己下潜
         if(state.story.timer === 120) this.showText("内心：熊子，我来了...", "#ffd700", 2000);
-        if(state.story.timer === 300) this.showText("内心：这里太静了...", "#ffd700", 2000);
     }
 
     updateStage9() {
