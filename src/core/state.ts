@@ -107,6 +107,8 @@ export const state = {
         // 二三洞室连接处（大缝隙）
         chamber23Junction: {x: CONFIG.chamber23JunctionX, y: CONFIG.chamber23JunctionY}
     },
+    fishEnemies: [],  // 凶猛鱼敌人列表
+    fishBite: null,    // 玩家被咬状态 { active, phase, timer, shakeIntensity }
     rope: {
         ropes: [],
         active: false,
@@ -187,6 +189,8 @@ export function resetState() {
     target.found = false;
     particles.length = 0;
     state.splashes = [];
+    state.fishEnemies = [];
+    state.fishBite = null;
 
     state.rope = {
         ropes: [],

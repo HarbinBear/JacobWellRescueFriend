@@ -5,6 +5,7 @@ import { drawFlashlight, computeSiltAttenuation, isLineOfSight } from './RenderL
 import { drawDiver } from './RenderDiver';
 import { drawUI, drawControls } from './RenderUI';
 import { drawRopesWorld, drawRopeButton } from './RenderRope';
+import { drawAllFishEnemies, drawFishBiteEffect } from './RenderFishEnemy';
 
 // 向后兼容，重新导出 canvas 和 ctx
 export { canvas, ctx };
@@ -316,6 +317,9 @@ export function draw() {
 
     // --- 绘制绳索（世界空间，在角色之前）---
     drawRopesWorld();
+
+    // --- 绘制凶猛鱼敌人（在角色之前）---
+    drawAllFishEnemies(ctx);
 
     // --- 绘制体积光 ---
     let vRayDist = CONFIG.lightRange;
@@ -821,6 +825,9 @@ export function draw() {
     drawUI();
     drawControls();
     drawRopeButton();
+
+    // 绘制凶猛鱼被咬特效（在 UI 之上，屏幕空间）
+    drawFishBiteEffect(ctx, canvas.width, canvas.height);
 
     // 4. 过渡动画
     if(state.transition && state.transition.active) {

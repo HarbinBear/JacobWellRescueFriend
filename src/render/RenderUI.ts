@@ -2,7 +2,15 @@ import { CONFIG } from '../core/config';
 import { state, player, target, touches } from '../core/state';
 import { ctx, canvas } from './Canvas';
 import { drawDiver, drawLungs, drawDiverSilhouette } from './RenderDiver';
+import { createFishEnemy } from '../logic/FishEnemy';
 
+// 调试按钮：生成凶猛鱼（右上角，与其他调试信息分开放）
+export const DEBUG_FISH_BTN = {
+    get x() { return CONFIG.screenWidth - this.w - 10; },
+    y: 10,
+    w: 110,
+    h: 36,
+};
 // 兼容微信小游戏的圆角矩形（手动绘制，避免roundRect兼容性问题）
 function rrect(c, x, y, w, h, r) {
     r = Math.min(r, w / 2, h / 2);
@@ -81,6 +89,9 @@ export function drawUI(){
         ctx.fillText(`tile: col=${col}, row=${row}`, canvas.width - 200, 90);
         ctx.fillText(`pixel: x=${px}, y=${py}`, canvas.width - 200, 110);
         ctx.restore();
+
+        // 凶猛鱼调试按钮（右上角，独立于坐标信息框）
+        drawDebugFishButton();
     }
 
     // 剧情文字显示
@@ -1102,6 +1113,53 @@ function wrapText(renderCtx, text, x, y, lineHeight) {
     let lines = text.split('\n');
     let startY = y - (lines.length-1)*lineHeight/2;
     for(let i=0; i<lines.length; i++) renderCtx.fillText(lines[i], x, startY + i*lineHeight);
+}
+
+// =============================================
+// 绘制凶猛鱼调试按钮（右上角，仅调试模式下显示）
+// =============================================
+function drawDebugFishButton() {
+    if (state.screen !== 'play') return;
+
+    const btnW = DEBUG_FISH_BTN.w;
+    const btnH = DEBUG_FISH_BTN.h;
+    const btnX = DEBUG_FISH_BTN.x;
+    const btnY = DEBUG_FISH_BTN.y;
+
+    const fishCount = state.fishEnemies ? state.fishEnemies.length : 0;
+    const pulse = 0.85 + Math.sin(Date.now() / 400) * 0.15;
+
+    ctx.save();
+
+    // 按钮背景
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle = 'rgba(120, 20, 20, 0.85)';
+    ctx.beginPath();
+    rrect(ctx, btnX, btnY, btnW, btnH, 8);
+    ctx.fill();
+
+    // 按钮边框
+    ctx.strokeStyle = `rgba(220, 60, 60, ${pulse})`;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    rrect(ctx, btnX, btnY, btnW, btnH, 8);
+    ctx.stroke();
+
+    ctx.globalAlpha = 1;
+
+    // 按钮文字
+    ctx.fillStyle = '#ff9999';
+    ctx.font = 'bold 13px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`🦈 生成凶猛鱼`, btnX + btnW / 2, btnY + btnH / 2 - 5);
+
+    // 当前数量提示
+    ctx.fillStyle = 'rgba(255, 180, 180, 0.8)';
+    ctx.font = '10px Arial';
+    ctx.fillText(`当前: ${fishCount} 条`, btnX + btnW / 2, btnY + btnH / 2 + 9);
+
+    ctx.restore();
 }
 
 export function drawControls() {

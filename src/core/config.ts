@@ -112,4 +112,52 @@ export const CONFIG = {
     grayThingX: 1870,               // 灰色物体X坐标（连接处开始处）
     grayThingY: 5480,               // 灰色物体Y坐标（连接处开始处）
     grayThingVisibleDist: 400,      // 灰色物体在多少像素内开始可见
+
+    // ===== 凶猛鱼（敌人）配置 =====
+    fishEnemy: {
+        size: 28,                   // 鱼体基础尺寸（像素）
+
+        // 感知与探测
+        detectRange: 320,           // 感知玩家的距离（像素）
+
+        // 各状态移动速度
+        roamSpeed: 1.2,             // 自由游弋速度
+        stalkSpeed: 1.8,            // 悄悄靠近速度
+        lungeSpeed: 14,             // 扑击冲刺速度
+        fleeSpeed: 10,              // 被光驱赶逃跑速度
+
+        // 转向灵敏度（0~1，越大转向越快）
+        turnSpeedRoam: 0.04,        // 游弋时转向速度
+        turnSpeedStalk: 0.06,       // 靠近时转向速度
+        turnSpeedCircle: 0.08,      // 徘徊时转向速度
+        turnSpeedFlee: 0.12,        // 逃跑时转向速度
+
+        // 徘徊参数
+        circleRadius: 120,          // 绕玩家徘徊的半径（像素）
+        circleSpeed: 0.018,         // 绕圈角速度（弧度/帧）
+        circleBeforeLunge: 180,     // 徘徊多少帧后发动扑击
+
+        // 扑击参数
+        lungeChargeDuration: 40,    // 蓄力帧数
+        lungeMaxDuration: 80,       // 扑击最大持续帧数（超时未命中则放弃）
+        biteRange: 35,              // 命中判定距离（像素）
+
+        // 撕咬与吞食
+        biteDuration: 60,           // 撕咬持续帧数
+        devourDuration: 40,         // 吞食持续帧数
+
+        // 撤退
+        retreatDuration: 200,       // 慢慢撤退持续帧数
+
+        // 怕光参数
+        lightFearThreshold: 0.25,   // 触发怕光的最低亮度阈值（0~1）
+        fearPauseDuration: 20,      // 怕光停顿帧数（惊吓反应）
+        fearDuration: 180,          // 迅速逃跑持续帧数
+
+        // 发现目标停顿
+        detectPauseDuration: 45,    // 发现目标后停顿帧数
+
+        // 死亡过场
+        deathFadeDuration: 120,     // 死亡红屏淡出帧数
+    },
 };

@@ -4,6 +4,7 @@ import { generateMap } from '../world/map';
 import { StoryManager } from '../story/StoryManager';
 import { Particle, createSplash, updateSplashes, triggerSilt, updateParticles } from './Particle';
 import { updateRopeSystem, findNearestWall } from './Rope';
+import { updateAllFishEnemies } from './FishEnemy';
 
 const storyManager = new StoryManager();
 
@@ -1015,4 +1016,12 @@ if(state.debug.fastMove) speed *= CONFIG.debugSpeedMultiplier;
     }
 
     updateParticles();
+
+    // 更新凶猛鱼敌人（仅在游戏进行中且没有被咬死亡过场时）
+    if (!state.fishBite || !state.fishBite.active || state.fishBite.phase !== 'dead') {
+        updateAllFishEnemies(1);
+    } else {
+        // 死亡过场期间只更新被咬状态，不更新鱼的 AI
+        updateAllFishEnemies(1);
+    }
 }

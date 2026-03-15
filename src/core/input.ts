@@ -1,5 +1,7 @@
 import { CONFIG } from './config';
-import { state, input, touches } from './state';
+import { state, input, touches, player } from './state';
+import { createFishEnemy } from '../logic/FishEnemy';
+import { DEBUG_FISH_BTN } from '../render/RenderUI';
 
 // 章节页滑动状态
 let chapterTouchStartY = 0;
@@ -200,6 +202,24 @@ export function initInput(onReset) {
         // 单摇杆逻辑：只处理第一个触摸点作为摇杆
         if (touches.joystickId === null && res.touches.length > 0) {
             const t = res.touches[0];
+
+            // 检测凶猛鱼调试按钮（仅在调试模式且游戏进行中）
+            if (CONFIG.debug && state.screen === 'play') {
+                const btn = DEBUG_FISH_BTN;
+                if (
+                    t.clientX >= btn.x && t.clientX <= btn.x + btn.w &&
+                    t.clientY >= btn.y && t.clientY <= btn.y + btn.h
+                ) {
+                    // 在玩家前方生成一条凶猛鱼
+                    const spawnDist = 300;
+                    const spawnAngle = Math.random() * Math.PI * 2;
+                    const spawnX = player.x + Math.cos(spawnAngle) * spawnDist;
+                    const spawnY = player.y + Math.sin(spawnAngle) * spawnDist;
+                    if (!state.fishEnemies) state.fishEnemies = [];
+                    state.fishEnemies.push(createFishEnemy(spawnX, spawnY));
+                    return;
+                }
+            }
 
             // 检测放弃救援按钮长按
             if(state.story.flags.abandonBtnVisible && state.story.stage === 7) {
