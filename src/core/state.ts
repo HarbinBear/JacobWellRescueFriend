@@ -1,6 +1,6 @@
 import { CONFIG } from './config';
 export const state = {
-    screen: 'menu', // menu, play, win, lose, ending
+    screen: 'menu', // menu, play, win, lose, ending, fishArena
     menuScreen: 'main', // main, chapter
     chapterScrollY: 0, // chapter select page scroll offset
     map: [],
@@ -107,8 +107,33 @@ export const state = {
         // 二三洞室连接处（大缝隙）
         chamber23Junction: {x: CONFIG.chamber23JunctionX, y: CONFIG.chamber23JunctionY}
     },
+    flashlightOn: true, // 手电筒开关（玩家手动控制）
     fishEnemies: [],  // 凶猛鱼敌人列表
     fishBite: null,    // 玩家被咬状态 { active, phase, timer, shakeIntensity }
+    // 玩家攻击状态
+    playerAttack: null as null | {
+        active: boolean;        // 是否正在攻击
+        timer: number;          // 攻击动画计时
+        cooldownTimer: number;  // 冷却计时（>0 表示冷却中）
+        angle: number;          // 攻击方向（玩家朝向）
+    },
+    // 食人鱼纯享版竞技场状态
+    fishArena: null as null | {
+        round: number;          // 当前轮次（从1开始）
+        fishAlive: number;      // 本轮存活鱼数
+        fishTotal: number;      // 本轮总鱼数
+        totalKills: number;     // 累计击杀数
+        phase: string;          // 'prep'（准备阶段）| 'fight'（战斗阶段）| 'clear'（清图庆祝）| 'dead'（死亡结算）
+        prepTimer: number;      // 准备倒计时（秒，浮点）
+        clearTimer: number;     // 清图庆祝计时（帧）
+        deadTimer: number;      // 死亡结算计时（帧）
+        startTime: number;      // 本局开始时间戳（ms）
+        surviveTime: number;    // 存活时间（秒）
+        achievementText: string; // 当前成就文字
+        achievementTimer: number; // 成就文字显示计时（帧）
+        comboKills: number;     // 连杀计数
+        comboTimer: number;     // 连杀计时（帧，归零则重置连杀）
+    },
     rope: {
         ropes: [],
         active: false,
@@ -191,6 +216,16 @@ export function resetState() {
     state.splashes = [];
     state.fishEnemies = [];
     state.fishBite = null;
+    state.flashlightOn = true; // 重置手电筒为开启状态
+    // 重置屏幕特效，防止重新开始后残留红屏和震动
+    state.story.redOverlay = 0;
+    state.story.shake = 0;
+    state.playerAttack = {
+        active: false,
+        timer: 0,
+        cooldownTimer: 0,
+        angle: 0,
+    };
 
     state.rope = {
         ropes: [],

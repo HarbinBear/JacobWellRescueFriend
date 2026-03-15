@@ -7,8 +7,12 @@ export const CONFIG = {
     
     // 调试
     debug: true,              // 调试模式：显示小地图和实时坐标
-    debugSpeedMultiplier: 5,  // 调试模式下的移动速度系数
+    debugSpeedMultiplier: 1,  // 调试模式下的移动速度系数
     bShowNpcFlashLight: false,
+
+    // ===== 食人鱼纯享版开关 =====
+    // true：主界面显示纯享版入口，正式关卡置灰不可进入
+    fishArenaMode: true,
 
     // 游戏参数
     ambient: 0.5,        // 环境光亮度
@@ -113,12 +117,37 @@ export const CONFIG = {
     grayThingY: 5480,               // 灰色物体Y坐标（连接处开始处）
     grayThingVisibleDist: 400,      // 灰色物体在多少像素内开始可见
 
+    // ===== 食人鱼纯享版配置 =====
+    fishArena: {
+        // 竞技场地图参数
+        mapSize: 2000,              // 正方形地图边长（像素）
+        wallThickness: 120,         // 外围岩石厚度（像素）
+        tileSize: 40,               // 竞技场格子大小
+
+        // 障碍物生成
+        obstacleCount: 6,           // 随机障碍物数量
+        obstacleMinSize: 80,        // 障碍物最小尺寸（像素）
+        obstacleMaxSize: 200,       // 障碍物最大尺寸（像素）
+        obstacleMinDist: 200,       // 障碍物与玩家出生点的最小距离
+
+        // 轮次参数
+        prepDuration: 3.5,          // 每轮开始前的准备时间（秒）
+        fishPerRound: 1,            // 每轮新增鱼数（第N轮 = N条鱼）
+
+        // 成就反馈阈值
+        clearTextRound: 1,          // 每轮清图都触发
+        shutdownRound: 3,           // 第3轮起触发 SHUTDOWN
+        unbelievableRound: 6,       // 第6轮起触发 UNBELIEVABLE
+        legendRound: 10,            // 第10轮起触发 LEGENDARY
+    },
+
     // ===== 凶猛鱼（敌人）配置 =====
     fishEnemy: {
         size: 28,                   // 鱼体基础尺寸（像素）
 
         // 感知与探测
         detectRange: 320,           // 感知玩家的距离（像素）
+        safeDistance: 60,           // 非冲刺状态下鱼与玩家的最小安全距离（像素），玩家进入此范围鱼立刻逃跑
 
         // 各状态移动速度
         roamSpeed: 1.2,             // 自由游弋速度
@@ -159,5 +188,38 @@ export const CONFIG = {
 
         // 死亡过场
         deathFadeDuration: 120,     // 死亡红屏淡出帧数
+
+        // 被打逃跑
+        hitFleeDistance: 400,       // 被打后逃跑到多远才回到常态（像素）
+        hitFleeSpeed: 12,           // 被打后逃跑速度
+
+        // 死亡动画
+        deathRollDuration: 90,      // 翻肚皮动画帧数（1.5s @ 60fps）
+        deathFadeOutDuration: 30,   // 死亡淡出帧数（0.5s @ 60fps）
+
+        // 冲刺起手动画
+        lungeChargeGlowDuration: 20, // 眼睛发光持续帧数（蓄力阶段）
+    },
+
+    // ===== 玩家攻击（挥氧气瓶）配置 =====
+    attack: {
+        // 攻击范围
+        range: 90,                  // 攻击距离（像素），可调
+        angle: 120,                 // 攻击扇形角度（度），可调
+
+        // 攻击 CD
+        cooldown: 180,              // 攻击冷却帧数（3s @ 60fps）
+
+        // 刀光动画
+        slashDuration: 28,          // 刀光总持续帧数（含停留）
+        slashSwingDuration: 12,     // 刀光挥动阶段帧数（加速减速）
+        slashLingerDuration: 16,    // 刀光停留消散阶段帧数
+        slashArcCount: 6,           // 弧形刀光层数
+        slashImpactShake: 12,       // 击中时屏幕震动强度
+
+        // 按钮位置（屏幕右下角，与布线按钮错开）
+        btnRadius: 38,              // 攻击按钮半径
+        btnXRatio: 0.82,            // 按钮X位置比例
+        btnYRatio: 0.88,            // 按钮Y位置比例（比布线按钮更靠下，避免重叠）
     },
 };

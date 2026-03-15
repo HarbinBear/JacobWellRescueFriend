@@ -3,7 +3,7 @@ import { state, player, target, particles, touches } from '../core/state';
 import { canvas, ctx } from './Canvas';
 import { drawFlashlight, computeSiltAttenuation, isLineOfSight } from './RenderLight';
 import { drawDiver } from './RenderDiver';
-import { drawUI, drawControls } from './RenderUI';
+import { drawUI, drawControls, drawSlashEffect } from './RenderUI';
 import { drawRopesWorld, drawRopeButton } from './RenderRope';
 import { drawAllFishEnemies, drawFishBiteEffect } from './RenderFishEnemy';
 
@@ -59,7 +59,8 @@ function drawSplashes() {
 // --- 主渲染函数 ---
 export function draw() {
     let zoom = state.camera ? state.camera.zoom : 1;
-    let flashlightActive = true;
+    // 手电筒激活状态：受玩家手动开关控制，剧情特殊状态可覆盖
+    let flashlightActive = state.flashlightOn !== false;
     
     // 屏幕震动
     let shakeX = 0, shakeY = 0;
@@ -336,7 +337,8 @@ export function draw() {
             x: player.x, 
             y: player.y, 
             angle: player.angle, 
-            active: player.y > 600 && flashlightActive, 
+            // 竞技场模式下手电筒不受深度限制，其他模式需要深度超过600才亮
+            active: (state.screen === 'fishArena' ? true : player.y > 600) && flashlightActive, 
             dist: vRayDist 
         },
         { 
@@ -445,7 +447,8 @@ export function draw() {
             x: player.x, 
             y: player.y, 
             angle: player.angle, 
-            active: player.y > 600 && flashlightActive, 
+            // 竞技场模式下手电筒不受深度限制
+            active: (state.screen === 'fishArena' ? true : player.y > 600) && flashlightActive, 
             dist: rayDist 
         },
         {   
@@ -825,6 +828,25 @@ export function draw() {
     drawUI();
     drawControls();
     drawRopeButton();
+
+    // 绘制刀光特效（在 UI 之上，屏幕空间）
+    if (state.playerAttack && state.playerAttack.active) {
+        const zoom = state.camera ? state.camera.zoom : 1;
+        const playerScreenX = canvas.width / 2 + shakeX;
+        const playerScreenY = canvas.height / 2 + shakeY;
+        const totalSlashDur = CONFIG.attack.slashSwingDuration + CONFIG.attack.slashLingerDuration;
+        if (state.playerAttack.timer <= totalSlashDur) {
+            drawSlashEffect(
+                ctx,
+                canvas.width,
+                canvas.height,
+                playerScreenX,
+                playerScreenY,
+                state.playerAttack.angle,
+                state.playerAttack.timer
+            );
+        }
+    }
 
     // 绘制凶猛鱼被咬特效（在 UI 之上，屏幕空间）
     drawFishBiteEffect(ctx, canvas.width, canvas.height);

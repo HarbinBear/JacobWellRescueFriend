@@ -185,3 +185,112 @@ function getNeighborCount(r: number, c: number): number {
     }
     return count;
 }
+
+// =============================================
+// 食人鱼纯享版：生成正方形竞技场地图
+// =============================================
+export function generateArenaMap() {
+    const arenaCfg = CONFIG.fishArena;
+    const ts = arenaCfg.tileSize;
+    const totalSize = arenaCfg.mapSize;
+    const wallThick = arenaCfg.wallThickness;
+
+    // 竞技场格子数
+    const cols = Math.ceil(totalSize / ts);
+    const rows = Math.ceil(totalSize / ts);
+    const wallCols = Math.ceil(wallThick / ts);
+
+    // 重置地图数组
+    state.map = [];
+    state.walls = [];
+    state.plants = [];
+    state.fishes = [];
+    state.explored = [];
+
+    // 初始化：全部填充为岩石（1）
+    for (let r = 0; r < rows; r++) {
+        state.map[r] = [];
+        state.explored[r] = [];
+        for (let c = 0; c < cols; c++) {
+            // 顶部开放（水面），其余三面保留岩石墙
+            const inWall = r >= rows - wallCols ||
+                           c < wallCols || c >= cols - wallCols;
+            state.map[r][c] = inWall ? 1 : 0;
+            state.explored[r][c] = true; // 竞技场全图可见
+        }
+    }
+
+    // 随机生成大块障碍物（矩形岩石块）
+    const obstCount = arenaCfg.obstacleCount;
+    const innerLeft = wallCols * ts;
+    const innerRight = (cols - wallCols) * ts;
+    const innerTop = wallCols * ts;
+    const innerBottom = (rows - wallCols) * ts;
+    const innerW = innerRight - innerLeft;
+    const innerH = innerBottom - innerTop;
+
+    // 玩家出生点（内部中心）
+    const spawnX = totalSize / 2;
+    const spawnY = totalSize / 2;
+
+    for (let i = 0; i < obstCount; i++) {
+        // 随机尝试放置，避免太靠近出生点
+        for (let attempt = 0; attempt < 20; attempt++) {
+            const ow = arenaCfg.obstacleMinSize + Math.random() * (arenaCfg.obstacleMaxSize - arenaCfg.obstacleMinSize);
+            const oh = arenaCfg.obstacleMinSize + Math.random() * (arenaCfg.obstacleMaxSize - arenaCfg.obstacleMinSize);
+            const ox = innerLeft + Math.random() * (innerW - ow);
+            const oy = innerTop + Math.random() * (innerH - oh);
+
+            // 检查与出生点的距离
+            const cx = ox + ow / 2;
+            const cy = oy + oh / 2;
+            if (Math.hypot(cx - spawnX, cy - spawnY) < arenaCfg.obstacleMinDist) continue;
+
+            // 将矩形区域填充为岩石
+            const r0 = Math.floor(oy / ts);
+            const r1 = Math.ceil((oy + oh) / ts);
+            const c0 = Math.floor(ox / ts);
+            const c1 = Math.ceil((ox + ow) / ts);
+            for (let r = r0; r < r1 && r < rows; r++) {
+                for (let c = c0; c < c1 && c < cols; c++) {
+                    state.map[r][c] = 1;
+                }
+            }
+            break;
+        }
+    }
+
+    // 生成墙壁渲染数据（边缘岩石）
+    for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+            if (state.map[r][c] === 1) {
+                let border = isBorderTile(state.map, r, c, rows, cols);
+                if (border) {
+                    const offsetX = (Math.random() - 0.5) * ts * 0.5;
+                    const offsetY = (Math.random() - 0.5) * ts * 0.5;
+                    const radius = ts * (0.55 + Math.random() * 0.35);
+                    const wall = {
+                        x: c * ts + ts / 2 + offsetX,
+                        y: r * ts + ts / 2 + offsetY,
+                        r: radius,
+                        row: r,
+                        col: c,
+                        isBorder: true
+                    };
+                    state.walls.push(wall);
+                    state.map[r][c] = wall;
+                } else {
+                    state.map[r][c] = 2;
+                }
+            }
+        }
+    }
+
+    // 设置竞技场地标（出生点）
+    state.landmarks.entrance = { x: spawnX, y: spawnY };
+
+    // 竞技场专用 CONFIG 覆盖（临时修改 cols/rows 供碰撞检测使用）
+    (CONFIG as any)._arenaRows = rows;
+    (CONFIG as any)._arenaCols = cols;
+    (CONFIG as any)._arenaTileSize = ts;
+}

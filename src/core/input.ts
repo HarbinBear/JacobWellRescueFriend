@@ -1,7 +1,7 @@
 import { CONFIG } from './config';
 import { state, input, touches, player } from './state';
-import { createFishEnemy } from '../logic/FishEnemy';
-import { DEBUG_FISH_BTN } from '../render/RenderUI';
+import { createFishEnemy, triggerPlayerAttack, findSafeSpawnPosition } from '../logic/FishEnemy';
+import { DEBUG_FISH_BTN, ATTACK_BTN, FLASHLIGHT_BTN } from '../render/RenderUI';
 
 // 章节页滑动状态
 let chapterTouchStartY = 0;
@@ -10,6 +10,9 @@ let chapterTouchMoved = false;
 
 // 放弃救援按钮长按状态
 let abandonTouchId = null;
+
+// 攻击按钮独立触点 ID（多点触控：与摇杆互不干扰）
+let attackTouchId: number | null = null;
 
 // 主菜单触摸起始位置（用于 touchEnd 判断点击）
 let menuTouchStartX = 0;
@@ -34,7 +37,7 @@ function getChapterCardBounds(cw, ch, scrollY) {
     ];
 }
 
-export function initInput(onReset) {
+export function initInput(onReset, onArena?) {
     // PC 调试键盘支持 
     if (typeof window !== 'undefined' && window.addEventListener) {
         const keys = { w: false, a: false, s: false, d: false, shift: false };
@@ -149,6 +152,20 @@ export function initInput(onReset) {
         }
 
         if(state.screen !== 'play') {
+            // 竞技场战斗/清图/准备阶段：允许正常的摇杆和攻击操作，跳过此分支
+            if (state.screen === 'fishArena' && state.fishArena &&
+                (state.fishArena.phase === 'fight' || state.fishArena.phase === 'clear' || state.fishArena.phase === 'prep')) {
+                // 继续往下处理摇杆和攻击按钮
+            } else {
+            // 竞技场死亡结算页面：等待 2 秒后可点击返回主菜单
+            if (state.screen === 'fishArena' && state.fishArena && state.fishArena.phase === 'dead') {
+                if (state.fishArena.deadTimer >= 120) {
+                    state.screen = 'menu';
+                    state.menuScreen = 'main';
+                    state.fishArena = null;
+                }
+                return;
+            }
             // 第二关结局：分页剧情，等到最后一页（timer > 1200）才能点击
             if (state.screen === 'ending' && state.story.flags.stage2Ending) {
                 if (!state.endingTimer || state.endingTimer < 1200) return;
@@ -178,6 +195,7 @@ export function initInput(onReset) {
             state.screen = 'menu';
             state.menuScreen = 'main';
             return;
+            } // else 结束
         }
 
         if(state.rope && state.rope.ui && state.rope.ui.visible) {
@@ -199,9 +217,36 @@ export function initInput(onReset) {
             }
         }
 
-        // 单摇杆逻辑：只处理第一个触摸点作为摇杆
-        if (touches.joystickId === null && res.touches.length > 0) {
-            const t = res.touches[0];
+        // 遍历所有新增触点，多点触控：摇杆和攻击按钮互不干扰
+        for (const t of res.changedTouches) {
+            // 检测攻击按钮（右下角常驻，游戏进行中或竞技场战斗中，任意触点均可触发）
+            // 被咬死亡过场期间禁止攻击
+            const isBiting = state.fishBite && state.fishBite.active;
+            const isGameActive = !isBiting && (
+                state.screen === 'play' ||
+                (state.screen === 'fishArena' && state.fishArena && state.fishArena.phase === 'fight')
+            );
+            if (isGameActive && attackTouchId === null) {
+                const atkBtn = ATTACK_BTN;
+                const adx = t.clientX - atkBtn.x;
+                const ady = t.clientY - atkBtn.y;
+                if (Math.hypot(adx, ady) <= atkBtn.r) {
+                    attackTouchId = t.identifier;
+                    triggerPlayerAttack();
+                    continue;
+                }
+            }
+
+            // 检测手电筒开关按钮（游戏进行中或竞技场战斗中均可切换）
+            if (isGameActive) {
+                const flBtn = FLASHLIGHT_BTN;
+                const fdx = t.clientX - flBtn.x;
+                const fdy = t.clientY - flBtn.y;
+                if (Math.hypot(fdx, fdy) <= flBtn.r) {
+                    state.flashlightOn = !state.flashlightOn;
+                    continue;
+                }
+            }
 
             // 检测凶猛鱼调试按钮（仅在调试模式且游戏进行中）
             if (CONFIG.debug && state.screen === 'play') {
@@ -210,14 +255,10 @@ export function initInput(onReset) {
                     t.clientX >= btn.x && t.clientX <= btn.x + btn.w &&
                     t.clientY >= btn.y && t.clientY <= btn.y + btn.h
                 ) {
-                    // 在玩家前方生成一条凶猛鱼
-                    const spawnDist = 300;
-                    const spawnAngle = Math.random() * Math.PI * 2;
-                    const spawnX = player.x + Math.cos(spawnAngle) * spawnDist;
-                    const spawnY = player.y + Math.sin(spawnAngle) * spawnDist;
+                    const spawnPos = findSafeSpawnPosition(player.x, player.y);
                     if (!state.fishEnemies) state.fishEnemies = [];
-                    state.fishEnemies.push(createFishEnemy(spawnX, spawnY));
-                    return;
+                    state.fishEnemies.push(createFishEnemy(spawnPos.x, spawnPos.y));
+                    continue;
                 }
             }
 
@@ -233,17 +274,18 @@ export function initInput(onReset) {
                     abandonTouchId = t.identifier;
                     state.story.flags.abandonBtnHolding = true;
                     state.story.flags.abandonBtnHoldStartTime = Date.now();
-                    return;
+                    continue;
                 }
             }
 
-            touches.joystickId = t.identifier;
-            touches.start = { x: t.clientX, y: t.clientY };
-            touches.curr = { x: t.clientX, y: t.clientY };
-            
-            // 初始按下时不移动，等待滑动
-            input.move = 0;
-            input.speedUp = false;
+            // 摇杆：只绑定第一个未被其他功能占用的触点
+            if (touches.joystickId === null) {
+                touches.joystickId = t.identifier;
+                touches.start = { x: t.clientX, y: t.clientY };
+                touches.curr = { x: t.clientX, y: t.clientY };
+                input.move = 0;
+                input.speedUp = false;
+            }
         }
     });
 
@@ -320,11 +362,19 @@ export function initInput(onReset) {
                 // 判断手指没有明显移动（防止滑动误触）
                 const moved = Math.hypot(tx - menuTouchStartX, ty - menuTouchStartY) > 10;
                 if(!moved) {
-                    // 检测"开始游戏"按钮
-                    let btnY = ch * 0.56;
+                    // 检测“开始游戏”按鈕（fishArenaMode 开启时置灰）
+                    let btnY = ch * 0.54;
                     let btnW = 180, btnH = 50;
                     let btnX = cw / 2 - btnW / 2;
                     if(tx >= btnX && tx <= btnX + btnW && ty >= btnY - btnH / 2 && ty <= btnY + btnH / 2) {
+                        if (CONFIG.fishArenaMode) {
+                            // 置灰状态，提示拿不出手
+                            state.alertMsg = '这个游戏还拿不出手，先玩食人鱼纯享版吧！';
+                            state.alertColor = 'rgba(255,100,50,0.95)';
+                            if (state.msgTimer) clearTimeout(state.msgTimer);
+                            state.msgTimer = setTimeout(() => { state.alertMsg = ''; }, 2500);
+                            return;
+                        }
                         if(!state.transition.active) {
                             state.transition.active = true;
                             state.transition.alpha = 0;
@@ -335,11 +385,26 @@ export function initInput(onReset) {
                         }
                         return;
                     }
-                    // 检测"章节选择"按钮
-                    let chBtnY = ch * 0.7;
+                    // 检测“食人鱼纯享版”按鈕
+                    let arenaBtnY = ch * 0.68;
+                    let arenaBtnW = 200, arenaBtnH = 50;
+                    let arenaBtnX = cw / 2 - arenaBtnW / 2;
+                    if(tx >= arenaBtnX && tx <= arenaBtnX + arenaBtnW && ty >= arenaBtnY - arenaBtnH / 2 && ty <= arenaBtnY + arenaBtnH / 2) {
+                        if (onArena) onArena();
+                        return;
+                    }
+                    // 检测“章节选择”按鈕（fishArenaMode 开启时置灰）
+                    let chBtnY = ch * 0.84;
                     let chBtnW = 160, chBtnH = 44;
                     let chBtnX = cw / 2 - chBtnW / 2;
                     if(tx >= chBtnX && tx <= chBtnX + chBtnW && ty >= chBtnY - chBtnH / 2 && ty <= chBtnY + chBtnH / 2) {
+                        if (CONFIG.fishArenaMode) {
+                            state.alertMsg = '这个游戏还拿不出手，先玩食人鱼纯享版吧！';
+                            state.alertColor = 'rgba(255,100,50,0.95)';
+                            if (state.msgTimer) clearTimeout(state.msgTimer);
+                            state.msgTimer = setTimeout(() => { state.alertMsg = ''; }, 2500);
+                            return;
+                        }
                         state.menuScreen = 'chapter';
                         state.chapterScrollY = 0;
                         return;
@@ -347,7 +412,6 @@ export function initInput(onReset) {
                 }
                 return;
             }
-
             if(state.menuScreen === 'chapter') {
                 // 如果没有发生明显滑动，则判断为点击
                 if(!chapterTouchMoved) {
@@ -363,6 +427,14 @@ export function initInput(onReset) {
                         for(let i = 0; i < bounds.length; i++) {
                             const b = bounds[i];
                             if(tx >= b.cardX && tx <= b.cardX + b.cardW && ty >= b.cardY && ty <= b.cardY + b.cardH) {
+                                // fishArenaMode 开启时章节置灰，点击提示
+                                if (CONFIG.fishArenaMode) {
+                                    state.alertMsg = '这个游戏还拿不出手，先玩食人鱼纯享版吧！';
+                                    state.alertColor = 'rgba(255,100,50,0.95)';
+                                    if (state.msgTimer) clearTimeout(state.msgTimer);
+                                    state.msgTimer = setTimeout(() => { state.alertMsg = ''; }, 2500);
+                                    return;
+                                }
                                 let startStage = i === 0 ? 1 : (i === 1 ? 3 : (i === 2 ? 7 : 9));
                                 if(!state.transition.active) {
                                     state.transition.active = true;
@@ -396,6 +468,10 @@ function handleTouchEnd(changedTouches) {
             abandonTouchId = null;
             state.story.flags.abandonBtnHolding = false;
             state.story.flags.abandonBtnHoldStartTime = 0;
+        }
+        // 攻击按钮触点释放
+        if(t.identifier === attackTouchId) {
+            attackTouchId = null;
         }
         if(state.rope && state.rope.hold && t.identifier === state.rope.hold.touchId) {
             state.rope.hold.active = false;

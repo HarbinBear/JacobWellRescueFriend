@@ -33,12 +33,14 @@ export type FishEnemyState =
     | 'detect'      // 发现目标（短暂停顿）
     | 'stalk'       // 悄悄靠近
     | 'circle'      // 在目标附近徘徊
-    | 'lunge'       // 扑向目标
+    | 'lunge'       // 扑向目标（含蓄力起手）
     | 'bite'        // 撕咬
     | 'devour'      // 吞食
     | 'retreat'     // 慢慢撤退
     | 'flee'        // 迅速撤退（被光驱赶）
-    | 'fear';       // 怕光后退（过渡状态）
+    | 'fear'        // 怕光后退（过渡状态）
+    | 'hit'         // 被打中后逃跑
+    | 'dying';      // 死亡动画（翻肚皮淡出）
 
 // =============================================
 // 凶猛鱼实体数据结构
@@ -67,8 +69,35 @@ export interface FishEnemy {
     // 怕光相关
     fearTimer: number;      // 怕光持续计时
     fearDir: number;        // 逃跑方向角度
+    // 被打相关
+    hitFleeTimer: number;   // 被打后逃跑计时
+    hitFleeDir: number;     // 被打后逃跑方向
+    hitFleePhase: number;   // 逃跑路径阶段（用于多段折线躲避）
+    hitFleeNextDirTimer: number; // 下次改变方向的计时
+    // 死亡动画相关
+    dyingTimer: number;     // 死亡动画计时
+    dyingAlpha: number;     // 死亡淡出透明度（1→0）
+    dyingRoll: number;      // 翻肚皮旋转角度（0→π）
     // 死亡/移除标记
     dead: boolean;
+    // 状态变化提示图标（问号/感叹号）
+    alertIcon: string;      // 图标内容：'?' | '!' | ''
+    alertIconColor: string; // 图标颜色
+    alertTimer: number;     // 图标显示剩余帧数
+}
+
+// =============================================
+// 前方障碍物预判：检测前方一小段路径是否有墙
+// =============================================
+function hasWallAhead(fish: FishEnemy, angle: number, lookAhead: number): boolean {
+    const steps = 4;
+    for (let i = 1; i <= steps; i++) {
+        const dist = (i / steps) * lookAhead;
+        const nx = fish.x + Math.cos(angle) * dist;
+        const ny = fish.y + Math.sin(angle) * dist;
+        if (checkCollisionLocal(nx, ny)) return true;
+    }
+    return false;
 }
 
 // =============================================
@@ -99,8 +128,39 @@ export function createFishEnemy(x: number, y: number): FishEnemy {
         biteCount: 0,
         fearTimer: 0,
         fearDir: 0,
+        hitFleeTimer: 0,
+        hitFleeDir: 0,
+        hitFleePhase: 0,
+        hitFleeNextDirTimer: 0,
+        dyingTimer: 0,
+        dyingAlpha: 1,
+        dyingRoll: 0,
         dead: false,
+        alertIcon: '',
+        alertIconColor: '#fff',
+        alertTimer: 0,
     };
+}
+
+// =============================================
+// 安全生成位置：在玩家周围找一个不在墙里的水中位置
+// =============================================
+export function findSafeSpawnPosition(centerX: number, centerY: number): { x: number; y: number } {
+    const minDist = 200;
+    const maxDist = 400;
+    // 最多尝试 30 次，找到不碰墙的位置
+    for (let attempt = 0; attempt < 30; attempt++) {
+        const angle = Math.random() * Math.PI * 2;
+        const dist = minDist + Math.random() * (maxDist - minDist);
+        const x = centerX + Math.cos(angle) * dist;
+        const y = centerY + Math.sin(angle) * dist;
+        // 必须在水中（y > 60）且不碰墙
+        if (y > 60 && !checkCollisionLocal(x, y)) {
+            return { x, y };
+        }
+    }
+    // 兜底：直接在玩家正右方 300px
+    return { x: centerX + 300, y: centerY };
 }
 
 // =============================================
@@ -178,9 +238,16 @@ export function updateFishEnemy(fish: FishEnemy, dt: number) {
             fish.state = 'fear';
             fish.stateTimer = 0;
             fish.fearTimer = cfg.fearDuration;
+            // 显示感叹号提示（蓝白色，表示被光惊吓）
+            fish.alertIcon = '!';
+            fish.alertIconColor = '#aaddff';
+            fish.alertTimer = 40;
             return;
         }
     }
+
+    // 衰减状态提示图标
+    if (fish.alertTimer > 0) fish.alertTimer--;
 
     switch (fish.state) {
         case 'roam':    updateRoam(fish, cfg);    break;
@@ -193,6 +260,8 @@ export function updateFishEnemy(fish: FishEnemy, dt: number) {
         case 'retreat': updateRetreat(fish, cfg); break;
         case 'flee':    updateFlee(fish, cfg);    break;
         case 'fear':    updateFear(fish, cfg);    break;
+        case 'hit':     updateHit(fish, cfg);     break;
+        case 'dying':   updateDying(fish, cfg);   return; // 死亡动画不做碰撞移动
     }
 
     // 应用速度并做碰撞检测
@@ -223,6 +292,12 @@ function updateRoam(fish: FishEnemy, cfg: any) {
     if (distToPlayer < cfg.detectRange) {
         fish.state = 'detect';
         fish.stateTimer = 0;
+        return;
+    }
+
+    // 玩家过近：立刻逃跑（鱼很灵敏，不会被近身）
+    if (distToPlayer < cfg.safeDistance) {
+        startHitFlee(fish, cfg);
     }
 }
 
@@ -239,6 +314,10 @@ function updateDetect(fish: FishEnemy, cfg: any) {
     if (fish.stateTimer >= cfg.detectPauseDuration) {
         fish.state = 'stalk';
         fish.stateTimer = 0;
+        // 发现目标：显示问号提示（黄色）
+        fish.alertIcon = '?';
+        fish.alertIconColor = '#ffdd44';
+        fish.alertTimer = 45;
     }
 }
 
@@ -255,7 +334,13 @@ function updateStalk(fish: FishEnemy, cfg: any) {
         return;
     }
 
-    // 靠近到徘徊距离后，切换到徘徊
+    // 玩家过近：立刻逃跑（鱼很灵敏，不会被近身）
+    if (dist < cfg.safeDistance) {
+        startHitFlee(fish, cfg);
+        return;
+    }
+
+    // 靠近到徘徨距离后，切换到徘徨
     if (dist < cfg.circleRadius + 20) {
         fish.state = 'circle';
         fish.stateTimer = 0;
@@ -265,8 +350,7 @@ function updateStalk(fish: FishEnemy, cfg: any) {
 
     moveToward(fish, player.x, player.y, cfg.stalkSpeed, cfg.turnSpeedStalk);
 }
-
-/** 在玩家附近徘徊：绕着玩家转圈，伺机扑击 */
+/** 在玩家附近徘徨：绕着玩家转圈，伺机扑击 */
 function updateCircle(fish: FishEnemy, cfg: any) {
     const dist = Math.hypot(player.x - fish.x, player.y - fish.y);
 
@@ -277,27 +361,36 @@ function updateCircle(fish: FishEnemy, cfg: any) {
         return;
     }
 
+    // 玩家过近：立刻逃跑（鱼很灵敏，不会被近身）
+    if (dist < cfg.safeDistance) {
+        startHitFlee(fish, cfg);
+        return;
+    }
+
     // 绕圈移动
     fish.circleAngle += cfg.circleSpeed;
     const targetX = player.x + Math.cos(fish.circleAngle) * fish.circleRadius;
     const targetY = player.y + Math.sin(fish.circleAngle) * fish.circleRadius;
     moveToward(fish, targetX, targetY, cfg.circleSpeed * 60, cfg.turnSpeedCircle);
 
-    // 徘徊一段时间后发动扑击
+    // 徘徨一段时间后发动扑击
     if (fish.stateTimer >= cfg.circleBeforeLunge) {
         fish.state = 'lunge';
         fish.stateTimer = 0;
         fish.lungeCharge = 0;
+        // 即将扑击：显示感叹号提示（红色）
+        fish.alertIcon = '!';
+        fish.alertIconColor = '#ff3322';
+        fish.alertTimer = 35;
     }
 }
-
-/** 扑向目标：先蓄力，再高速冲刺 */
+/** 扑向目标：先蓄力（眼睛发光起手），再高速冲刺 */
 function updateLunge(fish: FishEnemy, cfg: any) {
     const dx = player.x - fish.x;
     const dy = player.y - fish.y;
     const dist = Math.hypot(dx, dy);
 
-    // 蓄力阶段：减速并对准玩家
+    // 蓄力阶段：减速并对准玩家，眼睛发光（通过 lungeCharge < 1 判断）
     if (fish.lungeCharge < 1) {
         fish.lungeCharge += 1 / cfg.lungeChargeDuration;
         fish.targetAngle = Math.atan2(dy, dx);
@@ -307,7 +400,7 @@ function updateLunge(fish: FishEnemy, cfg: any) {
         return;
     }
 
-    // 冲刺阶段：高速向玩家冲去
+    // 冲刺阶段：高速向玩家冲去（此阶段为弹反窗口）
     const speed = cfg.lungeSpeed;
     fish.vx = Math.cos(fish.angle) * speed;
     fish.vy = Math.sin(fish.angle) * speed;
@@ -379,7 +472,7 @@ function updateRetreat(fish: FishEnemy, cfg: any) {
     }
 }
 
-/** 迅速撤退（被光驱赶后的持续逃跑） */
+/** 迅速撤退（被光驱赶后的持续逃跑，路径多样化） */
 function updateFlee(fish: FishEnemy, cfg: any) {
     fish.fearTimer--;
     if (fish.fearTimer <= 0) {
@@ -388,12 +481,27 @@ function updateFlee(fish: FishEnemy, cfg: any) {
         return;
     }
 
-    // 持续检测手电筒，如果还在照射则重置计时
+    // 持续检测手电筒，如果还在照射则重置计时并更新逃跑方向
     if (isFlashlightHittingFish(fish)) {
         fish.fearTimer = cfg.fearDuration;
         const dx = fish.x - player.x;
         const dy = fish.y - player.y;
-        fish.fearDir = Math.atan2(dy, dx);
+        // 不沿径向逃跑，而是侧向偏转 60°~120°，随机左右
+        const radialAngle = Math.atan2(dy, dx);
+        const sideOffset = (Math.random() > 0.5 ? 1 : -1) * (Math.PI * 0.4 + Math.random() * Math.PI * 0.3);
+        fish.fearDir = radialAngle + sideOffset;
+    }
+
+    // 每隔一段时间随机微调方向，避免直线逃跑卡墙
+    fish.hitFleeNextDirTimer--;
+    if (fish.hitFleeNextDirTimer <= 0) {
+        // 如果前方有墙，大角度转向
+        if (hasWallAhead(fish, fish.fearDir, 60)) {
+            fish.fearDir += (Math.random() > 0.5 ? 1 : -1) * (Math.PI * 0.5 + Math.random() * Math.PI * 0.4);
+        } else {
+            fish.fearDir += (Math.random() - 0.5) * Math.PI * 0.5;
+        }
+        fish.hitFleeNextDirTimer = 15 + Math.floor(Math.random() * 20);
     }
 
     fish.targetAngle = fish.fearDir;
@@ -404,6 +512,97 @@ function updateFlee(fish: FishEnemy, cfg: any) {
     if (speed > cfg.fleeSpeed) {
         fish.vx = (fish.vx / speed) * cfg.fleeSpeed;
         fish.vy = (fish.vy / speed) * cfg.fleeSpeed;
+    }
+}
+
+/** 被打中后逃跑（非冲刺阶段被打，灵敏逃跑，离远后回到常态） */
+function updateHit(fish: FishEnemy, cfg: any) {
+    fish.hitFleeTimer--;
+
+    // 每隔一段时间随机改变逃跑方向（多段折线，不卡墙）
+    fish.hitFleeNextDirTimer--;
+    if (fish.hitFleeNextDirTimer <= 0) {
+        // 如果前方有墙，大角度转向
+        if (hasWallAhead(fish, fish.hitFleeDir, 60)) {
+            fish.hitFleeDir += (Math.random() > 0.5 ? 1 : -1) * (Math.PI * 0.5 + Math.random() * Math.PI * 0.4);
+        } else {
+            // 以当前逃跑方向为基础，随机偏转 ±70°
+            fish.hitFleeDir += (Math.random() - 0.5) * Math.PI * 0.8;
+        }
+        fish.hitFleeNextDirTimer = 15 + Math.floor(Math.random() * 20);
+    }
+
+    fish.targetAngle = fish.hitFleeDir;
+    fish.angle = lerpAngle(fish.angle, fish.targetAngle, 0.18);
+    fish.vx += Math.cos(fish.angle) * 1.2;
+    fish.vy += Math.sin(fish.angle) * 1.2;
+    const speed = Math.hypot(fish.vx, fish.vy);
+    if (speed > cfg.hitFleeSpeed) {
+        fish.vx = (fish.vx / speed) * cfg.hitFleeSpeed;
+        fish.vy = (fish.vy / speed) * cfg.hitFleeSpeed;
+    }
+
+    // 离玩家足够远后回到常态
+    const distToPlayer = Math.hypot(player.x - fish.x, player.y - fish.y);
+    if (distToPlayer >= cfg.hitFleeDistance || fish.hitFleeTimer <= 0) {
+        fish.state = 'roam';
+        fish.stateTimer = 0;
+    }
+}
+
+// =============================================
+// 辅助：启动被打逃跑状态（多处复用）
+// =============================================
+function startHitFlee(fish: FishEnemy, cfg: any) {
+    const dx = fish.x - player.x;
+    const dy = fish.y - player.y;
+    const radialAngle = Math.atan2(dy, dx);
+    // 侧向逃跑：垂直于玩家方向 ±90° 随机偏转
+    const sideOffset = (Math.random() > 0.5 ? 1 : -1) * (Math.PI * 0.5 + Math.random() * Math.PI * 0.4);
+    fish.hitFleeDir = radialAngle + sideOffset;
+    fish.hitFleeTimer = 120 + Math.floor(Math.random() * 60);
+    fish.hitFleeNextDirTimer = 15;
+    fish.state = 'hit';
+    fish.stateTimer = 0;
+    fish.vx = Math.cos(fish.hitFleeDir) * cfg.hitFleeSpeed;
+    fish.vy = Math.sin(fish.hitFleeDir) * cfg.hitFleeSpeed;
+    // 被打中：显示感叹号提示（橙色）
+    fish.alertIcon = '!';
+    fish.alertIconColor = '#ff8800';
+    fish.alertTimer = 40;
+}
+
+/** 死亡动画：翻肚皮旋转 + 淡出 */
+function updateDying(fish: FishEnemy, cfg: any) {
+    fish.dyingTimer++;
+    const rollDur = cfg.deathRollDuration;
+    const fadeDur = cfg.deathFadeOutDuration;
+    const totalDur = rollDur + fadeDur;
+
+    if (fish.dyingTimer <= rollDur) {
+        // 翻肚皮阶段：绕 Z 轴旋转 180°
+        fish.dyingRoll = (fish.dyingTimer / rollDur) * Math.PI;
+        fish.dyingAlpha = 1;
+        // 缓慢漂移（翻肚皮时微微上浮）
+        fish.vy -= 0.05;
+        fish.vx *= 0.92;
+        fish.vy *= 0.92;
+        fish.x += fish.vx;
+        fish.y += fish.vy;
+    } else {
+        // 淡出阶段
+        const fadeProgress = (fish.dyingTimer - rollDur) / fadeDur;
+        fish.dyingAlpha = Math.max(0, 1 - fadeProgress);
+        fish.dyingRoll = Math.PI; // 保持翻转状态
+        fish.vy -= 0.03;
+        fish.vx *= 0.95;
+        fish.vy *= 0.95;
+        fish.x += fish.vx;
+        fish.y += fish.vy;
+    }
+
+    if (fish.dyingTimer >= totalDur) {
+        fish.dead = true;
     }
 }
 
@@ -533,11 +732,88 @@ export function updateFishBiteState() {
 }
 
 // =============================================
+// 玩家攻击判定：挥氧气瓶
+// =============================================
+export function triggerPlayerAttack() {
+    const cfg = CONFIG.attack;
+    const atkCfg = CONFIG.fishEnemy;
+
+    if (!state.playerAttack) {
+        state.playerAttack = { active: false, timer: 0, cooldownTimer: 0, angle: 0 };
+    }
+
+    // 冷却中不能攻击
+    if (state.playerAttack.cooldownTimer > 0) return;
+
+    // 激活攻击
+    state.playerAttack.active = true;
+    state.playerAttack.timer = 0;
+    state.playerAttack.cooldownTimer = cfg.cooldown;
+    state.playerAttack.angle = player.angle;
+
+    if (!state.fishEnemies) return;
+
+    const halfAngle = (cfg.angle / 2) * (Math.PI / 180);
+
+    for (const fish of state.fishEnemies) {
+        if (fish.dead || fish.state === 'dying') continue;
+
+        const dx = fish.x - player.x;
+        const dy = fish.y - player.y;
+        const dist = Math.hypot(dx, dy);
+
+        // 距离判定
+        if (dist > cfg.range) continue;
+
+        // 方向判定：鱼在攻击扇形内
+        const angleToFish = Math.atan2(dy, dx);
+        let angleDiff = angleToFish - player.angle;
+        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+        if (Math.abs(angleDiff) > halfAngle) continue;
+
+        // 任何状态被打到都会死（鱼很灵敏，常态下根本进不了身，一旦被打到就是真实命中）
+        fish.state = 'dying';
+        fish.stateTimer = 0;
+        fish.dyingTimer = 0;
+        fish.dyingAlpha = 1;
+        fish.dyingRoll = 0;
+        fish.vx *= 0.3;
+        fish.vy *= 0.3;
+
+        // 击中反馈：屏幕震动
+        state.story.shake = Math.max(state.story.shake || 0, CONFIG.attack.slashImpactShake);
+    }
+}
+// =============================================
+// 更新玩家攻击状态（在主逻辑循环中调用）
+// =============================================
+export function updatePlayerAttack() {
+    if (!state.playerAttack) return;
+
+    // 冷却计时
+    if (state.playerAttack.cooldownTimer > 0) {
+        state.playerAttack.cooldownTimer--;
+    }
+
+    // 攻击动画计时（挥动 + 停留消散两个阶段）
+    if (state.playerAttack.active) {
+        state.playerAttack.timer++;
+        const totalDur = CONFIG.attack.slashSwingDuration + CONFIG.attack.slashLingerDuration;
+        if (state.playerAttack.timer >= totalDur) {
+            state.playerAttack.active = false;
+        }
+    }
+}
+
+// =============================================
 // 批量更新所有凶猛鱼
 // =============================================
 export function updateAllFishEnemies(dt: number) {
     // 无论是否有鱼，都要更新被咬状态（确保死亡过场动画能完成）
     updateFishBiteState();
+    // 更新玩家攻击状态
+    updatePlayerAttack();
 
     if (!state.fishEnemies || state.fishEnemies.length === 0) return;
 

@@ -3,14 +3,30 @@ import { state, player, target, touches } from '../core/state';
 import { ctx, canvas } from './Canvas';
 import { drawDiver, drawLungs, drawDiverSilhouette } from './RenderDiver';
 import { createFishEnemy } from '../logic/FishEnemy';
+import { triggerPlayerAttack } from '../logic/FishEnemy';
 
-// 调试按钮：生成凶猛鱼（右上角，与其他调试信息分开放）
+// 调试按鈕：生成凶猛鱼（右上角，与其他调试信息分开放）
 export const DEBUG_FISH_BTN = {
     get x() { return CONFIG.screenWidth - this.w - 10; },
     y: 10,
     w: 110,
     h: 36,
 };
+
+// 攻击按鈕区域（右下角）
+export const ATTACK_BTN = {
+    get x() { return CONFIG.screenWidth * CONFIG.attack.btnXRatio; },
+    get y() { return CONFIG.screenHeight * CONFIG.attack.btnYRatio; },
+    get r() { return CONFIG.attack.btnRadius; },
+};
+
+// 手电筒开关按钮（屏幕顶部右侧）
+export const FLASHLIGHT_BTN = {
+    get x() { return CONFIG.screenWidth * 0.88; },
+    get y() { return CONFIG.screenHeight * 0.17; },
+    r: 28,
+};
+
 // 兼容微信小游戏的圆角矩形（手动绘制，避免roundRect兼容性问题）
 function rrect(c, x, y, w, h, r) {
     r = Math.min(r, w / 2, h / 2);
@@ -124,6 +140,8 @@ export function drawUI(){
         ctx.fillText('点击屏幕返回主菜单', canvas.width/2, canvas.height/2 + 60);
     } else if(state.screen === 'menu') {
         drawMenu();
+    } else if(state.screen === 'fishArena') {
+        drawArenaHUD();
     }
 }
 
@@ -588,59 +606,106 @@ export function drawMenu() {
     ctx.lineTo(canvas.width / 2 + 80, canvas.height * 0.43);
     ctx.stroke();
 
-    // 开始游戏按钮
-    let btnY = canvas.height * 0.56;
-    let btnPulse = 0.85 + Math.sin(time * 2.5) * 0.15;
+    const isArenaMode = CONFIG.fishArenaMode;
+
+    // 开始游戏按钮（arenaMode 时置灰）
+    let btnY = canvas.height * 0.54;
+    let btnPulse = isArenaMode ? 0.4 : (0.85 + Math.sin(time * 2.5) * 0.15);
     let btnW = 180, btnH = 50;
     let btnX = canvas.width / 2 - btnW / 2;
     let btnTop = btnY - btnH / 2;
 
-    // 按钮背景
     ctx.save();
     ctx.globalAlpha = btnPulse;
     let btnGrad = ctx.createLinearGradient(btnX, btnTop, btnX, btnTop + btnH);
-    btnGrad.addColorStop(0, 'rgba(0,180,220,0.35)');
-    btnGrad.addColorStop(1, 'rgba(0,100,160,0.35)');
+    if (isArenaMode) {
+        btnGrad.addColorStop(0, 'rgba(60,60,80,0.4)');
+        btnGrad.addColorStop(1, 'rgba(30,30,50,0.4)');
+    } else {
+        btnGrad.addColorStop(0, 'rgba(0,180,220,0.35)');
+        btnGrad.addColorStop(1, 'rgba(0,100,160,0.35)');
+    }
     ctx.fillStyle = btnGrad;
     ctx.beginPath();
     rrect(ctx, btnX, btnTop, btnW, btnH, 25);
     ctx.fill();
-    ctx.strokeStyle = `rgba(0,220,255,${btnPulse * 0.8})`;
+    ctx.strokeStyle = isArenaMode ? `rgba(80,80,100,0.5)` : `rgba(0,220,255,${btnPulse * 0.8})`;
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     rrect(ctx, btnX, btnTop, btnW, btnH, 25);
     ctx.stroke();
     ctx.restore();
 
-    ctx.fillStyle = `rgba(0,240,255,${btnPulse})`;
+    ctx.fillStyle = isArenaMode ? 'rgba(100,100,120,0.6)' : `rgba(0,240,255,${btnPulse})`;
     ctx.font = 'bold 22px Arial';
-    ctx.fillText("▶  开始游戏", canvas.width / 2, btnY);
+    ctx.fillText(isArenaMode ? "🔒  开始游戏" : "▶  开始游戏", canvas.width / 2, btnY);
 
-    // 章节选择按钮
-    let chBtnY = canvas.height * 0.7;
+    // 食人鱼纯享版按钮（风格化，危险感）
+    let arenaBtnY = canvas.height * 0.68;
+    let arenaBtnW = 200, arenaBtnH = 50;
+    let arenaBtnX = canvas.width / 2 - arenaBtnW / 2;
+    let arenaBtnTop = arenaBtnY - arenaBtnH / 2;
+    let arenaPulse = 0.9 + Math.sin(time * 3.5) * 0.1;
+    let arenaGlow = Math.abs(Math.sin(time * 2.0));
+
+    // 危险感光晕
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    let arenaHalo = ctx.createRadialGradient(canvas.width / 2, arenaBtnY, 0, canvas.width / 2, arenaBtnY, 120);
+    arenaHalo.addColorStop(0, `rgba(255,60,0,${arenaGlow * 0.15})`);
+    arenaHalo.addColorStop(1, 'rgba(255,60,0,0)');
+    ctx.fillStyle = arenaHalo;
+    ctx.fillRect(canvas.width / 2 - 120, arenaBtnY - 60, 240, 120);
+    ctx.restore();
+
+    ctx.save();
+    ctx.globalAlpha = arenaPulse;
+    let arenaGrad = ctx.createLinearGradient(arenaBtnX, arenaBtnTop, arenaBtnX, arenaBtnTop + arenaBtnH);
+    arenaGrad.addColorStop(0, 'rgba(180,30,0,0.6)');
+    arenaGrad.addColorStop(0.5, 'rgba(220,60,0,0.5)');
+    arenaGrad.addColorStop(1, 'rgba(120,10,0,0.6)');
+    ctx.fillStyle = arenaGrad;
+    ctx.beginPath();
+    rrect(ctx, arenaBtnX, arenaBtnTop, arenaBtnW, arenaBtnH, 25);
+    ctx.fill();
+    // 边框：血红色流光
+    ctx.strokeStyle = `rgba(255,80,20,${arenaPulse * 0.9})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    rrect(ctx, arenaBtnX, arenaBtnTop, arenaBtnW, arenaBtnH, 25);
+    ctx.stroke();
+    ctx.restore();
+
+    // 按钮文字（带鱼牙图标感）
+    ctx.fillStyle = `rgba(255,200,150,${arenaPulse})`;
+    ctx.font = 'bold 18px Arial';
+    ctx.fillText("🦈  食人鱼纯享版", canvas.width / 2, arenaBtnY);
+
+    // 章节选择按钮（arenaMode 时置灰）
+    let chBtnY = canvas.height * 0.84;
     let chBtnW = 160, chBtnH = 44;
     let chBtnX = canvas.width / 2 - chBtnW / 2;
     let chBtnTop = chBtnY - chBtnH / 2;
 
     ctx.save();
-    ctx.globalAlpha = 0.75;
+    ctx.globalAlpha = isArenaMode ? 0.3 : 0.75;
     let chGrad = ctx.createLinearGradient(chBtnX, chBtnTop, chBtnX, chBtnTop + chBtnH);
-    chGrad.addColorStop(0, 'rgba(0,80,120,0.4)');
-    chGrad.addColorStop(1, 'rgba(0,40,80,0.4)');
+    chGrad.addColorStop(0, isArenaMode ? 'rgba(40,40,60,0.4)' : 'rgba(0,80,120,0.4)');
+    chGrad.addColorStop(1, isArenaMode ? 'rgba(20,20,40,0.4)' : 'rgba(0,40,80,0.4)');
     ctx.fillStyle = chGrad;
     ctx.beginPath();
     rrect(ctx, chBtnX, chBtnTop, chBtnW, chBtnH, 22);
     ctx.fill();
-    ctx.strokeStyle = 'rgba(0,180,220,0.5)';
+    ctx.strokeStyle = isArenaMode ? 'rgba(60,60,80,0.4)' : 'rgba(0,180,220,0.5)';
     ctx.lineWidth = 1;
     ctx.beginPath();
     rrect(ctx, chBtnX, chBtnTop, chBtnW, chBtnH, 22);
     ctx.stroke();
     ctx.restore();
 
-    ctx.fillStyle = 'rgba(100,210,240,0.9)';
+    ctx.fillStyle = isArenaMode ? 'rgba(80,80,100,0.5)' : 'rgba(100,210,240,0.9)';
     ctx.font = '18px Arial';
-    ctx.fillText("📖  章节选择", canvas.width / 2, chBtnY);
+    ctx.fillText(isArenaMode ? "🔒  章节选择" : "📖  章节选择", canvas.width / 2, chBtnY);
 
     // 版本号
     ctx.fillStyle = 'rgba(80,120,140,0.8)';
@@ -855,34 +920,51 @@ function drawChapterCard(
         ctx.fillText(descLines[i], textX, textY + 60 + i * 18);
     }
 
-    // 开始按钮
+    // 开始按钮（fishArenaMode 时置灰）
     let btnW2 = Math.min(120, textW - 10);
     let btnH2 = 34;
     let btnX2 = textX;
     let btnY2 = y + h - btnH2 - 14;
-    let btnPulse = 0.85 + Math.sin(Date.now() / 400 + chapter) * 0.15;
+    const isArenaMode2 = CONFIG.fishArenaMode;
+    let btnPulse = isArenaMode2 ? 0.35 : (0.85 + Math.sin(Date.now() / 400 + chapter) * 0.15);
 
     ctx.save();
     ctx.globalAlpha = btnPulse;
     let btnGrad2 = ctx.createLinearGradient(btnX2, btnY2, btnX2, btnY2 + btnH2);
-    btnGrad2.addColorStop(0, 'rgba(0,180,220,0.5)');
-    btnGrad2.addColorStop(1, 'rgba(0,80,140,0.5)');
+    if (isArenaMode2) {
+        btnGrad2.addColorStop(0, 'rgba(50,50,70,0.5)');
+        btnGrad2.addColorStop(1, 'rgba(30,30,50,0.5)');
+    } else {
+        btnGrad2.addColorStop(0, 'rgba(0,180,220,0.5)');
+        btnGrad2.addColorStop(1, 'rgba(0,80,140,0.5)');
+    }
     ctx.fillStyle = btnGrad2;
     ctx.beginPath();
     rrect(ctx, btnX2, btnY2, btnW2, btnH2, 17);
     ctx.fill();
-    ctx.strokeStyle = `rgba(0,220,255,${btnPulse * 0.9})`;
+    ctx.strokeStyle = isArenaMode2 ? `rgba(70,70,90,0.5)` : `rgba(0,220,255,${btnPulse * 0.9})`;
     ctx.lineWidth = 1.2;
     ctx.beginPath();
     rrect(ctx, btnX2, btnY2, btnW2, btnH2, 17);
     ctx.stroke();
     ctx.restore();
 
-    ctx.fillStyle = `rgba(0,240,255,${btnPulse})`;
+    ctx.fillStyle = isArenaMode2 ? 'rgba(80,80,100,0.5)' : `rgba(0,240,255,${btnPulse})`;
     ctx.font = 'bold 14px Arial';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    ctx.fillText("▶  进入章节", btnX2 + 14, btnY2 + btnH2 / 2);
+    ctx.fillText(isArenaMode2 ? "🔒  进入章节" : "▶  进入章节", btnX2 + 14, btnY2 + btnH2 / 2);
+
+    // fishArenaMode 时在卡片上叠加半透明遮罩
+    if (isArenaMode2) {
+        ctx.save();
+        ctx.globalAlpha = 0.45;
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.beginPath();
+        rrect(ctx, x, y, w, h, 14);
+        ctx.fill();
+        ctx.restore();
+    }
 }
 
 function wrapTextLines(text, maxWidth, renderCtx) {
@@ -1163,16 +1245,584 @@ function drawDebugFishButton() {
 }
 
 export function drawControls() {
-    if(state.screen !== 'play') return;
-    if(touches.joystickId !== null) {
-        ctx.beginPath(); ctx.arc(touches.start.x, touches.start.y, 40, 0, Math.PI*2);
-        ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = 2; ctx.stroke();
-        ctx.beginPath(); ctx.arc(touches.curr.x, touches.curr.y, 20, 0, Math.PI*2);
-        ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.fill();
-        ctx.beginPath(); ctx.moveTo(touches.start.x, touches.start.y); ctx.lineTo(touches.curr.x, touches.curr.y);
-        ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = 1; ctx.stroke();
-    } else {
-        ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.textAlign = 'center'; ctx.font = '14px Arial';
-        ctx.fillText('按住屏幕任意位置移动', canvas.width/2, canvas.height-50);
+    // 主游戏和竞技场模式都需要显示控制器
+    const isPlayScreen = state.screen === 'play' || state.screen === 'fishArena';
+    if (!isPlayScreen) return;
+
+    // 竞技场准备阶段不显示摇杆提示（但攻击按钮仍显示）
+    const isArenaPrep = state.screen === 'fishArena' && state.fishArena && state.fishArena.phase === 'prep';
+
+    if (!isArenaPrep) {
+        if(touches.joystickId !== null) {
+            ctx.beginPath(); ctx.arc(touches.start.x, touches.start.y, 40, 0, Math.PI*2);
+            ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = 2; ctx.stroke();
+            ctx.beginPath(); ctx.arc(touches.curr.x, touches.curr.y, 20, 0, Math.PI*2);
+            ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.fill();
+            ctx.beginPath(); ctx.moveTo(touches.start.x, touches.start.y); ctx.lineTo(touches.curr.x, touches.curr.y);
+            ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = 1; ctx.stroke();
+        } else {
+            ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.textAlign = 'center'; ctx.font = '14px Arial';
+            ctx.fillText('按住屏幕任意位置移动', canvas.width/2, canvas.height-50);
+        }
     }
+    // 绘制攻击按鈕
+    drawAttackButton();
+    // 绘制手电筒开关按钮
+    drawFlashlightButton();
+}
+
+// =============================================
+// 绘制手电筒开关按钮（攻击按钮左边）
+// =============================================
+function drawFlashlightButton() {
+    const btn = FLASHLIGHT_BTN;
+    const isOn = state.flashlightOn !== false;
+
+    ctx.save();
+
+    // 按钮背景
+    ctx.beginPath();
+    ctx.arc(btn.x, btn.y, btn.r, 0, Math.PI * 2);
+    ctx.fillStyle = isOn ? 'rgba(255, 240, 100, 0.2)' : 'rgba(20, 20, 30, 0.7)';
+    ctx.fill();
+
+    // 按钮边框
+    ctx.beginPath();
+    ctx.arc(btn.x, btn.y, btn.r, 0, Math.PI * 2);
+    ctx.strokeStyle = isOn ? 'rgba(255, 240, 100, 0.8)' : 'rgba(80, 80, 100, 0.5)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // 手电筒图标（简单的手电筒形状）
+    ctx.save();
+    ctx.translate(btn.x, btn.y);
+    const iconColor = isOn ? 'rgba(255, 240, 100, 0.95)' : 'rgba(100, 100, 120, 0.6)';
+    ctx.fillStyle = iconColor;
+    // 手电筒筒身
+    ctx.beginPath();
+    rrect(ctx, -5, -10, 10, 14, 2);
+    ctx.fill();
+    // 手电筒头部（梯形用两个三角形近似）
+    ctx.beginPath();
+    ctx.moveTo(-8, -10);
+    ctx.lineTo(8, -10);
+    ctx.lineTo(6, -16);
+    ctx.lineTo(-6, -16);
+    ctx.closePath();
+    ctx.fill();
+    // 开启时画光束
+    if (isOn) {
+        ctx.globalAlpha = 0.35;
+        ctx.fillStyle = 'rgba(255, 255, 180, 1)';
+        ctx.beginPath();
+        ctx.moveTo(-8, -16);
+        ctx.lineTo(8, -16);
+        ctx.lineTo(13, -26);
+        ctx.lineTo(-13, -26);
+        ctx.closePath();
+        ctx.fill();
+        ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+
+    // 按钮文字
+    ctx.fillStyle = isOn ? 'rgba(255, 240, 100, 0.9)' : 'rgba(100, 100, 120, 0.6)';
+    ctx.font = 'bold 10px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(isOn ? '灯:开' : '灯:关', btn.x, btn.y + btn.r + 14);
+
+    ctx.restore();
+}
+
+// =============================================
+// 绘制攻击按鈕（右下角常驻）
+// =============================================
+function drawAttackButton() {
+    const atk = state.playerAttack;
+    const btnX = ATTACK_BTN.x;
+    const btnY = ATTACK_BTN.y;
+    const r = ATTACK_BTN.r;
+
+    // 冷却进度
+    const cooldownRatio = atk ? Math.max(0, atk.cooldownTimer / CONFIG.attack.cooldown) : 0;
+    const isReady = cooldownRatio === 0;
+    const isAttacking = atk && atk.active;
+
+    ctx.save();
+
+    // 按鈕外圈光晕（准备好时脉冲）
+    if (isReady) {
+        const pulse = 0.3 + Math.sin(Date.now() / 300) * 0.15;
+        ctx.beginPath();
+        ctx.arc(btnX, btnY, r + 8, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255, 200, 50, ${pulse})`;
+        ctx.fill();
+    }
+
+    // 按鈕背景
+    ctx.beginPath();
+    ctx.arc(btnX, btnY, r, 0, Math.PI * 2);
+    if (isAttacking) {
+        ctx.fillStyle = 'rgba(255, 180, 50, 0.9)';
+    } else if (isReady) {
+        ctx.fillStyle = 'rgba(60, 40, 10, 0.85)';
+    } else {
+        ctx.fillStyle = 'rgba(30, 20, 5, 0.7)';
+    }
+    ctx.fill();
+
+    // 按鈕边框
+    ctx.beginPath();
+    ctx.arc(btnX, btnY, r, 0, Math.PI * 2);
+    ctx.strokeStyle = isReady ? 'rgba(255, 200, 50, 0.9)' : 'rgba(120, 80, 20, 0.5)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // 冷却覆盖层（逆时针扫除）
+    if (cooldownRatio > 0) {
+        ctx.beginPath();
+        ctx.moveTo(btnX, btnY);
+        ctx.arc(btnX, btnY, r, -Math.PI / 2, -Math.PI / 2 + (1 - cooldownRatio) * Math.PI * 2);
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+        ctx.fill();
+    }
+
+    // 按鈕图标：氧气瓶形状
+    ctx.save();
+    ctx.translate(btnX, btnY);
+    // 瓶身
+    ctx.fillStyle = isReady ? 'rgba(220, 200, 160, 0.95)' : 'rgba(120, 100, 70, 0.6)';
+    ctx.beginPath();
+    rrect(ctx, -7, -14, 14, 22, 3);
+    ctx.fill();
+    // 瓶口
+    ctx.fillStyle = isReady ? 'rgba(180, 160, 120, 0.9)' : 'rgba(90, 70, 40, 0.6)';
+    ctx.fillRect(-4, -18, 8, 5);
+    // 冲击动画：攻击时小圆闪烁
+    if (isAttacking) {
+        const flashAlpha = 1 - (atk.timer / CONFIG.attack.slashDuration);
+        ctx.fillStyle = `rgba(255, 240, 100, ${flashAlpha})`;
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 0.5, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    ctx.restore();
+
+    // 按鈕文字
+    ctx.fillStyle = isReady ? 'rgba(255, 220, 100, 0.9)' : 'rgba(150, 120, 60, 0.6)';
+    ctx.font = 'bold 10px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText('攻击', btnX, btnY + r + 14);
+
+    ctx.restore();
+}
+
+// =============================================
+// 绘制刀光特效（屏幕空间，在 UI 层调用）
+// 效果：弧形刀光从一侧快速扫到另一侧（有加速减速惯性感），
+//       刀光在空中停留一会再消散，击中瞬间有冲击波+闪白
+// =============================================
+export function drawSlashEffect(
+    ctx: CanvasRenderingContext2D,
+    canvasW: number,
+    canvasH: number,
+    playerScreenX: number,
+    playerScreenY: number,
+    attackAngle: number,
+    attackTimer: number
+) {
+    const cfg = CONFIG.attack;
+    const swingDur = cfg.slashSwingDuration;   // 挥动阶段帧数
+    const lingerDur = cfg.slashLingerDuration; // 停留消散阶段帧数
+    const totalDur = swingDur + lingerDur;
+
+    if (attackTimer > totalDur) return;
+
+    const halfAngle = (cfg.angle / 2) * (Math.PI / 180);
+    const range = cfg.range;
+
+    ctx.save();
+    ctx.translate(playerScreenX, playerScreenY);
+
+    if (attackTimer <= swingDur) {
+        // ===== 挥动阶段：弧形刀光从起始角扫到终止角 =====
+        // 用 easeOutCubic 模拟先快后慢的惯性感
+        const t = attackTimer / swingDur;
+        const eased = 1 - Math.pow(1 - t, 3); // easeOutCubic：开始快，结尾减速
+
+        // 刀光从 -halfAngle 扫到 +halfAngle（相对于攻击方向）
+        const sweepStart = attackAngle - halfAngle;
+        const sweepEnd   = attackAngle + halfAngle;
+        const currentEnd = sweepStart + (sweepEnd - sweepStart) * eased;
+
+        // --- 外层光晕扇形 ---
+        const outerGlow = ctx.createRadialGradient(0, 0, 0, 0, 0, range * 1.15);
+        outerGlow.addColorStop(0,   `rgba(255, 255, 220, ${0.55 * (1 - t * 0.3)})`);
+        outerGlow.addColorStop(0.5, `rgba(255, 220, 80,  ${0.3  * (1 - t * 0.3)})`);
+        outerGlow.addColorStop(1,   'rgba(255, 180, 0, 0)');
+        ctx.fillStyle = outerGlow;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.arc(0, 0, range * 1.15, sweepStart, currentEnd);
+        ctx.closePath();
+        ctx.fill();
+
+        // --- 主刀光扇形（白色锐利弧面）---
+        const slashGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, range);
+        slashGrad.addColorStop(0,    `rgba(255, 255, 255, ${0.95 * (1 - t * 0.2)})`);
+        slashGrad.addColorStop(0.25, `rgba(255, 250, 200, ${0.8  * (1 - t * 0.2)})`);
+        slashGrad.addColorStop(0.65, `rgba(255, 220, 80,  ${0.5  * (1 - t * 0.2)})`);
+        slashGrad.addColorStop(1,    'rgba(255, 160, 0, 0)');
+        ctx.fillStyle = slashGrad;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.arc(0, 0, range, sweepStart, currentEnd);
+        ctx.closePath();
+        ctx.fill();
+
+        // --- 刀锋前沿：多条弧线（表现刀刃锋利感和水压残留）---
+        const arcCount = cfg.slashArcCount;
+        for (let i = 0; i < arcCount; i++) {
+            const layerT = i / arcCount;
+            const layerR = range * (0.55 + layerT * 0.5);
+            const arcAlpha = (1 - layerT) * 0.7 * (1 - t * 0.4);
+            const arcWidth = (1 - layerT) * 4 + 1;
+            ctx.save();
+            ctx.strokeStyle = `rgba(255, 255, 200, ${arcAlpha})`;
+            ctx.lineWidth = arcWidth;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.arc(0, 0, layerR, sweepStart, currentEnd);
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        // --- 击中瞬间（前 30% 帧）：中心闪白 + 冲击波扩散圆环 ---
+        if (t < 0.3) {
+            const flashT = 1 - t / 0.3;
+            // 中心闪白
+            ctx.fillStyle = `rgba(255, 255, 255, ${flashT * 0.85})`;
+            ctx.beginPath();
+            ctx.arc(0, 0, 28, 0, Math.PI * 2);
+            ctx.fill();
+            // 冲击波扩散圆环
+            const waveR = range * 0.4 * (1 - flashT) + 15;
+            ctx.save();
+            ctx.strokeStyle = `rgba(255, 240, 150, ${flashT * 0.9})`;
+            ctx.lineWidth = 3 + flashT * 4;
+            ctx.beginPath();
+            ctx.arc(0, 0, waveR, sweepStart - 0.1, currentEnd + 0.1);
+            ctx.stroke();
+            ctx.restore();
+        }
+
+    } else {
+        // ===== 停留消散阶段：刀光残留在终止位置，逐渐淡出 =====
+        const lingerT = (attackTimer - swingDur) / lingerDur; // 0 -> 1
+        const fadeAlpha = Math.pow(1 - lingerT, 2);           // 二次方淡出，尾部更柔和
+
+        const sweepStart = attackAngle - halfAngle;
+        const sweepEnd   = attackAngle + halfAngle;
+
+        // 残留刀光扇形（逐渐变淡，模拟水压/剑气消散）
+        const shrinkFactor = 1 - lingerT * 0.35;
+        const residualRange = range * shrinkFactor;
+
+        const residualGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, residualRange);
+        residualGrad.addColorStop(0,   `rgba(255, 240, 180, ${fadeAlpha * 0.5})`);
+        residualGrad.addColorStop(0.4, `rgba(255, 200, 80,  ${fadeAlpha * 0.3})`);
+        residualGrad.addColorStop(1,   'rgba(255, 150, 0, 0)');
+        ctx.fillStyle = residualGrad;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.arc(0, 0, residualRange, sweepStart, sweepEnd);
+        ctx.closePath();
+        ctx.fill();
+
+        // 残留弧线（刀光边缘的水压痕迹）
+        const arcCount = cfg.slashArcCount;
+        for (let i = 0; i < arcCount; i++) {
+            const layerT = i / arcCount;
+            const layerR = residualRange * (0.6 + layerT * 0.45);
+            const arcAlpha = (1 - layerT) * fadeAlpha * 0.5;
+            ctx.save();
+            ctx.strokeStyle = `rgba(255, 230, 150, ${arcAlpha})`;
+            ctx.lineWidth = (1 - layerT) * 2.5 + 0.5;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.arc(0, 0, layerR, sweepStart, sweepEnd);
+            ctx.stroke();
+            ctx.restore();
+        }
+    }
+
+    ctx.restore();
+}
+
+// =============================================
+// 食人鱼纯享版：竞技场 HUD 渲染
+// =============================================
+function drawArenaHUD() {
+    const arena = state.fishArena;
+    if (!arena) return;
+
+    const cw = canvas.width;
+    const ch = canvas.height;
+    const time = Date.now() / 1000;
+
+    // --- 死亡结算页面 ---
+    if (arena.phase === 'dead') {
+        drawArenaDeathScreen(arena, cw, ch, time);
+        return;
+    }
+
+    // --- 顶部信息栏 ---
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(0, 0, cw, 56);
+    ctx.strokeStyle = 'rgba(255,60,0,0.3)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, 56);
+    ctx.lineTo(cw, 56);
+    ctx.stroke();
+    ctx.restore();
+
+    // 轮次（左侧）
+    ctx.save();
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.font = 'bold 13px Arial';
+    ctx.fillStyle = 'rgba(255,150,80,0.7)';
+    ctx.fillText('ROUND', 14, 20);
+    ctx.font = 'bold 28px Arial';
+    ctx.fillStyle = '#ff8040';
+    ctx.fillText(`${arena.round}`, 14, 42);
+    ctx.restore();
+
+    // 存活鱼数（中间）
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const fishCountText = arena.phase === 'prep' ? '?' : `${arena.fishAlive}`;
+    ctx.font = 'bold 13px Arial';
+    ctx.fillStyle = 'rgba(255,80,80,0.7)';
+    ctx.fillText('🦈 存活', cw / 2, 18);
+    ctx.font = `bold ${arena.fishAlive > 0 ? '28' : '24'}px Arial`;
+    ctx.fillStyle = arena.fishAlive > 0 ? '#ff4040' : '#40ff80';
+    ctx.fillText(fishCountText, cw / 2, 42);
+    ctx.restore();
+
+    // 累计击杀（右侧）
+    ctx.save();
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.font = 'bold 13px Arial';
+    ctx.fillStyle = 'rgba(255,200,80,0.7)';
+    ctx.fillText('KILLS', cw - 14, 20);
+    ctx.font = 'bold 28px Arial';
+    ctx.fillStyle = '#ffc840';
+    ctx.fillText(`${arena.totalKills}`, cw - 14, 42);
+    ctx.restore();
+
+    // --- 准备阶段倒计时 ---
+    if (arena.phase === 'prep') {
+        const prepLeft = Math.ceil(arena.prepTimer);
+        const prepAlpha = 0.7 + Math.sin(time * 4) * 0.3;
+
+        ctx.save();
+        ctx.fillStyle = 'rgba(0,0,0,0.35)';
+        ctx.fillRect(0, 56, cw, ch - 56);
+        ctx.restore();
+
+        ctx.save();
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        // 光晕
+        ctx.save();
+        ctx.globalCompositeOperation = 'screen';
+        const prepGlow = ctx.createRadialGradient(cw / 2, ch / 2, 0, cw / 2, ch / 2, 100);
+        prepGlow.addColorStop(0, `rgba(255,100,0,${prepAlpha * 0.3})`);
+        prepGlow.addColorStop(1, 'rgba(255,100,0,0)');
+        ctx.fillStyle = prepGlow;
+        ctx.fillRect(cw / 2 - 100, ch / 2 - 100, 200, 200);
+        ctx.restore();
+
+        ctx.font = 'bold 80px Arial';
+        ctx.fillStyle = `rgba(255,80,20,${prepAlpha})`;
+        ctx.fillText(`${prepLeft}`, cw / 2, ch / 2 - 20);
+
+        ctx.font = 'bold 22px Arial';
+        ctx.fillStyle = `rgba(255,200,150,${prepAlpha * 0.9})`;
+        const roundText = arena.round === 1 ? '准备好了吗？' : `第 ${arena.round} 轮 — 做好准备！`;
+        ctx.fillText(roundText, cw / 2, ch / 2 + 50);
+
+        ctx.font = '16px Arial';
+        ctx.fillStyle = `rgba(255,150,100,${prepAlpha * 0.8})`;
+        const fishCountThisRound = arena.round === 1 ? 1 : (arena.round - 1) * 5;
+        ctx.fillText(`本轮将出现 ${fishCountThisRound} 条食人鱼`, cw / 2, ch / 2 + 80);
+        ctx.restore();
+    }
+
+    // --- 清图庆祝阶段 ---
+    if (arena.phase === 'clear') {
+        const clearProgress = arena.clearTimer / 150;
+        const clearAlpha = clearProgress < 0.2 ? clearProgress / 0.2 :
+                           clearProgress > 0.8 ? (1 - clearProgress) / 0.2 : 1;
+
+        ctx.save();
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        if (arena.achievementText) {
+            const scale = 1 + Math.sin(clearProgress * Math.PI) * 0.15;
+            ctx.save();
+            ctx.translate(cw / 2, ch * 0.42);
+            ctx.scale(scale, scale);
+
+            // 文字光晕
+            ctx.save();
+            ctx.globalCompositeOperation = 'screen';
+            const achGlow = ctx.createRadialGradient(0, 0, 0, 0, 0, 150);
+            achGlow.addColorStop(0, `rgba(255,200,0,${clearAlpha * 0.4})`);
+            achGlow.addColorStop(1, 'rgba(255,200,0,0)');
+            ctx.fillStyle = achGlow;
+            ctx.fillRect(-150, -80, 300, 160);
+            ctx.restore();
+
+            // 阴影
+            ctx.fillStyle = `rgba(0,0,0,${clearAlpha * 0.6})`;
+            ctx.font = 'bold 42px Arial';
+            ctx.fillText(arena.achievementText, 3, 3);
+            // 主文字
+            ctx.fillStyle = `rgba(255,220,60,${clearAlpha})`;
+            ctx.fillText(arena.achievementText, 0, 0);
+            ctx.restore();
+        }
+
+        ctx.font = 'bold 18px Arial';
+        ctx.fillStyle = `rgba(200,240,255,${clearAlpha * 0.9})`;
+        ctx.fillText(`第 ${arena.round + 1} 轮即将开始...`, cw / 2, ch * 0.58);
+        ctx.restore();
+    }
+
+    // --- 战斗中成就文字浮现 ---
+    if (arena.achievementTimer > 0 && arena.phase === 'fight') {
+        const achAlpha = Math.min(1, arena.achievementTimer / 30);
+        const achY = ch * 0.35 - (1 - arena.achievementTimer / 120) * 30;
+        ctx.save();
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = 'bold 36px Arial';
+        ctx.fillStyle = `rgba(255,220,60,${achAlpha})`;
+        ctx.fillText(arena.achievementText, cw / 2, achY);
+        ctx.restore();
+    }
+}
+
+// 竞技场死亡结算页面
+function drawArenaDeathScreen(arena: any, cw: number, ch: number, time: number) {
+    const deadProgress = Math.min(1, arena.deadTimer / 60);
+    ctx.save();
+    ctx.fillStyle = `rgba(0,0,0,${deadProgress * 0.92})`;
+    ctx.fillRect(0, 0, cw, ch);
+    ctx.restore();
+
+    if (arena.deadTimer < 30) return;
+
+    const showAlpha = Math.min(1, (arena.deadTimer - 30) / 40);
+
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    // 血红光晕
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    const titleGlow = ctx.createRadialGradient(cw / 2, ch * 0.22, 0, cw / 2, ch * 0.22, 160);
+    titleGlow.addColorStop(0, `rgba(255,0,0,${showAlpha * 0.3})`);
+    titleGlow.addColorStop(1, 'rgba(255,0,0,0)');
+    ctx.fillStyle = titleGlow;
+    ctx.fillRect(cw / 2 - 160, ch * 0.1, 320, 240);
+    ctx.restore();
+
+    // 死亡标题
+    ctx.font = 'bold 48px Arial';
+    ctx.fillStyle = `rgba(255,40,20,${showAlpha})`;
+    ctx.fillText('YOU DIED', cw / 2, ch * 0.22);
+
+    ctx.font = 'bold 20px Arial';
+    ctx.fillStyle = `rgba(255,150,100,${showAlpha * 0.9})`;
+    ctx.fillText('被食人鱼撕碎了...', cw / 2, ch * 0.32);
+
+    // 分割线
+    ctx.save();
+    ctx.strokeStyle = `rgba(255,60,0,${showAlpha * 0.5})`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(cw * 0.2, ch * 0.38);
+    ctx.lineTo(cw * 0.8, ch * 0.38);
+    ctx.stroke();
+    ctx.restore();
+
+    // 统计数据
+    const statY = ch * 0.46;
+    const statGap = ch * 0.075;
+
+    // 最高轮次
+    ctx.font = 'bold 15px Arial';
+    ctx.fillStyle = `rgba(180,180,200,${showAlpha * 0.7})`;
+    ctx.fillText('最高轮次', cw / 2, statY);
+    ctx.font = 'bold 36px Arial';
+    ctx.fillStyle = `rgba(255,180,80,${showAlpha})`;
+    ctx.fillText(`第 ${arena.round} 轮`, cw / 2, statY + statGap * 0.7);
+
+    // 击杀总数
+    ctx.font = 'bold 15px Arial';
+    ctx.fillStyle = `rgba(180,180,200,${showAlpha * 0.7})`;
+    ctx.fillText('击杀总数', cw / 2, statY + statGap * 1.6);
+    ctx.font = 'bold 36px Arial';
+    ctx.fillStyle = `rgba(255,80,80,${showAlpha})`;
+    ctx.fillText(`${arena.totalKills} 条`, cw / 2, statY + statGap * 2.3);
+
+    // 存活时间
+    const minutes = Math.floor(arena.surviveTime / 60);
+    const seconds = Math.floor(arena.surviveTime % 60);
+    const timeStr = minutes > 0 ? `${minutes}分${seconds}秒` : `${seconds}秒`;
+    ctx.font = 'bold 15px Arial';
+    ctx.fillStyle = `rgba(180,180,200,${showAlpha * 0.7})`;
+    ctx.fillText('存活时间', cw / 2, statY + statGap * 3.2);
+    ctx.font = 'bold 28px Arial';
+    ctx.fillStyle = `rgba(100,220,255,${showAlpha})`;
+    ctx.fillText(timeStr, cw / 2, statY + statGap * 3.9);
+
+    // 评价语
+    const rating = getArenaRating(arena.round, arena.totalKills);
+    ctx.font = 'bold 18px Arial';
+    ctx.fillStyle = `rgba(255,220,100,${showAlpha})`;
+    ctx.fillText(rating, cw / 2, statY + statGap * 5.0);
+
+    // 返回提示（2秒后出现）
+    if (arena.deadTimer >= 120) {
+        const tapAlpha = 0.5 + Math.sin(time * 2.5) * 0.5;
+        ctx.font = '16px Arial';
+        ctx.fillStyle = `rgba(150,180,200,${tapAlpha * showAlpha})`;
+        ctx.fillText('点击屏幕返回主菜单', cw / 2, ch * 0.92);
+    }
+
+    ctx.restore();
+}
+
+// 根据轮次给出评价语
+function getArenaRating(round: number, kills: number): string {
+    if (round >= 10) return '🏆 深海传说！无人能敌！';
+    if (round >= 7)  return '⚡ 不可思议！你是怪物！';
+    if (round >= 5)  return '🔥 势不可挡！太强了！';
+    if (round >= 3)  return '💪 不错！继续挑战！';
+    if (round >= 2)  return '👍 还行，再来一局！';
+    return '😅 被第一轮干掉了...加油！';
 }

@@ -236,6 +236,27 @@ export function drawFishEnemy(ctx: CanvasRenderingContext2D, fish: FishEnemy) {
     ctx.ellipse(-size * 0.04, -size * 0.04, size * 0.03, size * 0.02, -0.5, 0, Math.PI * 2);
     ctx.fill();
 
+    // 冲刺起手动画：眼睛发光（蓄力阶段）
+    if (state_ === 'lunge' && fish.lungeCharge < 1) {
+        const glowProgress = fish.lungeCharge; // 0 -> 1
+        const glowAlpha = glowProgress * 0.9;
+        const glowRadius = size * (0.2 + glowProgress * 0.35);
+        // 眼睛外圈发光（黄色光晕）
+        const eyeGlow = ctx.createRadialGradient(0, 0, 0, 0, 0, glowRadius);
+        eyeGlow.addColorStop(0, `rgba(255, 220, 0, ${glowAlpha})`);
+        eyeGlow.addColorStop(0.5, `rgba(255, 160, 0, ${glowAlpha * 0.6})`);
+        eyeGlow.addColorStop(1, 'rgba(255, 100, 0, 0)');
+        ctx.fillStyle = eyeGlow;
+        ctx.beginPath();
+        ctx.arc(0, 0, glowRadius, 0, Math.PI * 2);
+        ctx.fill();
+        // 眼睛变亮（黄白色）
+        ctx.fillStyle = `rgba(255, 240, 100, ${glowProgress * 0.8})`;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, size * 0.12, size * 0.11, 0, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
     ctx.restore();
 
     // =============================================
@@ -387,8 +408,117 @@ export function drawFishBiteEffect(ctx: CanvasRenderingContext2D, canvasW: numbe
 export function drawAllFishEnemies(ctx: CanvasRenderingContext2D) {
     if (!state.fishEnemies || state.fishEnemies.length === 0) return;
     for (const fish of state.fishEnemies) {
-        if (!fish.dead) {
+        if (fish.state === 'dying') {
+            // 死亡动画：翻肚皮淡出
+            drawDyingFish(ctx, fish);
+        } else if (!fish.dead) {
             drawFishEnemy(ctx, fish);
+            // 绘制状态变化提示图标（问号/感叹号）
+            if (fish.alertTimer > 0 && fish.alertIcon) {
+                drawFishAlertIcon(ctx, fish);
+            }
         }
     }
+}
+
+// =============================================
+// 绘制状态变化提示图标（问号/感叹号，显示在鱼头顶）
+// =============================================
+function drawFishAlertIcon(ctx: CanvasRenderingContext2D, fish: FishEnemy) {
+    const cfg = CONFIG.fishEnemy;
+    const size = cfg.size;
+    // 图标透明度：前10帧淡入，后10帧淡出
+    const maxTimer = 45;
+    let alpha = 1;
+    if (fish.alertTimer > maxTimer - 10) {
+        alpha = (maxTimer - fish.alertTimer) / 10;
+    } else if (fish.alertTimer < 10) {
+        alpha = fish.alertTimer / 10;
+    }
+    alpha = Math.max(0, Math.min(1, alpha));
+
+    // 图标位置：鱼头顶上方
+    const iconX = fish.x;
+    const iconY = fish.y - size * 1.8;
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+
+    // 气泡背景
+    const bubbleR = size * 0.7;
+    ctx.beginPath();
+    ctx.arc(iconX, iconY, bubbleR, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+    ctx.fill();
+    ctx.strokeStyle = fish.alertIconColor;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // 气泡小尾巴（指向鱼）
+    ctx.beginPath();
+    ctx.moveTo(iconX - 4, iconY + bubbleR - 2);
+    ctx.lineTo(iconX, iconY + bubbleR + 6);
+    ctx.lineTo(iconX + 4, iconY + bubbleR - 2);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+    ctx.fill();
+
+    // 图标文字
+    ctx.fillStyle = fish.alertIconColor;
+    ctx.font = `bold ${Math.round(size * 0.9)}px Arial`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(fish.alertIcon, iconX, iconY);
+
+    ctx.restore();
+}
+
+// =============================================
+// 绘制死亡动画：翻肚皮 + 淡出
+// =============================================
+function drawDyingFish(ctx: CanvasRenderingContext2D, fish: FishEnemy) {
+    ctx.save();
+    ctx.globalAlpha = fish.dyingAlpha;
+    ctx.translate(fish.x, fish.y);
+    // 翻肚皮：绕 X 轴旋转（用 scaleY 模拟透视翻转）
+    const rollProgress = fish.dyingRoll / Math.PI; // 0 -> 1
+    const scaleY = Math.cos(fish.dyingRoll);       // 1 -> -1°
+    ctx.rotate(fish.angle);
+    ctx.scale(1, scaleY);
+    // 翻转后腹部朝上（白色腹部）
+    const cfg = CONFIG.fishEnemy;
+    const size = cfg.size;
+    const t = fish.animTime;
+
+    // 简化绘制：死亡状态下身体不摆动
+    // 腹部（白色，翻转后显示）
+    const bellyAlpha = rollProgress;
+    const bodyGrad = ctx.createLinearGradient(0, -size * 0.4, 0, size * 0.4);
+    bodyGrad.addColorStop(0, `rgba(26, 37, 53, ${fish.dyingAlpha})`);
+    bodyGrad.addColorStop(0.4, `rgba(45, 61, 82, ${fish.dyingAlpha})`);
+    bodyGrad.addColorStop(1, `rgba(220, 210, 200, ${bellyAlpha * fish.dyingAlpha})`);
+    ctx.fillStyle = bodyGrad;
+    ctx.beginPath();
+    ctx.moveTo(size * 1.1, 0);
+    ctx.bezierCurveTo(size * 0.9, -size * 0.35, -size * 0.6, -size * 0.38, -size * 1.1, -size * 0.12);
+    ctx.lineTo(-size * 1.1, size * 0.12);
+    ctx.bezierCurveTo(-size * 0.6, size * 0.38, size * 0.9, size * 0.35, size * 1.1, 0);
+    ctx.fill();
+
+    // 尾鳓
+    ctx.save();
+    ctx.translate(-size * 1.1, 0);
+    ctx.fillStyle = `rgba(15, 26, 40, ${fish.dyingAlpha})`;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.bezierCurveTo(-size * 0.3, -size * 0.15, -size * 0.7, -size * 0.55, -size * 0.5, -size * 0.7);
+    ctx.bezierCurveTo(-size * 0.3, -size * 0.8, size * 0.1, -size * 0.5, 0, 0);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.bezierCurveTo(-size * 0.3, size * 0.15, -size * 0.7, size * 0.55, -size * 0.5, size * 0.7);
+    ctx.bezierCurveTo(-size * 0.3, size * 0.8, size * 0.1, size * 0.5, 0, 0);
+    ctx.fill();
+    ctx.restore();
+
+    ctx.restore();
 }
