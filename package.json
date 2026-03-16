@@ -4,6 +4,7 @@
   "description": "雅各布井救援游戏 - 微信小游戏",
   "scripts": {
     "build": "tsc",
+    "typecheck": "tsc --noEmit",
     "watch": "tsc --watch",
     "clean": "rmdir /s /q dist 2>nul || true"
   },

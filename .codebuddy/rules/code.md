@@ -44,6 +44,21 @@ type: always
 - `code.md` 与 `code/`：回答**这个项目现在的代码是怎么跑起来的，应该去哪里改**。
 - `design.md` 与 `design/`：回答**这个项目想做成什么样，为什么这样设计**。
 
+## 本地检查约定
+
+- 当前项目保留微信开发者工具的 TypeScript 自动处理流程，用于实际运行小游戏。
+- 为了让后续接手模型能够在仓库内主动检查 TypeScript 报错，项目额外提供了 `npm run typecheck`。
+- `npm run typecheck` 实际执行 `tsc --noEmit`，只做类型检查，不生成 `dist` 输出。
+- 如果需要在本地确认是否存在 TypeScript 报错，优先执行 `npm run typecheck`，而不是依赖微信开发者工具内部的报错提示。
+- `npm run build` 仍可用于生成 `dist`，但它不是后续模型排查报错的首选入口。
+
+## 版本控制与忽略文件约定
+
+- 项目根目录提供 `.gitignore`，用于过滤本地依赖、构建产物、系统缓存、编辑器缓存和微信开发者工具私有配置。
+- 当前默认忽略的重点包括：`node_modules/`、`dist/`、`*.tsbuildinfo`、`.DS_Store`、`.vscode/`、`.idea/`、`project.private.config.json` 与各类包管理器调试日志。
+- `project.config.json` 仍然保留在版本控制中，因为它属于项目级配置；只有 `project.private.config.json` 属于本地私有配置，应忽略。
+- 音频、贴图、`src/` 源码、`typings/` 与 `.codebuddy/rules/` 文档都不应被忽略。
+
 ## 最重要的代码层认知
 
 - **入口文件是 `game.ts`。**
