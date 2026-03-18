@@ -1,6 +1,6 @@
 import { CONFIG } from './config';
 export const state = {
-    screen: 'menu', // menu, play, win, lose, ending, fishArena
+    screen: 'menu', // menu, play, win, lose, ending, fishArena, mazeRescue
     menuScreen: 'main', // main, chapter
     chapterScrollY: 0, // chapter select page scroll offset
     map: [],
@@ -133,6 +133,31 @@ export const state = {
         achievementTimer: number; // 成就文字显示计时（帧）
         comboKills: number;     // 连杀计数
         comboTimer: number;     // 连杀计时（帧，归零则重置连杀）
+    },
+    // 迷宫引导绳模式状态
+    mazeRescue: null as null | {
+        phase: string;          // 'play'（游戏中）| 'rescued'（救援成功）| 'dead'（氧气耗尽）
+        resultTimer: number;    // 结算页计时（帧）
+        startTime: number;      // 本局开始时间戳（ms）
+        finishTime: number;     // 完成时间戳（ms，0表示未完成）
+        npcRescued: boolean;    // NPC是否已被绑绳（跟随中）
+        npcRescueHolding: boolean;  // 是否正在长按救援
+        npcRescueHoldStart: number; // 长按开始时间戳
+        npcRescueTouchId: number | null; // 救援长按触点ID
+        minimapExpanded: boolean;   // 小地图是否展开
+        // 迷宫专属地图数据（独立于主线地图）
+        mazeMap: any[][];
+        mazeWalls: any[];
+        mazeExplored: boolean[][];
+        mazeCols: number;
+        mazeRows: number;
+        mazeTileSize: number;
+        // 出口位置（顶部）
+        exitX: number;
+        exitY: number;
+        // NPC初始位置（底部深处）
+        npcInitX: number;
+        npcInitY: number;
     },
     rope: {
         ropes: [],

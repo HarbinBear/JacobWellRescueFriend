@@ -1,6 +1,6 @@
 import { CONFIG } from '../core/config';
 import { state, player, particles, input, resetState } from '../core/state';
-import { generateMap, generateArenaMap } from '../world/map';
+import { generateMap, generateArenaMap, generateMazeMap } from '../world/map';
 import { StoryManager } from '../story/StoryManager';
 import { Particle, createSplash, updateSplashes, triggerSilt, updateParticles } from './Particle';
 import { updateRopeSystem, findNearestWall } from './Rope';
@@ -1257,4 +1257,352 @@ function triggerArenaAchievement(arena: any) {
     // 连杀统计
     arena.comboKills++;
     arena.comboTimer = 180; // 3 秒内再次清图算连杀
+}
+
+// =============================================
+// 迷宫引导绳模式：碰撞检测（使用迷宫专属地图数据）
+// =============================================
+export function checkMazeCollision(x: number, y: number, maze: any): boolean {
+    const ts = maze.mazeTileSize;
+    const playerRadius = 12; // 玩家碰撞半径（格子60px，通道宽3格=180px，12px半径合适）
+    const r = Math.floor(y / ts);
+    const c = Math.floor(x / ts);
+    for (let ry = r - 1; ry <= r + 1; ry++) {
+        for (let rc = c - 1; rc <= c + 1; rc++) {
+            if (!maze.mazeMap[ry]) continue;
+            const cell = maze.mazeMap[ry][rc];
+            if (!cell) continue;
+            if (typeof cell === 'object') {
+                const dist = Math.hypot(x - cell.x, y - cell.y);
+                if (dist < cell.r + playerRadius) return true;
+            } else if (cell === 2) {
+                const cellCx = rc * ts + ts / 2;
+                const cellCy = ry * ts + ts / 2;
+                if (Math.abs(x - cellCx) < ts / 2 + playerRadius && Math.abs(y - cellCy) < ts / 2 + playerRadius) return true;
+            }
+        }
+    }
+    return false;
+}
+
+// =============================================
+// 迷宫引导绳模式：初始化
+// =============================================
+export function resetMazeLogic() {
+    // 重置基础状态（不调用 resetState，避免污染主线地图）
+    player.o2 = 100;
+    player.n2 = 0;
+    player.silt = 0;
+    player.vx = 0;
+    player.vy = 0;
+    player.hasTarget = false;
+    particles.length = 0;
+    state.splashes = [];
+    state.fishEnemies = [];
+    state.fishBite = null;
+    state.flashlightOn = true;
+    state.story.redOverlay = 0;
+    state.story.shake = 0;
+    state.playerAttack = {
+        active: false,
+        timer: 0,
+        cooldownTimer: 0,
+        angle: 0,
+    };
+    // 重置绳索
+    state.rope = {
+        ropes: [],
+        active: false,
+        current: {
+            start: null,
+            startWall: null,
+            end: null,
+            path: [],
+            basePoints: [],
+            slackFactor: 1,
+            mode: 'loose',
+            time: 0
+        },
+        ui: {
+            visible: false,
+            type: null,
+            progress: 0,
+            anchor: null
+        },
+        hold: {
+            active: false,
+            type: null,
+            timer: 0,
+            touchId: null,
+            anchor: null
+        },
+        stillTimer: 0
+    };
+
+    // 生成迷宫地图
+    const mazeData = generateMazeMap();
+
+    // 设置玩家出生点
+    player.x = mazeData.spawnX;
+    player.y = mazeData.spawnY;
+    player.angle = Math.PI / 2; // 朝下
+    player.targetAngle = Math.PI / 2;
+    input.targetAngle = Math.PI / 2;
+
+    // 初始化 NPC（被救者）
+    state.npc.active = true;
+    state.npc.x = mazeData.npcInitX;
+    state.npc.y = mazeData.npcInitY;
+    state.npc.vx = 0;
+    state.npc.vy = 0;
+    state.npc.angle = -Math.PI / 2;
+    state.npc.state = 'wait';
+
+    // 初始化相机
+    state.camera = { zoom: 1, targetZoom: 1 };
+
+    // 初始化迷宫专属状态
+    state.mazeRescue = {
+        phase: 'play',
+        resultTimer: 0,
+        startTime: Date.now(),
+        finishTime: 0,
+        npcRescued: false,
+        npcRescueHolding: false,
+        npcRescueHoldStart: 0,
+        npcRescueTouchId: null,
+        minimapExpanded: false,
+        mazeMap: mazeData.mazeMap,
+        mazeWalls: mazeData.mazeWalls,
+        mazeExplored: mazeData.mazeExplored,
+        mazeCols: mazeData.mazeCols,
+        mazeRows: mazeData.mazeRows,
+        mazeTileSize: mazeData.mazeTileSize,
+        exitX: mazeData.exitX,
+        exitY: mazeData.exitY,
+        npcInitX: mazeData.npcInitX,
+        npcInitY: mazeData.npcInitY,
+    };
+
+    // 切换到迷宫模式
+    state.screen = 'mazeRescue';
+
+    // 开场提示
+    storyManager.showText('找到被困者，用引导绳带他出去！', '#aef', 3000);
+    setTimeout(() => {
+        storyManager.showText('靠近墙壁静止可以铺设引导绳', 'rgba(180,220,255,0.9)', 3000);
+    }, 3500);
+}
+
+// =============================================
+// 迷宫引导绳模式：重玩（保留地图和绳子，重置NPC和玩家）
+// =============================================
+export function replayMazeLogic() {
+    const maze = state.mazeRescue;
+    if (!maze) return;
+
+    // 重置玩家
+    player.o2 = 100;
+    player.n2 = 0;
+    player.silt = 0;
+    player.vx = 0;
+    player.vy = 0;
+    player.x = maze.exitX;
+    player.y = 3 * maze.mazeTileSize + maze.mazeTileSize / 2;
+    player.angle = Math.PI / 2;
+    player.targetAngle = Math.PI / 2;
+    input.targetAngle = Math.PI / 2;
+    particles.length = 0;
+    state.splashes = [];
+    state.fishBite = null;
+    state.story.redOverlay = 0;
+    state.story.shake = 0;
+
+    // 重置NPC到初始位置
+    state.npc.x = maze.npcInitX;
+    state.npc.y = maze.npcInitY;
+    state.npc.vx = 0;
+    state.npc.vy = 0;
+    state.npc.angle = -Math.PI / 2;
+    state.npc.state = 'wait';
+    state.npc.active = true;
+
+    // 保留地图和绳子，只重置游戏状态
+    maze.phase = 'play';
+    maze.resultTimer = 0;
+    maze.startTime = Date.now();
+    maze.finishTime = 0;
+    maze.npcRescued = false;
+    maze.npcRescueHolding = false;
+    maze.npcRescueHoldStart = 0;
+    maze.npcRescueTouchId = null;
+    // 保留 minimapExpanded 状态
+
+    state.screen = 'mazeRescue';
+    storyManager.showText('再次出发！', '#aef', 2000);
+}
+
+// =============================================
+// 迷宫引导绳模式：每帧更新
+// =============================================
+export function updateMaze() {
+    if (state.screen !== 'mazeRescue') return;
+    const maze = state.mazeRescue;
+    if (!maze) return;
+
+    // 结算阶段：只计时
+    if (maze.phase === 'rescued' || maze.phase === 'dead') {
+        maze.resultTimer++;
+        return;
+    }
+
+    // 更新剧情文字（复用 storyManager）
+    storyManager.update();
+
+    // 绳索长按时冻结玩家
+    if (state.rope && state.rope.hold && state.rope.hold.active) {
+        input.move = 0;
+        input.speedUp = false;
+        player.vx = 0;
+        player.vy = 0;
+    }
+
+    // --- 玩家移动 ---
+    player.targetAngle = input.targetAngle;
+    let angleDiff = player.targetAngle - player.angle;
+    while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+    while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+    player.angle += angleDiff * CONFIG.turnSpeed;
+
+    let speed = CONFIG.moveSpeed * 0.3;
+    if (input.speedUp) speed = CONFIG.moveSpeed;
+    if (state.debug.fastMove) speed *= CONFIG.debugSpeedMultiplier;
+
+    if (input.move > 0) {
+        player.vx += Math.cos(player.targetAngle) * speed * CONFIG.acceleration;
+        player.vy += Math.sin(player.targetAngle) * speed * CONFIG.acceleration;
+    }
+    player.vx *= CONFIG.waterDrag;
+    player.vy *= CONFIG.waterDrag;
+
+    // 碰撞检测（使用迷宫专属地图）
+    const nextX = player.x + player.vx;
+    const nextY = player.y + player.vy;
+    if (!checkMazeCollision(nextX, player.y, maze)) player.x = nextX;
+    else { player.vx *= -0.5; triggerSilt(player.x, player.y, 10); }
+    if (!checkMazeCollision(player.x, nextY, maze)) player.y = nextY;
+    else { player.vy *= -0.5; triggerSilt(player.x, player.y, 10); }
+
+    // 顶部边界：不能游出迷宫
+    if (player.y < maze.mazeTileSize / 2) {
+        player.y = maze.mazeTileSize / 2;
+        player.vy = Math.abs(player.vy) * 0.3;
+    }
+
+    // 动画时间
+    if (!player.animTime) player.animTime = 0;
+    player.animTime += 0.05 + Math.hypot(player.vx, player.vy) * 0.05;
+
+    // --- 绳索系统（临时把迷宫地图挂到全局，让绳索系统能正常工作）---
+    const savedMap = state.map;
+    const savedWalls = state.walls;
+    state.map = maze.mazeMap;
+    state.walls = maze.mazeWalls;
+    updateRopeSystem();
+    state.map = savedMap;
+    state.walls = savedWalls;
+
+    // --- NPC 更新 ---
+    if (state.npc.active) {
+        if (maze.npcRescued) {
+            // NPC 跟随玩家
+            const dx = player.x - state.npc.x;
+            const dy = player.y - state.npc.y;
+            const dist = Math.hypot(dx, dy);
+            const npcSpeed = CONFIG.maze.npcFollowSpeed;
+            if (dist > 30) {
+                state.npc.vx = (dx / dist) * npcSpeed;
+                state.npc.vy = (dy / dist) * npcSpeed;
+                state.npc.x += state.npc.vx;
+                state.npc.y += state.npc.vy;
+            }
+            if (Math.abs(state.npc.vx) > 0.1 || Math.abs(state.npc.vy) > 0.1) {
+                state.npc.angle = Math.atan2(state.npc.vy, state.npc.vx);
+            }
+        } else {
+            // NPC 静止漂动
+            if (Math.random() < 0.05) {
+                state.npc.vx += (Math.random() - 0.5) * 0.5;
+                state.npc.vy += (Math.random() - 0.5) * 0.5;
+            }
+            state.npc.vx *= 0.95;
+            state.npc.vy *= 0.95;
+            state.npc.x += state.npc.vx;
+            state.npc.y += state.npc.vy;
+            // 朝向玩家
+            const dx = player.x - state.npc.x;
+            const dy = player.y - state.npc.y;
+            const targetAngle = Math.atan2(dy, dx);
+            let diff = targetAngle - state.npc.angle;
+            while (diff > Math.PI) diff -= Math.PI * 2;
+            while (diff < -Math.PI) diff += Math.PI * 2;
+            state.npc.angle += diff * 0.05;
+        }
+    }
+
+    // --- 救援交互：靠近NPC长按 ---
+    if (!maze.npcRescued && state.npc.active) {
+        if (maze.npcRescueHolding) {
+            const elapsed = (Date.now() - maze.npcRescueHoldStart) / 1000;
+            if (elapsed >= CONFIG.maze.npcRescueHoldDuration) {
+                // 完成绑绳
+                maze.npcRescued = true;
+                maze.npcRescueHolding = false;
+                state.npc.state = 'follow';
+                storyManager.showText('绑好了！带他出去！', '#0f8', 2500);
+            }
+        }
+    }
+
+    // --- 胜利检测：NPC已跟随且玩家到达出口 ---
+    if (maze.npcRescued && player.y <= maze.exitY + maze.mazeTileSize * 2) {
+        const distToExit = Math.hypot(player.x - maze.exitX, player.y - maze.exitY);
+        if (distToExit < maze.mazeTileSize * 2) {
+            maze.phase = 'rescued';
+            maze.resultTimer = 0;
+            maze.finishTime = Date.now();
+            storyManager.showText('成功救出！', '#ff0', 99999);
+        }
+    }
+
+    // --- 氧气消耗 ---
+    const vel = Math.hypot(player.vx, player.vy);
+    let o2Consumption = CONFIG.maze.o2ConsumptionBase;
+    if (vel > 1.5) o2Consumption += CONFIG.maze.o2ConsumptionMove;
+    player.o2 -= o2Consumption;
+
+    if (player.o2 <= 0) {
+        player.o2 = 0;
+        maze.phase = 'dead';
+        maze.resultTimer = 0;
+        storyManager.showText('氧气耗尽...', '#f44', 99999);
+    }
+
+    // --- 更新探索地图 ---
+    const exploreRadius = Math.ceil(CONFIG.lightRange / maze.mazeTileSize);
+    const pr = Math.floor(player.y / maze.mazeTileSize);
+    const pc = Math.floor(player.x / maze.mazeTileSize);
+    for (let r = pr - exploreRadius; r <= pr + exploreRadius; r++) {
+        for (let c = pc - exploreRadius; c <= pc + exploreRadius; c++) {
+            if (r >= 0 && r < maze.mazeRows && c >= 0 && c < maze.mazeCols) {
+                if (Math.hypot(c - pc, r - pr) <= exploreRadius) {
+                    if (maze.mazeExplored[r]) maze.mazeExplored[r][c] = true;
+                }
+            }
+        }
+    }
+
+    // --- 更新粒子 ---
+    updateParticles();
+    updateSplashes();
 }

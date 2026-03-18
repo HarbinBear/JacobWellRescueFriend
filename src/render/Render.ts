@@ -148,25 +148,33 @@ export function draw() {
 
     const { tileSize: ts } = CONFIG;
 
-    let viewRowMin = Math.max(0, Math.floor(viewT / ts) - 1);
-    let viewRowMax = Math.min(CONFIG.rows - 1, Math.floor(viewB / ts) + 1);
-    let viewColMin = Math.max(0, Math.floor(viewL / ts) - 1);
-    let viewColMax = Math.min(CONFIG.cols - 1, Math.floor(viewR / ts) + 1);
+    // 迷宫模式：使用迷宫专属地图数据渲染
+    const isMazeMode = state.screen === 'mazeRescue' && state.mazeRescue;
+    const renderMap = isMazeMode ? state.mazeRescue.mazeMap : state.map;
+    const renderWalls = isMazeMode ? state.mazeRescue.mazeWalls : state.walls;
+    const renderRows = isMazeMode ? state.mazeRescue.mazeRows : CONFIG.rows;
+    const renderCols = isMazeMode ? state.mazeRescue.mazeCols : CONFIG.cols;
+    const renderTs = isMazeMode ? state.mazeRescue.mazeTileSize : ts;
+
+    let viewRowMin = Math.max(0, Math.floor(viewT / renderTs) - 1);
+    let viewRowMax = Math.min(renderRows - 1, Math.floor(viewB / renderTs) + 1);
+    let viewColMin = Math.max(0, Math.floor(viewL / renderTs) - 1);
+    let viewColMax = Math.min(renderCols - 1, Math.floor(viewR / renderTs) + 1);
 
     // 绘制实心内部填充（无缝，无网格边框）
     ctx.fillStyle = '#1a1a1a';
     for(let r = viewRowMin; r <= viewRowMax; r++) {
-        if(!state.map[r]) continue;
+        if(!renderMap[r]) continue;
         for(let c = viewColMin; c <= viewColMax; c++) {
-            if(state.map[r][c] === 2) {
-                ctx.fillRect(c * ts - 0.5, r * ts - 0.5, ts + 1, ts + 1);
+            if(renderMap[r][c] === 2) {
+                ctx.fillRect(c * renderTs - 0.5, r * renderTs - 0.5, renderTs + 1, renderTs + 1);
             }
         }
     }
 
     // 绘制边缘岩石圆（叠加在方块上，形成自然轮廓）
     ctx.fillStyle = '#222';
-    for(let w of state.walls) {
+    for(let w of renderWalls) {
         if(w.x > viewL && w.x < viewR && w.y > viewT && w.y < viewB) {
             ctx.beginPath();
             ctx.arc(w.x, w.y, w.r, 0, Math.PI*2);
@@ -178,6 +186,26 @@ export function draw() {
             ctx.fill();
             ctx.fillStyle = '#222';
         }
+    }
+
+    // 迷宫模式：绘制出口标记
+    if (isMazeMode) {
+        const maze = state.mazeRescue;
+        const exitX = maze.exitX;
+        const exitY = maze.exitY;
+        const exitPulse = 0.6 + Math.sin(time * 3) * 0.4;
+        ctx.save();
+        ctx.globalAlpha = exitPulse;
+        ctx.strokeStyle = '#0f8';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(exitX, exitY, 20, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(0,255,150,0.15)';
+        ctx.beginPath();
+        ctx.arc(exitX, exitY, 20, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
     }
 
     // 绘制海草
@@ -337,8 +365,8 @@ export function draw() {
             x: player.x, 
             y: player.y, 
             angle: player.angle, 
-            // 竞技场模式下手电筒不受深度限制，其他模式需要深度超过600才亮
-            active: (state.screen === 'fishArena' ? true : player.y > 600) && flashlightActive, 
+            // 竞技场模式和迷宫模式下手电筒不受深度限制
+            active: (state.screen === 'fishArena' || state.screen === 'mazeRescue' ? true : player.y > 600) && flashlightActive, 
             dist: vRayDist 
         },
         { 
@@ -447,8 +475,8 @@ export function draw() {
             x: player.x, 
             y: player.y, 
             angle: player.angle, 
-            // 竞技场模式下手电筒不受深度限制
-            active: (state.screen === 'fishArena' ? true : player.y > 600) && flashlightActive, 
+            // 竞技场模式和迷宫模式下手电筒不受深度限制
+            active: (state.screen === 'fishArena' || state.screen === 'mazeRescue' ? true : player.y > 600) && flashlightActive, 
             dist: rayDist 
         },
         {   

@@ -294,3 +294,252 @@ export function generateArenaMap() {
     (CONFIG as any)._arenaCols = cols;
     (CONFIG as any)._arenaTileSize = ts;
 }
+
+// =============================================
+// 迷宫引导绳模式：生成随机洞穴地图
+// 算法：随机游走挖通道 + 元胞自动机平滑 + 多条支路死路
+// 通道宽度 3~5 格，形成真正的洞穴感而非网格迷宫
+// 返回迷宫专属数据，不写入全局 state.map（避免污染主线地图）
+// =============================================
+export function generateMazeMap(): {
+    mazeMap: any[][];
+    mazeWalls: any[];
+    mazeExplored: boolean[][];
+    mazeCols: number;
+    mazeRows: number;
+    mazeTileSize: number;
+    exitX: number;
+    exitY: number;
+    npcInitX: number;
+    npcInitY: number;
+    spawnX: number;
+    spawnY: number;
+} {
+    const mazeCfg = CONFIG.maze;
+    const cols = mazeCfg.cols;
+    const rows = mazeCfg.rows;
+    const ts = mazeCfg.tileSize;
+
+    // ---- 辅助函数 ----
+
+    // 在 grid 上以 (cr, cc) 为中心挖出半径 rad 的圆形通道
+    function digCircle(grid: number[][], cr: number, cc: number, rad: number) {
+        const r0 = Math.max(1, Math.floor(cr - rad));
+        const r1 = Math.min(rows - 2, Math.ceil(cr + rad));
+        const c0 = Math.max(1, Math.floor(cc - rad));
+        const c1 = Math.min(cols - 2, Math.ceil(cc + rad));
+        for (let r = r0; r <= r1; r++) {
+            for (let c = c0; c <= c1; c++) {
+                if (Math.hypot(r - cr, c - cc) <= rad) {
+                    grid[r][c] = 0;
+                }
+            }
+        }
+    }
+
+    // 随机游走挖一条通道，从 (sr, sc) 出发，走 steps 步
+    // brushMin/brushMax 控制每步挖掘的圆形半径范围
+    function drunkardWalk(
+        grid: number[][], sr: number, sc: number,
+        steps: number, brushMin: number, brushMax: number,
+        bias: number = 0 // 正值偏向向下，负值偏向向上
+    ) {
+        let r = sr, c = sc;
+        // 方向权重：上下左右，bias 影响上下权重
+        for (let i = 0; i < steps; i++) {
+            const rad = brushMin + Math.random() * (brushMax - brushMin);
+            digCircle(grid, r, c, rad);
+            // 随机选方向，带偏向
+            const dirs = [
+                { dr: -1, dc: 0, w: Math.max(0.1, 1 - bias) }, // 上
+                { dr: 1,  dc: 0, w: Math.max(0.1, 1 + bias) }, // 下
+                { dr: 0,  dc: -1, w: 1 },                       // 左
+                { dr: 0,  dc: 1,  w: 1 },                       // 右
+            ];
+            // 加权随机选方向
+            const totalW = dirs.reduce((s, d) => s + d.w, 0);
+            let rnd = Math.random() * totalW;
+            let chosen = dirs[0];
+            for (const d of dirs) {
+                rnd -= d.w;
+                if (rnd <= 0) { chosen = d; break; }
+            }
+            // 移动，保持在边界内（留1格边框）
+            r = Math.max(2, Math.min(rows - 3, r + chosen.dr));
+            c = Math.max(2, Math.min(cols - 3, c + chosen.dc));
+        }
+        return { r, c }; // 返回终点
+    }
+
+    // ---- 1. 初始化全部为墙 ----
+    const grid: number[][] = [];
+    for (let r = 0; r < rows; r++) {
+        grid[r] = new Array(cols).fill(1);
+    }
+
+    // ---- 2. 挖主通道：从顶部出口向下蜿蜒到底部 NPC 位置 ----
+    // 出口固定在顶部中央偏左右随机一点
+    const exitCol = Math.floor(cols / 2) + Math.floor((Math.random() - 0.5) * cols * 0.2);
+    const exitRow = 1;
+
+    // 主通道：从出口向下游走到底部，偏向向下
+    const mainEnd = drunkardWalk(grid, exitRow, exitCol, rows * 3, 1.8, 2.8, 0.6);
+
+    // 确保出口打通到顶部边界
+    digCircle(grid, 0, exitCol, 1.5);
+    digCircle(grid, 1, exitCol, 2.0);
+
+    // NPC 位置：底部区域，从主通道终点附近再走一段确保到达底部
+    let npcRow = rows - 3;
+    let npcCol = mainEnd.c;
+    // 从主通道终点补充挖到底部
+    drunkardWalk(grid, mainEnd.r, mainEnd.c, rows, 1.5, 2.5, 0.8);
+    // 确保 NPC 所在格是通道
+    digCircle(grid, npcRow, npcCol, 2.5);
+
+    // ---- 3. 挖多条支路（死路），增加迷宫复杂度 ----
+    // 从主通道上随机选取起点，向各方向挖支路
+    const branchCount = 6 + Math.floor(Math.random() * 5); // 6~10条支路
+    for (let i = 0; i < branchCount; i++) {
+        // 随机选一个已挖通的格子作为支路起点
+        let attempts = 0;
+        let br = 0, bc = 0;
+        do {
+            br = 2 + Math.floor(Math.random() * (rows - 4));
+            bc = 2 + Math.floor(Math.random() * (cols - 4));
+            attempts++;
+        } while (grid[br][bc] !== 0 && attempts < 50);
+
+        if (grid[br][bc] === 0) {
+            // 支路长度：短支路（死路）或中等支路
+            const branchLen = 15 + Math.floor(Math.random() * 40);
+            const branchBias = (Math.random() - 0.5) * 1.2; // 随机方向偏向
+            drunkardWalk(grid, br, bc, branchLen, 1.2, 2.2, branchBias);
+        }
+    }
+
+    // ---- 4. 元胞自动机平滑（2轮），让洞穴边缘更有机 ----
+    // 规则：如果一个墙格周围8邻居中通道格 >= 5，则变为通道
+    //       如果一个通道格周围8邻居中墙格 >= 6，则变为墙（填充孤立小通道）
+    for (let pass = 0; pass < 2; pass++) {
+        const next: number[][] = grid.map(row => [...row]);
+        for (let r = 1; r < rows - 1; r++) {
+            for (let c = 1; c < cols - 1; c++) {
+                let openCount = 0;
+                for (let dr = -1; dr <= 1; dr++) {
+                    for (let dc = -1; dc <= 1; dc++) {
+                        if (dr === 0 && dc === 0) continue;
+                        if (grid[r + dr][c + dc] === 0) openCount++;
+                    }
+                }
+                if (grid[r][c] === 1 && openCount >= 5) {
+                    next[r][c] = 0; // 墙变通道（扩展洞穴）
+                } else if (grid[r][c] === 0 && openCount <= 1) {
+                    next[r][c] = 1; // 孤立通道格填回墙
+                }
+            }
+        }
+        for (let r = 1; r < rows - 1; r++) {
+            for (let c = 1; c < cols - 1; c++) {
+                grid[r][c] = next[r][c];
+            }
+        }
+    }
+
+    // ---- 5. 确保出口和 NPC 位置周围一定是通道 ----
+    digCircle(grid, exitRow, exitCol, 2.5);
+    digCircle(grid, 0, exitCol, 1.5);
+    digCircle(grid, npcRow, npcCol, 3.0);
+
+    // 确保出口到玩家出生点（出口下方3格）之间连通
+    for (let r = 0; r <= exitRow + 3; r++) {
+        digCircle(grid, r, exitCol, 2.0);
+    }
+
+    // ---- 6. 保持外围边框为墙 ----
+    for (let r = 0; r < rows; r++) {
+        grid[r][0] = 1;
+        grid[r][cols - 1] = 1;
+    }
+    for (let c = 0; c < cols; c++) {
+        grid[0][c] = 1;
+        grid[rows - 1][c] = 1;
+    }
+    // 出口处打开顶部边框
+    grid[0][exitCol] = 0;
+
+    // ---- 7. 生成 mazeMap 和 mazeWalls ----
+    const mazeMap: any[][] = [];
+    const mazeWalls: any[] = [];
+    const mazeExplored: boolean[][] = [];
+
+    for (let r = 0; r < rows; r++) {
+        mazeMap[r] = [];
+        mazeExplored[r] = [];
+        for (let c = 0; c < cols; c++) {
+            mazeMap[r][c] = grid[r][c] === 1 ? 1 : 0;
+            mazeExplored[r][c] = false;
+        }
+    }
+
+    // 生成墙壁渲染数据：边缘岩石用大圆形，有随机偏移，形成自然岩石感
+    for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+            if (mazeMap[r][c] === 1) {
+                // 判断是否是边缘格（至少有一个相邻格是通道）
+                let border = false;
+                for (let dr = -1; dr <= 1 && !border; dr++) {
+                    for (let dc = -1; dc <= 1 && !border; dc++) {
+                        if (dr === 0 && dc === 0) continue;
+                        const nr = r + dr, nc = c + dc;
+                        if (nr < 0 || nr >= rows || nc < 0 || nc >= cols) continue;
+                        if (mazeMap[nr][nc] === 0) border = true;
+                    }
+                }
+                if (border) {
+                    // 边缘岩石：大圆形 + 随机偏移，形成有机洞穴壁
+                    const offsetX = (Math.random() - 0.5) * ts * 0.5;
+                    const offsetY = (Math.random() - 0.5) * ts * 0.5;
+                    const radius = ts * (0.55 + Math.random() * 0.35); // 0.55~0.9倍格子
+                    const wall = {
+                        x: c * ts + ts / 2 + offsetX,
+                        y: r * ts + ts / 2 + offsetY,
+                        r: radius,
+                        row: r,
+                        col: c,
+                        isBorder: true
+                    };
+                    mazeWalls.push(wall);
+                    mazeMap[r][c] = wall;
+                } else {
+                    // 内部实体岩石
+                    mazeMap[r][c] = 2;
+                }
+            }
+        }
+    }
+
+    // ---- 8. 计算关键坐标 ----
+    const exitX = exitCol * ts + ts / 2;
+    const exitY = 0; // 顶部边界
+    const npcInitX = npcCol * ts + ts / 2;
+    const npcInitY = npcRow * ts + ts / 2;
+    // 玩家出生点：出口正下方，确保在已挖通的通道内
+    const spawnX = exitX;
+    const spawnY = (exitRow + 3) * ts + ts / 2;
+
+    return {
+        mazeMap,
+        mazeWalls,
+        mazeExplored,
+        mazeCols: cols,
+        mazeRows: rows,
+        mazeTileSize: ts,
+        exitX,
+        exitY,
+        npcInitX,
+        npcInitY,
+        spawnX,
+        spawnY,
+    };
+}

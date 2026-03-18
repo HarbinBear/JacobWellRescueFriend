@@ -48,8 +48,8 @@ export const CONFIG = {
     flashlightCenterFov: 25,      // 中心光束角度
     
     // 自身发光参数
-    selfGlowRadius: 150,          // 自身发光半径
-    selfGlowIntensity: 0.6,       // 自身发光强度 (0-1, 越大越亮)
+    selfGlowRadius: 260,          // 自身发光半径（迷宫模式调亮）
+    selfGlowIntensity: 0.9,       // 自身发光强度 (0-1, 越大越亮)
     
     // 视野与遮挡参数
     lightEdgeFeather: 25,          // 光照边缘羽化距离（像素，越大边缘越柔和）
@@ -199,6 +199,37 @@ export const CONFIG = {
 
         // 冲刺起手动画
         lungeChargeGlowDuration: 20, // 眼睛发光持续帧数（蓄力阶段）
+    },
+
+    // ===== 迷宫引导绳模式配置 =====
+    maze: {
+        // 地图参数
+        // 注意：迷宫用随机游走+元胞自动机生成洞穴，通道宽度约3~5格
+        // 格子大小60px，通道宽3格=180px，玩家（半径8px）可自由移动
+        cols: 55,               // 迷宫列数
+        rows: 80,               // 迷宫行数（纵向较长，体现向下深入感）
+        tileSize: 60,           // 格子大小（像素），比主线大，通道更宽敞
+        wallThickness: 2,       // 外围岩石厚度（格子数）
+
+        // 氧气参数
+        o2ConsumptionBase: 0.004,   // 基础氧气消耗（比主线稍慢）
+        o2ConsumptionMove: 0.002,   // 移动额外消耗
+
+        // NPC（被救者）配置
+        npcRescueRange: 80,         // 靠近NPC多近触发救援交互（像素）
+        npcRescueHoldDuration: 1.5, // 长按多少秒完成绑绳（秒）
+        npcFollowSpeed: 3.2,        // NPC跟随速度
+
+        // 小地图
+        minimapSize: 160,           // 小地图尺寸（像素）
+        minimapX: 10,               // 小地图左上角X
+        minimapY: 10,               // 小地图左上角Y
+
+        // 深度显示
+        depthUnit: 40,              // 每格对应多少像素（用于计算深度m）
+
+        // 结算
+        deadTimerBeforeResult: 120, // 死亡后多少帧显示结算
     },
 
     // ===== 玩家攻击（挥氧气瓶）配置 =====

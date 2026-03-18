@@ -14,6 +14,9 @@ let abandonTouchId = null;
 // 攻击按钮独立触点 ID（多点触控：与摇杆互不干扰）
 let attackTouchId: number | null = null;
 
+// 迷宫救援长按触点 ID
+let mazeRescueTouchId: number | null = null;
+
 // 主菜单触摸起始位置（用于 touchEnd 判断点击）
 let menuTouchStartX = 0;
 let menuTouchStartY = 0;
@@ -37,7 +40,7 @@ function getChapterCardBounds(cw, ch, scrollY) {
     ];
 }
 
-export function initInput(onReset, onArena?) {
+export function initInput(onReset, onArena?, onMaze?, onMazeReplay?) {
     // PC 调试键盘支持 
     if (typeof window !== 'undefined' && window.addEventListener) {
         const keys = { w: false, a: false, s: false, d: false, shift: false };
@@ -152,8 +155,17 @@ export function initInput(onReset, onArena?) {
         }
 
         if(state.screen !== 'play') {
-            // 竞技场战斗/清图/准备阶段：允许正常的摇杆和攻击操作，跳过此分支
-            if (state.screen === 'fishArena' && state.fishArena &&
+            // 迷宫模式：游戏进行中允许正常操作
+            if (state.screen === 'mazeRescue' && state.mazeRescue && state.mazeRescue.phase === 'play') {
+                // 继续往下处理摇杆和救援按钮
+            } else if (state.screen === 'mazeRescue' && state.mazeRescue &&
+                (state.mazeRescue.phase === 'rescued' || state.mazeRescue.phase === 'dead')) {
+                // 迷宫结算页：等待1秒后可点击
+                if (state.mazeRescue.resultTimer >= 60) {
+                    // 结算页点击由 touchEnd 处理
+                }
+                return;
+            } else if (state.screen === 'fishArena' && state.fishArena &&
                 (state.fishArena.phase === 'fight' || state.fishArena.phase === 'clear' || state.fishArena.phase === 'prep')) {
                 // 继续往下处理摇杆和攻击按钮
             } else {
@@ -262,6 +274,25 @@ export function initInput(onReset, onArena?) {
                 }
             }
 
+            // 迷宫模式：检测救援长按（靠近NPC时）
+            if (state.screen === 'mazeRescue' && state.mazeRescue && state.mazeRescue.phase === 'play') {
+                const maze = state.mazeRescue;
+                if (!maze.npcRescued && state.npc.active && mazeRescueTouchId === null) {
+                    const zoom = state.camera ? state.camera.zoom : 1;
+                    const npcScreenX = CONFIG.screenWidth / 2 + (state.npc.x - player.x) * zoom;
+                    const npcScreenY = CONFIG.screenHeight / 2 + (state.npc.y - player.y) * zoom;
+                    const screenDist = Math.hypot(t.clientX - npcScreenX, t.clientY - npcScreenY);
+                    const worldDist = Math.hypot(player.x - state.npc.x, player.y - state.npc.y);
+                    if (screenDist < 60 && worldDist < CONFIG.maze.npcRescueRange) {
+                        mazeRescueTouchId = t.identifier;
+                        maze.npcRescueHolding = true;
+                        maze.npcRescueHoldStart = Date.now();
+                        maze.npcRescueTouchId = t.identifier;
+                        continue;
+                    }
+                }
+            }
+
             // 检测放弃救援按钮长按
             if(state.story.flags.abandonBtnVisible && state.story.stage === 7) {
                 const cw = CONFIG.screenWidth;
@@ -351,6 +382,57 @@ export function initInput(onReset, onArena?) {
     });
 
     wx.onTouchEnd((res) => {
+        // 迷宫模式：游戏进行中的小地图折叠按钮点击
+        if (state.screen === 'mazeRescue' && state.mazeRescue && state.mazeRescue.phase === 'play') {
+            const touch = res.changedTouches[0];
+            const tx = touch.clientX;
+            const ty = touch.clientY;
+            const mapX = CONFIG.maze.minimapX;
+            const mapY = CONFIG.maze.minimapY;
+            const toggleBtnSize = 28;
+            // 检测折叠/展开按钮区域
+            if (tx >= mapX && tx <= mapX + toggleBtnSize && ty >= mapY && ty <= mapY + toggleBtnSize) {
+                state.mazeRescue.minimapExpanded = !state.mazeRescue.minimapExpanded;
+                return;
+            }
+        }
+
+        // 迷宫结算页点击处理（在菜单判断之前）
+        if (state.screen === 'mazeRescue' && state.mazeRescue &&
+            (state.mazeRescue.phase === 'rescued' || state.mazeRescue.phase === 'dead') &&
+            state.mazeRescue.resultTimer >= 60) {
+            const touch = res.changedTouches[0];
+            const tx = touch.clientX;
+            const ty = touch.clientY;
+            const cw = CONFIG.screenWidth;
+            const ch = CONFIG.screenHeight;
+            // 重玩本局按鈕（左下）
+            const replayBtnX = cw * 0.15;
+            const replayBtnY = ch * 0.82;
+            const replayBtnW = cw * 0.32;
+            const replayBtnH = 52;
+            if (tx >= replayBtnX && tx <= replayBtnX + replayBtnW &&
+                ty >= replayBtnY - replayBtnH / 2 && ty <= replayBtnY + replayBtnH / 2) {
+                if (onMazeReplay) onMazeReplay();
+                return;
+            }
+            // 下一局按鈕（右下）
+            const nextBtnX = cw * 0.53;
+            const nextBtnY = ch * 0.82;
+            const nextBtnW = cw * 0.32;
+            const nextBtnH = 52;
+            if (tx >= nextBtnX && tx <= nextBtnX + nextBtnW &&
+                ty >= nextBtnY - nextBtnH / 2 && ty <= nextBtnY + nextBtnH / 2) {
+                if (onMaze) onMaze();
+                return;
+            }
+            // 点击其他区域返回主菜单
+            state.screen = 'menu';
+            state.menuScreen = 'main';
+            state.mazeRescue = null;
+            return;
+        }
+
         if(state.screen === 'menu') {
             const touch = res.changedTouches[0];
             const tx = touch.clientX;
@@ -362,8 +444,8 @@ export function initInput(onReset, onArena?) {
                 // 判断手指没有明显移动（防止滑动误触）
                 const moved = Math.hypot(tx - menuTouchStartX, ty - menuTouchStartY) > 10;
                 if(!moved) {
-                    // 检测“开始游戏”按鈕（fishArenaMode 开启时置灰）
-                    let btnY = ch * 0.54;
+                    // 检测"开始游戏"按鈕（fishArenaMode 开启时置灰）
+                    let btnY = ch * 0.50;
                     let btnW = 180, btnH = 50;
                     let btnX = cw / 2 - btnW / 2;
                     if(tx >= btnX && tx <= btnX + btnW && ty >= btnY - btnH / 2 && ty <= btnY + btnH / 2) {
@@ -385,16 +467,24 @@ export function initInput(onReset, onArena?) {
                         }
                         return;
                     }
-                    // 检测“食人鱼纯享版”按鈕
-                    let arenaBtnY = ch * 0.68;
+                    // 检测"食人鱼纯享版"按鈕
+                    let arenaBtnY = ch * 0.62;
                     let arenaBtnW = 200, arenaBtnH = 50;
                     let arenaBtnX = cw / 2 - arenaBtnW / 2;
                     if(tx >= arenaBtnX && tx <= arenaBtnX + arenaBtnW && ty >= arenaBtnY - arenaBtnH / 2 && ty <= arenaBtnY + arenaBtnH / 2) {
                         if (onArena) onArena();
                         return;
                     }
-                    // 检测“章节选择”按鈕（fishArenaMode 开启时置灰）
-                    let chBtnY = ch * 0.84;
+                    // 检测"迷宫引导绳"按鈕
+                    let mazeBtnY = ch * 0.74;
+                    let mazeBtnW = 200, mazeBtnH = 50;
+                    let mazeBtnX = cw / 2 - mazeBtnW / 2;
+                    if(tx >= mazeBtnX && tx <= mazeBtnX + mazeBtnW && ty >= mazeBtnY - mazeBtnH / 2 && ty <= mazeBtnY + mazeBtnH / 2) {
+                        if (onMaze) onMaze();
+                        return;
+                    }
+                    // 检测"章节选择"按鈕（fishArenaMode 开启时置灰）
+                    let chBtnY = ch * 0.86;
                     let chBtnW = 160, chBtnH = 44;
                     let chBtnX = cw / 2 - chBtnW / 2;
                     if(tx >= chBtnX && tx <= chBtnX + chBtnW && ty >= chBtnY - chBtnH / 2 && ty <= chBtnY + chBtnH / 2) {
@@ -452,8 +542,7 @@ export function initInput(onReset, onArena?) {
                 return;
             }
             return;
-        }
-        handleTouchEnd(res.changedTouches);
+        }        handleTouchEnd(res.changedTouches);
     });
 
     wx.onTouchCancel((res) => {
@@ -463,6 +552,14 @@ export function initInput(onReset, onArena?) {
 
 function handleTouchEnd(changedTouches) {
     for(let t of changedTouches) {
+        // 迷宫救援长按松手
+        if (t.identifier === mazeRescueTouchId) {
+            mazeRescueTouchId = null;
+            if (state.mazeRescue) {
+                state.mazeRescue.npcRescueHolding = false;
+                state.mazeRescue.npcRescueTouchId = null;
+            }
+        }
         // 放弃按钮松手
         if(t.identifier === abandonTouchId) {
             abandonTouchId = null;

@@ -56,6 +56,18 @@
 - 让玩家出生在中心
 - 默认全图已探索
 
+### 1.4 迷宫地图生成 `generateMazeMap()`
+
+迷宫初始化由 `resetMazeLogic()` 调用。
+
+这一步的特点是：
+
+- 使用混合算法：递归分割（Recursive Division）+ 有机化处理 + 随机打通额外通道
+- 返回独立的迷宫数据对象，**不写入全局 `state.map`**，避免污染主线地图
+- 迷宫数据挂在 `state.mazeRescue` 下（`mazeMap`、`mazeWalls`、`mazeExplored`）
+- 出口固定在顶部，NPC 固定在底部深处
+- 迷宫模式的碰撞检测使用 `checkMazeCollision(x, y, maze)` 而非主线的 `checkCollision()`
+
 ### 1.4 地标与区域的技术意义
 
 `map.ts` 里定义的区域与地标不是纯描述数据，它们会直接影响：
@@ -177,6 +189,10 @@ const storyManager = new StoryManager();
 - `update()`
 - `resetArenaLogic()`
 - `updateArena()`
+- `resetMazeLogic()`
+- `replayMazeLogic()`
+- `updateMaze()`
+- `checkMazeCollision(x, y, maze)`
 - `checkCollision(x, y, isPlayer)`
 - `getNearestWallDist(x, y)`
 - `findNearestWall`（从绳索模块转导出）

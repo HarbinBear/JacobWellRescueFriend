@@ -101,7 +101,8 @@ export function drawRopesWorld() {
 }
 
 export function drawRopeButton() {
-    if(state.screen !== 'play') return;
+    // 主线模式和迷宫模式都显示绳索按钮
+    if(state.screen !== 'play' && state.screen !== 'mazeRescue') return;
     if(!state.rope || !state.rope.ui || !state.rope.ui.visible) return;
     const btnX = CONFIG.screenWidth * CONFIG.ropeButtonXRatio;
     const btnY = CONFIG.screenHeight * CONFIG.ropeButtonYRatio;

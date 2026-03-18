@@ -194,6 +194,7 @@ Canvas 2D 渲染在这个项目里不是为了复杂 3D 效果，而是为了实
 ```text
 menu -> play -> ending / lose
 menu -> fishArena -> lose / menu
+menu -> mazeRescue -> mazeRescue（结算后重玩）/ menu
 ```
 
 实际项目中还会叠加章节选择、结局分页、模式返回等细分流程。
