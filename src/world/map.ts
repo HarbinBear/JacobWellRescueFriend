@@ -320,19 +320,18 @@ export function generateMazeMap(): {
     const rows = mazeCfg.rows;
     const ts = mazeCfg.tileSize;
 
+    type Cell = {
+        r: number;
+        c: number;
+    };
+
     type MazeNode = {
         id: number;
         r: number;
         c: number;
         roomRX: number;
         roomRY: number;
-        tag: 'main' | 'side' | 'decoy';
-        band: number;
-    };
-
-    type Cell = {
-        r: number;
-        c: number;
+        tag: 'main' | 'branch' | 'deadEnd';
     };
 
     type Candidate = {
@@ -386,9 +385,9 @@ export function generateMazeMap(): {
         const c1 = clamp(Math.ceil(cc + rx + 1), 1, cols - 2);
         for (let r = r0; r <= r1; r++) {
             for (let c = c0; c <= c1; c++) {
-                const nr = (c - cc) / Math.max(0.01, rx);
-                const nc = (r - cr) / Math.max(0.01, ry);
-                if (nr * nr + nc * nc <= 1) {
+                const dx = (c - cc) / Math.max(0.01, rx);
+                const dy = (r - cr) / Math.max(0.01, ry);
+                if (dx * dx + dy * dy <= 1) {
                     grid[r][c] = 0;
                 }
             }
@@ -396,25 +395,16 @@ export function generateMazeMap(): {
     }
 
     function digPocket(grid: number[][], node: MazeNode, scale: number) {
-        const lumps = randInt(1, 3);
+        const lumps = node.tag === 'deadEnd' ? randInt(2, 3) : randInt(1, 2);
         for (let i = 0; i < lumps; i++) {
-            const ox = rand(-node.roomRX * 0.45, node.roomRX * 0.45);
-            const oy = rand(-node.roomRY * 0.45, node.roomRY * 0.45);
+            const ox = rand(-node.roomRX * 0.35, node.roomRX * 0.35);
+            const oy = rand(-node.roomRY * 0.35, node.roomRY * 0.35);
             digEllipse(
                 grid,
                 node.r + oy,
                 node.c + ox,
-                node.roomRX * scale * rand(0.82, 1.06),
-                node.roomRY * scale * rand(0.82, 1.08)
-            );
-        }
-        if (Math.random() < 0.35) {
-            digEllipse(
-                grid,
-                node.r + rand(-0.5, 0.5),
-                node.c + rand(-0.5, 0.5),
-                node.roomRX * scale * rand(0.75, 0.95),
-                node.roomRY * scale * rand(0.75, 0.95)
+                node.roomRX * scale * rand(0.86, 1.04),
+                node.roomRY * scale * rand(0.86, 1.08)
             );
         }
     }
@@ -433,11 +423,11 @@ export function generateMazeMap(): {
             const a = points[i];
             const b = points[i + 1];
             const seg = lengths[i];
-            const steps = Math.max(10, Math.ceil(seg * 2.2));
+            const steps = Math.max(12, Math.ceil(seg * 2.8));
             const nx = (b.r - a.r) / Math.max(1, seg);
             const ny = -(b.c - a.c) / Math.max(1, seg);
             const phase = Math.random() * Math.PI * 2;
-            const wobbleAmp = rand(0.2, 0.7);
+            const wobbleAmp = rand(0.15, 0.55);
 
             for (let step = 0; step <= steps; step++) {
                 const lt = step / steps;
@@ -448,16 +438,16 @@ export function generateMazeMap(): {
                 rr += nx * wobble;
                 cc += ny * wobble;
                 const radius = clamp(
-                    startWidth + (endWidth - startWidth) * gt + Math.sin(gt * Math.PI * 4 + phase) * 0.12,
-                    0.72,
-                    1.58
+                    startWidth + (endWidth - startWidth) * gt + Math.sin(gt * Math.PI * 5 + phase) * 0.08,
+                    0.55,
+                    1.28
                 );
                 digEllipse(
                     grid,
                     rr,
                     cc,
-                    radius * rand(0.92, 1.06),
-                    radius * rand(0.88, 1.1)
+                    radius * rand(0.92, 1.04),
+                    radius * rand(0.88, 1.08)
                 );
             }
             walked += seg;
@@ -470,15 +460,15 @@ export function generateMazeMap(): {
         const len = Math.max(1, Math.hypot(dx, dy));
         const nx = dy / len;
         const ny = -dx / len;
-        const bendCount = randInt(2, 4);
+        const bendCount = randInt(1, 3);
         const points: Cell[] = [{ r: from.r, c: from.c }];
 
         for (let i = 1; i <= bendCount; i++) {
             const t = i / (bendCount + 1);
-            const side = Math.sin(t * Math.PI * rand(1.1, 2.1) + Math.random() * 2.6) * bendiness;
+            const side = Math.sin(t * Math.PI * rand(1.0, 1.8) + Math.random() * 2.2) * bendiness;
             points.push({
-                r: from.r + dy * t + nx * side + rand(-0.6, 0.6),
-                c: from.c + dx * t + ny * side + rand(-0.8, 0.8),
+                r: from.r + dy * t + nx * side + rand(-0.45, 0.45),
+                c: from.c + dx * t + ny * side + rand(-0.65, 0.65),
             });
         }
         points.push({ r: to.r, c: to.c });
@@ -506,10 +496,10 @@ export function generateMazeMap(): {
                     }
                 }
                 if (grid[r][c] === 1) {
-                    if (count8 >= 3 && count8 <= 5 && Math.random() < 0.06) {
+                    if (count8 >= 3 && count8 <= 4 && Math.random() < 0.035) {
                         next[r][c] = 0;
                     }
-                } else if (count8 <= 1 && Math.random() < 0.45) {
+                } else if (count8 <= 1 && Math.random() < 0.55) {
                     next[r][c] = 1;
                 }
             }
@@ -517,6 +507,64 @@ export function generateMazeMap(): {
         for (let r = 1; r < rows - 1; r++) {
             for (let c = 1; c < cols - 1; c++) {
                 grid[r][c] = next[r][c];
+            }
+        }
+    }
+
+    function tightenWideAreas(grid: number[][]) {
+        const windowRadius = 3;
+        for (let r = windowRadius + 1; r < rows - windowRadius - 1; r++) {
+            for (let c = windowRadius + 1; c < cols - windowRadius - 1; c++) {
+                if (grid[r][c] !== 0) continue;
+                let openCount = 0;
+                for (let dr = -windowRadius; dr <= windowRadius; dr++) {
+                    for (let dc = -windowRadius; dc <= windowRadius; dc++) {
+                        if (grid[r + dr][c + dc] === 0) openCount++;
+                    }
+                }
+                if (openCount >= 33) {
+                    const rx = rand(0.7, 1.35);
+                    const ry = rand(0.7, 1.45);
+                    for (let rr = Math.max(1, Math.floor(r - 2)); rr <= Math.min(rows - 2, Math.ceil(r + 2)); rr++) {
+                        for (let cc = Math.max(1, Math.floor(c - 2)); cc <= Math.min(cols - 2, Math.ceil(c + 2)); cc++) {
+                            const dx = (cc - c) / Math.max(0.01, rx);
+                            const dy = (rr - r) / Math.max(0.01, ry);
+                            if (dx * dx + dy * dy <= 1 && Math.abs(rr - r) + Math.abs(cc - c) <= 2) {
+                                grid[rr][cc] = 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    function breakLongRuns(grid: number[][]) {
+        for (let r = 2; r < rows - 2; r++) {
+            let start = -1;
+            for (let c = 1; c < cols; c++) {
+                const open = c < cols - 1 && grid[r][c] === 0;
+                if (open) {
+                    if (start < 0) start = c;
+                } else if (start >= 0) {
+                    const end = c - 1;
+                    const len = end - start + 1;
+                    if (len >= 17) {
+                        const cutCount = Math.floor(len / 14);
+                        for (let i = 1; i <= cutCount; i++) {
+                            const cutCol = clamp(start + Math.floor((i * len) / (cutCount + 1)) + randInt(-1, 1), start + 2, end - 2);
+                            const aboveOpen = grid[r - 1][cutCol] === 0;
+                            const belowOpen = grid[r + 1][cutCol] === 0;
+                            if (aboveOpen || belowOpen) {
+                                grid[r][cutCol] = 1;
+                                if (Math.random() < 0.45) {
+                                    grid[r + (aboveOpen ? -1 : 1)][cutCol] = 0;
+                                }
+                            }
+                        }
+                    }
+                    start = -1;
+                }
             }
         }
     }
@@ -529,19 +577,17 @@ export function generateMazeMap(): {
 
         let nextNodeId = 0;
         const nodes: MazeNode[] = [];
-        const bands: MazeNode[][] = [];
         const edges = new Set<string>();
-        const mainPath: MazeNode[] = [];
+        const mainNodes: MazeNode[] = [];
 
-        function createNode(r: number, c: number, band: number, tag: 'main' | 'side' | 'decoy', scale: number): MazeNode {
+        function createNode(r: number, c: number, tag: 'main' | 'branch' | 'deadEnd', scale: number): MazeNode {
             const node: MazeNode = {
                 id: nextNodeId++,
                 r: clamp(Math.round(r), 3, rows - 4),
                 c: clamp(Math.round(c), 3, cols - 4),
-                roomRX: rand(0.85, 1.45) * scale,
-                roomRY: rand(0.95, 1.75) * scale,
+                roomRX: rand(0.7, 1.25) * scale,
+                roomRY: rand(0.78, 1.55) * scale,
                 tag,
-                band,
             };
             nodes.push(node);
             return node;
@@ -553,136 +599,106 @@ export function generateMazeMap(): {
             edges.add(key);
         }
 
-        const bandCount = 15;
-        const minCol = 5;
-        const maxCol = cols - 6;
         const exitCol = clamp(Math.floor(cols / 2) + randInt(-4, 4), 5, cols - 6);
-
-        const spawnNode = createNode(4, exitCol + randInt(-1, 1), 0, 'main', 0.95);
-        bands.push([spawnNode]);
-        mainPath.push(spawnNode);
-
-        let prevMain = spawnNode;
-        for (let band = 1; band < bandCount - 1; band++) {
-            const t = band / (bandCount - 1);
-            const baseRow = 6 + t * (rows - 15) + rand(-1.5, 1.5);
-            const bandNodes: MazeNode[] = [];
-            const count = randInt(4, 7);
-            const span = (maxCol - minCol) / Math.max(1, count - 1);
-            for (let i = 0; i < count; i++) {
-                const centerCol = count === 1 ? cols / 2 : minCol + i * span;
-                bandNodes.push(createNode(
-                    baseRow + rand(-2.2, 2.2),
-                    centerCol + rand(-2.6, 2.6),
-                    band,
-                    'side',
-                    rand(0.88, 1.02)
-                ));
-            }
-            bandNodes.sort((a, b) => a.c - b.c);
-            const ranked = [...bandNodes].sort((a, b) => {
-                const da = Math.abs(a.c - prevMain.c) * 1.15 + Math.abs(a.r - prevMain.r) * 0.25 + Math.random() * 2.4;
-                const db = Math.abs(b.c - prevMain.c) * 1.15 + Math.abs(b.r - prevMain.r) * 0.25 + Math.random() * 2.4;
-                return da - db;
-            });
-            ranked[0].tag = 'main';
-            prevMain = ranked[0];
-            mainPath.push(prevMain);
-            bands.push(bandNodes);
+        const laneCount = 6;
+        const laneCols: number[] = [];
+        for (let i = 0; i < laneCount; i++) {
+            const t = i / (laneCount - 1);
+            laneCols.push(Math.round(6 + t * (cols - 13)));
         }
 
-        const npcNode = createNode(rows - 5, clamp(prevMain.c + randInt(-5, 5), 5, cols - 6), bandCount - 1, 'main', 1.08);
-        bands.push([npcNode]);
-        mainPath.push(npcNode);
+        let laneIndex = clamp(Math.floor(laneCount / 2) + randInt(-1, 1), 0, laneCount - 1);
+        let sideDir = Math.random() < 0.5 ? -1 : 1;
+        const mainCount = 13;
+        const spawnNode = createNode(4, exitCol + randInt(-1, 1), 'main', 1.02);
+        mainNodes.push(spawnNode);
 
-        for (let band = 0; band < bands.length - 1; band++) {
-            const current = bands[band];
-            const next = bands[band + 1];
-            for (const node of current) {
-                const desired = band < bands.length - 2 ? randInt(1, Math.min(3, next.length)) : 1;
-                const ranked = [...next].sort((a, b) => {
-                    const da = Math.abs(a.c - node.c) * 1.05 + Math.abs(a.r - node.r) * 0.2 + Math.random() * 2.6;
-                    const db = Math.abs(b.c - node.c) * 1.05 + Math.abs(b.r - node.r) * 0.2 + Math.random() * 2.6;
-                    return da - db;
-                });
-                for (let i = 0; i < desired; i++) addEdge(node, ranked[i]);
-            }
-
-            if (current.length > 1) {
-                for (let i = 0; i < current.length - 1; i++) {
-                    addEdge(current[i], current[i + 1]);
-                    if (i + 2 < current.length && Math.random() < 0.45) {
-                        addEdge(current[i], current[i + 2]);
-                    }
-                }
-            }
-
-            if (band + 2 < bands.length && Math.random() < 0.65) {
-                const next2 = bands[band + 2];
-                const jumpCount = randInt(1, Math.min(2, current.length));
-                for (let i = 0; i < jumpCount; i++) {
-                    const from = current[randInt(0, current.length - 1)];
-                    const ranked = [...next2].sort((a, b) => {
-                        const da = Math.abs(a.c - from.c) + Math.random() * 2.5;
-                        const db = Math.abs(b.c - from.c) + Math.random() * 2.5;
-                        return da - db;
-                    });
-                    addEdge(from, ranked[0]);
-                }
-            }
+        for (let i = 1; i < mainCount - 1; i++) {
+            if (laneIndex <= 1) sideDir = 1;
+            else if (laneIndex >= laneCount - 2) sideDir = -1;
+            else if (Math.random() < 0.72) sideDir *= -1;
+            laneIndex = clamp(laneIndex + sideDir * randInt(1, 2), 0, laneCount - 1);
+            const row = 4 + (i / (mainCount - 1)) * (rows - 11) + rand(-1.4, 1.4);
+            const col = laneCols[laneIndex] + rand(-1.8, 1.8);
+            mainNodes.push(createNode(row, col, 'main', rand(0.92, 1.08)));
         }
 
-        for (let i = 0; i < mainPath.length - 1; i++) {
-            addEdge(mainPath[i], mainPath[i + 1]);
-            if (i + 2 < mainPath.length && Math.random() < 0.4) {
-                addEdge(mainPath[i], mainPath[i + 2]);
-            }
+        const npcBaseCol = laneCols[clamp(laneIndex + sideDir * randInt(-1, 1), 0, laneCount - 1)] + rand(-2.2, 2.2);
+        const npcNode = createNode(rows - 5, npcBaseCol, 'main', 1.08);
+        mainNodes.push(npcNode);
+
+        for (let i = 0; i < mainNodes.length - 1; i++) {
+            addEdge(mainNodes[i], mainNodes[i + 1]);
         }
 
-        const deepDecoyCount = randInt(12, 18);
-        for (let i = 0; i < deepDecoyCount; i++) {
-            const startBand = randInt(1, bandCount - 5);
-            const seedBand = bands[startBand];
-            const seed = seedBand[randInt(0, seedBand.length - 1)];
-            let prev = seed;
-            let drift = Math.random() < 0.5 ? -1 : 1;
-            const chainLength = randInt(4, 8);
+        const branchRoots: MazeNode[] = [];
+        for (let i = 1; i < mainNodes.length - 1; i++) {
+            branchRoots.push(mainNodes[i]);
+            if (Math.random() < 0.55) branchRoots.push(mainNodes[i]);
+        }
+
+        const loopableNodes: MazeNode[] = [];
+        for (const node of mainNodes) {
+            loopableNodes.push(node);
+        }
+
+        const deepBranchCount = 24;
+        for (let i = 0; i < deepBranchCount; i++) {
+            const root = branchRoots[randInt(0, branchRoots.length - 1)];
+            let prev = root;
+            let lateralDir = Math.random() < 0.5 ? -1 : 1;
+            const chainLength = randInt(2, 5);
+            const branchNodes: MazeNode[] = [];
             for (let step = 0; step < chainLength; step++) {
-                const node = createNode(
-                    prev.r + rand(2.6, 6.8),
-                    prev.c + drift * rand(3.6, 7.4) + rand(-1.2, 1.2),
-                    clamp(prev.band + randInt(0, 1), 1, bandCount - 2),
-                    'decoy',
-                    step === chainLength - 1 ? 0.92 : 0.84
+                const isDeadEnd = step === chainLength - 1;
+                const next = createNode(
+                    prev.r + rand(3.4, 7.8) + (Math.random() < 0.18 ? rand(-4.2, -1.2) : 0),
+                    prev.c + lateralDir * rand(5.2, 9.6) + rand(-1.6, 1.6),
+                    isDeadEnd ? 'deadEnd' : 'branch',
+                    isDeadEnd ? rand(0.94, 1.12) : rand(0.82, 0.96)
                 );
-                addEdge(prev, node);
-                if (step >= 2 && Math.random() < 0.22) {
-                    const loopBand = bands[clamp(node.band + randInt(-1, 1), 0, bands.length - 1)];
-                    const near = [...loopBand].sort((a, b) => {
-                        const da = Math.abs(a.c - node.c) + Math.abs(a.r - node.r);
-                        const db = Math.abs(b.c - node.c) + Math.abs(b.r - node.r);
-                        return da - db;
-                    });
-                    if (near[0] && near[0].id !== prev.id) addEdge(node, near[0]);
+                addEdge(prev, next);
+                branchNodes.push(next);
+                loopableNodes.push(next);
+                if (Math.random() < 0.42) lateralDir *= -1;
+                prev = next;
+            }
+
+            if (branchNodes.length >= 2 && Math.random() < 0.35) {
+                const tail = branchNodes[branchNodes.length - 1];
+                const candidates = loopableNodes.filter(node => {
+                    if (node.id === tail.id || node.id === root.id) return false;
+                    const rowDist = Math.abs(node.r - tail.r);
+                    const colDist = Math.abs(node.c - tail.c);
+                    return rowDist >= 4 && rowDist <= 14 && colDist >= 3 && colDist <= 15;
+                });
+                if (candidates.length > 0) {
+                    const loopTo = candidates[randInt(0, candidates.length - 1)];
+                    addEdge(tail, loopTo);
+                    tail.tag = 'branch';
                 }
-                if (Math.random() < 0.4) drift *= -1;
-                prev = node;
             }
         }
 
-        const loopBridgeCount = randInt(12, 18);
-        for (let i = 0; i < loopBridgeCount; i++) {
-            const a = nodes[randInt(0, nodes.length - 1)];
-            const ranked = [...nodes].filter(node => node.id !== a.id).sort((n1, n2) => {
-                const d1 = Math.abs(n1.c - a.c) + Math.abs(n1.r - a.r) * 0.7 + Math.random() * 5;
-                const d2 = Math.abs(n2.c - a.c) + Math.abs(n2.r - a.r) * 0.7 + Math.random() * 5;
-                return d1 - d2;
-            });
-            addEdge(a, ranked[0]);
+        const extraDeadEnds = 10;
+        for (let i = 0; i < extraDeadEnds; i++) {
+            const root = loopableNodes[randInt(0, loopableNodes.length - 1)];
+            const leaf = createNode(
+                root.r + rand(-6.5, 6.5),
+                root.c + (Math.random() < 0.5 ? -1 : 1) * rand(5.4, 11.5),
+                'deadEnd',
+                rand(0.92, 1.08)
+            );
+            addEdge(root, leaf);
+            loopableNodes.push(leaf);
         }
 
         for (const node of nodes) {
-            const scale = node.tag === 'main' ? rand(0.96, 1.08) : node.tag === 'side' ? rand(0.9, 1) : rand(0.82, 0.92);
+            const scale = node.tag === 'main'
+                ? rand(0.92, 1.06)
+                : node.tag === 'deadEnd'
+                    ? rand(0.95, 1.16)
+                    : rand(0.82, 0.94);
             digPocket(grid, node, scale);
         }
 
@@ -691,18 +707,25 @@ export function generateMazeMap(): {
             const a = nodes[aId];
             const b = nodes[bId];
             const dist = Math.hypot(a.c - b.c, a.r - b.r);
-            const widthA = a.tag === 'main' && b.tag === 'main' ? rand(0.92, 1.22) : rand(0.78, 1.12);
-            const widthB = a.tag === 'decoy' || b.tag === 'decoy' ? rand(0.72, 1.02) : rand(0.82, 1.18);
-            const bend = clamp(dist * rand(0.12, 0.24), 1.4, 5.2);
+            const widthA = a.tag === 'main' && b.tag === 'main' ? rand(0.78, 1.04) : rand(0.62, 0.94);
+            const widthB = a.tag === 'deadEnd' || b.tag === 'deadEnd' ? rand(0.62, 0.92) : rand(0.66, 0.98);
+            const bend = clamp(dist * rand(0.08, 0.19), 0.8, 3.4);
             carveConnection(grid, a, b, widthA, widthB, bend);
         });
 
         roughen(grid);
+        tightenWideAreas(grid);
+        breakLongRuns(grid);
 
-        digPocket(grid, spawnNode, 0.9);
-        digPocket(grid, npcNode, 0.98);
-        digEllipse(grid, 2.5, exitCol, 1.2, 1.2);
-        digEllipse(grid, 1.2, exitCol, 0.9, 0.9);
+        digPocket(grid, spawnNode, 0.96);
+        digPocket(grid, npcNode, 1.02);
+        for (const node of nodes) {
+            if (node.tag !== 'deadEnd' && Math.random() < 0.22) {
+                digPocket(grid, node, 0.72);
+            }
+        }
+        digEllipse(grid, 2.3, exitCol, 1.05, 1.1);
+        digEllipse(grid, 1.1, exitCol, 0.85, 0.95);
         grid[0][exitCol] = 0;
 
         for (let r = 0; r < rows; r++) {
@@ -788,12 +811,8 @@ export function generateMazeMap(): {
         const qr: number[] = [];
         const qc: number[] = [];
 
-        if (grid[spawn.r][spawn.c] !== 0) {
-            grid[spawn.r][spawn.c] = 0;
-        }
-        if (grid[npc.r][npc.c] !== 0) {
-            grid[npc.r][npc.c] = 0;
-        }
+        if (grid[spawn.r][spawn.c] !== 0) grid[spawn.r][spawn.c] = 0;
+        if (grid[npc.r][npc.c] !== 0) grid[npc.r][npc.c] = 0;
 
         qr.push(spawn.r);
         qc.push(spawn.c);
@@ -863,17 +882,17 @@ export function generateMazeMap(): {
         );
 
         let score = 0;
-        score += Math.max(0, 1 - Math.abs(openRatio - 0.28) / 0.12) * 180;
+        score += Math.max(0, 1 - Math.abs(openRatio - 0.275) / 0.1) * 220;
         score += Math.min(reachableRatio, 1) * 180;
-        score += Math.max(0, Math.min(1, pathLen / (rows * 1.65))) * 180;
+        score += Math.max(0, Math.min(1, pathLen / (rows * 1.72))) * 190;
         score += Math.max(0, Math.min(1, deadEnds / 70)) * 120;
-        score += Math.max(0, Math.min(1, junctions / 90)) * 120;
-        score += Math.max(0, Math.min(1, pathDecisionCount / 28)) * 120;
-        score += Math.max(0, Math.min(1, turnCount / 20)) * 100;
-        score += Math.max(0, 1 - Math.max(0, maxRowRun - 9) / 8) * 90;
-        score += Math.max(0, 1 - Math.max(0, maxColRun - 11) / 8) * 90;
-        score += Math.max(0, 1 - Math.max(0, maxWindowOpen - 18) / 12) * 120;
-        if (!accepted) score -= 200;
+        score += Math.max(0, Math.min(1, junctions / 90)) * 110;
+        score += Math.max(0, Math.min(1, pathDecisionCount / 26)) * 125;
+        score += Math.max(0, Math.min(1, turnCount / 22)) * 110;
+        score += Math.max(0, 1 - Math.max(0, maxRowRun - 9) / 8) * 110;
+        score += Math.max(0, 1 - Math.max(0, maxColRun - 11) / 8) * 110;
+        score += Math.max(0, 1 - Math.max(0, maxWindowOpen - 18) / 12) * 150;
+        if (!accepted) score -= 220;
 
         return {
             openCount,
@@ -894,7 +913,7 @@ export function generateMazeMap(): {
 
     let chosen: Candidate | null = null;
     let chosenMetrics: Metrics | null = null;
-    const maxAttempts = 24;
+    const maxAttempts = 36;
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
         const candidate = buildCandidate();
