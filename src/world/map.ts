@@ -321,11 +321,42 @@ export function generateMazeMap(): {
     const ts = mazeCfg.tileSize;
 
     type MazeNode = {
+        id: number;
         r: number;
         c: number;
         roomRX: number;
         roomRY: number;
-        level: number;
+        tag: 'main' | 'side' | 'decoy';
+        band: number;
+    };
+
+    type Cell = {
+        r: number;
+        c: number;
+    };
+
+    type Candidate = {
+        grid: number[][];
+        nodes: MazeNode[];
+        spawnNode: MazeNode;
+        npcNode: MazeNode;
+        exitCol: number;
+    };
+
+    type Metrics = {
+        openCount: number;
+        openRatio: number;
+        reachableRatio: number;
+        pathLen: number;
+        deadEnds: number;
+        junctions: number;
+        pathDecisionCount: number;
+        turnCount: number;
+        maxRowRun: number;
+        maxColRun: number;
+        maxWindowOpen: number;
+        accepted: boolean;
+        score: number;
     };
 
     function clamp(value: number, min: number, max: number) {
@@ -338,6 +369,14 @@ export function generateMazeMap(): {
 
     function randInt(min: number, max: number) {
         return Math.floor(rand(min, max + 1));
+    }
+
+    function isInside(r: number, c: number) {
+        return r >= 0 && r < rows && c >= 0 && c < cols;
+    }
+
+    function isOpen(grid: number[][], r: number, c: number) {
+        return isInside(r, c) && grid[r][c] === 0;
     }
 
     function digEllipse(grid: number[][], cr: number, cc: number, rx: number, ry: number) {
@@ -356,213 +395,121 @@ export function generateMazeMap(): {
         }
     }
 
-    function carveNodeRoom(grid: number[][], node: MazeNode, scale: number = 1) {
-        digEllipse(grid, node.r, node.c, node.roomRX * scale, node.roomRY * scale);
+    function digPocket(grid: number[][], node: MazeNode, scale: number) {
+        const lumps = randInt(1, 3);
+        for (let i = 0; i < lumps; i++) {
+            const ox = rand(-node.roomRX * 0.45, node.roomRX * 0.45);
+            const oy = rand(-node.roomRY * 0.45, node.roomRY * 0.45);
+            digEllipse(
+                grid,
+                node.r + oy,
+                node.c + ox,
+                node.roomRX * scale * rand(0.82, 1.06),
+                node.roomRY * scale * rand(0.82, 1.08)
+            );
+        }
+        if (Math.random() < 0.35) {
+            digEllipse(
+                grid,
+                node.r + rand(-0.5, 0.5),
+                node.c + rand(-0.5, 0.5),
+                node.roomRX * scale * rand(0.75, 0.95),
+                node.roomRY * scale * rand(0.75, 0.95)
+            );
+        }
     }
 
-    function carveTunnel(grid: number[][], from: MazeNode, to: MazeNode, startWidth: number, endWidth: number, bend: number) {
+    function carvePolyline(grid: number[][], points: Cell[], startWidth: number, endWidth: number) {
+        let total = 0;
+        const lengths: number[] = [];
+        for (let i = 0; i < points.length - 1; i++) {
+            const seg = Math.max(1, Math.hypot(points[i + 1].c - points[i].c, points[i + 1].r - points[i].r));
+            lengths.push(seg);
+            total += seg;
+        }
+
+        let walked = 0;
+        for (let i = 0; i < points.length - 1; i++) {
+            const a = points[i];
+            const b = points[i + 1];
+            const seg = lengths[i];
+            const steps = Math.max(10, Math.ceil(seg * 2.2));
+            const nx = (b.r - a.r) / Math.max(1, seg);
+            const ny = -(b.c - a.c) / Math.max(1, seg);
+            const phase = Math.random() * Math.PI * 2;
+            const wobbleAmp = rand(0.2, 0.7);
+
+            for (let step = 0; step <= steps; step++) {
+                const lt = step / steps;
+                const gt = total > 0 ? (walked + seg * lt) / total : lt;
+                let rr = a.r + (b.r - a.r) * lt;
+                let cc = a.c + (b.c - a.c) * lt;
+                const wobble = Math.sin(lt * Math.PI * 2 + phase) * wobbleAmp;
+                rr += nx * wobble;
+                cc += ny * wobble;
+                const radius = clamp(
+                    startWidth + (endWidth - startWidth) * gt + Math.sin(gt * Math.PI * 4 + phase) * 0.12,
+                    0.72,
+                    1.58
+                );
+                digEllipse(
+                    grid,
+                    rr,
+                    cc,
+                    radius * rand(0.92, 1.06),
+                    radius * rand(0.88, 1.1)
+                );
+            }
+            walked += seg;
+        }
+    }
+
+    function carveConnection(grid: number[][], from: MazeNode, to: MazeNode, startWidth: number, endWidth: number, bendiness: number) {
         const dx = to.c - from.c;
         const dy = to.r - from.r;
-        const length = Math.max(12, Math.hypot(dx, dy));
-        const steps = Math.max(18, Math.ceil(length * 1.2));
-        const midT = 0.5 + (Math.random() - 0.5) * 0.18;
-        const midX = from.c + dx * midT;
-        const midY = from.r + dy * midT;
-        const nx = dy / Math.max(1, length);
-        const ny = -dx / Math.max(1, length);
-        const ctrlX = midX + nx * bend;
-        const ctrlY = midY + ny * bend;
-        const wigglePhase = Math.random() * Math.PI * 2;
-        const wiggleAmp = Math.min(2.8, Math.abs(bend) * 0.18 + rand(0.4, 1.4));
+        const len = Math.max(1, Math.hypot(dx, dy));
+        const nx = dy / len;
+        const ny = -dx / len;
+        const bendCount = randInt(2, 4);
+        const points: Cell[] = [{ r: from.r, c: from.c }];
 
-        for (let i = 0; i <= steps; i++) {
-            const t = i / steps;
-            const omt = 1 - t;
-            let c = omt * omt * from.c + 2 * omt * t * ctrlX + t * t * to.c;
-            let r = omt * omt * from.r + 2 * omt * t * ctrlY + t * t * to.r;
-            const curveWave = Math.sin(t * Math.PI * rand(1.2, 2.0) + wigglePhase) * wiggleAmp;
-            c += nx * curveWave;
-            r += ny * curveWave;
-
-            const baseWidth = startWidth + (endWidth - startWidth) * t;
-            const widthWave = Math.sin(t * Math.PI * 2 + wigglePhase) * 0.5 + Math.sin(t * Math.PI * 5 + wigglePhase * 0.7) * 0.25;
-            const radius = clamp(baseWidth + widthWave, 1.15, 3.9);
-            digEllipse(grid, r, c, radius * rand(0.95, 1.15), radius * rand(0.85, 1.2));
-        }
-    }
-
-    function randomOpenCell(grid: number[][]) {
-        for (let tries = 0; tries < 120; tries++) {
-            const r = randInt(3, rows - 4);
-            const c = randInt(3, cols - 4);
-            if (grid[r][c] === 0) {
-                return { r, c };
-            }
-        }
-        return { r: Math.floor(rows / 2), c: Math.floor(cols / 2) };
-    }
-
-    function countOpenNeighbors(grid: number[][], r: number, c: number) {
-        let openCount = 0;
-        for (let dr = -1; dr <= 1; dr++) {
-            for (let dc = -1; dc <= 1; dc++) {
-                if (dr === 0 && dc === 0) continue;
-                if (grid[r + dr] && grid[r + dr][c + dc] === 0) openCount++;
-            }
-        }
-        return openCount;
-    }
-
-    const grid: number[][] = [];
-    for (let r = 0; r < rows; r++) {
-        grid[r] = new Array(cols).fill(1);
-    }
-
-    const exitCol = clamp(Math.floor(cols / 2) + randInt(-5, 5), 6, cols - 7);
-    const exitRow = 0;
-    const levelCount = 8;
-    const levels: MazeNode[][] = [];
-
-    const topNode: MazeNode = {
-        r: 4,
-        c: exitCol + randInt(-2, 2),
-        roomRX: rand(2.8, 4.8),
-        roomRY: rand(2.0, 3.4),
-        level: 0,
-    };
-    levels.push([topNode]);
-
-    for (let level = 1; level < levelCount - 1; level++) {
-        const t = level / (levelCount - 1);
-        const centerRow = Math.floor(6 + t * (rows - 14) + rand(-3, 3));
-        const count = randInt(2, 4);
-        const nodes: MazeNode[] = [];
-        const colsUsed: number[] = [];
-        for (let i = 0; i < count; i++) {
-            let col = Math.floor(rand(6, cols - 7));
-            let guard = 0;
-            while (colsUsed.some(v => Math.abs(v - col) < 8) && guard < 24) {
-                col = Math.floor(rand(6, cols - 7));
-                guard++;
-            }
-            colsUsed.push(col);
-            nodes.push({
-                r: clamp(centerRow + randInt(-4, 4), 4, rows - 5),
-                c: col,
-                roomRX: rand(2.0, 5.4),
-                roomRY: rand(1.8, 4.6),
-                level,
+        for (let i = 1; i <= bendCount; i++) {
+            const t = i / (bendCount + 1);
+            const side = Math.sin(t * Math.PI * rand(1.1, 2.1) + Math.random() * 2.6) * bendiness;
+            points.push({
+                r: from.r + dy * t + nx * side + rand(-0.6, 0.6),
+                c: from.c + dx * t + ny * side + rand(-0.8, 0.8),
             });
         }
-        nodes.sort((a, b) => a.c - b.c);
-        levels.push(nodes);
+        points.push({ r: to.r, c: to.c });
+        carvePolyline(grid, points, startWidth, endWidth);
     }
 
-    const npcNode: MazeNode = {
-        r: rows - 5,
-        c: clamp(Math.floor(cols / 2) + randInt(-8, 8), 6, cols - 7),
-        roomRX: rand(3.2, 5.8),
-        roomRY: rand(2.8, 4.8),
-        level: levelCount - 1,
-    };
-    levels.push([npcNode]);
-
-    const allNodes: MazeNode[] = [];
-    for (const levelNodes of levels) {
-        for (const node of levelNodes) {
-            allNodes.push(node);
-        }
-    }
-    const edges = new Set<string>();
-
-    function addEdge(a: MazeNode, b: MazeNode) {
-        const ia = allNodes.indexOf(a);
-        const ib = allNodes.indexOf(b);
-        const key = ia < ib ? `${ia}-${ib}` : `${ib}-${ia}`;
-        edges.add(key);
+    function countOpen4(grid: number[][], r: number, c: number) {
+        let count = 0;
+        if (isOpen(grid, r - 1, c)) count++;
+        if (isOpen(grid, r + 1, c)) count++;
+        if (isOpen(grid, r, c - 1)) count++;
+        if (isOpen(grid, r, c + 1)) count++;
+        return count;
     }
 
-    let chainNode = topNode;
-    for (let level = 1; level < levels.length; level++) {
-        const nextNodes = levels[level];
-        let best = nextNodes[0];
-        let bestScore = Infinity;
-        for (const node of nextNodes) {
-            const score = Math.abs(node.c - chainNode.c) + Math.abs(node.r - chainNode.r) * 0.2;
-            if (score < bestScore) {
-                bestScore = score;
-                best = node;
-            }
-        }
-        addEdge(chainNode, best);
-        chainNode = best;
-    }
-
-    for (let level = 0; level < levels.length - 1; level++) {
-        const current = levels[level];
-        const next = levels[level + 1];
-        for (const node of current) {
-            const desired = randInt(1, Math.min(3, next.length));
-            const ranked = [...next].sort((a, b) => {
-                const da = Math.abs(a.c - node.c) + Math.abs(a.r - node.r) * 0.15 + Math.random() * 5;
-                const db = Math.abs(b.c - node.c) + Math.abs(b.r - node.r) * 0.15 + Math.random() * 5;
-                return da - db;
-            });
-            for (let i = 0; i < desired; i++) {
-                addEdge(node, ranked[i]);
-            }
-        }
-
-        if (current.length > 1) {
-            for (let i = 0; i < current.length - 1; i++) {
-                if (Math.random() < 0.45) addEdge(current[i], current[i + 1]);
-            }
-        }
-    }
-
-    for (const node of allNodes) {
-        carveNodeRoom(grid, node);
-    }
-
-    for (const key of edges) {
-        const [aIndex, bIndex] = key.split('-').map(Number);
-        const a = allNodes[aIndex];
-        const b = allNodes[bIndex];
-        const bend = rand(-10, 10);
-        carveTunnel(
-            grid,
-            a,
-            b,
-            rand(1.3, Math.max(1.5, Math.min(a.roomRX, a.roomRY) * 0.65)),
-            rand(1.3, Math.max(1.5, Math.min(b.roomRX, b.roomRY) * 0.65)),
-            bend
-        );
-    }
-
-    const deadEndCount = randInt(10, 16);
-    for (let i = 0; i < deadEndCount; i++) {
-        const start = allNodes[randInt(0, allNodes.length - 1)];
-        const branchAngle = rand(-Math.PI * 0.95, Math.PI * 0.95);
-        const branchLen = rand(7, 18);
-        const endNode: MazeNode = {
-            r: clamp(start.r + Math.sin(branchAngle) * branchLen + rand(-3, 3), 3, rows - 4),
-            c: clamp(start.c + Math.cos(branchAngle) * branchLen + rand(-4, 4), 3, cols - 4),
-            roomRX: rand(1.4, 3.2),
-            roomRY: rand(1.2, 2.8),
-            level: start.level,
-        };
-        carveTunnel(grid, start, endNode, rand(1.0, 1.8), rand(0.9, 1.7), rand(-7, 7));
-        carveNodeRoom(grid, endNode, rand(0.85, 1.15));
-    }
-
-    for (let pass = 0; pass < 2; pass++) {
-        const next = grid.map(row => [...row]);
+    function roughen(grid: number[][]) {
+        const next = grid.map(row => row.slice());
         for (let r = 1; r < rows - 1; r++) {
             for (let c = 1; c < cols - 1; c++) {
-                const openCount = countOpenNeighbors(grid, r, c);
-                if (grid[r][c] === 1 && openCount >= 5) {
-                    next[r][c] = 0;
-                } else if (grid[r][c] === 0 && openCount <= 1) {
+                let count8 = 0;
+                for (let dr = -1; dr <= 1; dr++) {
+                    for (let dc = -1; dc <= 1; dc++) {
+                        if (dr === 0 && dc === 0) continue;
+                        if (grid[r + dr][c + dc] === 0) count8++;
+                    }
+                }
+                if (grid[r][c] === 1) {
+                    if (count8 >= 3 && count8 <= 5 && Math.random() < 0.06) {
+                        next[r][c] = 0;
+                    }
+                } else if (count8 <= 1 && Math.random() < 0.45) {
                     next[r][c] = 1;
                 }
             }
@@ -574,31 +521,400 @@ export function generateMazeMap(): {
         }
     }
 
-    for (const node of allNodes) {
-        carveNodeRoom(grid, node, 0.92);
-    }
-    for (const key of edges) {
-        const [aIndex, bIndex] = key.split('-').map(Number);
-        const a = allNodes[aIndex];
-        const b = allNodes[bIndex];
-        carveTunnel(grid, a, b, rand(1.25, 2.1), rand(1.25, 2.1), rand(-8, 8));
+    function buildCandidate(): Candidate {
+        const grid: number[][] = [];
+        for (let r = 0; r < rows; r++) {
+            grid[r] = new Array(cols).fill(1);
+        }
+
+        let nextNodeId = 0;
+        const nodes: MazeNode[] = [];
+        const bands: MazeNode[][] = [];
+        const edges = new Set<string>();
+        const mainPath: MazeNode[] = [];
+
+        function createNode(r: number, c: number, band: number, tag: 'main' | 'side' | 'decoy', scale: number): MazeNode {
+            const node: MazeNode = {
+                id: nextNodeId++,
+                r: clamp(Math.round(r), 3, rows - 4),
+                c: clamp(Math.round(c), 3, cols - 4),
+                roomRX: rand(0.85, 1.45) * scale,
+                roomRY: rand(0.95, 1.75) * scale,
+                tag,
+                band,
+            };
+            nodes.push(node);
+            return node;
+        }
+
+        function addEdge(a: MazeNode, b: MazeNode) {
+            if (a.id === b.id) return;
+            const key = a.id < b.id ? `${a.id}-${b.id}` : `${b.id}-${a.id}`;
+            edges.add(key);
+        }
+
+        const bandCount = 15;
+        const minCol = 5;
+        const maxCol = cols - 6;
+        const exitCol = clamp(Math.floor(cols / 2) + randInt(-4, 4), 5, cols - 6);
+
+        const spawnNode = createNode(4, exitCol + randInt(-1, 1), 0, 'main', 0.95);
+        bands.push([spawnNode]);
+        mainPath.push(spawnNode);
+
+        let prevMain = spawnNode;
+        for (let band = 1; band < bandCount - 1; band++) {
+            const t = band / (bandCount - 1);
+            const baseRow = 6 + t * (rows - 15) + rand(-1.5, 1.5);
+            const bandNodes: MazeNode[] = [];
+            const count = randInt(4, 7);
+            const span = (maxCol - minCol) / Math.max(1, count - 1);
+            for (let i = 0; i < count; i++) {
+                const centerCol = count === 1 ? cols / 2 : minCol + i * span;
+                bandNodes.push(createNode(
+                    baseRow + rand(-2.2, 2.2),
+                    centerCol + rand(-2.6, 2.6),
+                    band,
+                    'side',
+                    rand(0.88, 1.02)
+                ));
+            }
+            bandNodes.sort((a, b) => a.c - b.c);
+            const ranked = [...bandNodes].sort((a, b) => {
+                const da = Math.abs(a.c - prevMain.c) * 1.15 + Math.abs(a.r - prevMain.r) * 0.25 + Math.random() * 2.4;
+                const db = Math.abs(b.c - prevMain.c) * 1.15 + Math.abs(b.r - prevMain.r) * 0.25 + Math.random() * 2.4;
+                return da - db;
+            });
+            ranked[0].tag = 'main';
+            prevMain = ranked[0];
+            mainPath.push(prevMain);
+            bands.push(bandNodes);
+        }
+
+        const npcNode = createNode(rows - 5, clamp(prevMain.c + randInt(-5, 5), 5, cols - 6), bandCount - 1, 'main', 1.08);
+        bands.push([npcNode]);
+        mainPath.push(npcNode);
+
+        for (let band = 0; band < bands.length - 1; band++) {
+            const current = bands[band];
+            const next = bands[band + 1];
+            for (const node of current) {
+                const desired = band < bands.length - 2 ? randInt(1, Math.min(3, next.length)) : 1;
+                const ranked = [...next].sort((a, b) => {
+                    const da = Math.abs(a.c - node.c) * 1.05 + Math.abs(a.r - node.r) * 0.2 + Math.random() * 2.6;
+                    const db = Math.abs(b.c - node.c) * 1.05 + Math.abs(b.r - node.r) * 0.2 + Math.random() * 2.6;
+                    return da - db;
+                });
+                for (let i = 0; i < desired; i++) addEdge(node, ranked[i]);
+            }
+
+            if (current.length > 1) {
+                for (let i = 0; i < current.length - 1; i++) {
+                    addEdge(current[i], current[i + 1]);
+                    if (i + 2 < current.length && Math.random() < 0.45) {
+                        addEdge(current[i], current[i + 2]);
+                    }
+                }
+            }
+
+            if (band + 2 < bands.length && Math.random() < 0.65) {
+                const next2 = bands[band + 2];
+                const jumpCount = randInt(1, Math.min(2, current.length));
+                for (let i = 0; i < jumpCount; i++) {
+                    const from = current[randInt(0, current.length - 1)];
+                    const ranked = [...next2].sort((a, b) => {
+                        const da = Math.abs(a.c - from.c) + Math.random() * 2.5;
+                        const db = Math.abs(b.c - from.c) + Math.random() * 2.5;
+                        return da - db;
+                    });
+                    addEdge(from, ranked[0]);
+                }
+            }
+        }
+
+        for (let i = 0; i < mainPath.length - 1; i++) {
+            addEdge(mainPath[i], mainPath[i + 1]);
+            if (i + 2 < mainPath.length && Math.random() < 0.4) {
+                addEdge(mainPath[i], mainPath[i + 2]);
+            }
+        }
+
+        const deepDecoyCount = randInt(12, 18);
+        for (let i = 0; i < deepDecoyCount; i++) {
+            const startBand = randInt(1, bandCount - 5);
+            const seedBand = bands[startBand];
+            const seed = seedBand[randInt(0, seedBand.length - 1)];
+            let prev = seed;
+            let drift = Math.random() < 0.5 ? -1 : 1;
+            const chainLength = randInt(4, 8);
+            for (let step = 0; step < chainLength; step++) {
+                const node = createNode(
+                    prev.r + rand(2.6, 6.8),
+                    prev.c + drift * rand(3.6, 7.4) + rand(-1.2, 1.2),
+                    clamp(prev.band + randInt(0, 1), 1, bandCount - 2),
+                    'decoy',
+                    step === chainLength - 1 ? 0.92 : 0.84
+                );
+                addEdge(prev, node);
+                if (step >= 2 && Math.random() < 0.22) {
+                    const loopBand = bands[clamp(node.band + randInt(-1, 1), 0, bands.length - 1)];
+                    const near = [...loopBand].sort((a, b) => {
+                        const da = Math.abs(a.c - node.c) + Math.abs(a.r - node.r);
+                        const db = Math.abs(b.c - node.c) + Math.abs(b.r - node.r);
+                        return da - db;
+                    });
+                    if (near[0] && near[0].id !== prev.id) addEdge(node, near[0]);
+                }
+                if (Math.random() < 0.4) drift *= -1;
+                prev = node;
+            }
+        }
+
+        const loopBridgeCount = randInt(12, 18);
+        for (let i = 0; i < loopBridgeCount; i++) {
+            const a = nodes[randInt(0, nodes.length - 1)];
+            const ranked = [...nodes].filter(node => node.id !== a.id).sort((n1, n2) => {
+                const d1 = Math.abs(n1.c - a.c) + Math.abs(n1.r - a.r) * 0.7 + Math.random() * 5;
+                const d2 = Math.abs(n2.c - a.c) + Math.abs(n2.r - a.r) * 0.7 + Math.random() * 5;
+                return d1 - d2;
+            });
+            addEdge(a, ranked[0]);
+        }
+
+        for (const node of nodes) {
+            const scale = node.tag === 'main' ? rand(0.96, 1.08) : node.tag === 'side' ? rand(0.9, 1) : rand(0.82, 0.92);
+            digPocket(grid, node, scale);
+        }
+
+        edges.forEach(key => {
+            const [aId, bId] = key.split('-').map(Number);
+            const a = nodes[aId];
+            const b = nodes[bId];
+            const dist = Math.hypot(a.c - b.c, a.r - b.r);
+            const widthA = a.tag === 'main' && b.tag === 'main' ? rand(0.92, 1.22) : rand(0.78, 1.12);
+            const widthB = a.tag === 'decoy' || b.tag === 'decoy' ? rand(0.72, 1.02) : rand(0.82, 1.18);
+            const bend = clamp(dist * rand(0.12, 0.24), 1.4, 5.2);
+            carveConnection(grid, a, b, widthA, widthB, bend);
+        });
+
+        roughen(grid);
+
+        digPocket(grid, spawnNode, 0.9);
+        digPocket(grid, npcNode, 0.98);
+        digEllipse(grid, 2.5, exitCol, 1.2, 1.2);
+        digEllipse(grid, 1.2, exitCol, 0.9, 0.9);
+        grid[0][exitCol] = 0;
+
+        for (let r = 0; r < rows; r++) {
+            grid[r][0] = 1;
+            grid[r][cols - 1] = 1;
+        }
+        for (let c = 0; c < cols; c++) {
+            grid[0][c] = 1;
+            grid[rows - 1][c] = 1;
+        }
+        grid[0][exitCol] = 0;
+
+        return {
+            grid,
+            nodes,
+            spawnNode,
+            npcNode,
+            exitCol,
+        };
     }
 
-    digEllipse(grid, 2.5, exitCol, 2.4, 2.0);
-    for (let r = 0; r <= 3; r++) {
-        digEllipse(grid, r, exitCol, 1.4, 1.2);
-    }
-    carveNodeRoom(grid, npcNode, 1.1);
+    function analyzeCandidate(candidate: Candidate): Metrics {
+        const grid = candidate.grid;
+        const spawn = { r: clamp(Math.round(candidate.spawnNode.r), 1, rows - 2), c: clamp(Math.round(candidate.spawnNode.c), 1, cols - 2) };
+        const npc = { r: clamp(Math.round(candidate.npcNode.r), 1, rows - 2), c: clamp(Math.round(candidate.npcNode.c), 1, cols - 2) };
 
-    for (let r = 0; r < rows; r++) {
-        grid[r][0] = 1;
-        grid[r][cols - 1] = 1;
+        const degree: number[][] = [];
+        let openCount = 0;
+        let deadEnds = 0;
+        let junctions = 0;
+        let maxRowRun = 0;
+        let maxColRun = 0;
+        let maxWindowOpen = 0;
+
+        for (let r = 0; r < rows; r++) {
+            degree[r] = new Array(cols).fill(0);
+            let run = 0;
+            for (let c = 0; c < cols; c++) {
+                if (grid[r][c] === 0) {
+                    openCount++;
+                    run++;
+                    const deg = countOpen4(grid, r, c);
+                    degree[r][c] = deg;
+                    if (deg <= 1) deadEnds++;
+                    if (deg >= 3) junctions++;
+                } else {
+                    maxRowRun = Math.max(maxRowRun, run);
+                    run = 0;
+                }
+            }
+            maxRowRun = Math.max(maxRowRun, run);
+        }
+
+        for (let c = 0; c < cols; c++) {
+            let run = 0;
+            for (let r = 0; r < rows; r++) {
+                if (grid[r][c] === 0) {
+                    run++;
+                } else {
+                    maxColRun = Math.max(maxColRun, run);
+                    run = 0;
+                }
+            }
+            maxColRun = Math.max(maxColRun, run);
+        }
+
+        const windowRadius = 3;
+        for (let r = windowRadius; r < rows - windowRadius; r++) {
+            for (let c = windowRadius; c < cols - windowRadius; c++) {
+                let count = 0;
+                for (let dr = -windowRadius; dr <= windowRadius; dr++) {
+                    for (let dc = -windowRadius; dc <= windowRadius; dc++) {
+                        if (grid[r + dr][c + dc] === 0) count++;
+                    }
+                }
+                maxWindowOpen = Math.max(maxWindowOpen, count);
+            }
+        }
+
+        const dist: number[][] = Array.from({ length: rows }, () => new Array(cols).fill(-1));
+        const parentR: number[][] = Array.from({ length: rows }, () => new Array(cols).fill(-1));
+        const parentC: number[][] = Array.from({ length: rows }, () => new Array(cols).fill(-1));
+        const qr: number[] = [];
+        const qc: number[] = [];
+
+        if (grid[spawn.r][spawn.c] !== 0) {
+            grid[spawn.r][spawn.c] = 0;
+        }
+        if (grid[npc.r][npc.c] !== 0) {
+            grid[npc.r][npc.c] = 0;
+        }
+
+        qr.push(spawn.r);
+        qc.push(spawn.c);
+        dist[spawn.r][spawn.c] = 0;
+
+        let reachableCount = 0;
+        for (let head = 0; head < qr.length; head++) {
+            const r = qr[head];
+            const c = qc[head];
+            reachableCount++;
+            const neighbors = [
+                [r - 1, c],
+                [r + 1, c],
+                [r, c - 1],
+                [r, c + 1],
+            ];
+            for (const [nr, nc] of neighbors) {
+                if (!isOpen(grid, nr, nc)) continue;
+                if (dist[nr][nc] !== -1) continue;
+                dist[nr][nc] = dist[r][c] + 1;
+                parentR[nr][nc] = r;
+                parentC[nr][nc] = c;
+                qr.push(nr);
+                qc.push(nc);
+            }
+        }
+
+        const pathLen = dist[npc.r][npc.c];
+        let turnCount = 0;
+        let pathDecisionCount = 0;
+        if (pathLen >= 0) {
+            let cr = npc.r;
+            let cc = npc.c;
+            let prevDr = 0;
+            let prevDc = 0;
+            while (!(cr === spawn.r && cc === spawn.c)) {
+                const pr = parentR[cr][cc];
+                const pc = parentC[cr][cc];
+                if (pr < 0 || pc < 0) break;
+                const dr = cr - pr;
+                const dc = cc - pc;
+                if ((prevDr !== 0 || prevDc !== 0) && (dr !== prevDr || dc !== prevDc)) {
+                    turnCount++;
+                }
+                if (degree[cr][cc] >= 3) pathDecisionCount++;
+                prevDr = dr;
+                prevDc = dc;
+                cr = pr;
+                cc = pc;
+            }
+        }
+
+        const openRatio = openCount / (rows * cols);
+        const reachableRatio = openCount > 0 ? reachableCount / openCount : 0;
+        const accepted = (
+            openRatio >= 0.19 &&
+            openRatio <= 0.37 &&
+            reachableRatio >= 0.96 &&
+            pathLen >= Math.floor(rows * 1.42) &&
+            deadEnds >= Math.max(28, Math.floor(openCount * 0.03)) &&
+            junctions >= Math.max(36, Math.floor(openCount * 0.045)) &&
+            pathDecisionCount >= 16 &&
+            turnCount >= 12 &&
+            maxRowRun <= 13 &&
+            maxColRun <= 15 &&
+            maxWindowOpen <= 26
+        );
+
+        let score = 0;
+        score += Math.max(0, 1 - Math.abs(openRatio - 0.28) / 0.12) * 180;
+        score += Math.min(reachableRatio, 1) * 180;
+        score += Math.max(0, Math.min(1, pathLen / (rows * 1.65))) * 180;
+        score += Math.max(0, Math.min(1, deadEnds / 70)) * 120;
+        score += Math.max(0, Math.min(1, junctions / 90)) * 120;
+        score += Math.max(0, Math.min(1, pathDecisionCount / 28)) * 120;
+        score += Math.max(0, Math.min(1, turnCount / 20)) * 100;
+        score += Math.max(0, 1 - Math.max(0, maxRowRun - 9) / 8) * 90;
+        score += Math.max(0, 1 - Math.max(0, maxColRun - 11) / 8) * 90;
+        score += Math.max(0, 1 - Math.max(0, maxWindowOpen - 18) / 12) * 120;
+        if (!accepted) score -= 200;
+
+        return {
+            openCount,
+            openRatio,
+            reachableRatio,
+            pathLen,
+            deadEnds,
+            junctions,
+            pathDecisionCount,
+            turnCount,
+            maxRowRun,
+            maxColRun,
+            maxWindowOpen,
+            accepted,
+            score,
+        };
     }
-    for (let c = 0; c < cols; c++) {
-        grid[0][c] = 1;
-        grid[rows - 1][c] = 1;
+
+    let chosen: Candidate | null = null;
+    let chosenMetrics: Metrics | null = null;
+    const maxAttempts = 24;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        const candidate = buildCandidate();
+        const metrics = analyzeCandidate(candidate);
+        if (!chosen || !chosenMetrics || metrics.score > chosenMetrics.score) {
+            chosen = candidate;
+            chosenMetrics = metrics;
+        }
+        if (metrics.accepted) {
+            chosen = candidate;
+            chosenMetrics = metrics;
+            break;
+        }
     }
-    grid[0][exitCol] = 0;
+
+    const finalCandidate = chosen!;
+    const grid = finalCandidate.grid;
+    const exitCol = finalCandidate.exitCol;
+    const spawnNode = finalCandidate.spawnNode;
+    const npcNode = finalCandidate.npcNode;
 
     const mazeMap: any[][] = [];
     const mazeWalls: any[] = [];
@@ -627,9 +943,9 @@ export function generateMazeMap(): {
                     }
                 }
                 if (border) {
-                    const offsetX = (Math.random() - 0.5) * ts * 0.2;
-                    const offsetY = (Math.random() - 0.5) * ts * 0.2;
-                    const radius = ts * (0.48 + Math.random() * 0.22);
+                    const offsetX = (Math.random() - 0.5) * ts * 0.14;
+                    const offsetY = (Math.random() - 0.5) * ts * 0.14;
+                    const radius = ts * (0.46 + Math.random() * 0.14);
                     const wall = {
                         x: c * ts + ts / 2 + offsetX,
                         y: r * ts + ts / 2 + offsetY,
@@ -651,8 +967,8 @@ export function generateMazeMap(): {
     const exitY = 0;
     const npcInitX = npcNode.c * ts + ts / 2;
     const npcInitY = npcNode.r * ts + ts / 2;
-    const spawnX = topNode.c * ts + ts / 2;
-    const spawnY = topNode.r * ts + ts / 2;
+    const spawnX = spawnNode.c * ts + ts / 2;
+    const spawnY = spawnNode.r * ts + ts / 2;
 
     return {
         mazeMap,

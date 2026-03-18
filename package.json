@@ -6,7 +6,8 @@
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "watch": "tsc --watch",
-    "clean": "rmdir /s /q dist 2>nul || true"
+    "clean": "rmdir /s /q dist 2>nul || true",
+    "maze:inspect": "node scripts/inspectMaze.js"
   },
   "devDependencies": {
     "typescript": "^5.3.3"

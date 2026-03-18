@@ -51,6 +51,7 @@ type: always
 - `npm run typecheck` 实际执行 `tsc --noEmit`，只做类型检查，不生成 `dist` 输出。
 - 如果需要在本地确认是否存在 TypeScript 报错，优先执行 `npm run typecheck`，而不是依赖微信开发者工具内部的报错提示。
 - `npm run build` 仍可用于生成 `dist`，但它不是后续模型排查报错的首选入口。
+- 如果需要离线查看迷宫生成结果，应执行 `npm run maze:inspect -- 3` 这类命令；它会直接批量打印 ASCII 迷宫图和关键统计指标，便于先验图再改算法。
 
 ## 版本控制与忽略文件约定
 
