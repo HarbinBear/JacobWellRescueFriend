@@ -297,8 +297,8 @@ export function generateArenaMap() {
 
 // =============================================
 // 迷宫引导绳模式：生成随机洞穴地图
-// 算法：随机游走挖通道 + 元胞自动机平滑 + 多条支路死路
-// 通道宽度 3~5 格，形成真正的洞穴感而非网格迷宫
+// 算法：多层洞室节点 + 弯折通道网络 + 死路支洞 + 元胞自动机平滑
+// 目标：保证可通，同时让正确路线隐藏在多重分叉和拐弯之后
 // 返回迷宫专属数据，不写入全局 state.map（避免污染主线地图）
 // =============================================
 export function generateMazeMap(): {
@@ -320,122 +320,250 @@ export function generateMazeMap(): {
     const rows = mazeCfg.rows;
     const ts = mazeCfg.tileSize;
 
-    // ---- 辅助函数 ----
+    type MazeNode = {
+        r: number;
+        c: number;
+        roomRX: number;
+        roomRY: number;
+        level: number;
+    };
 
-    // 在 grid 上以 (cr, cc) 为中心挖出半径 rad 的圆形通道
-    function digCircle(grid: number[][], cr: number, cc: number, rad: number) {
-        const r0 = Math.max(1, Math.floor(cr - rad));
-        const r1 = Math.min(rows - 2, Math.ceil(cr + rad));
-        const c0 = Math.max(1, Math.floor(cc - rad));
-        const c1 = Math.min(cols - 2, Math.ceil(cc + rad));
+    function clamp(value: number, min: number, max: number) {
+        return Math.max(min, Math.min(max, value));
+    }
+
+    function rand(min: number, max: number) {
+        return min + Math.random() * (max - min);
+    }
+
+    function randInt(min: number, max: number) {
+        return Math.floor(rand(min, max + 1));
+    }
+
+    function digEllipse(grid: number[][], cr: number, cc: number, rx: number, ry: number) {
+        const r0 = clamp(Math.floor(cr - ry - 1), 1, rows - 2);
+        const r1 = clamp(Math.ceil(cr + ry + 1), 1, rows - 2);
+        const c0 = clamp(Math.floor(cc - rx - 1), 1, cols - 2);
+        const c1 = clamp(Math.ceil(cc + rx + 1), 1, cols - 2);
         for (let r = r0; r <= r1; r++) {
             for (let c = c0; c <= c1; c++) {
-                if (Math.hypot(r - cr, c - cc) <= rad) {
+                const nr = (c - cc) / Math.max(0.01, rx);
+                const nc = (r - cr) / Math.max(0.01, ry);
+                if (nr * nr + nc * nc <= 1) {
                     grid[r][c] = 0;
                 }
             }
         }
     }
 
-    // 随机游走挖一条通道，从 (sr, sc) 出发，走 steps 步
-    // brushMin/brushMax 控制每步挖掘的圆形半径范围
-    function drunkardWalk(
-        grid: number[][], sr: number, sc: number,
-        steps: number, brushMin: number, brushMax: number,
-        bias: number = 0 // 正值偏向向下，负值偏向向上
-    ) {
-        let r = sr, c = sc;
-        // 方向权重：上下左右，bias 影响上下权重
-        for (let i = 0; i < steps; i++) {
-            const rad = brushMin + Math.random() * (brushMax - brushMin);
-            digCircle(grid, r, c, rad);
-            // 随机选方向，带偏向
-            const dirs = [
-                { dr: -1, dc: 0, w: Math.max(0.1, 1 - bias) }, // 上
-                { dr: 1,  dc: 0, w: Math.max(0.1, 1 + bias) }, // 下
-                { dr: 0,  dc: -1, w: 1 },                       // 左
-                { dr: 0,  dc: 1,  w: 1 },                       // 右
-            ];
-            // 加权随机选方向
-            const totalW = dirs.reduce((s, d) => s + d.w, 0);
-            let rnd = Math.random() * totalW;
-            let chosen = dirs[0];
-            for (const d of dirs) {
-                rnd -= d.w;
-                if (rnd <= 0) { chosen = d; break; }
-            }
-            // 移动，保持在边界内（留1格边框）
-            r = Math.max(2, Math.min(rows - 3, r + chosen.dr));
-            c = Math.max(2, Math.min(cols - 3, c + chosen.dc));
-        }
-        return { r, c }; // 返回终点
+    function carveNodeRoom(grid: number[][], node: MazeNode, scale: number = 1) {
+        digEllipse(grid, node.r, node.c, node.roomRX * scale, node.roomRY * scale);
     }
 
-    // ---- 1. 初始化全部为墙 ----
+    function carveTunnel(grid: number[][], from: MazeNode, to: MazeNode, startWidth: number, endWidth: number, bend: number) {
+        const dx = to.c - from.c;
+        const dy = to.r - from.r;
+        const length = Math.max(12, Math.hypot(dx, dy));
+        const steps = Math.max(18, Math.ceil(length * 1.2));
+        const midT = 0.5 + (Math.random() - 0.5) * 0.18;
+        const midX = from.c + dx * midT;
+        const midY = from.r + dy * midT;
+        const nx = dy / Math.max(1, length);
+        const ny = -dx / Math.max(1, length);
+        const ctrlX = midX + nx * bend;
+        const ctrlY = midY + ny * bend;
+        const wigglePhase = Math.random() * Math.PI * 2;
+        const wiggleAmp = Math.min(2.8, Math.abs(bend) * 0.18 + rand(0.4, 1.4));
+
+        for (let i = 0; i <= steps; i++) {
+            const t = i / steps;
+            const omt = 1 - t;
+            let c = omt * omt * from.c + 2 * omt * t * ctrlX + t * t * to.c;
+            let r = omt * omt * from.r + 2 * omt * t * ctrlY + t * t * to.r;
+            const curveWave = Math.sin(t * Math.PI * rand(1.2, 2.0) + wigglePhase) * wiggleAmp;
+            c += nx * curveWave;
+            r += ny * curveWave;
+
+            const baseWidth = startWidth + (endWidth - startWidth) * t;
+            const widthWave = Math.sin(t * Math.PI * 2 + wigglePhase) * 0.5 + Math.sin(t * Math.PI * 5 + wigglePhase * 0.7) * 0.25;
+            const radius = clamp(baseWidth + widthWave, 1.15, 3.9);
+            digEllipse(grid, r, c, radius * rand(0.95, 1.15), radius * rand(0.85, 1.2));
+        }
+    }
+
+    function randomOpenCell(grid: number[][]) {
+        for (let tries = 0; tries < 120; tries++) {
+            const r = randInt(3, rows - 4);
+            const c = randInt(3, cols - 4);
+            if (grid[r][c] === 0) {
+                return { r, c };
+            }
+        }
+        return { r: Math.floor(rows / 2), c: Math.floor(cols / 2) };
+    }
+
+    function countOpenNeighbors(grid: number[][], r: number, c: number) {
+        let openCount = 0;
+        for (let dr = -1; dr <= 1; dr++) {
+            for (let dc = -1; dc <= 1; dc++) {
+                if (dr === 0 && dc === 0) continue;
+                if (grid[r + dr] && grid[r + dr][c + dc] === 0) openCount++;
+            }
+        }
+        return openCount;
+    }
+
     const grid: number[][] = [];
     for (let r = 0; r < rows; r++) {
         grid[r] = new Array(cols).fill(1);
     }
 
-    // ---- 2. 挖主通道：从顶部出口向下蜿蜒到底部 NPC 位置 ----
-    // 出口固定在顶部中央偏左右随机一点
-    const exitCol = Math.floor(cols / 2) + Math.floor((Math.random() - 0.5) * cols * 0.2);
-    const exitRow = 1;
+    const exitCol = clamp(Math.floor(cols / 2) + randInt(-5, 5), 6, cols - 7);
+    const exitRow = 0;
+    const levelCount = 8;
+    const levels: MazeNode[][] = [];
 
-    // 主通道：从出口向下游走到底部，偏向向下
-    const mainEnd = drunkardWalk(grid, exitRow, exitCol, rows * 3, 1.8, 2.8, 0.6);
+    const topNode: MazeNode = {
+        r: 4,
+        c: exitCol + randInt(-2, 2),
+        roomRX: rand(2.8, 4.8),
+        roomRY: rand(2.0, 3.4),
+        level: 0,
+    };
+    levels.push([topNode]);
 
-    // 确保出口打通到顶部边界
-    digCircle(grid, 0, exitCol, 1.5);
-    digCircle(grid, 1, exitCol, 2.0);
+    for (let level = 1; level < levelCount - 1; level++) {
+        const t = level / (levelCount - 1);
+        const centerRow = Math.floor(6 + t * (rows - 14) + rand(-3, 3));
+        const count = randInt(2, 4);
+        const nodes: MazeNode[] = [];
+        const colsUsed: number[] = [];
+        for (let i = 0; i < count; i++) {
+            let col = Math.floor(rand(6, cols - 7));
+            let guard = 0;
+            while (colsUsed.some(v => Math.abs(v - col) < 8) && guard < 24) {
+                col = Math.floor(rand(6, cols - 7));
+                guard++;
+            }
+            colsUsed.push(col);
+            nodes.push({
+                r: clamp(centerRow + randInt(-4, 4), 4, rows - 5),
+                c: col,
+                roomRX: rand(2.0, 5.4),
+                roomRY: rand(1.8, 4.6),
+                level,
+            });
+        }
+        nodes.sort((a, b) => a.c - b.c);
+        levels.push(nodes);
+    }
 
-    // NPC 位置：底部区域，从主通道终点附近再走一段确保到达底部
-    let npcRow = rows - 3;
-    let npcCol = mainEnd.c;
-    // 从主通道终点补充挖到底部
-    drunkardWalk(grid, mainEnd.r, mainEnd.c, rows, 1.5, 2.5, 0.8);
-    // 确保 NPC 所在格是通道
-    digCircle(grid, npcRow, npcCol, 2.5);
+    const npcNode: MazeNode = {
+        r: rows - 5,
+        c: clamp(Math.floor(cols / 2) + randInt(-8, 8), 6, cols - 7),
+        roomRX: rand(3.2, 5.8),
+        roomRY: rand(2.8, 4.8),
+        level: levelCount - 1,
+    };
+    levels.push([npcNode]);
 
-    // ---- 3. 挖多条支路（死路），增加迷宫复杂度 ----
-    // 从主通道上随机选取起点，向各方向挖支路
-    const branchCount = 6 + Math.floor(Math.random() * 5); // 6~10条支路
-    for (let i = 0; i < branchCount; i++) {
-        // 随机选一个已挖通的格子作为支路起点
-        let attempts = 0;
-        let br = 0, bc = 0;
-        do {
-            br = 2 + Math.floor(Math.random() * (rows - 4));
-            bc = 2 + Math.floor(Math.random() * (cols - 4));
-            attempts++;
-        } while (grid[br][bc] !== 0 && attempts < 50);
+    const allNodes: MazeNode[] = [];
+    for (const levelNodes of levels) {
+        for (const node of levelNodes) {
+            allNodes.push(node);
+        }
+    }
+    const edges = new Set<string>();
 
-        if (grid[br][bc] === 0) {
-            // 支路长度：短支路（死路）或中等支路
-            const branchLen = 15 + Math.floor(Math.random() * 40);
-            const branchBias = (Math.random() - 0.5) * 1.2; // 随机方向偏向
-            drunkardWalk(grid, br, bc, branchLen, 1.2, 2.2, branchBias);
+    function addEdge(a: MazeNode, b: MazeNode) {
+        const ia = allNodes.indexOf(a);
+        const ib = allNodes.indexOf(b);
+        const key = ia < ib ? `${ia}-${ib}` : `${ib}-${ia}`;
+        edges.add(key);
+    }
+
+    let chainNode = topNode;
+    for (let level = 1; level < levels.length; level++) {
+        const nextNodes = levels[level];
+        let best = nextNodes[0];
+        let bestScore = Infinity;
+        for (const node of nextNodes) {
+            const score = Math.abs(node.c - chainNode.c) + Math.abs(node.r - chainNode.r) * 0.2;
+            if (score < bestScore) {
+                bestScore = score;
+                best = node;
+            }
+        }
+        addEdge(chainNode, best);
+        chainNode = best;
+    }
+
+    for (let level = 0; level < levels.length - 1; level++) {
+        const current = levels[level];
+        const next = levels[level + 1];
+        for (const node of current) {
+            const desired = randInt(1, Math.min(3, next.length));
+            const ranked = [...next].sort((a, b) => {
+                const da = Math.abs(a.c - node.c) + Math.abs(a.r - node.r) * 0.15 + Math.random() * 5;
+                const db = Math.abs(b.c - node.c) + Math.abs(b.r - node.r) * 0.15 + Math.random() * 5;
+                return da - db;
+            });
+            for (let i = 0; i < desired; i++) {
+                addEdge(node, ranked[i]);
+            }
+        }
+
+        if (current.length > 1) {
+            for (let i = 0; i < current.length - 1; i++) {
+                if (Math.random() < 0.45) addEdge(current[i], current[i + 1]);
+            }
         }
     }
 
-    // ---- 4. 元胞自动机平滑（2轮），让洞穴边缘更有机 ----
-    // 规则：如果一个墙格周围8邻居中通道格 >= 5，则变为通道
-    //       如果一个通道格周围8邻居中墙格 >= 6，则变为墙（填充孤立小通道）
+    for (const node of allNodes) {
+        carveNodeRoom(grid, node);
+    }
+
+    for (const key of edges) {
+        const [aIndex, bIndex] = key.split('-').map(Number);
+        const a = allNodes[aIndex];
+        const b = allNodes[bIndex];
+        const bend = rand(-10, 10);
+        carveTunnel(
+            grid,
+            a,
+            b,
+            rand(1.3, Math.max(1.5, Math.min(a.roomRX, a.roomRY) * 0.65)),
+            rand(1.3, Math.max(1.5, Math.min(b.roomRX, b.roomRY) * 0.65)),
+            bend
+        );
+    }
+
+    const deadEndCount = randInt(10, 16);
+    for (let i = 0; i < deadEndCount; i++) {
+        const start = allNodes[randInt(0, allNodes.length - 1)];
+        const branchAngle = rand(-Math.PI * 0.95, Math.PI * 0.95);
+        const branchLen = rand(7, 18);
+        const endNode: MazeNode = {
+            r: clamp(start.r + Math.sin(branchAngle) * branchLen + rand(-3, 3), 3, rows - 4),
+            c: clamp(start.c + Math.cos(branchAngle) * branchLen + rand(-4, 4), 3, cols - 4),
+            roomRX: rand(1.4, 3.2),
+            roomRY: rand(1.2, 2.8),
+            level: start.level,
+        };
+        carveTunnel(grid, start, endNode, rand(1.0, 1.8), rand(0.9, 1.7), rand(-7, 7));
+        carveNodeRoom(grid, endNode, rand(0.85, 1.15));
+    }
+
     for (let pass = 0; pass < 2; pass++) {
-        const next: number[][] = grid.map(row => [...row]);
+        const next = grid.map(row => [...row]);
         for (let r = 1; r < rows - 1; r++) {
             for (let c = 1; c < cols - 1; c++) {
-                let openCount = 0;
-                for (let dr = -1; dr <= 1; dr++) {
-                    for (let dc = -1; dc <= 1; dc++) {
-                        if (dr === 0 && dc === 0) continue;
-                        if (grid[r + dr][c + dc] === 0) openCount++;
-                    }
-                }
+                const openCount = countOpenNeighbors(grid, r, c);
                 if (grid[r][c] === 1 && openCount >= 5) {
-                    next[r][c] = 0; // 墙变通道（扩展洞穴）
+                    next[r][c] = 0;
                 } else if (grid[r][c] === 0 && openCount <= 1) {
-                    next[r][c] = 1; // 孤立通道格填回墙
+                    next[r][c] = 1;
                 }
             }
         }
@@ -446,17 +574,22 @@ export function generateMazeMap(): {
         }
     }
 
-    // ---- 5. 确保出口和 NPC 位置周围一定是通道 ----
-    digCircle(grid, exitRow, exitCol, 2.5);
-    digCircle(grid, 0, exitCol, 1.5);
-    digCircle(grid, npcRow, npcCol, 3.0);
-
-    // 确保出口到玩家出生点（出口下方3格）之间连通
-    for (let r = 0; r <= exitRow + 3; r++) {
-        digCircle(grid, r, exitCol, 2.0);
+    for (const node of allNodes) {
+        carveNodeRoom(grid, node, 0.92);
+    }
+    for (const key of edges) {
+        const [aIndex, bIndex] = key.split('-').map(Number);
+        const a = allNodes[aIndex];
+        const b = allNodes[bIndex];
+        carveTunnel(grid, a, b, rand(1.25, 2.1), rand(1.25, 2.1), rand(-8, 8));
     }
 
-    // ---- 6. 保持外围边框为墙 ----
+    digEllipse(grid, 2.5, exitCol, 2.4, 2.0);
+    for (let r = 0; r <= 3; r++) {
+        digEllipse(grid, r, exitCol, 1.4, 1.2);
+    }
+    carveNodeRoom(grid, npcNode, 1.1);
+
     for (let r = 0; r < rows; r++) {
         grid[r][0] = 1;
         grid[r][cols - 1] = 1;
@@ -465,10 +598,8 @@ export function generateMazeMap(): {
         grid[0][c] = 1;
         grid[rows - 1][c] = 1;
     }
-    // 出口处打开顶部边框
     grid[0][exitCol] = 0;
 
-    // ---- 7. 生成 mazeMap 和 mazeWalls ----
     const mazeMap: any[][] = [];
     const mazeWalls: any[] = [];
     const mazeExplored: boolean[][] = [];
@@ -482,25 +613,23 @@ export function generateMazeMap(): {
         }
     }
 
-    // 生成墙壁渲染数据：边缘岩石用大圆形，有随机偏移，形成自然岩石感
     for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
             if (mazeMap[r][c] === 1) {
-                // 判断是否是边缘格（至少有一个相邻格是通道）
                 let border = false;
                 for (let dr = -1; dr <= 1 && !border; dr++) {
                     for (let dc = -1; dc <= 1 && !border; dc++) {
                         if (dr === 0 && dc === 0) continue;
-                        const nr = r + dr, nc = c + dc;
+                        const nr = r + dr;
+                        const nc = c + dc;
                         if (nr < 0 || nr >= rows || nc < 0 || nc >= cols) continue;
                         if (mazeMap[nr][nc] === 0) border = true;
                     }
                 }
                 if (border) {
-                    // 边缘岩石：大圆形 + 随机偏移，形成有机洞穴壁
-                    const offsetX = (Math.random() - 0.5) * ts * 0.5;
-                    const offsetY = (Math.random() - 0.5) * ts * 0.5;
-                    const radius = ts * (0.55 + Math.random() * 0.35); // 0.55~0.9倍格子
+                    const offsetX = (Math.random() - 0.5) * ts * 0.2;
+                    const offsetY = (Math.random() - 0.5) * ts * 0.2;
+                    const radius = ts * (0.48 + Math.random() * 0.22);
                     const wall = {
                         x: c * ts + ts / 2 + offsetX,
                         y: r * ts + ts / 2 + offsetY,
@@ -512,21 +641,18 @@ export function generateMazeMap(): {
                     mazeWalls.push(wall);
                     mazeMap[r][c] = wall;
                 } else {
-                    // 内部实体岩石
                     mazeMap[r][c] = 2;
                 }
             }
         }
     }
 
-    // ---- 8. 计算关键坐标 ----
     const exitX = exitCol * ts + ts / 2;
-    const exitY = 0; // 顶部边界
-    const npcInitX = npcCol * ts + ts / 2;
-    const npcInitY = npcRow * ts + ts / 2;
-    // 玩家出生点：出口正下方，确保在已挖通的通道内
-    const spawnX = exitX;
-    const spawnY = (exitRow + 3) * ts + ts / 2;
+    const exitY = 0;
+    const npcInitX = npcNode.c * ts + ts / 2;
+    const npcInitY = npcNode.r * ts + ts / 2;
+    const spawnX = topNode.c * ts + ts / 2;
+    const spawnY = topNode.r * ts + ts / 2;
 
     return {
         mazeMap,

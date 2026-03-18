@@ -65,8 +65,9 @@ export function drawUI(){
 
     // 小地图 & 调试信息（仅调试模式）
     if(CONFIG.debug) {
+        const isMazeMode = state.screen === 'mazeRescue';
         // 小地图
-        if(state.explored && state.explored.length > 0) {
+        if(!isMazeMode && state.explored && state.explored.length > 0) {
             let mapSize=140, mapX=20, mapY=60;
             ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(mapX,mapY,mapSize,mapSize);
             ctx.strokeStyle='#445'; ctx.strokeRect(mapX,mapY,mapSize,mapSize);

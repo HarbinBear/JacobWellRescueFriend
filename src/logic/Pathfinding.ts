@@ -1,10 +1,28 @@
 import { CONFIG } from '../core/config';
 import { state } from '../core/state';
 
+function getActivePathGrid() {
+    if (state.screen === 'mazeRescue' && state.mazeRescue) {
+        return {
+            map: state.mazeRescue.mazeMap,
+            rows: state.mazeRescue.mazeRows,
+            cols: state.mazeRescue.mazeCols,
+            tileSize: state.mazeRescue.mazeTileSize,
+        };
+    }
+    return {
+        map: state.map,
+        rows: CONFIG.rows,
+        cols: CONFIG.cols,
+        tileSize: CONFIG.tileSize,
+    };
+}
+
 // --- 网格级线段碰撞检测 ---
 // 如果线段穿过实心格则返回 true
 function lineHitsSolid(x1: number, y1: number, x2: number, y2: number): boolean {
-    const { tileSize } = CONFIG;
+    const active = getActivePathGrid();
+    const tileSize = active.tileSize;
     let dx = x2 - x1;
     let dy = y2 - y1;
     let dist = Math.hypot(dx, dy);
@@ -16,8 +34,8 @@ function lineHitsSolid(x1: number, y1: number, x2: number, y2: number): boolean 
         let py = y1 + dy * t;
         let r = Math.floor(py / tileSize);
         let c = Math.floor(px / tileSize);
-        if(state.map[r] && state.map[r][c]) {
-            let cell = state.map[r][c];
+        if(active.map[r] && active.map[r][c]) {
+            let cell = active.map[r][c];
             if(cell === 2) return true;
             if(typeof cell === 'object') {
                 if(Math.hypot(px - cell.x, py - cell.y) < cell.r) return true;
@@ -29,7 +47,10 @@ function lineHitsSolid(x1: number, y1: number, x2: number, y2: number): boolean 
 
 // --- 基于网格的 A* 寻路（绕过绳索障碍物）---
 function gridAStar(startX: number, startY: number, endX: number, endY: number, padding: number): any[] {
-    const { tileSize, rows, cols } = CONFIG;
+    const active = getActivePathGrid();
+    const tileSize = active.tileSize;
+    const rows = active.rows;
+    const cols = active.cols;
     let sr = Math.floor(startY / tileSize);
     let sc = Math.floor(startX / tileSize);
     let er = Math.floor(endY / tileSize);
@@ -42,12 +63,12 @@ function gridAStar(startX: number, startY: number, endX: number, endY: number, p
 
     function isPassable(r: number, c: number): boolean {
         if(r < 0 || r >= rows || c < 0 || c >= cols) return false;
-        return state.map[r] && state.map[r][c] === 0;
+        return active.map[r] && active.map[r][c] === 0;
     }
 
     function isPassableRelaxed(r: number, c: number): boolean {
         if(r < 0 || r >= rows || c < 0 || c >= cols) return false;
-        let cell = state.map[r] ? state.map[r][c] : 1;
+        let cell = active.map[r] ? active.map[r][c] : 1;
         return cell === 0;
     }
 
@@ -72,7 +93,6 @@ function gridAStar(startX: number, startY: number, endX: number, endY: number, p
 
     let maxIters = CONFIG.ropeAStarMaxIters || 3000;
     let found = false;
-    let finalR = er, finalC = ec;
 
     for(let iter = 0; iter < maxIters; iter++) {
         if(openSet.length === 0) break;

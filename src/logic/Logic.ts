@@ -1503,14 +1503,8 @@ export function updateMaze() {
     if (!player.animTime) player.animTime = 0;
     player.animTime += 0.05 + Math.hypot(player.vx, player.vy) * 0.05;
 
-    // --- 绳索系统（临时把迷宫地图挂到全局，让绳索系统能正常工作）---
-    const savedMap = state.map;
-    const savedWalls = state.walls;
-    state.map = maze.mazeMap;
-    state.walls = maze.mazeWalls;
+    // --- 绳索系统 ---
     updateRopeSystem();
-    state.map = savedMap;
-    state.walls = savedWalls;
 
     // --- NPC 更新 ---
     if (state.npc.active) {

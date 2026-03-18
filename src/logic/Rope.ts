@@ -3,12 +3,20 @@ import { state, player, input } from '../core/state';
 import { buildAvoidedPath } from './Pathfinding';
 import { triggerSilt } from './Particle';
 
+function getActiveWalls() {
+    if (state.screen === 'mazeRescue' && state.mazeRescue) {
+        return state.mazeRescue.mazeWalls;
+    }
+    return state.walls;
+}
+
 // 辅助函数：在 maxDist 范围内找最近的墙壁
 export function findNearestWall(x: number, y: number, maxDist: number): any {
     let nearest: any = null;
     let minDist = maxDist;
-    if(!state.walls) return null;
-    for(let wall of state.walls) {
+    const walls = getActiveWalls();
+    if(!walls) return null;
+    for(let wall of walls) {
         let dist = Math.hypot(x - wall.x, y - wall.y) - wall.r;
         if(dist < minDist) {
             minDist = dist;

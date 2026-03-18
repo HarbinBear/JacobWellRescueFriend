@@ -1,6 +1,23 @@
 import { CONFIG } from '../core/config';
 import { state } from '../core/state';
 
+function getActiveMapContext() {
+    if (state.screen === 'mazeRescue' && state.mazeRescue) {
+        return {
+            map: state.mazeRescue.mazeMap,
+            rows: state.mazeRescue.mazeRows,
+            cols: state.mazeRescue.mazeCols,
+            tileSize: state.mazeRescue.mazeTileSize,
+        };
+    }
+    return {
+        map: state.map,
+        rows: CONFIG.rows,
+        cols: CONFIG.cols,
+        tileSize: CONFIG.tileSize,
+    };
+}
+
 // 射线-圆相交检测
 export function rayCircleIntersect(ox: number, oy: number, dx: number, dy: number, cx: number, cy: number, cr: number): number {
     let fx = ox-cx, fy = oy-cy;
@@ -144,17 +161,18 @@ export function getLightPolygon(sx: number, sy: number, angle: number, maxDist: 
     let startAngle = angle - fovRad/2;
     let rays = CONFIG.rayCount;
     let step = fovRad / rays;
-    const { tileSize } = CONFIG;
+    const active = getActiveMapContext();
+    const tileSize = active.tileSize;
     const halfTile = tileSize / 2;
     let rMin = Math.max(0, Math.floor((sy-maxDist)/tileSize)-1);
-    let rMax = Math.min(CONFIG.rows-1, Math.floor((sy+maxDist)/tileSize)+1);
+    let rMax = Math.min(active.rows-1, Math.floor((sy+maxDist)/tileSize)+1);
     let cMin = Math.max(0, Math.floor((sx-maxDist)/tileSize)-1);
-    let cMax = Math.min(CONFIG.cols-1, Math.floor((sx+maxDist)/tileSize)+1);
+    let cMax = Math.min(active.cols-1, Math.floor((sx+maxDist)/tileSize)+1);
     let obstacles: any[] = [];
     for (let r=rMin; r<=rMax; r++) {
-        if (!state.map[r]) continue;
+        if (!active.map[r]) continue;
         for (let c=cMin; c<=cMax; c++) {
-            let cell = state.map[r][c];
+            let cell = active.map[r][c];
             if (!cell) continue;
             if (typeof cell === 'object') {
                 let dx=cell.x-sx, dy=cell.y-sy;
@@ -186,14 +204,15 @@ export function getLightPolygon(sx: number, sy: number, angle: number, maxDist: 
 export function isLineOfSight(x1: number, y1: number, x2: number, y2: number, maxDist: number): boolean {
     let dist = Math.hypot(x2-x1, y2-y1);
     if(dist > maxDist) return false;
-    const { tileSize } = CONFIG;
+    const active = getActiveMapContext();
+    const tileSize = active.tileSize;
     let dx=x2-x1, dy=y2-y1;
     let steps = Math.ceil(dist / (tileSize*0.35));
     for(let i=0; i<=steps; i++) {
         let t=i/steps, cx=x1+dx*t, cy=y1+dy*t;
         let r=Math.floor(cy/tileSize), c=Math.floor(cx/tileSize);
-        if(state.map[r] && state.map[r][c]) {
-            let cell = state.map[r][c];
+        if(active.map[r] && active.map[r][c]) {
+            let cell = active.map[r][c];
             if(cell===2) return false;
             if(typeof cell==='object' && Math.hypot(cx-cell.x,cy-cell.y)<cell.r) return false;
         }
