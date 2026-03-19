@@ -158,6 +158,7 @@ export const state = {
         // NPC初始位置（底部深处）
         npcInitX: number;
         npcInitY: number;
+        playerPath: {x: number, y: number}[]; // 记录玩家移动轨迹
     },
     rope: {
         ropes: [],

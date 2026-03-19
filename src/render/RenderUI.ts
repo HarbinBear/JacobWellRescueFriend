@@ -2077,7 +2077,7 @@ function drawMazeResult(maze: any, cw: number, ch: number, time: number) {
     ctx.textAlign = 'center';
 
     // 标题
-    const titleY = ch * 0.22;
+    const titleY = ch * 0.12;
     if (isSuccess) {
         ctx.fillStyle = '#0f8';
         ctx.font = 'bold 32px Arial';
@@ -2096,8 +2096,67 @@ function drawMazeResult(maze: any, cw: number, ch: number, time: number) {
     ctx.lineTo(cw * 0.8, titleY + 20);
     ctx.stroke();
 
+    // 绘制全览地图和轨迹
+    const mapSize = Math.min(cw * 0.8, ch * 0.4);
+    const mapX = (cw - mapSize) / 2;
+    const mapY = titleY + 40;
+    
+    const cols = maze.mazeCols;
+    const rows = maze.mazeRows;
+    const cellW = mapSize / cols;
+    const cellH = mapSize / rows;
+
+    ctx.globalAlpha = showAlpha * 0.9;
+    ctx.fillStyle = 'rgba(0,0,0,0.8)';
+    ctx.fillRect(mapX, mapY, mapSize, mapSize);
+    ctx.strokeStyle = 'rgba(100,150,200,0.5)';
+    ctx.strokeRect(mapX, mapY, mapSize, mapSize);
+
+    // 绘制地图结构
+    for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+            if (maze.mazeMap[r][c] === 0) {
+                ctx.fillStyle = 'rgba(50,80,100,0.6)';
+                ctx.fillRect(mapX + c * cellW, mapY + r * cellH, Math.max(1, cellW), Math.max(1, cellH));
+            }
+        }
+    }
+
+    // 绘制轨迹动画
+    if (maze.playerPath && maze.playerPath.length > 0) {
+        const pathLen = maze.playerPath.length;
+        // 动画进度：前 2 秒播放轨迹，之后定格
+        const animDuration = 120; // 2秒 @ 60fps
+        const animProgress = Math.min(1, Math.max(0, (maze.resultTimer - 30) / animDuration));
+        const drawCount = Math.floor(pathLen * animProgress);
+
+        ctx.strokeStyle = 'rgba(255,200,50,0.8)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        
+        for (let i = 0; i < drawCount; i++) {
+            const pt = maze.playerPath[i];
+            const px = mapX + (pt.x / maze.mazeTileSize) * cellW;
+            const py = mapY + (pt.y / maze.mazeTileSize) * cellH;
+            if (i === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+
+        // 绘制当前位置点
+        if (drawCount > 0) {
+            const lastPt = maze.playerPath[drawCount - 1];
+            const px = mapX + (lastPt.x / maze.mazeTileSize) * cellW;
+            const py = mapY + (lastPt.y / maze.mazeTileSize) * cellH;
+            ctx.fillStyle = '#fff';
+            ctx.beginPath();
+            ctx.arc(px, py, 3, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
+
     // 统计信息
-    const statsY = ch * 0.38;
+    const statsY = mapY + mapSize + 30;
     ctx.font = '16px Arial';
     ctx.fillStyle = 'rgba(180,220,255,0.9)';
 
@@ -2130,7 +2189,7 @@ function drawMazeResult(maze: any, cw: number, ch: number, time: number) {
         const btnAlpha = Math.min(1, (maze.resultTimer - 60) / 20);
         ctx.globalAlpha = showAlpha * btnAlpha;
 
-        const btnY = ch * 0.82;
+        const btnY = ch * 0.88;
         const btnH = 52;
 
         // 重玩本关按钮（左）
@@ -2165,11 +2224,29 @@ function drawMazeResult(maze: any, cw: number, ch: number, time: number) {
         ctx.font = 'bold 15px Arial';
         ctx.fillText('▶ 下一局', nextBtnX + nextBtnW / 2, btnY + 5);
 
+        // 重播轨迹按钮 (中上)
+        const replayAnimBtnX = cw * 0.34;
+        const replayAnimBtnW = cw * 0.32;
+        const replayAnimBtnY = statsY + 130;
+        const replayAnimBtnH = 36;
+        ctx.fillStyle = 'rgba(80,60,0,0.8)';
+        ctx.beginPath();
+        rrect(ctx, replayAnimBtnX, replayAnimBtnY - replayAnimBtnH / 2, replayAnimBtnW, replayAnimBtnH, 18);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(200,150,0,0.7)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        rrect(ctx, replayAnimBtnX, replayAnimBtnY - replayAnimBtnH / 2, replayAnimBtnW, replayAnimBtnH, 18);
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(255,200,100,0.95)';
+        ctx.font = 'bold 14px Arial';
+        ctx.fillText('⏪ 重播轨迹', replayAnimBtnX + replayAnimBtnW / 2, replayAnimBtnY + 5);
+
         // 提示文字
         const tapAlpha = 0.5 + Math.sin(time * 2.5) * 0.5;
         ctx.globalAlpha = showAlpha * btnAlpha * tapAlpha;
         ctx.fillStyle = 'rgba(150,180,200,0.8)';
         ctx.font = '13px Arial';
-        ctx.fillText('点击其他区域返回主菜单', cw / 2, ch * 0.93);
+        ctx.fillText('点击其他区域返回主菜单', cw / 2, ch * 0.96);
     }
 }

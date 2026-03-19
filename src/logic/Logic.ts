@@ -1382,6 +1382,7 @@ export function resetMazeLogic() {
         exitY: mazeData.exitY,
         npcInitX: mazeData.npcInitX,
         npcInitY: mazeData.npcInitY,
+        playerPath: [{x: mazeData.spawnX, y: mazeData.spawnY}],
     };
 
     // 切换到迷宫模式
@@ -1436,6 +1437,7 @@ export function replayMazeLogic() {
     maze.npcRescueHolding = false;
     maze.npcRescueHoldStart = 0;
     maze.npcRescueTouchId = null;
+    maze.playerPath = [{x: player.x, y: player.y}];
     // 保留 minimapExpanded 状态
 
     state.screen = 'mazeRescue';
@@ -1502,6 +1504,16 @@ export function updateMaze() {
     // 动画时间
     if (!player.animTime) player.animTime = 0;
     player.animTime += 0.05 + Math.hypot(player.vx, player.vy) * 0.05;
+
+    // 记录玩家轨迹 (每隔一段距离记录一次，避免数据过大)
+    if (maze.playerPath.length === 0) {
+        maze.playerPath.push({x: player.x, y: player.y});
+    } else {
+        const lastPt = maze.playerPath[maze.playerPath.length - 1];
+        if (Math.hypot(player.x - lastPt.x, player.y - lastPt.y) > 20) {
+            maze.playerPath.push({x: player.x, y: player.y});
+        }
+    }
 
     // --- 绳索系统 ---
     updateRopeSystem();

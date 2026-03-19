@@ -408,7 +408,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?) {
             const ch = CONFIG.screenHeight;
             // 重玩本局按鈕（左下）
             const replayBtnX = cw * 0.15;
-            const replayBtnY = ch * 0.82;
+            const replayBtnY = ch * 0.88;
             const replayBtnW = cw * 0.32;
             const replayBtnH = 52;
             if (tx >= replayBtnX && tx <= replayBtnX + replayBtnW &&
@@ -418,12 +418,24 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?) {
             }
             // 下一局按鈕（右下）
             const nextBtnX = cw * 0.53;
-            const nextBtnY = ch * 0.82;
+            const nextBtnY = ch * 0.88;
             const nextBtnW = cw * 0.32;
             const nextBtnH = 52;
             if (tx >= nextBtnX && tx <= nextBtnX + nextBtnW &&
                 ty >= nextBtnY - nextBtnH / 2 && ty <= nextBtnY + nextBtnH / 2) {
                 if (onMaze) onMaze();
+                return;
+            }
+            // 重播轨迹按钮 (中上)
+            const statsY = ch * 0.38;
+            const replayAnimBtnX = cw * 0.34;
+            const replayAnimBtnY = statsY + 130;
+            const replayAnimBtnW = cw * 0.32;
+            const replayAnimBtnH = 36;
+            if (tx >= replayAnimBtnX && tx <= replayAnimBtnX + replayAnimBtnW &&
+                ty >= replayAnimBtnY - replayAnimBtnH / 2 && ty <= replayAnimBtnY + replayAnimBtnH / 2) {
+                // 重置结算计时器以重新播放动画
+                state.mazeRescue.resultTimer = 30; 
                 return;
             }
             // 点击其他区域返回主菜单

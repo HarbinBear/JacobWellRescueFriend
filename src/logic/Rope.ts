@@ -35,6 +35,24 @@ function getAnchorPoint(wall: any, fromX: number, fromY: number) {
     };
 }
 
+function clonePath(points: any[]) {
+    if(!points) return [];
+    return points.map(point => ({ x: point.x, y: point.y }));
+}
+
+function finalizePreviewPath(endPoint: any) {
+    if(!state.rope.current.start) {
+        return [{ x: endPoint.x, y: endPoint.y }];
+    }
+    if(!state.rope.current.path || state.rope.current.path.length < 2) {
+        return buildAvoidedPath(state.rope.current.start, endPoint, CONFIG.ropeAvoidPadding);
+    }
+    const path = clonePath(state.rope.current.path);
+    path[0] = { x: state.rope.current.start.x, y: state.rope.current.start.y };
+    path[path.length - 1] = { x: endPoint.x, y: endPoint.y };
+    return path;
+}
+
 // 开始铺绳：将锚点固定在锁定岩石上
 function startRope(anchorWall: any) {
     if(!anchorWall) return;
@@ -55,7 +73,7 @@ function startRope(anchorWall: any) {
 function endRope(anchorWall: any) {
     if(!state.rope.active || !state.rope.current.start || !anchorWall) return;
     const endPoint = getAnchorPoint(anchorWall, player.x, player.y);
-    const path = buildAvoidedPath(state.rope.current.start, endPoint, CONFIG.ropeAvoidPadding);
+    const path = finalizePreviewPath(endPoint);
     state.rope.ropes.push({
         start: state.rope.current.start,
         startWall: state.rope.current.startWall,

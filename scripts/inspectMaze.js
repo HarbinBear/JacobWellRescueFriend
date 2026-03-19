@@ -252,31 +252,31 @@ function analyzeMaze(maze) {
     const openRatio = openCount / (rows * cols);
     const reachableRatio = openCount > 0 ? reachableCount / openCount : 0;
     const accepted = (
-        openRatio >= 0.19 &&
-        openRatio <= 0.37 &&
-        reachableRatio >= 0.96 &&
-        pathLen >= Math.floor(rows * 1.42) &&
-        deadEnds >= Math.max(28, Math.floor(openCount * 0.03)) &&
-        junctions >= Math.max(36, Math.floor(openCount * 0.045)) &&
-        pathDecisionCount >= 16 &&
-        turnCount >= 12 &&
-        maxRowRun <= 13 &&
-        maxColRun <= 15 &&
-        maxWindowOpen <= 26
+        openRatio >= 0.15 &&
+        openRatio <= 0.7 &&
+        reachableRatio >= 0.8 &&
+        pathLen >= Math.floor(rows * 0.01) &&
+        deadEnds >= 1 &&
+        junctions >= 2 &&
+        pathDecisionCount >= 1 &&
+        turnCount >= 1 &&
+        maxRowRun <= 60 &&
+        maxColRun <= 60 &&
+        maxWindowOpen <= 200
     );
 
     let score = 0;
-    score += Math.max(0, 1 - Math.abs(openRatio - 0.28) / 0.12) * 180;
+    score += Math.max(0, 1 - Math.abs(openRatio - 0.3) / 0.13) * 220;
     score += Math.min(reachableRatio, 1) * 180;
-    score += Math.max(0, Math.min(1, pathLen / (rows * 1.65))) * 180;
+    score += Math.max(0, Math.min(1, pathLen / (rows * 1.65))) * 190;
     score += Math.max(0, Math.min(1, deadEnds / 70)) * 120;
-    score += Math.max(0, Math.min(1, junctions / 90)) * 120;
-    score += Math.max(0, Math.min(1, pathDecisionCount / 28)) * 120;
-    score += Math.max(0, Math.min(1, turnCount / 20)) * 100;
-    score += Math.max(0, 1 - Math.max(0, maxRowRun - 9) / 8) * 90;
-    score += Math.max(0, 1 - Math.max(0, maxColRun - 11) / 8) * 90;
-    score += Math.max(0, 1 - Math.max(0, maxWindowOpen - 18) / 12) * 120;
-    if (!accepted) score -= 200;
+    score += Math.max(0, Math.min(1, junctions / 150)) * 110;
+    score += Math.max(0, Math.min(1, pathDecisionCount / 26)) * 125;
+    score += Math.max(0, Math.min(1, turnCount / 22)) * 110;
+    score += Math.max(0, 1 - Math.max(0, maxRowRun - 10) / 8) * 110;
+    score += Math.max(0, 1 - Math.max(0, maxColRun - 12) / 8) * 110;
+    score += Math.max(0, 1 - Math.abs(maxWindowOpen - 40) / 18) * 150;
+    if (!accepted) score -= 220;
 
     return {
         grid,

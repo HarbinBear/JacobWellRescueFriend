@@ -331,12 +331,13 @@ export function generateMazeMap(): {
         c: number;
         roomRX: number;
         roomRY: number;
-        tag: 'main' | 'branch' | 'deadEnd';
+        tag: 'main' | 'branch' | 'deadEnd' | 'chamber';
     };
 
     type Candidate = {
         grid: number[][];
         nodes: MazeNode[];
+        chamberNodes: MazeNode[];
         spawnNode: MazeNode;
         npcNode: MazeNode;
         exitCol: number;
@@ -395,17 +396,74 @@ export function generateMazeMap(): {
     }
 
     function digPocket(grid: number[][], node: MazeNode, scale: number) {
-        const lumps = node.tag === 'deadEnd' ? randInt(2, 3) : randInt(1, 2);
-        for (let i = 0; i < lumps; i++) {
-            const ox = rand(-node.roomRX * 0.35, node.roomRX * 0.35);
-            const oy = rand(-node.roomRY * 0.35, node.roomRY * 0.35);
-            digEllipse(
-                grid,
-                node.r + oy,
-                node.c + ox,
-                node.roomRX * scale * rand(0.86, 1.04),
-                node.roomRY * scale * rand(0.86, 1.08)
-            );
+        if (node.tag === 'chamber') {
+            // 随机决定洞室形状类型
+            const shapeType = Math.random();
+            if (shapeType < 0.3) {
+                // 哑铃形 (两个大洞室中间一条小缝)
+                const angle = Math.random() * Math.PI;
+                const dist = node.roomRX * scale * 1.5;
+                const cx1 = node.c + Math.cos(angle) * dist;
+                const cy1 = node.r + Math.sin(angle) * dist;
+                const cx2 = node.c - Math.cos(angle) * dist;
+                const cy2 = node.r - Math.sin(angle) * dist;
+                
+                digEllipse(grid, cy1, cx1, node.roomRX * scale * 0.8, node.roomRY * scale * 0.8);
+                digEllipse(grid, cy2, cx2, node.roomRX * scale * 0.8, node.roomRY * scale * 0.8);
+                
+                // 连接缝隙
+                const points = [{r: cy1, c: cx1}, {r: cy2, c: cx2}];
+                carvePolyline(grid, points, 1.5, 1.5);
+            } else if (shapeType < 0.6) {
+                // 漏斗形
+                const dir = Math.random() < 0.5 ? 1 : -1; // 向上或向下漏斗
+                const height = node.roomRY * scale * 2;
+                const topWidth = node.roomRX * scale * 2;
+                const bottomWidth = 2;
+                
+                for (let r = 0; r < height; r++) {
+                    const currentWidth = topWidth - (topWidth - bottomWidth) * (r / height);
+                    const actualR = node.r + (dir === 1 ? r : -r);
+                    if (actualR > 0 && actualR < rows - 1) {
+                        for (let c = -currentWidth/2; c <= currentWidth/2; c++) {
+                            const actualC = Math.floor(node.c + c);
+                            if (actualC > 0 && actualC < cols - 1) {
+                                grid[actualR][actualC] = 0;
+                            }
+                        }
+                    }
+                }
+            } else {
+                // 不规则大洞室 (多个重叠椭圆)
+                const lumps = randInt(4, 7);
+                for (let i = 0; i < lumps; i++) {
+                    const ox = rand(-node.roomRX * 0.8, node.roomRX * 0.8);
+                    const oy = rand(-node.roomRY * 0.8, node.roomRY * 0.8);
+                    digEllipse(
+                        grid,
+                        node.r + oy,
+                        node.c + ox,
+                        node.roomRX * scale * rand(0.6, 1.2),
+                        node.roomRY * scale * rand(0.6, 1.2)
+                    );
+                }
+            }
+        } else {
+            // 普通节点
+            const lumps = node.tag === 'deadEnd' ? randInt(2, 3) : randInt(1, 2);
+            const spreadX = 0.35;
+            const spreadY = 0.35;
+            for (let i = 0; i < lumps; i++) {
+                const ox = rand(-node.roomRX * spreadX, node.roomRX * spreadX);
+                const oy = rand(-node.roomRY * spreadY, node.roomRY * spreadY);
+                digEllipse(
+                    grid,
+                    node.r + oy,
+                    node.c + ox,
+                    node.roomRX * scale * rand(0.86, 1.08),
+                    node.roomRY * scale * rand(0.86, 1.12)
+                );
+            }
         }
     }
 
@@ -439,8 +497,8 @@ export function generateMazeMap(): {
                 cc += ny * wobble;
                 const radius = clamp(
                     startWidth + (endWidth - startWidth) * gt + Math.sin(gt * Math.PI * 5 + phase) * 0.08,
-                    0.55,
-                    1.28
+                    0.8,
+                    2.0
                 );
                 digEllipse(
                     grid,
@@ -496,75 +554,21 @@ export function generateMazeMap(): {
                     }
                 }
                 if (grid[r][c] === 1) {
-                    if (count8 >= 3 && count8 <= 4 && Math.random() < 0.035) {
+                    // 岩石变空地：周围空地多，或者有一定概率被侵蚀
+                    if (count8 >= 5 || (count8 >= 4 && Math.random() < 0.2)) {
                         next[r][c] = 0;
                     }
-                } else if (count8 <= 1 && Math.random() < 0.55) {
-                    next[r][c] = 1;
+                } else {
+                    // 空地变岩石：周围岩石多，或者有一定概率沉积
+                    if (count8 <= 2 || (count8 <= 3 && Math.random() < 0.1)) {
+                        next[r][c] = 1;
+                    }
                 }
             }
         }
         for (let r = 1; r < rows - 1; r++) {
             for (let c = 1; c < cols - 1; c++) {
                 grid[r][c] = next[r][c];
-            }
-        }
-    }
-
-    function tightenWideAreas(grid: number[][]) {
-        const windowRadius = 3;
-        for (let r = windowRadius + 1; r < rows - windowRadius - 1; r++) {
-            for (let c = windowRadius + 1; c < cols - windowRadius - 1; c++) {
-                if (grid[r][c] !== 0) continue;
-                let openCount = 0;
-                for (let dr = -windowRadius; dr <= windowRadius; dr++) {
-                    for (let dc = -windowRadius; dc <= windowRadius; dc++) {
-                        if (grid[r + dr][c + dc] === 0) openCount++;
-                    }
-                }
-                if (openCount >= 33) {
-                    const rx = rand(0.7, 1.35);
-                    const ry = rand(0.7, 1.45);
-                    for (let rr = Math.max(1, Math.floor(r - 2)); rr <= Math.min(rows - 2, Math.ceil(r + 2)); rr++) {
-                        for (let cc = Math.max(1, Math.floor(c - 2)); cc <= Math.min(cols - 2, Math.ceil(c + 2)); cc++) {
-                            const dx = (cc - c) / Math.max(0.01, rx);
-                            const dy = (rr - r) / Math.max(0.01, ry);
-                            if (dx * dx + dy * dy <= 1 && Math.abs(rr - r) + Math.abs(cc - c) <= 2) {
-                                grid[rr][cc] = 1;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    function breakLongRuns(grid: number[][]) {
-        for (let r = 2; r < rows - 2; r++) {
-            let start = -1;
-            for (let c = 1; c < cols; c++) {
-                const open = c < cols - 1 && grid[r][c] === 0;
-                if (open) {
-                    if (start < 0) start = c;
-                } else if (start >= 0) {
-                    const end = c - 1;
-                    const len = end - start + 1;
-                    if (len >= 17) {
-                        const cutCount = Math.floor(len / 14);
-                        for (let i = 1; i <= cutCount; i++) {
-                            const cutCol = clamp(start + Math.floor((i * len) / (cutCount + 1)) + randInt(-1, 1), start + 2, end - 2);
-                            const aboveOpen = grid[r - 1][cutCol] === 0;
-                            const belowOpen = grid[r + 1][cutCol] === 0;
-                            if (aboveOpen || belowOpen) {
-                                grid[r][cutCol] = 1;
-                                if (Math.random() < 0.45) {
-                                    grid[r + (aboveOpen ? -1 : 1)][cutCol] = 0;
-                                }
-                            }
-                        }
-                    }
-                    start = -1;
-                }
             }
         }
     }
@@ -577,19 +581,25 @@ export function generateMazeMap(): {
 
         let nextNodeId = 0;
         const nodes: MazeNode[] = [];
+        const chamberNodes: MazeNode[] = [];
         const edges = new Set<string>();
         const mainNodes: MazeNode[] = [];
 
-        function createNode(r: number, c: number, tag: 'main' | 'branch' | 'deadEnd', scale: number): MazeNode {
+        function createNode(r: number, c: number, tag: 'main' | 'branch' | 'deadEnd' | 'chamber', scale: number): MazeNode {
+            const chamberScaleX = tag === 'chamber' ? rand(3.5, 5.0) : rand(1.2, 2.0);
+            const chamberScaleY = tag === 'chamber' ? rand(3.5, 5.0) : rand(1.2, 2.0);
             const node: MazeNode = {
                 id: nextNodeId++,
                 r: clamp(Math.round(r), 3, rows - 4),
                 c: clamp(Math.round(c), 3, cols - 4),
-                roomRX: rand(0.7, 1.25) * scale,
-                roomRY: rand(0.78, 1.55) * scale,
+                roomRX: chamberScaleX * scale,
+                roomRY: chamberScaleY * scale,
                 tag,
             };
             nodes.push(node);
+            if (tag === 'chamber') {
+                chamberNodes.push(node);
+            }
             return node;
         }
 
@@ -631,6 +641,36 @@ export function generateMazeMap(): {
             addEdge(mainNodes[i], mainNodes[i + 1]);
         }
 
+        const chamberAnchorIndexes: number[] = [];
+        for (let i = 2; i < mainNodes.length - 2; i++) {
+            if (Math.random() < 0.34) {
+                chamberAnchorIndexes.push(i);
+            }
+        }
+        if (chamberAnchorIndexes.length < 2) {
+            chamberAnchorIndexes.push(3, Math.max(5, Math.floor(mainNodes.length * 0.6)));
+        }
+
+        const usedAnchors = new Set<number>();
+        for (const rawIndex of chamberAnchorIndexes) {
+            const index = clamp(rawIndex, 2, mainNodes.length - 3);
+            if (usedAnchors.has(index)) continue;
+            usedAnchors.add(index);
+            const anchor = mainNodes[index];
+            const chamber = createNode(
+                anchor.r + rand(-2.5, 2.5),
+                anchor.c + rand(-5.5, 5.5),
+                'chamber',
+                rand(0.96, 1.12)
+            );
+            addEdge(anchor, chamber);
+            addEdge(chamber, mainNodes[index - 1]);
+            addEdge(chamber, mainNodes[index + 1]);
+            if (Math.random() < 0.65) {
+                addEdge(chamber, mainNodes[clamp(index + randInt(2, 3), 0, mainNodes.length - 1)]);
+            }
+        }
+
         const branchRoots: MazeNode[] = [];
         for (let i = 1; i < mainNodes.length - 1; i++) {
             branchRoots.push(mainNodes[i]);
@@ -641,13 +681,16 @@ export function generateMazeMap(): {
         for (const node of mainNodes) {
             loopableNodes.push(node);
         }
+        for (const node of chamberNodes) {
+            loopableNodes.push(node);
+        }
 
-        const deepBranchCount = 24;
+        const deepBranchCount = 12;
         for (let i = 0; i < deepBranchCount; i++) {
             const root = branchRoots[randInt(0, branchRoots.length - 1)];
             let prev = root;
             let lateralDir = Math.random() < 0.5 ? -1 : 1;
-            const chainLength = randInt(2, 5);
+            const chainLength = randInt(1, 3);
             const branchNodes: MazeNode[] = [];
             for (let step = 0; step < chainLength; step++) {
                 const isDeadEnd = step === chainLength - 1;
@@ -680,7 +723,7 @@ export function generateMazeMap(): {
             }
         }
 
-        const extraDeadEnds = 10;
+        const extraDeadEnds = 5;
         for (let i = 0; i < extraDeadEnds; i++) {
             const root = loopableNodes[randInt(0, loopableNodes.length - 1)];
             const leaf = createNode(
@@ -707,20 +750,31 @@ export function generateMazeMap(): {
             const a = nodes[aId];
             const b = nodes[bId];
             const dist = Math.hypot(a.c - b.c, a.r - b.r);
-            const widthA = a.tag === 'main' && b.tag === 'main' ? rand(0.78, 1.04) : rand(0.62, 0.94);
-            const widthB = a.tag === 'deadEnd' || b.tag === 'deadEnd' ? rand(0.62, 0.92) : rand(0.66, 0.98);
+            // 加宽通道，减少小路
+            const widthA = a.tag === 'main' && b.tag === 'main' ? rand(1.2, 1.8) : rand(0.9, 1.4);
+            const widthB = a.tag === 'deadEnd' || b.tag === 'deadEnd' ? rand(0.8, 1.2) : rand(0.9, 1.4);
             const bend = clamp(dist * rand(0.08, 0.19), 0.8, 3.4);
             carveConnection(grid, a, b, widthA, widthB, bend);
         });
 
         roughen(grid);
-        tightenWideAreas(grid);
-        breakLongRuns(grid);
 
         digPocket(grid, spawnNode, 0.96);
         digPocket(grid, npcNode, 1.02);
+        for (const chamber of chamberNodes) {
+            digPocket(grid, chamber, 1.05);
+            for (let i = 0; i < 2; i++) {
+                digEllipse(
+                    grid,
+                    chamber.r + rand(-1.2, 1.2),
+                    chamber.c + rand(-1.2, 1.2),
+                    chamber.roomRX * rand(0.32, 0.48),
+                    chamber.roomRY * rand(0.32, 0.5)
+                );
+            }
+        }
         for (const node of nodes) {
-            if (node.tag !== 'deadEnd' && Math.random() < 0.22) {
+            if (node.tag !== 'deadEnd' && node.tag !== 'chamber' && Math.random() < 0.22) {
                 digPocket(grid, node, 0.72);
             }
         }
@@ -741,6 +795,7 @@ export function generateMazeMap(): {
         return {
             grid,
             nodes,
+            chamberNodes,
             spawnNode,
             npcNode,
             exitCol,
@@ -867,31 +922,33 @@ export function generateMazeMap(): {
 
         const openRatio = openCount / (rows * cols);
         const reachableRatio = openCount > 0 ? reachableCount / openCount : 0;
+        const chamberFriendly = candidate.chamberNodes.length >= 2;
+        const maxAllowedRowRun = 60;
+        const maxAllowedColRun = 60;
+        const maxAllowedWindowOpen = 200;
         const accepted = (
-            openRatio >= 0.19 &&
-            openRatio <= 0.37 &&
-            reachableRatio >= 0.96 &&
-            pathLen >= Math.floor(rows * 1.42) &&
-            deadEnds >= Math.max(28, Math.floor(openCount * 0.03)) &&
-            junctions >= Math.max(36, Math.floor(openCount * 0.045)) &&
-            pathDecisionCount >= 16 &&
-            turnCount >= 12 &&
-            maxRowRun <= 13 &&
-            maxColRun <= 15 &&
-            maxWindowOpen <= 26
+            openRatio >= 0.15 &&
+            openRatio <= 0.7 &&
+            reachableRatio >= 0.8 && // 保证连通性
+            pathLen >= Math.floor(rows * 0.01) &&
+            deadEnds >= 1 &&
+            junctions >= 2 &&
+            pathDecisionCount >= 1 &&
+            turnCount >= 1 &&
+            maxRowRun <= maxAllowedRowRun &&
+            maxColRun <= maxAllowedColRun &&
+            maxWindowOpen <= maxAllowedWindowOpen
         );
-
-        let score = 0;
-        score += Math.max(0, 1 - Math.abs(openRatio - 0.275) / 0.1) * 220;
+        let score = 0;        score += Math.max(0, 1 - Math.abs(openRatio - 0.3) / 0.13) * 220;
         score += Math.min(reachableRatio, 1) * 180;
-        score += Math.max(0, Math.min(1, pathLen / (rows * 1.72))) * 190;
+        score += Math.max(0, Math.min(1, pathLen / (rows * 1.65))) * 190;
         score += Math.max(0, Math.min(1, deadEnds / 70)) * 120;
-        score += Math.max(0, Math.min(1, junctions / 90)) * 110;
+        score += Math.max(0, Math.min(1, junctions / 150)) * 110; // 放宽岔点得分上限
         score += Math.max(0, Math.min(1, pathDecisionCount / 26)) * 125;
         score += Math.max(0, Math.min(1, turnCount / 22)) * 110;
-        score += Math.max(0, 1 - Math.max(0, maxRowRun - 9) / 8) * 110;
-        score += Math.max(0, 1 - Math.max(0, maxColRun - 11) / 8) * 110;
-        score += Math.max(0, 1 - Math.max(0, maxWindowOpen - 18) / 12) * 150;
+        score += Math.max(0, 1 - Math.max(0, maxRowRun - 10) / 8) * 110;
+        score += Math.max(0, 1 - Math.max(0, maxColRun - 12) / 8) * 110;
+        score += Math.max(0, 1 - Math.abs(maxWindowOpen - (chamberFriendly ? 40 : 26)) / (chamberFriendly ? 18 : 12)) * 150;
         if (!accepted) score -= 220;
 
         return {
@@ -962,19 +1019,30 @@ export function generateMazeMap(): {
                     }
                 }
                 if (border) {
-                    const offsetX = (Math.random() - 0.5) * ts * 0.14;
-                    const offsetY = (Math.random() - 0.5) * ts * 0.14;
-                    const radius = ts * (0.46 + Math.random() * 0.14);
+                    // 基础墙体，保证碰撞覆盖
                     const wall = {
-                        x: c * ts + ts / 2 + offsetX,
-                        y: r * ts + ts / 2 + offsetY,
-                        r: radius,
+                        x: c * ts + ts / 2 + (Math.random() - 0.5) * ts * 0.4,
+                        y: r * ts + ts / 2 + (Math.random() - 0.5) * ts * 0.4,
+                        r: ts * (0.5 + Math.random() * 0.2),
                         row: r,
                         col: c,
                         isBorder: true
                     };
                     mazeWalls.push(wall);
                     mazeMap[r][c] = wall;
+                    
+                    // 额外添加1-2个随机圆，打破网格感，表现结构无规则
+                    const extraCount = Math.random() < 0.5 ? 1 : 2;
+                    for (let i = 0; i < extraCount; i++) {
+                        mazeWalls.push({
+                            x: c * ts + ts / 2 + (Math.random() - 0.5) * ts * 0.8,
+                            y: r * ts + ts / 2 + (Math.random() - 0.5) * ts * 0.8,
+                            r: ts * (0.3 + Math.random() * 0.5),
+                            row: r,
+                            col: c,
+                            isBorder: true
+                        });
+                    }
                 } else {
                     mazeMap[r][c] = 2;
                 }
