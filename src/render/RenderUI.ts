@@ -1,6 +1,6 @@
 import { CONFIG } from '../core/config';
 import { state, player, target, touches } from '../core/state';
-import { ctx, canvas } from './Canvas';
+import { ctx, canvas, logicW, logicH } from './Canvas';
 import { drawDiver, drawLungs, drawDiverSilhouette } from './RenderDiver';
 import { createFishEnemy } from '../logic/FishEnemy';
 import { triggerPlayerAttack } from '../logic/FishEnemy';
@@ -60,7 +60,7 @@ export function drawUI(){
         ctx.fillStyle = '#0f0'; ctx.fillRect(50, 60, Math.max(0, player.o2), 10);
     } else {
         ctx.fillStyle = '#f00'; ctx.font = 'bold 12px Arial'; ctx.fillText('氧气瓶已损毁', 20, 70);
-        drawLungs(ctx, canvas.width/2, canvas.height/2 + 100, player.o2);
+        drawLungs(ctx, logicW/2, logicH/2 + 100, player.o2);
     }
 
     // 小地图 & 调试信息（仅调试模式）
@@ -96,15 +96,15 @@ export function drawUI(){
         let py = Math.floor(player.y);
         ctx.save();
         ctx.fillStyle = 'rgba(0,0,0,0.6)';
-        ctx.fillRect(canvas.width - 210, 80, 200, 52);
+        ctx.fillRect(logicW - 210, 80, 200, 52);
         ctx.strokeStyle = '#0ff';
         ctx.lineWidth = 1;
-        ctx.strokeRect(canvas.width - 210, 80, 200, 52);
+        ctx.strokeRect(logicW - 210, 80, 200, 52);
         ctx.fillStyle = '#0ff';
         ctx.font = '12px monospace';
         ctx.textAlign = 'left';
-        ctx.fillText(`tile: col=${col}, row=${row}`, canvas.width - 200, 90);
-        ctx.fillText(`pixel: x=${px}, y=${py}`, canvas.width - 200, 110);
+        ctx.fillText(`tile: col=${col}, row=${row}`, logicW - 200, 90);
+        ctx.fillText(`pixel: x=${px}, y=${py}`, logicW - 200, 110);
         ctx.restore();
 
         // 凶猛鱼调试按钮（右上角，独立于坐标信息框）
@@ -116,7 +116,7 @@ export function drawUI(){
         ctx.fillStyle = state.alertColor;
         ctx.font = 'bold 20px Arial';
         ctx.textAlign = 'center';
-        let maxWidth = canvas.width * 0.8;
+        let maxWidth = logicW * 0.8;
         let words = state.alertMsg.split('');
         let line = '', lines: string[] = [];
         for(let n=0; n<words.length; n++) {
@@ -126,19 +126,19 @@ export function drawUI(){
             } else { line = testLine; }
         }
         lines.push(line);
-        let startY = canvas.height/3;
-        for(let i=0; i<lines.length; i++) ctx.fillText(lines[i], canvas.width/2, startY + i*30);
+        let startY = logicH/3;
+        for(let i=0; i<lines.length; i++) ctx.fillText(lines[i], logicW/2, startY + i*30);
     }
 
     if(state.screen === 'ending') {
         drawEnding();
     } else if(state.screen === 'lose') {
-        ctx.fillStyle = 'rgba(0,0,0,0.8)'; ctx.fillRect(0,0,canvas.width,canvas.height);
+        ctx.fillStyle = 'rgba(0,0,0,0.8)'; ctx.fillRect(0,0,logicW,logicH);
         ctx.fillStyle = '#f00'; ctx.font = '30px Arial'; ctx.textAlign = 'center';
-        ctx.fillText('任务失败', canvas.width/2, canvas.height/2 - 20);
+        ctx.fillText('任务失败', logicW/2, logicH/2 - 20);
         ctx.fillStyle = '#fff'; ctx.font = '20px Arial';
-        ctx.fillText(state.alertMsg, canvas.width/2, canvas.height/2 + 20);
-        ctx.fillText('点击屏幕返回主菜单', canvas.width/2, canvas.height/2 + 60);
+        ctx.fillText(state.alertMsg, logicW/2, logicH/2 + 20);
+        ctx.fillText('点击屏幕返回主菜单', logicW/2, logicH/2 + 60);
     } else if(state.screen === 'menu') {
         drawMenu();
     } else if(state.screen === 'fishArena') {
@@ -519,18 +519,18 @@ export function drawMenu() {
 
     // ---- 主菜单 ----
     // 背景：深海渐变
-    let grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    let grad = ctx.createLinearGradient(0, 0, 0, logicH);
     grad.addColorStop(0, '#001a33');
     grad.addColorStop(0.5, '#001122');
     grad.addColorStop(1, '#000811');
     ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, logicW, logicH);
 
     // 动态气泡背景
     ctx.save();
     for(let i = 0; i < 18; i++) {
-        let bx = canvas.width * ((i * 0.137 + time * 0.02 * (1 + i % 3 * 0.3)) % 1);
-        let by = canvas.height - (time * (15 + i % 5 * 5) + i * 80) % (canvas.height + 60);
+        let bx = logicW * ((i * 0.137 + time * 0.02 * (1 + i % 3 * 0.3)) % 1);
+        let by = logicH - (time * (15 + i % 5 * 5) + i * 80) % (logicH + 60);
         let br = 3 + (i % 4) * 3;
         let ba = 0.08 + (i % 3) * 0.05;
         ctx.fillStyle = `rgba(100,220,255,${ba})`;
@@ -549,8 +549,8 @@ export function drawMenu() {
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
     for(let i = 0; i < 4; i++) {
-        let rx = canvas.width / 2 + Math.sin(time * 0.4 + i * 1.6) * 120;
-        let rg = ctx.createLinearGradient(rx, 0, rx, canvas.height);
+        let rx = logicW / 2 + Math.sin(time * 0.4 + i * 1.6) * 120;
+        let rg = ctx.createLinearGradient(rx, 0, rx, logicH);
         rg.addColorStop(0, 'rgba(0,200,255,0.12)');
         rg.addColorStop(0.6, 'rgba(0,200,255,0.04)');
         rg.addColorStop(1, 'rgba(0,200,255,0)');
@@ -558,8 +558,8 @@ export function drawMenu() {
         ctx.beginPath();
         ctx.moveTo(rx - 30, 0);
         ctx.lineTo(rx + 30, 0);
-        ctx.lineTo(rx + 80, canvas.height);
-        ctx.lineTo(rx - 80, canvas.height);
+        ctx.lineTo(rx + 80, logicH);
+        ctx.lineTo(rx - 80, logicH);
         ctx.fill();
     }
     ctx.restore();
@@ -568,7 +568,7 @@ export function drawMenu() {
     ctx.strokeStyle = 'rgba(100,220,255,0.25)';
     ctx.lineWidth = 2;
     ctx.beginPath();
-    for(let wx2 = 0; wx2 < canvas.width; wx2 += 10) {
+    for(let wx2 = 0; wx2 < logicW; wx2 += 10) {
         ctx.lineTo(wx2, 18 + Math.sin(wx2 / 60 + time * 1.5) * 5);
     }
     ctx.stroke();
@@ -580,42 +580,42 @@ export function drawMenu() {
     // 标题光晕
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
-    let titleGlow = ctx.createRadialGradient(canvas.width / 2, canvas.height * 0.28, 0, canvas.width / 2, canvas.height * 0.28, 120);
+    let titleGlow = ctx.createRadialGradient(logicW / 2, logicH * 0.28, 0, logicW / 2, logicH * 0.28, 120);
     titleGlow.addColorStop(0, 'rgba(0,200,255,0.2)');
     titleGlow.addColorStop(1, 'rgba(0,200,255,0)');
     ctx.fillStyle = titleGlow;
-    ctx.fillRect(canvas.width / 2 - 120, canvas.height * 0.18, 240, 120);
+    ctx.fillRect(logicW / 2 - 120, logicH * 0.18, 240, 120);
     ctx.restore();
 
     ctx.fillStyle = 'rgba(0,200,255,0.15)';
     ctx.font = 'bold 40px Arial';
-    ctx.fillText("雅各布井", canvas.width / 2 + 2, canvas.height * 0.27 + 2);
+    ctx.fillText("雅各布井", logicW / 2 + 2, logicH * 0.27 + 2);
     ctx.fillStyle = '#e0f8ff';
     ctx.font = 'bold 40px Arial';
-    ctx.fillText("雅各布井", canvas.width / 2, canvas.height * 0.27);
+    ctx.fillText("雅各布井", logicW / 2, logicH * 0.27);
 
     ctx.fillStyle = 'rgba(0,180,220,0.15)';
     ctx.font = 'bold 28px Arial';
-    ctx.fillText("救援行动", canvas.width / 2 + 1, canvas.height * 0.37 + 1);
+    ctx.fillText("救援行动", logicW / 2 + 1, logicH * 0.37 + 1);
     ctx.fillStyle = '#a0d8ef';
     ctx.font = 'bold 28px Arial';
-    ctx.fillText("救援行动", canvas.width / 2, canvas.height * 0.37);
+    ctx.fillText("救援行动", logicW / 2, logicH * 0.37);
 
     // 分割线
     ctx.strokeStyle = 'rgba(0,200,255,0.3)';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(canvas.width / 2 - 80, canvas.height * 0.43);
-    ctx.lineTo(canvas.width / 2 + 80, canvas.height * 0.43);
+    ctx.moveTo(logicW / 2 - 80, logicH * 0.43);
+    ctx.lineTo(logicW / 2 + 80, logicH * 0.43);
     ctx.stroke();
 
     const isArenaMode = CONFIG.fishArenaMode;
 
     // 开始游戏按钮（arenaMode 时置灰）
-    let btnY = canvas.height * 0.50;
+    let btnY = logicH * 0.50;
     let btnPulse = isArenaMode ? 0.4 : (0.85 + Math.sin(time * 2.5) * 0.15);
     let btnW = 180, btnH = 50;
-    let btnX = canvas.width / 2 - btnW / 2;
+    let btnX = logicW / 2 - btnW / 2;
     let btnTop = btnY - btnH / 2;
 
     ctx.save();
@@ -641,12 +641,12 @@ export function drawMenu() {
 
     ctx.fillStyle = isArenaMode ? 'rgba(100,100,120,0.6)' : `rgba(0,240,255,${btnPulse})`;
     ctx.font = 'bold 22px Arial';
-    ctx.fillText(isArenaMode ? "🔒  开始游戏" : "▶  开始游戏", canvas.width / 2, btnY);
+    ctx.fillText(isArenaMode ? "🔒  开始游戏" : "▶  开始游戏", logicW / 2, btnY);
 
     // 食人鱼纯享版按钮（风格化，危险感）
-    let arenaBtnY = canvas.height * 0.62;
+    let arenaBtnY = logicH * 0.62;
     let arenaBtnW = 200, arenaBtnH = 50;
-    let arenaBtnX = canvas.width / 2 - arenaBtnW / 2;
+    let arenaBtnX = logicW / 2 - arenaBtnW / 2;
     let arenaBtnTop = arenaBtnY - arenaBtnH / 2;
     let arenaPulse = 0.9 + Math.sin(time * 3.5) * 0.1;
     let arenaGlow = Math.abs(Math.sin(time * 2.0));
@@ -654,11 +654,11 @@ export function drawMenu() {
     // 危险感光晕
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
-    let arenaHalo = ctx.createRadialGradient(canvas.width / 2, arenaBtnY, 0, canvas.width / 2, arenaBtnY, 120);
+    let arenaHalo = ctx.createRadialGradient(logicW / 2, arenaBtnY, 0, logicW / 2, arenaBtnY, 120);
     arenaHalo.addColorStop(0, `rgba(255,60,0,${arenaGlow * 0.15})`);
     arenaHalo.addColorStop(1, 'rgba(255,60,0,0)');
     ctx.fillStyle = arenaHalo;
-    ctx.fillRect(canvas.width / 2 - 120, arenaBtnY - 60, 240, 120);
+    ctx.fillRect(logicW / 2 - 120, arenaBtnY - 60, 240, 120);
     ctx.restore();
 
     ctx.save();
@@ -682,12 +682,12 @@ export function drawMenu() {
     // 按钮文字（带鱼牙图标感）
     ctx.fillStyle = `rgba(255,200,150,${arenaPulse})`;
     ctx.font = 'bold 18px Arial';
-    ctx.fillText("🦈  食人鱼纯享版", canvas.width / 2, arenaBtnY);
+    ctx.fillText("🦈  食人鱼纯享版", logicW / 2, arenaBtnY);
 
     // 迷宫引导绳按钮（探索感，绿色调）
-    let mazeBtnY = canvas.height * 0.74;
+    let mazeBtnY = logicH * 0.74;
     let mazeBtnW = 200, mazeBtnH = 50;
-    let mazeBtnX = canvas.width / 2 - mazeBtnW / 2;
+    let mazeBtnX = logicW / 2 - mazeBtnW / 2;
     let mazeBtnTop = mazeBtnY - mazeBtnH / 2;
     let mazePulse = 0.85 + Math.sin(time * 2.0 + 1.0) * 0.15;
 
@@ -710,12 +710,12 @@ export function drawMenu() {
 
     ctx.fillStyle = `rgba(100,255,180,${mazePulse})`;
     ctx.font = 'bold 18px Arial';
-    ctx.fillText("🧵  迷宫引导绳", canvas.width / 2, mazeBtnY);
+    ctx.fillText("🧵  迷宫引导绳", logicW / 2, mazeBtnY);
 
     // 章节选择按钮（arenaMode 时置灰）
-    let chBtnY = canvas.height * 0.86;
+    let chBtnY = logicH * 0.86;
     let chBtnW = 160, chBtnH = 44;
-    let chBtnX = canvas.width / 2 - chBtnW / 2;
+    let chBtnX = logicW / 2 - chBtnW / 2;
     let chBtnTop = chBtnY - chBtnH / 2;
 
     ctx.save();
@@ -736,27 +736,27 @@ export function drawMenu() {
 
     ctx.fillStyle = isArenaMode ? 'rgba(80,80,100,0.5)' : 'rgba(100,210,240,0.9)';
     ctx.font = '18px Arial';
-    ctx.fillText(isArenaMode ? "🔒  章节选择" : "📖  章节选择", canvas.width / 2, chBtnY);
+    ctx.fillText(isArenaMode ? "🔒  章节选择" : "📖  章节选择", logicW / 2, chBtnY);
 
     // 版本号
     ctx.fillStyle = 'rgba(80,120,140,0.8)';
     ctx.font = '11px Arial';
-    ctx.fillText("v1.2.0  By 熊子", canvas.width / 2, canvas.height - 22);
+    ctx.fillText("v1.2.0  By 熊子", logicW / 2, logicH - 22);
 }
 
 function drawChapterSelect(time) {
     // 背景：深海渐变 + 动态粒子
-    let grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    let grad = ctx.createLinearGradient(0, 0, 0, logicH);
     grad.addColorStop(0, '#001a33');
     grad.addColorStop(1, '#000811');
     ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, logicW, logicH);
 
     // 背景气泡
     ctx.save();
     for(let i = 0; i < 12; i++) {
-        let bx = canvas.width * ((i * 0.19 + time * 0.015 * (1 + i % 3 * 0.4)) % 1);
-        let by = canvas.height - (time * (12 + i % 4 * 6) + i * 90) % (canvas.height + 60);
+        let bx = logicW * ((i * 0.19 + time * 0.015 * (1 + i % 3 * 0.4)) % 1);
+        let by = logicH - (time * (12 + i % 4 * 6) + i * 90) % (logicH + 60);
         let br = 2 + (i % 3) * 2.5;
         ctx.fillStyle = `rgba(80,200,240,0.07)`;
         ctx.beginPath();
@@ -767,12 +767,12 @@ function drawChapterSelect(time) {
 
     // 顶部标题栏
     ctx.fillStyle = 'rgba(0,30,60,0.7)';
-    ctx.fillRect(0, 0, canvas.width, 52);
+    ctx.fillRect(0, 0, logicW, 52);
     ctx.strokeStyle = 'rgba(0,180,220,0.3)';
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(0, 52);
-    ctx.lineTo(canvas.width, 52);
+    ctx.lineTo(logicW, 52);
     ctx.stroke();
 
     // 返回按钮
@@ -786,15 +786,15 @@ function drawChapterSelect(time) {
     ctx.fillStyle = '#e0f8ff';
     ctx.font = 'bold 20px Arial';
     ctx.textAlign = 'center';
-    ctx.fillText("章节选择", canvas.width / 2, 26);
+    ctx.fillText("章节选择", logicW / 2, 26);
 
     // 章节卡片布局（四章，可滚动）
-    let cardW = canvas.width * 0.82;
-    let cardH = canvas.height * 0.22;
-    let cardX = (canvas.width - cardW) / 2;
-    let gap = canvas.height * 0.025;
+    let cardW = logicW * 0.82;
+    let cardH = logicH * 0.22;
+    let cardX = (logicW - cardW) / 2;
+    let gap = logicH * 0.025;
     let listTop = 58; // 可滚动区域顶部（标题栏下方）
-    let listBottom = canvas.height; // 可滚动区域底部
+    let listBottom = logicH; // 可滚动区域底部
     let scrollY = state.chapterScrollY || 0;
 
     // 计算总内容高度，用于限制滚动范围
@@ -813,7 +813,7 @@ function drawChapterSelect(time) {
     // 裁剪到可滚动区域，防止卡片绘制到标题栏上
     ctx.save();
     ctx.beginPath();
-    ctx.rect(0, listTop, canvas.width, listBottom - listTop);
+    ctx.rect(0, listTop, logicW, listBottom - listTop);
     ctx.clip();
 
     // ---- 卡片1：固执的熊子 ----
@@ -860,7 +860,7 @@ function drawChapterSelect(time) {
 
     // 右侧滚动条指示器
     if(maxScroll > 0) {
-        let trackX = canvas.width - 6;
+        let trackX = logicW - 6;
         let trackTop = listTop + 4;
         let trackH = listBottom - listTop - 8;
         let thumbH = Math.max(30, trackH * (trackH / (totalContentH)));
@@ -1024,7 +1024,7 @@ function endingGetAlpha(t, start, end) {
 }
 
 function drawEnding() {
-    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, logicW, logicH);
     let timer = state.endingTimer || 0;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
 
@@ -1044,37 +1044,37 @@ function drawEnding() {
     if(timer < 240) {
         ctx.fillStyle = `rgba(255,255,255,${endingGetAlpha(timer,0,240)})`;
         ctx.font = '20px Arial';
-        wrapText(ctx, "小潘把一个密闭的洞穴气室\n误当成了出口，\n最终在搅动的泥沙中彻底迷失方向，\n丧生在了黑暗之中。", canvas.width/2, canvas.height/2, 30);
+        wrapText(ctx, "小潘把一个密闭的洞穴气室\n误当成了出口，\n最终在搅动的泥沙中彻底迷失方向，\n丧生在了黑暗之中。", logicW/2, logicH/2, 30);
     } else if(timer < 480) {
         ctx.fillStyle = `rgba(255,255,255,${endingGetAlpha(timer,240,480)})`;
         ctx.font = '20px Arial';
-        wrapText(ctx, "为了不让更多的人\n丧生在恐怖的雅各布井，\n当地政府最终彻底封闭了雅各布井。", canvas.width/2, canvas.height/2, 30);
+        wrapText(ctx, "为了不让更多的人\n丧生在恐怖的雅各布井，\n当地政府最终彻底封闭了雅各布井。", logicW/2, logicH/2, 30);
     } else if(timer < 720) {
         let alpha = endingGetAlpha(timer, 480, 720);
         ctx.save(); ctx.globalAlpha = alpha;
-        drawDiverSilhouette(ctx, canvas.width/2-60, canvas.height/2, '#555');
-        drawDiverSilhouette(ctx, canvas.width/2+60, canvas.height/2+20, '#555', true);
+        drawDiverSilhouette(ctx, logicW/2-60, logicH/2, '#555');
+        drawDiverSilhouette(ctx, logicW/2+60, logicH/2+20, '#555', true);
         ctx.fillStyle = '#f00'; ctx.font = '16px Arial';
-        ctx.fillText("(小熊)", canvas.width/2-60, canvas.height/2-50);
-        ctx.fillText("(小潘)", canvas.width/2+60, canvas.height/2-40);
-        ctx.fillStyle = '#333'; ctx.fillRect(canvas.width/2+80, canvas.height/2+30, 20, 10);
+        ctx.fillText("(小熊)", logicW/2-60, logicH/2-50);
+        ctx.fillText("(小潘)", logicW/2+60, logicH/2-40);
+        ctx.fillStyle = '#333'; ctx.fillRect(logicW/2+80, logicH/2+30, 20, 10);
         ctx.restore();
     } else if(timer < 960) {
         ctx.fillStyle = `rgba(255,255,255,${endingGetAlpha(timer,720,960)})`;
-        ctx.font = '24px Arial'; ctx.fillText("感谢您的体验", canvas.width/2, canvas.height/2);
+        ctx.font = '24px Arial'; ctx.fillText("感谢您的体验", logicW/2, logicH/2);
     } else if(timer < 1200) {
         ctx.fillStyle = `rgba(255,255,255,${endingGetAlpha(timer,960,1200)})`;
         ctx.font = '20px Arial';
-        wrapText(ctx, "当前版本持续优化中\n前往未知的深渊\n与带熊子潘子回家的故事\n未来有时间会完善。", canvas.width/2, canvas.height/2, 30);
+        wrapText(ctx, "当前版本持续优化中\n前往未知的深渊\n与带熊子潘子回家的故事\n未来有时间会完善。", logicW/2, logicH/2, 30);
     } else {
         let t = timer - 1200;
         let alpha = Math.min(1, t/60);
         ctx.fillStyle = `rgba(255,255,255,${alpha})`;
-        ctx.font = '20px Arial'; ctx.fillText("制作人员", canvas.width/2, canvas.height/2-40);
-        ctx.font = '16px Arial'; ctx.fillText("小熊和他的小伙伴们", canvas.width/2, canvas.height/2);
+        ctx.font = '20px Arial'; ctx.fillText("制作人员", logicW/2, logicH/2-40);
+        ctx.font = '16px Arial'; ctx.fillText("小熊和他的小伙伴们", logicW/2, logicH/2);
         if(t > 120) {
             ctx.fillStyle = `rgba(255,255,255,${Math.abs(Math.sin(t/30))})`;
-            ctx.font = '14px Arial'; ctx.fillText("点击屏幕重新开始", canvas.width/2, canvas.height-50);
+            ctx.font = '14px Arial'; ctx.fillText("点击屏幕重新开始", logicW/2, logicH-50);
         }
     }
 }
@@ -1085,19 +1085,19 @@ function drawStage2to3Ending(timer) {
     if(timer < 300) {
         ctx.fillStyle = `rgba(255,255,255,${endingGetAlpha(timer,0,300)})`;
         ctx.font = '20px Arial';
-        wrapText(ctx, "小潘在慌乱中迷失方向，\n错把一条向上的死路\n当成是上岸的路。", canvas.width/2, canvas.height/2, 32);
+        wrapText(ctx, "小潘在慌乱中迷失方向，\n错把一条向上的死路\n当成是上岸的路。", logicW/2, logicH/2, 32);
     }
     // 第2页 (300-600): 好在小潘及时醒悟
     else if(timer < 600) {
         ctx.fillStyle = `rgba(255,255,255,${endingGetAlpha(timer,300,600)})`;
         ctx.font = '20px Arial';
-        wrapText(ctx, "好在小潘及时醒悟过来，\n跟着亮子逃脱了\n迷宫般的洞穴。", canvas.width/2, canvas.height/2, 32);
+        wrapText(ctx, "好在小潘及时醒悟过来，\n跟着亮子逃脱了\n迷宫般的洞穴。", logicW/2, logicH/2, 32);
     }
     // 第3页 (600-900): 亮子劫后余生，但来不及高兴
     else if(timer < 900) {
         ctx.fillStyle = `rgba(255,255,255,${endingGetAlpha(timer,600,900)})`;
         ctx.font = '20px Arial';
-        wrapText(ctx, "亮子刚刚劫后余生，\n但来不及高兴，\n因为距离熊子消失在那大裂缝中，\n已经过去了半小时。", canvas.width/2, canvas.height/2, 32);
+        wrapText(ctx, "亮子刚刚劫后余生，\n但来不及高兴，\n因为距离熊子消失在那大裂缝中，\n已经过去了半小时。", logicW/2, logicH/2, 32);
     }
     // 第4页 (900-1200): 入水动画 + 亮子再次出发
     else if(timer < 1200) {
@@ -1107,23 +1107,23 @@ function drawStage2to3Ending(timer) {
         ctx.globalAlpha = alpha;
 
         // 水面背景
-        let waterGrad = ctx.createLinearGradient(0, canvas.height*0.4, 0, canvas.height);
+        let waterGrad = ctx.createLinearGradient(0, logicH*0.4, 0, logicH);
         waterGrad.addColorStop(0, '#001a33');
         waterGrad.addColorStop(1, '#000811');
         ctx.fillStyle = waterGrad;
-        ctx.fillRect(0, canvas.height*0.4, canvas.width, canvas.height*0.6);
+        ctx.fillRect(0, logicH*0.4, logicW, logicH*0.6);
 
         // 水面波纹
         ctx.strokeStyle = 'rgba(100,220,255,0.4)';
         ctx.lineWidth = 2;
         ctx.beginPath();
-        for(let wx = 0; wx < canvas.width; wx += 8) {
-            ctx.lineTo(wx, canvas.height*0.4 + Math.sin(wx/40 + t*0.05)*4);
+        for(let wx = 0; wx < logicW; wx += 8) {
+            ctx.lineTo(wx, logicH*0.4 + Math.sin(wx/40 + t*0.05)*4);
         }
         ctx.stroke();
 
         // 入水动画：潜水员从上方落入水中
-        let diverY = canvas.height*0.3 + Math.min(t * 0.8, canvas.height*0.25);
+        let diverY = logicH*0.3 + Math.min(t * 0.8, logicH*0.25);
         let splashAlpha = Math.max(0, 1 - t/60);
         if(t > 30) {
             // 水花
@@ -1132,18 +1132,18 @@ function drawStage2to3Ending(timer) {
                 let angle = (i / 8) * Math.PI * 2;
                 let r = 20 + (t-30) * 0.5;
                 ctx.beginPath();
-                ctx.arc(canvas.width/2 + Math.cos(angle)*r, canvas.height*0.4 + Math.sin(angle)*r*0.3, 3, 0, Math.PI*2);
+                ctx.arc(logicW/2 + Math.cos(angle)*r, logicH*0.4 + Math.sin(angle)*r*0.3, 3, 0, Math.PI*2);
                 ctx.fill();
             }
         }
-        drawDiverSilhouette(ctx, canvas.width/2, diverY, '#4af');
+        drawDiverSilhouette(ctx, logicW/2, diverY, '#4af');
         ctx.restore();
 
         ctx.fillStyle = `rgba(255,255,255,${alpha})`;
         ctx.font = 'bold 20px Arial';
-        ctx.fillText("亮子不敢再多想，", canvas.width/2, canvas.height*0.15);
+        ctx.fillText("亮子不敢再多想，", logicW/2, logicH*0.15);
         ctx.font = '18px Arial';
-        ctx.fillText("简单调整后，再次出发！", canvas.width/2, canvas.height*0.22);
+        ctx.fillText("简单调整后，再次出发！", logicW/2, logicH*0.22);
     }
     // 第5页 (1200+): 点击进入第三关
     else {
@@ -1151,13 +1151,13 @@ function drawStage2to3Ending(timer) {
         let alpha = Math.min(1, t/60);
         ctx.fillStyle = `rgba(255,255,255,${alpha})`;
         ctx.font = 'bold 22px Arial';
-        ctx.fillText("第三章", canvas.width/2, canvas.height/2 - 30);
+        ctx.fillText("第三章", logicW/2, logicH/2 - 30);
         ctx.font = '18px Arial';
-        ctx.fillText("黑暗中的独行", canvas.width/2, canvas.height/2 + 10);
+        ctx.fillText("黑暗中的独行", logicW/2, logicH/2 + 10);
         if(t > 90) {
             ctx.fillStyle = `rgba(0,220,255,${Math.abs(Math.sin(t/30))})`;
             ctx.font = '14px Arial';
-            ctx.fillText("点击屏幕继续", canvas.width/2, canvas.height - 50);
+            ctx.fillText("点击屏幕继续", logicW/2, logicH - 50);
         }
     }
 }
@@ -1168,13 +1168,13 @@ function drawBearDiedEnding(timer) {
     if(timer < 300) {
         ctx.fillStyle = `rgba(180,180,180,${endingGetAlpha(timer,0,300)})`;
         ctx.font = '20px Arial';
-        wrapText(ctx, "亮子最终没能找到熊子。", canvas.width/2, canvas.height/2, 32);
+        wrapText(ctx, "亮子最终没能找到熊子。", logicW/2, logicH/2, 32);
     }
     // 第2页 (300-600): 熊子的结局
     else if(timer < 600) {
         ctx.fillStyle = `rgba(200,200,200,${endingGetAlpha(timer,300,600)})`;
         ctx.font = '20px Arial';
-        wrapText(ctx, "熊子独自困在那道大裂缝中，\n氧气耗尽，\n永远留在了雅各布井的黑暗里。", canvas.width/2, canvas.height/2, 32);
+        wrapText(ctx, "熊子独自困在那道大裂缝中，\n氧气耗尽，\n永远留在了雅各布井的黑暗里。", logicW/2, logicH/2, 32);
     }
     // 第3页 (600-900): 剪影
     else if(timer < 900) {
@@ -1182,14 +1182,14 @@ function drawBearDiedEnding(timer) {
         ctx.save();
         ctx.globalAlpha = alpha;
         // 黑暗背景中的孤独剪影
-        let darkGrad = ctx.createRadialGradient(canvas.width/2, canvas.height/2, 0, canvas.width/2, canvas.height/2, 200);
+        let darkGrad = ctx.createRadialGradient(logicW/2, logicH/2, 0, logicW/2, logicH/2, 200);
         darkGrad.addColorStop(0, 'rgba(20,30,40,1)');
         darkGrad.addColorStop(1, 'rgba(0,0,0,1)');
         ctx.fillStyle = darkGrad;
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillRect(0, 0, logicW, logicH);
         // 熊子剪影（静止，朝下）
         ctx.save();
-        ctx.translate(canvas.width/2, canvas.height/2);
+        ctx.translate(logicW/2, logicH/2);
         ctx.rotate(Math.PI/2);
         ctx.fillStyle = '#333';
         ctx.beginPath(); ctx.ellipse(0, 0, 14, 8, 0, 0, Math.PI*2); ctx.fill();
@@ -1198,14 +1198,14 @@ function drawBearDiedEnding(timer) {
         ctx.restore();
         ctx.fillStyle = '#f44';
         ctx.font = '14px Arial';
-        ctx.fillText("（熊子）", canvas.width/2, canvas.height/2 - 60);
+        ctx.fillText("（熊子）", logicW/2, logicH/2 - 60);
         ctx.restore();
     }
     // 第4页 (900-1200): 结语
     else if(timer < 1200) {
         ctx.fillStyle = `rgba(200,200,200,${endingGetAlpha(timer,900,1200)})`;
         ctx.font = '20px Arial';
-        wrapText(ctx, "为了不让更多的人\n丧生在恐怖的雅各布井，\n当地政府最终彻底封闭了雅各布井。", canvas.width/2, canvas.height/2, 32);
+        wrapText(ctx, "为了不让更多的人\n丧生在恐怖的雅各布井，\n当地政府最终彻底封闭了雅各布井。", logicW/2, logicH/2, 32);
     }
     // 第5页 (1200+): 返回主菜单
     else {
@@ -1213,11 +1213,11 @@ function drawBearDiedEnding(timer) {
         let alpha = Math.min(1, t/60);
         ctx.fillStyle = `rgba(180,180,180,${alpha})`;
         ctx.font = '20px Arial';
-        ctx.fillText("感谢您的体验", canvas.width/2, canvas.height/2 - 20);
+        ctx.fillText("感谢您的体验", logicW/2, logicH/2 - 20);
         if(t > 90) {
             ctx.fillStyle = `rgba(255,255,255,${Math.abs(Math.sin(t/30))})`;
             ctx.font = '14px Arial';
-            ctx.fillText("点击屏幕返回主菜单", canvas.width/2, canvas.height - 50);
+            ctx.fillText("点击屏幕返回主菜单", logicW/2, logicH - 50);
         }
     }
 }
@@ -1293,7 +1293,7 @@ export function drawControls() {
             ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = 1; ctx.stroke();
         } else {
             ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.textAlign = 'center'; ctx.font = '14px Arial';
-            ctx.fillText('按住屏幕任意位置移动', canvas.width/2, canvas.height-50);
+            ctx.fillText('按住屏幕任意位置移动', logicW/2, logicH-50);
         }
     }
     // 绘制攻击按鈕
@@ -1600,8 +1600,8 @@ function drawArenaHUD() {
     const arena = state.fishArena;
     if (!arena) return;
 
-    const cw = canvas.width;
-    const ch = canvas.height;
+    const cw = logicW;
+    const ch = logicH;
     const time = Date.now() / 1000;
 
     // --- 死亡结算页面 ---
@@ -1865,8 +1865,8 @@ function drawMazeHUD() {
     const maze = state.mazeRescue;
     if (!maze) return;
 
-    const cw = canvas.width;
-    const ch = canvas.height;
+    const cw = logicW;
+    const ch = logicH;
     const time = Date.now() / 1000;
 
     ctx.save();
@@ -1946,7 +1946,7 @@ function drawMazeHUD() {
     ctx.fillStyle = maze.diveType === 'rescue' ? 'rgba(255,100,50,0.9)' : 'rgba(100,200,255,0.9)';
     ctx.font = 'bold 12px Arial';
     ctx.textAlign = 'left';
-    ctx.fillText(maze.diveType === 'rescue' ? '🚨 正式救援' : '🔍 侦察探路', 46, 24);
+ctx.fillText(maze.diveType === 'rescue' ? '[救援]' : '[侦察]', 46, 24);
 
     // NPC 救援提示（靠近NPC时显示，发现后即可绑绳）
     if (!maze.npcRescued && state.npc.active) {
@@ -2173,32 +2173,59 @@ function drawMazeShore(maze: any, cw: number, ch: number, time: number) {
     ctx.arc(sunX, sunY, 30 * sunPulse, 0, Math.PI * 2);
     ctx.fill();
 
-    // 远处树林（纵深感）
-    ctx.globalAlpha = 0.4;
-    for (let i = 0; i < 12; i++) {
-        const tx = (i * cw / 10) + Math.sin(i * 1.5 + time * 0.2) * 5;
-        const ty = ch * 0.28 + Math.sin(i * 2.3) * 15;
-        const treeH = 50 + Math.sin(i * 3.7) * 15;
-        ctx.fillStyle = `rgba(${40 + i * 5},${100 + i * 8},${50 + i * 3},0.6)`;
+    // 远处树林（多层圆形树冠，底部与草地衔接）
+    const treeLine = ch * 0.38; // 树林底部与草地齐平
+    ctx.globalAlpha = 1;
+    for (let i = 0; i < 14; i++) {
+        const tx = (i * cw / 12) - 10 + Math.sin(i * 1.5) * 8;
+        const treeH = 40 + Math.sin(i * 3.7) * 12;
+        const crownR = 18 + Math.sin(i * 2.1) * 6;
+        // 树干
+        ctx.fillStyle = `rgba(${70 + i * 3},${50 + i * 2},${30},0.5)`;
+        ctx.fillRect(tx - 2, treeLine - treeH * 0.4, 4, treeH * 0.5);
+        // 树冠（多层圆形，颜色深浅交替）
+        const g1 = 80 + i * 6;
+        const g2 = 110 + i * 5;
+        ctx.fillStyle = `rgba(${30 + i * 3},${g1},${40 + i * 2},0.55)`;
         ctx.beginPath();
-        ctx.moveTo(tx, ty);
-        ctx.lineTo(tx - 15, ty + treeH);
-        ctx.lineTo(tx + 15, ty + treeH);
-        ctx.closePath();
+        ctx.arc(tx, treeLine - treeH * 0.5, crownR, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = `rgba(${40 + i * 4},${g2},${50 + i * 3},0.45)`;
+        ctx.beginPath();
+        ctx.arc(tx - crownR * 0.3, treeLine - treeH * 0.55, crownR * 0.7, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(tx + crownR * 0.35, treeLine - treeH * 0.48, crownR * 0.65, 0, Math.PI * 2);
         ctx.fill();
     }
 
-    // 近处树林
-    ctx.globalAlpha = 0.6;
+    // 近处树林（更大更清晰，底部与草地齐平）
+    ctx.globalAlpha = 1;
     for (let i = 0; i < 8; i++) {
-        const tx = (i * cw / 6) - 20 + Math.sin(i * 2.1 + time * 0.15) * 3;
-        const ty = ch * 0.33 + Math.sin(i * 1.8) * 10;
-        const treeH = 70 + Math.sin(i * 4.2) * 20;
+        const tx = (i * cw / 6) - 15 + Math.sin(i * 2.1) * 5;
+        const treeH = 65 + Math.sin(i * 4.2) * 15;
+        const crownR = 22 + Math.sin(i * 3.3) * 8;
+        const sway = Math.sin(time * 0.8 + i * 1.2) * 2;
+        // 树干
         ctx.fillStyle = '#5D4037';
-        ctx.fillRect(tx - 3, ty + treeH * 0.5, 6, treeH * 0.5);
-        ctx.fillStyle = `rgba(${30 + i * 8},${120 + i * 10},${40 + i * 5},0.8)`;
+        ctx.fillRect(tx - 3, treeLine - treeH * 0.35, 6, treeH * 0.45);
+        // 主树冠
+        ctx.fillStyle = `rgba(${35 + i * 6},${100 + i * 10},${40 + i * 4},0.85)`;
         ctx.beginPath();
-        ctx.arc(tx, ty + treeH * 0.3, treeH * 0.35, 0, Math.PI * 2);
+        ctx.arc(tx + sway, treeLine - treeH * 0.5, crownR, 0, Math.PI * 2);
+        ctx.fill();
+        // 副树冠（左右偏移，增加层次）
+        ctx.fillStyle = `rgba(${45 + i * 5},${120 + i * 8},${50 + i * 3},0.7)`;
+        ctx.beginPath();
+        ctx.arc(tx + sway - crownR * 0.5, treeLine - treeH * 0.45, crownR * 0.65, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(tx + sway + crownR * 0.5, treeLine - treeH * 0.42, crownR * 0.6, 0, Math.PI * 2);
+        ctx.fill();
+        // 高光
+        ctx.fillStyle = `rgba(${80 + i * 5},${160 + i * 6},${70 + i * 4},0.3)`;
+        ctx.beginPath();
+        ctx.arc(tx + sway - crownR * 0.2, treeLine - treeH * 0.58, crownR * 0.35, 0, Math.PI * 2);
         ctx.fill();
     }
 
@@ -2211,23 +2238,90 @@ function drawMazeShore(maze: any, cw: number, ch: number, time: number) {
     ctx.fillStyle = grassGrad;
     ctx.fillRect(0, ch * 0.38, cw, ch * 0.62);
 
-    // 草地纹理（小草）
-    ctx.globalAlpha = 0.4;
-    for (let i = 0; i < 30; i++) {
-        const gx = (i * cw / 28) + Math.sin(i * 3.1) * 10;
-        const gy = ch * 0.40 + (i % 5) * ch * 0.08 + Math.sin(i * 2.7) * 8;
+    // 草地纹理（小草丛，更密集更自然）
+    ctx.globalAlpha = 0.5;
+    for (let i = 0; i < 50; i++) {
+        const gx = (i * cw / 45) + Math.sin(i * 3.1) * 12;
+        const gy = ch * 0.39 + (i % 7) * ch * 0.06 + Math.sin(i * 2.7) * 6;
         const sway = Math.sin(time * 1.5 + i * 0.8) * 3;
-        ctx.strokeStyle = `rgba(100,180,80,0.6)`;
-        ctx.lineWidth = 1.5;
+        const grassH = 10 + Math.sin(i * 1.9) * 6;
+        // 每丛2~3根草
+        for (let j = -1; j <= 1; j++) {
+            ctx.strokeStyle = `rgba(${80 + j * 10},${150 + i % 30},${60 + j * 5},0.6)`;
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            ctx.moveTo(gx + j * 3, gy);
+            ctx.quadraticCurveTo(gx + j * 3 + sway + j * 2, gy - grassH * 0.6, gx + sway * 1.5 + j * 4, gy - grassH);
+            ctx.stroke();
+        }
+    }
+
+    // 小花朵（散落在草地上）
+    ctx.globalAlpha = 0.8;
+    const flowerColors = ['#FF6B6B', '#FFD93D', '#FF8CC8', '#FFA07A', '#DDA0DD', '#87CEEB'];
+    for (let i = 0; i < 18; i++) {
+        const fx = cw * 0.05 + (i * cw / 16) + Math.sin(i * 4.3) * 15;
+        const fy = ch * 0.41 + (i % 5) * ch * 0.07 + Math.sin(i * 3.1) * 8;
+        const fSize = 3 + Math.sin(i * 2.7) * 1.5;
+        const fColor = flowerColors[i % flowerColors.length];
+        // 花瓣（4~5个小圆）
+        ctx.fillStyle = fColor;
+        for (let p = 0; p < 5; p++) {
+            const pa = (p / 5) * Math.PI * 2;
+            ctx.beginPath();
+            ctx.arc(fx + Math.cos(pa) * fSize, fy + Math.sin(pa) * fSize, fSize * 0.6, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        // 花心
+        ctx.fillStyle = '#FFD700';
         ctx.beginPath();
-        ctx.moveTo(gx, gy);
-        ctx.quadraticCurveTo(gx + sway, gy - 8, gx + sway * 1.5, gy - 16);
+        ctx.arc(fx, fy, fSize * 0.4, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // 蝴蝶（2~3只，飘动）
+    ctx.globalAlpha = 0.7;
+    for (let i = 0; i < 3; i++) {
+        const bx = cw * 0.2 + i * cw * 0.25 + Math.sin(time * 1.2 + i * 2.5) * 30;
+        const by = ch * 0.32 + Math.sin(time * 0.8 + i * 1.8) * 20 + i * 15;
+        const wingFlap = Math.sin(time * 8 + i * 3) * 0.5; // 翅膀扇动
+        const bColor = i === 0 ? '#FF69B4' : i === 1 ? '#87CEEB' : '#FFD700';
+        ctx.save();
+        ctx.translate(bx, by);
+        // 左翅
+        ctx.fillStyle = bColor;
+        ctx.beginPath();
+        ctx.ellipse(-3, 0, 5, 3 + wingFlap * 2, -0.3 + wingFlap * 0.3, 0, Math.PI * 2);
+        ctx.fill();
+        // 右翅
+        ctx.beginPath();
+        ctx.ellipse(3, 0, 5, 3 + wingFlap * 2, 0.3 - wingFlap * 0.3, 0, Math.PI * 2);
+        ctx.fill();
+        // 身体
+        ctx.fillStyle = '#333';
+        ctx.fillRect(-0.5, -3, 1, 6);
+        ctx.restore();
+    }
+
+    // 小鸟（远处天空飞过，V字形）
+    ctx.globalAlpha = 0.5;
+    ctx.strokeStyle = '#555';
+    ctx.lineWidth = 1.2;
+    for (let i = 0; i < 4; i++) {
+        const birdX = ((time * 20 + i * 80) % (cw + 100)) - 50;
+        const birdY = ch * 0.12 + i * 18 + Math.sin(time * 2 + i * 1.5) * 8;
+        const wingSpan = 6 + i * 1.5;
+        const wingUp = Math.sin(time * 5 + i * 2) * 3;
+        ctx.beginPath();
+        ctx.moveTo(birdX - wingSpan, birdY - wingUp);
+        ctx.quadraticCurveTo(birdX - wingSpan * 0.3, birdY + 2, birdX, birdY);
+        ctx.quadraticCurveTo(birdX + wingSpan * 0.3, birdY + 2, birdX + wingSpan, birdY - wingUp);
         ctx.stroke();
     }
 
     // 水面入口（洞穴口）— 这是下潜按钮
     const poolX = cw * 0.5;
-    const poolY = ch * 0.48;
+    const poolY = ch * 0.44;
     const poolW = 80;
     const poolH = 40;
     // 洞口光晕呼吸效果
@@ -2272,7 +2366,7 @@ function drawMazeShore(maze: any, cw: number, ch: number, time: number) {
     ctx.textAlign = 'center';
     ctx.shadowColor = 'rgba(0,0,0,0.5)';
     ctx.shadowBlur = 4;
-    ctx.fillText('🏕️ 岸上营地', cw / 2, ch * 0.06 + 20);
+    ctx.fillText('岸上营地', cw / 2, ch * 0.06 + 20);
     ctx.shadowBlur = 0;
 
     // 返回按钮（左上角）
@@ -2288,9 +2382,9 @@ function drawMazeShore(maze: any, cw: number, ch: number, time: number) {
 
     // 信息卡片背景（下半部分，不被地图遮挡）
     const cardX = cw * 0.06;
-    const cardY = ch * 0.52;
+    const cardY = ch * 0.56;
     const cardW = cw * 0.88;
-    const cardH = ch * 0.44;
+    const cardH = ch * 0.40;
     ctx.globalAlpha = 0.85;
     ctx.fillStyle = 'rgba(255,255,255,0.92)';
     ctx.beginPath();
@@ -2309,7 +2403,7 @@ function drawMazeShore(maze: any, cw: number, ch: number, time: number) {
     ctx.font = 'bold 14px Arial';
     const infoX = cardX + 16;
     let infoY = cardY + 24;
-    ctx.fillText(`📊 探索记录`, infoX, infoY);
+    ctx.fillText('探索记录', infoX, infoY);
 
     // 认知地图图标按钮（卡片右上角）
     const mapIconX = cardX + cardW - 44;
@@ -2328,7 +2422,34 @@ function drawMazeShore(maze: any, cw: number, ch: number, time: number) {
     ctx.fillStyle = '#4CAF50';
     ctx.font = '18px Arial';
     ctx.textAlign = 'center';
-    ctx.fillText('🗺️', mapIconX + mapIconSize / 2, mapIconY + mapIconSize / 2 + 6);
+    // 用绘制方式画地图图标（避免emoji兼容问题）
+    ctx.strokeStyle = '#4CAF50';
+    ctx.lineWidth = 1.5;
+    // 折叠地图轮廓
+    const mIcx = mapIconX + mapIconSize / 2;
+    const mIcy = mapIconY + mapIconSize / 2;
+    ctx.beginPath();
+    ctx.moveTo(mIcx - 8, mIcy - 8);
+    ctx.lineTo(mIcx - 2, mIcy - 5);
+    ctx.lineTo(mIcx + 4, mIcy - 8);
+    ctx.lineTo(mIcx + 8, mIcy - 5);
+    ctx.lineTo(mIcx + 8, mIcy + 8);
+    ctx.lineTo(mIcx + 2, mIcy + 5);
+    ctx.lineTo(mIcx - 4, mIcy + 8);
+    ctx.lineTo(mIcx - 8, mIcy + 5);
+    ctx.closePath();
+    ctx.stroke();
+    // 地图上的路线标记
+    ctx.beginPath();
+    ctx.moveTo(mIcx - 4, mIcy - 2);
+    ctx.lineTo(mIcx, mIcy + 2);
+    ctx.lineTo(mIcx + 4, mIcy - 1);
+    ctx.stroke();
+    // 小圆点标记
+    ctx.fillStyle = '#F44336';
+    ctx.beginPath();
+    ctx.arc(mIcx + 4, mIcy - 1, 2, 0, Math.PI * 2);
+    ctx.fill();
 
     // 统计数据
     ctx.textAlign = 'left';
@@ -2340,7 +2461,7 @@ function drawMazeShore(maze: any, cw: number, ch: number, time: number) {
     infoY += 22;
     const maxDepthM = Math.floor(maze.maxDepthReached / maze.mazeTileSize);
     ctx.fillText(`最深到达：${maxDepthM}m`, infoX, infoY);
-    ctx.fillText(`被困者：${maze.npcFound ? '✅ 已发现' : '❓ 未发现'}`, infoX + cardW * 0.5, infoY);
+    ctx.fillText(`被困者：${maze.npcFound ? '[已发现]' : '[未发现]'}`, infoX + cardW * 0.5, infoY);
 
     // 上次下潜摘要
     if (maze.diveHistory.length > 0) {
@@ -2384,7 +2505,7 @@ function drawMazeMapFullscreen(maze: any, cw: number, ch: number, time: number) 
     ctx.fillStyle = '#5D4037';
     ctx.font = 'bold 18px Arial';
     ctx.textAlign = 'center';
-    ctx.fillText('🗺️ 认知地图', cw / 2, 30);
+    ctx.fillText('认知地图', cw / 2, 30);
 
     // 关闭提示
     ctx.globalAlpha = 0.5;
@@ -2683,7 +2804,7 @@ function drawMazeDebrief(maze: any, cw: number, ch: number, time: number) {
         const reason = lastDive ? lastDive.returnReason : 'retreat';
         ctx.fillStyle = reason === 'o2' ? '#f80' : '#aef';
         ctx.font = 'bold 24px Arial';
-        ctx.fillText(reason === 'o2' ? '⚠️ 氧气不足，紧急返回' : '✅ 安全返回岸上', cw / 2, titleY);
+ctx.fillText(reason === 'o2' ? '氧气不足，紧急返回' : '安全返回岸上', cw / 2, titleY);
     }
 
     // 分割线
@@ -2831,7 +2952,7 @@ function drawMazeDebrief(maze: any, cw: number, ch: number, time: number) {
             ctx.stroke();
             ctx.fillStyle = 'rgba(200,230,255,0.95)';
             ctx.font = 'bold 16px Arial';
-            ctx.fillText('🏕️ 回到岸上', cw / 2, btnY + 5);
+ctx.fillText('回到岸上', cw / 2, btnY + 5);
         }
 
         if (isRescueSuccess) {

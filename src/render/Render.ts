@@ -1,6 +1,6 @@
 import { CONFIG } from '../core/config';
 import { state, player, target, particles, touches } from '../core/state';
-import { canvas, ctx } from './Canvas';
+import { canvas, ctx, dpr, logicW, logicH } from './Canvas';
 import { drawFlashlight, computeSiltAttenuation, isLineOfSight } from './RenderLight';
 import { drawDiver } from './RenderDiver';
 import { drawUI, drawControls, drawSlashEffect } from './RenderUI';
@@ -16,6 +16,7 @@ const lightLayer = wx.createCanvas(); // 光照遮罩层
 lightLayer.width = canvas.width;
 lightLayer.height = canvas.height;
 const lightCtx = lightLayer.getContext('2d');
+lightCtx.scale(dpr, dpr);
 
 // --- 预生成岩石纹理 ---
 export function initTextures() {
@@ -58,6 +59,9 @@ function drawSplashes() {
 
 // --- 主渲染函数 ---
 export function draw() {
+    // 每帧开始时确保dpr缩放生效
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    
     let zoom = state.camera ? state.camera.zoom : 1;
     // 手电筒激活状态：受玩家手动开关控制，剧情特殊状态可覆盖
     let flashlightActive = state.flashlightOn !== false;
@@ -71,11 +75,11 @@ export function draw() {
 
     // 1. 绘制基础世界
     ctx.fillStyle = '#252a30'; 
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, logicW, logicH);
 
     ctx.save();
     // 摄像机变换：居中缩放
-    ctx.translate(canvas.width/2 + shakeX, canvas.height/2 + shakeY);
+    ctx.translate(logicW/2 + shakeX, logicH/2 + shakeY);
     ctx.scale(zoom, zoom);
     ctx.translate(-player.x, -player.y);
 
@@ -139,8 +143,8 @@ export function draw() {
     }
 
     // 绘制墙壁（使用 state.walls 支持不规则布局）
-    let viewHalfW = (canvas.width/2) / zoom + 100;
-    let viewHalfH = (canvas.height/2) / zoom + 100;
+    let viewHalfW = (logicW/2) / zoom + 100;
+    let viewHalfH = (logicH/2) / zoom + 100;
     let viewL = player.x - viewHalfW;
     let viewR = player.x + viewHalfW;
     let viewT = player.y - viewHalfH;
@@ -412,7 +416,10 @@ export function draw() {
     ctx.restore();
 
     // 2. 光照遮罩计算
-    lightCtx.clearRect(0, 0, canvas.width, canvas.height); 
+    lightCtx.save();
+    lightCtx.setTransform(1, 0, 0, 1, 0, 0);
+    lightCtx.clearRect(0, 0, canvas.width, canvas.height);
+    lightCtx.restore();
     lightCtx.globalCompositeOperation = 'source-over';
     
     let depthFactor = 0;
@@ -437,7 +444,7 @@ export function draw() {
         lightCtx.fillStyle = `rgba(2, 4, 10, ${maskAlpha})`;
     }
     
-    lightCtx.fillRect(0, 0, canvas.width, canvas.height);
+    lightCtx.fillRect(0, 0, logicW, logicH);
 
     let rayDist = CONFIG.lightRange;
 
@@ -464,15 +471,15 @@ export function draw() {
         rayDist = 20 + factor * 80; 
         let alpha = 0.95 + (1-factor) * 0.05; 
         lightCtx.fillStyle = `rgba(2, 4, 10, ${alpha})`;
-        lightCtx.fillRect(0, 0, canvas.width, canvas.height);
+        lightCtx.fillRect(0, 0, logicW, logicH);
     } else if(state.story.flags.narrowVision) {
         rayDist = 30; 
         lightCtx.fillStyle = 'rgba(2, 4, 10, 0.95)'; 
-        lightCtx.fillRect(0, 0, canvas.width, canvas.height);
+        lightCtx.fillRect(0, 0, logicW, logicH);
     }
 
     lightCtx.save();
-    lightCtx.translate(canvas.width/2 + shakeX, canvas.height/2 + shakeY);
+    lightCtx.translate(logicW/2 + shakeX, logicH/2 + shakeY);
     lightCtx.scale(zoom, zoom);
     lightCtx.translate(-player.x, -player.y);
     
@@ -556,7 +563,7 @@ export function draw() {
 
     lightCtx.restore(); 
 
-    ctx.drawImage(lightLayer as unknown as CanvasImageSource, 0, 0);
+    ctx.drawImage(lightLayer as unknown as CanvasImageSource, 0, 0, canvas.width, canvas.height, 0, 0, logicW, logicH);
 
     // 绘制灰色物体（氧气罐造型）
     // 鱼眼出现前：模糊隐约；鱼眼出现后：清晰可见
@@ -570,7 +577,7 @@ export function draw() {
             // 鱼眼出现前：模糊（最高alpha 0.45）；鱼眼出现后：清晰（最高alpha 1.0）
             let maxAlpha = state.story.flags.fishEyeTriggered ? 1.0 : 0.45;
             ctx.save();
-            ctx.translate(canvas.width/2 + shakeX, canvas.height/2 + shakeY);
+            ctx.translate(logicW/2 + shakeX, logicH/2 + shakeY);
             ctx.scale(zoom, zoom);
             ctx.translate(-player.x, -player.y);
             ctx.globalAlpha = visibility * maxAlpha;
@@ -620,14 +627,14 @@ export function draw() {
         ctx.save();
         // 手电筒亮起的微弱白光闪
         ctx.fillStyle = `rgba(255,255,240,${flashProgress * 0.12})`;
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillRect(0, 0, logicW, logicH);
         
         // 鱼眼在灰色物体（氧气罐）的屏幕坐标位置
-        let screenX = canvas.width/2 + (CONFIG.grayThingX - player.x) * zoom + shakeX;
-        let screenY = canvas.height/2 + (CONFIG.grayThingY - player.y) * zoom + shakeY;
+        let screenX = logicW/2 + (CONFIG.grayThingX - player.x) * zoom + shakeX;
+        let screenY = logicH/2 + (CONFIG.grayThingY - player.y) * zoom + shakeY;
         
         // 鱼眼大小（占据视野中央）
-        let eyeR = canvas.height * 0.38;
+        let eyeR = logicH * 0.38;
         
         // 眼白（灰白色，带血丝）
         let eyeGrad = ctx.createRadialGradient(screenX, screenY, 0, screenX, screenY, eyeR);
@@ -707,8 +714,8 @@ export function draw() {
     // 绘制放弃救援按钮（矩形，沿矩形边框转圈动效）
     if(state.story.flags.abandonBtnVisible && state.story.stage === 7) {
         let btnW = 200, btnH = 64;
-        let btnX = canvas.width / 2 - btnW / 2;
-        let btnY = canvas.height * 0.28 - btnH / 2;
+        let btnX = logicW / 2 - btnW / 2;
+        let btnY = logicH * 0.28 - btnH / 2;
         let btnCx = btnX + btnW / 2;
         let btnCy = btnY + btnH / 2;
         let r = 10; // 圆角半径
@@ -831,7 +838,7 @@ export function draw() {
 
     // 绘制泥沙粒子（在光照层之上，使泥沙遮盖光照）
     ctx.save();
-    ctx.translate(canvas.width/2 + shakeX, canvas.height/2 + shakeY);
+    ctx.translate(logicW/2 + shakeX, logicH/2 + shakeY);
     ctx.scale(zoom, zoom);
     ctx.translate(-player.x, -player.y);
     for(let p of particles) {
@@ -846,7 +853,7 @@ export function draw() {
     // 黑屏过渡
     if(state.story.flags.blackScreen) {
         ctx.fillStyle = '#000';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillRect(0, 0, logicW, logicH);
     }
 
     // 红色叠加（濒死状态）
@@ -857,7 +864,7 @@ export function draw() {
         let b = Math.floor(0 * (1-t) + 3 * t);
         let alpha = Number(state.story.redOverlay.toFixed(3));
         ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillRect(0, 0, logicW, logicH);
     }
 
     // 3. 绘制 UI
@@ -868,14 +875,14 @@ export function draw() {
     // 绘制刀光特效（在 UI 之上，屏幕空间）
     if (state.playerAttack && state.playerAttack.active) {
         const zoom = state.camera ? state.camera.zoom : 1;
-        const playerScreenX = canvas.width / 2 + shakeX;
-        const playerScreenY = canvas.height / 2 + shakeY;
+        const playerScreenX = logicW / 2 + shakeX;
+        const playerScreenY = logicH / 2 + shakeY;
         const totalSlashDur = CONFIG.attack.slashSwingDuration + CONFIG.attack.slashLingerDuration;
         if (state.playerAttack.timer <= totalSlashDur) {
             drawSlashEffect(
                 ctx,
-                canvas.width,
-                canvas.height,
+                logicW,
+                logicH,
                 playerScreenX,
                 playerScreenY,
                 state.playerAttack.angle,
@@ -885,7 +892,7 @@ export function draw() {
     }
 
     // 绘制凶猛鱼被咬特效（在 UI 之上，屏幕空间）
-    drawFishBiteEffect(ctx, canvas.width, canvas.height);
+    drawFishBiteEffect(ctx, logicW, logicH);
 
     // 4. 过渡动画
     if(state.transition && state.transition.active) {
@@ -899,7 +906,7 @@ export function draw() {
         }
         
         ctx.fillStyle = `rgba(${bgR}, ${bgG}, ${bgB}, ${t})`;
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillRect(0, 0, logicW, logicH);
         
         if (state.transition.bubbles) {
             for(let b of state.transition.bubbles) {
