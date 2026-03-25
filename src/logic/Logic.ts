@@ -1369,7 +1369,9 @@ export function resetMazeLogic() {
         retreatHoldStart: 0,
         retreatTouchId: null,
         minimapExpanded: false,
+        shoreMapOpen: false,
         shoreScrollY: 0,
+        divingInTimer: 0,
         mazeMap: mazeData.mazeMap,
         mazeWalls: mazeData.mazeWalls,
         mazeExplored: mazeData.mazeExplored,
@@ -1418,9 +1420,10 @@ export function startMazeDive(diveType: string) {
     const maze = state.mazeRescue;
     if (!maze) return;
 
-    // 设置下潜类型
+    // 设置下潜类型（不区分scout/rescue，统一为scout，发现NPC后自动可绑绳）
     maze.diveType = diveType;
-    maze.phase = 'play';
+    maze.phase = 'diving_in';
+    maze.divingInTimer = 0;
     maze.startTime = Date.now();
     maze.finishTime = 0;
     maze.resultTimer = 0;
@@ -1507,20 +1510,6 @@ export function startMazeDive(diveType: string) {
         };
         state.rope.stillTimer = 0;
     }
-
-    // 开场提示
-    if (diveType === 'rescue') {
-        storyManager.showText('正式救援！找到被困者，带他出去！', '#0f8', 3000);
-    } else {
-        if (maze.diveCount === 0) {
-            storyManager.showText('第一次下潜，先探探路吧', '#aef', 3000);
-            setTimeout(() => {
-                storyManager.showText('靠近墙壁静止可以铺设引导绳', 'rgba(180,220,255,0.9)', 3000);
-            }, 3500);
-        } else {
-            storyManager.showText(`第 ${maze.diveCount + 1} 次下潜，继续深入`, '#aef', 2500);
-        }
-    }
 }
 
 // =============================================
@@ -1597,6 +1586,36 @@ export function updateMaze() {
 
     // === 岸上阶段：不需要更新游戏逻辑 ===
     if (maze.phase === 'shore') {
+        return;
+    }
+
+    // === 入水动效阶段 ===
+    if (maze.phase === 'diving_in') {
+        maze.divingInTimer++;
+        // 入水动效持续约1.5秒（90帧）
+        if (maze.divingInTimer >= 90) {
+            maze.phase = 'play';
+            // 开场提示
+            if (maze.npcFound) {
+                if (maze.diveCount === 0) {
+                    storyManager.showText('第一次下潜，先探探路吧', '#aef', 3000);
+                    setTimeout(() => {
+                        storyManager.showText('靠近墙壁静止可以铺设引导绳', 'rgba(180,220,255,0.9)', 3000);
+                    }, 3500);
+                } else {
+                    storyManager.showText(`第 ${maze.diveCount + 1} 次下潜`, '#aef', 2500);
+                }
+            } else {
+                if (maze.diveCount === 0) {
+                    storyManager.showText('第一次下潜，先探探路吧', '#aef', 3000);
+                    setTimeout(() => {
+                        storyManager.showText('靠近墙壁静止可以铺设引导绳', 'rgba(180,220,255,0.9)', 3000);
+                    }, 3500);
+                } else {
+                    storyManager.showText(`第 ${maze.diveCount + 1} 次下潜，继续深入`, '#aef', 2500);
+                }
+            }
+        }
         return;
     }
 
@@ -1748,7 +1767,7 @@ export function updateMaze() {
         }
     }
 
-    // --- 救援交互：靠近NPC长按（仅正式救援下潜可绑绳） ---
+    // --- 救援交互：靠近NPC长按（发现NPC后即可绑绳，不区分下潜类型） ---
     if (!maze.npcRescued && state.npc.active) {
         if (maze.npcRescueHolding) {
             const elapsed = (Date.now() - maze.npcRescueHoldStart) / 1000;
@@ -1773,8 +1792,8 @@ export function updateMaze() {
         }
     }
 
-    // --- 胜利检测：NPC已跟随且玩家到达出口（仅正式救援） ---
-    if (maze.diveType === 'rescue' && maze.npcRescued && player.y <= maze.exitY + maze.mazeTileSize * 2) {
+    // --- 胜利检测：NPC已跟随且玩家到达出口 ---
+    if (maze.npcRescued && player.y <= maze.exitY + maze.mazeTileSize * 2) {
         const distToExit = Math.hypot(player.x - maze.exitX, player.y - maze.exitY);
         if (distToExit < maze.mazeTileSize * 2) {
             maze.phase = 'rescued';

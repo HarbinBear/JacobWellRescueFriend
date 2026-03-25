@@ -156,7 +156,9 @@ export const state = {
 
         // === UI 状态 ===
         minimapExpanded: boolean;   // 小地图是否展开
+        shoreMapOpen: boolean;      // 岸上全屏地图是否打开
         shoreScrollY: number;       // 岸上页面滚动偏移
+        divingInTimer: number;      // 入水动效计时（帧）
 
         // === 迷宫专属地图数据（跨下潜保留） ===
         mazeMap: any[][];

@@ -169,6 +169,10 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                 shoreTouchStartY = touch.clientY;
                 return;
             }
+            // 迷宫模式：入水动效阶段不响应操作
+            if (state.screen === 'mazeRescue' && state.mazeRescue && state.mazeRescue.phase === 'diving_in') {
+                return;
+            }
             // 迷宫模式：游戏进行中允许正常操作
             if (state.screen === 'mazeRescue' && state.mazeRescue && state.mazeRescue.phase === 'play') {
                 // 继续往下处理摇杆和救援按钮
@@ -291,8 +295,8 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
             // 迷宫模式：检测救援长按（靠近NPC时，仅正式救援下潜）
             if (state.screen === 'mazeRescue' && state.mazeRescue && state.mazeRescue.phase === 'play') {
                 const maze = state.mazeRescue;
-                // 救援绑绳（仅正式救援下潜可绑绳）
-                if (maze.diveType === 'rescue' && !maze.npcRescued && state.npc.active && mazeRescueTouchId === null) {
+                // 救援绑绳（发现NPC后即可绑绳，不区分下潜类型）
+                if (!maze.npcRescued && state.npc.active && mazeRescueTouchId === null) {
                     const zoom = state.camera ? state.camera.zoom : 1;
                     const npcScreenX = CONFIG.screenWidth / 2 + (state.npc.x - player.x) * zoom;
                     const npcScreenY = CONFIG.screenHeight / 2 + (state.npc.y - player.y) * zoom;
@@ -422,26 +426,39 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
             const moved = Math.hypot(tx - shoreTouchStartX, ty - shoreTouchStartY) > 10;
             if (!moved) {
                 const maze = state.mazeRescue;
-                // "开始探路"按钮
-                const scoutBtnX = cw * 0.08;
-                const scoutBtnY = ch * 0.82;
-                const scoutBtnW = cw * 0.40;
-                const scoutBtnH = 52;
-                if (tx >= scoutBtnX && tx <= scoutBtnX + scoutBtnW &&
-                    ty >= scoutBtnY && ty <= scoutBtnY + scoutBtnH) {
-                    if (onMazeDive) onMazeDive('scout');
+
+                // 全屏地图打开时，点击任意位置关闭
+                if (maze.shoreMapOpen) {
+                    maze.shoreMapOpen = false;
                     return;
                 }
-                // "正式救援"按钮（需要已发现NPC）
-                const rescueBtnX = cw * 0.52;
-                const rescueBtnY = ch * 0.82;
-                const rescueBtnW = cw * 0.40;
-                const rescueBtnH = 52;
-                if (maze.npcFound && tx >= rescueBtnX && tx <= rescueBtnX + rescueBtnW &&
-                    ty >= rescueBtnY && ty <= rescueBtnY + rescueBtnH) {
-                    if (onMazeDive) onMazeDive('rescue');
+
+                // 点击认知地图图标（信息卡片右上角的小地图区域）
+                const cardX = cw * 0.06;
+                const cardY = ch * 0.52;
+                const cardW = cw * 0.88;
+                const mapIconX = cardX + cardW - 40;
+                const mapIconY = cardY + 8;
+                const mapIconSize = 36;
+                if (tx >= mapIconX && tx <= mapIconX + mapIconSize &&
+                    ty >= mapIconY && ty <= mapIconY + mapIconSize) {
+                    maze.shoreMapOpen = true;
                     return;
                 }
+
+                // 点击洞口（水面入口）下潜
+                const poolX = cw * 0.5;
+                const poolY = ch * 0.48;
+                const poolW = 80;
+                const poolH = 40;
+                const distToPool = Math.hypot(tx - poolX, ty - poolY);
+                if (distToPool < Math.max(poolW, poolH) + 10) {
+                    // 根据是否已发现NPC自动决定下潜类型
+                    const diveType = maze.npcFound ? 'rescue' : 'scout';
+                    if (onMazeDive) onMazeDive(diveType);
+                    return;
+                }
+
                 // "返回主菜单"按钮（左上角）
                 if (tx < 80 && ty < 50) {
                     state.screen = 'menu';
