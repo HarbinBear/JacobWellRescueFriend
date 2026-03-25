@@ -230,6 +230,14 @@ export const CONFIG = {
 
         // 结算
         deadTimerBeforeResult: 120, // 死亡后多少帧显示结算
+
+        // === 多次下潜闭环配置 ===
+        retreatHoldDuration: 2.0,   // 探路撤离长按秒数
+        retreatBtnRadius: 36,       // 撤离按钮半径
+        retreatBtnXRatio: 0.18,     // 撤离按钮X位置比例
+        retreatBtnYRatio: 0.88,     // 撤离按钮Y位置比例
+        surfacingDuration: 60,      // 上浮动画帧数（1秒）
+        debriefShowDelay: 30,       // 结算页延迟显示帧数
     },
 
     // ===== 玩家攻击（挥氧气瓶）配置 =====

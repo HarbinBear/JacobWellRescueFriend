@@ -17,6 +17,13 @@ let attackTouchId: number | null = null;
 // 迷宫救援长按触点 ID
 let mazeRescueTouchId: number | null = null;
 
+// 迷宫撤离长按触点 ID
+let mazeRetreatTouchId: number | null = null;
+
+// 岸上页面触摸起始位置
+let shoreTouchStartX = 0;
+let shoreTouchStartY = 0;
+
 // 主菜单触摸起始位置（用于 touchEnd 判断点击）
 let menuTouchStartX = 0;
 let menuTouchStartY = 0;
@@ -40,7 +47,7 @@ function getChapterCardBounds(cw, ch, scrollY) {
     ];
 }
 
-export function initInput(onReset, onArena?, onMaze?, onMazeReplay?) {
+export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?, onReturnToShore?) {
     // PC 调试键盘支持 
     if (typeof window !== 'undefined' && window.addEventListener) {
         const keys = { w: false, a: false, s: false, d: false, shift: false };
@@ -155,11 +162,18 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?) {
         }
 
         if(state.screen !== 'play') {
+            // 迷宫模式：岸上阶段只记录触摸起始位置
+            if (state.screen === 'mazeRescue' && state.mazeRescue && state.mazeRescue.phase === 'shore') {
+                const touch = res.touches[0];
+                shoreTouchStartX = touch.clientX;
+                shoreTouchStartY = touch.clientY;
+                return;
+            }
             // 迷宫模式：游戏进行中允许正常操作
             if (state.screen === 'mazeRescue' && state.mazeRescue && state.mazeRescue.phase === 'play') {
                 // 继续往下处理摇杆和救援按钮
             } else if (state.screen === 'mazeRescue' && state.mazeRescue &&
-                (state.mazeRescue.phase === 'rescued' || state.mazeRescue.phase === 'dead')) {
+                (state.mazeRescue.phase === 'rescued' || state.mazeRescue.phase === 'debrief')) {
                 // 迷宫结算页：等待1秒后可点击
                 if (state.mazeRescue.resultTimer >= 60) {
                     // 结算页点击由 touchEnd 处理
@@ -274,10 +288,11 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?) {
                 }
             }
 
-            // 迷宫模式：检测救援长按（靠近NPC时）
+            // 迷宫模式：检测救援长按（靠近NPC时，仅正式救援下潜）
             if (state.screen === 'mazeRescue' && state.mazeRescue && state.mazeRescue.phase === 'play') {
                 const maze = state.mazeRescue;
-                if (!maze.npcRescued && state.npc.active && mazeRescueTouchId === null) {
+                // 救援绑绳（仅正式救援下潜可绑绳）
+                if (maze.diveType === 'rescue' && !maze.npcRescued && state.npc.active && mazeRescueTouchId === null) {
                     const zoom = state.camera ? state.camera.zoom : 1;
                     const npcScreenX = CONFIG.screenWidth / 2 + (state.npc.x - player.x) * zoom;
                     const npcScreenY = CONFIG.screenHeight / 2 + (state.npc.y - player.y) * zoom;
@@ -288,6 +303,20 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?) {
                         maze.npcRescueHolding = true;
                         maze.npcRescueHoldStart = Date.now();
                         maze.npcRescueTouchId = t.identifier;
+                        continue;
+                    }
+                }
+                // 探路撤离按钮（仅侦察下潜可用）
+                if (maze.diveType === 'scout' && mazeRetreatTouchId === null) {
+                    const retreatBtnX = CONFIG.screenWidth * CONFIG.maze.retreatBtnXRatio;
+                    const retreatBtnY = CONFIG.screenHeight * CONFIG.maze.retreatBtnYRatio;
+                    const rdx = t.clientX - retreatBtnX;
+                    const rdy = t.clientY - retreatBtnY;
+                    if (Math.hypot(rdx, rdy) <= CONFIG.maze.retreatBtnRadius) {
+                        mazeRetreatTouchId = t.identifier;
+                        maze.retreatHolding = true;
+                        maze.retreatHoldStart = Date.now();
+                        maze.retreatTouchId = t.identifier;
                         continue;
                     }
                 }
@@ -382,6 +411,48 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?) {
     });
 
     wx.onTouchEnd((res) => {
+        // 迷宫模式：岸上阶段点击处理
+        if (state.screen === 'mazeRescue' && state.mazeRescue && state.mazeRescue.phase === 'shore') {
+            const touch = res.changedTouches[0];
+            const tx = touch.clientX;
+            const ty = touch.clientY;
+            const cw = CONFIG.screenWidth;
+            const ch = CONFIG.screenHeight;
+            // 防止滑动误触
+            const moved = Math.hypot(tx - shoreTouchStartX, ty - shoreTouchStartY) > 10;
+            if (!moved) {
+                const maze = state.mazeRescue;
+                // "开始探路"按钮
+                const scoutBtnX = cw * 0.08;
+                const scoutBtnY = ch * 0.82;
+                const scoutBtnW = cw * 0.40;
+                const scoutBtnH = 52;
+                if (tx >= scoutBtnX && tx <= scoutBtnX + scoutBtnW &&
+                    ty >= scoutBtnY && ty <= scoutBtnY + scoutBtnH) {
+                    if (onMazeDive) onMazeDive('scout');
+                    return;
+                }
+                // "正式救援"按钮（需要已发现NPC）
+                const rescueBtnX = cw * 0.52;
+                const rescueBtnY = ch * 0.82;
+                const rescueBtnW = cw * 0.40;
+                const rescueBtnH = 52;
+                if (maze.npcFound && tx >= rescueBtnX && tx <= rescueBtnX + rescueBtnW &&
+                    ty >= rescueBtnY && ty <= rescueBtnY + rescueBtnH) {
+                    if (onMazeDive) onMazeDive('rescue');
+                    return;
+                }
+                // "返回主菜单"按钮（左上角）
+                if (tx < 80 && ty < 50) {
+                    state.screen = 'menu';
+                    state.menuScreen = 'main';
+                    state.mazeRescue = null;
+                    return;
+                }
+            }
+            return;
+        }
+
         // 迷宫模式：游戏进行中的小地图折叠按钮点击
         if (state.screen === 'mazeRescue' && state.mazeRescue && state.mazeRescue.phase === 'play') {
             const touch = res.changedTouches[0];
@@ -399,49 +470,44 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?) {
 
         // 迷宫结算页点击处理（在菜单判断之前）
         if (state.screen === 'mazeRescue' && state.mazeRescue &&
-            (state.mazeRescue.phase === 'rescued' || state.mazeRescue.phase === 'dead') &&
+            (state.mazeRescue.phase === 'rescued' || state.mazeRescue.phase === 'debrief') &&
             state.mazeRescue.resultTimer >= 60) {
             const touch = res.changedTouches[0];
             const tx = touch.clientX;
             const ty = touch.clientY;
             const cw = CONFIG.screenWidth;
             const ch = CONFIG.screenHeight;
-            // 重玩本局按鈕（左下）
-            const replayBtnX = cw * 0.15;
-            const replayBtnY = ch * 0.88;
-            const replayBtnW = cw * 0.32;
-            const replayBtnH = 52;
-            if (tx >= replayBtnX && tx <= replayBtnX + replayBtnW &&
-                ty >= replayBtnY - replayBtnH / 2 && ty <= replayBtnY + replayBtnH / 2) {
-                if (onMazeReplay) onMazeReplay();
+
+            // 救援成功结算页
+            if (state.mazeRescue.phase === 'rescued') {
+                // "下一局"按钮
+                const nextBtnX = cw * 0.25;
+                const nextBtnY = ch * 0.85;
+                const nextBtnW = cw * 0.50;
+                const nextBtnH = 52;
+                if (tx >= nextBtnX && tx <= nextBtnX + nextBtnW &&
+                    ty >= nextBtnY - nextBtnH / 2 && ty <= nextBtnY + nextBtnH / 2) {
+                    if (onMaze) onMaze();
+                    return;
+                }
+                // 点击其他区域返回主菜单
+                state.screen = 'menu';
+                state.menuScreen = 'main';
+                state.mazeRescue = null;
                 return;
             }
-            // 下一局按鈕（右下）
-            const nextBtnX = cw * 0.53;
-            const nextBtnY = ch * 0.88;
-            const nextBtnW = cw * 0.32;
-            const nextBtnH = 52;
-            if (tx >= nextBtnX && tx <= nextBtnX + nextBtnW &&
-                ty >= nextBtnY - nextBtnH / 2 && ty <= nextBtnY + nextBtnH / 2) {
-                if (onMaze) onMaze();
+
+            // 探路结算页（debrief）
+            // "回到岸上"按钮
+            const shoreBtnX = cw * 0.25;
+            const shoreBtnY = ch * 0.85;
+            const shoreBtnW = cw * 0.50;
+            const shoreBtnH = 52;
+            if (tx >= shoreBtnX && tx <= shoreBtnX + shoreBtnW &&
+                ty >= shoreBtnY - shoreBtnH / 2 && ty <= shoreBtnY + shoreBtnH / 2) {
+                if (onReturnToShore) onReturnToShore();
                 return;
             }
-            // 重播轨迹按钮 (中上)
-            const statsY = ch * 0.38;
-            const replayAnimBtnX = cw * 0.34;
-            const replayAnimBtnY = statsY + 130;
-            const replayAnimBtnW = cw * 0.32;
-            const replayAnimBtnH = 36;
-            if (tx >= replayAnimBtnX && tx <= replayAnimBtnX + replayAnimBtnW &&
-                ty >= replayAnimBtnY - replayAnimBtnH / 2 && ty <= replayAnimBtnY + replayAnimBtnH / 2) {
-                // 重置结算计时器以重新播放动画
-                state.mazeRescue.resultTimer = 30; 
-                return;
-            }
-            // 点击其他区域返回主菜单
-            state.screen = 'menu';
-            state.menuScreen = 'main';
-            state.mazeRescue = null;
             return;
         }
 
@@ -570,6 +636,14 @@ function handleTouchEnd(changedTouches) {
             if (state.mazeRescue) {
                 state.mazeRescue.npcRescueHolding = false;
                 state.mazeRescue.npcRescueTouchId = null;
+            }
+        }
+        // 迷宫撤离长按松手
+        if (t.identifier === mazeRetreatTouchId) {
+            mazeRetreatTouchId = null;
+            if (state.mazeRescue) {
+                state.mazeRescue.retreatHolding = false;
+                state.mazeRescue.retreatTouchId = null;
             }
         }
         // 放弃按钮松手

@@ -134,21 +134,34 @@ export const state = {
         comboKills: number;     // 连杀计数
         comboTimer: number;     // 连杀计时（帧，归零则重置连杀）
     },
-    // 迷宫引导绳模式状态
+    // 迷宫引导绳模式状态（多次下潜闭环）
     mazeRescue: null as null | {
-        phase: string;          // 'play'（游戏中）| 'rescued'（救援成功）| 'dead'（氧气耗尽）
+        // === 阶段控制 ===
+        phase: string;          // 'shore'（岸上）| 'play'（水下游戏中）| 'surfacing'（上浮中）| 'debrief'（返岸结算）| 'rescued'（救援成功）
+        diveType: string;       // 'scout'（侦察）| 'rescue'（正式救援）
         resultTimer: number;    // 结算页计时（帧）
-        startTime: number;      // 本局开始时间戳（ms）
+        startTime: number;      // 本次下潜开始时间戳（ms）
         finishTime: number;     // 完成时间戳（ms，0表示未完成）
+
+        // === NPC 救援交互 ===
         npcRescued: boolean;    // NPC是否已被绑绳（跟随中）
         npcRescueHolding: boolean;  // 是否正在长按救援
         npcRescueHoldStart: number; // 长按开始时间戳
         npcRescueTouchId: number | null; // 救援长按触点ID
+
+        // === 探路撤离协议 ===
+        retreatHolding: boolean;    // 是否正在长按撤离
+        retreatHoldStart: number;   // 撤离长按开始时间戳
+        retreatTouchId: number | null; // 撤离长按触点ID
+
+        // === UI 状态 ===
         minimapExpanded: boolean;   // 小地图是否展开
-        // 迷宫专属地图数据（独立于主线地图）
+        shoreScrollY: number;       // 岸上页面滚动偏移
+
+        // === 迷宫专属地图数据（跨下潜保留） ===
         mazeMap: any[][];
         mazeWalls: any[];
-        mazeExplored: boolean[][];
+        mazeExplored: boolean[][];  // 已探索区域（跨下潜累积）
         mazeCols: number;
         mazeRows: number;
         mazeTileSize: number;
@@ -158,7 +171,27 @@ export const state = {
         // NPC初始位置（底部深处）
         npcInitX: number;
         npcInitY: number;
+
+        // === 跨下潜持久化数据 ===
+        diveCount: number;          // 已完成下潜次数
+        npcFound: boolean;          // 是否已发现NPC位置
+        maxDepthReached: number;    // 历史最深到达（像素y坐标）
+        totalRopePlaced: number;    // 累计铺设绳索段数
+        // 每次下潜的摘要记录
+        diveHistory: {
+            diveType: string;
+            duration: number;       // 用时（秒）
+            maxDepth: number;       // 本次最深
+            newExploredCount: number; // 本次新探索格子数
+            ropePlaced: number;     // 本次铺绳数
+            returnReason: string;   // 'retreat'（主动撤离）| 'o2'（氧气耗尽）| 'rescued'（救援成功）
+        }[];
+
+        // === 本次下潜运行态数据 ===
         playerPath: {x: number, y: number}[]; // 记录玩家移动轨迹
+        thisExploredBefore: boolean[][]; // 本次下潜开始时的已探索快照（用于计算增量）
+        thisRopeCountBefore: number;    // 本次下潜开始时的绳索数量
+        thisMaxDepth: number;           // 本次下潜最深到达
     },
     rope: {
         ropes: [],

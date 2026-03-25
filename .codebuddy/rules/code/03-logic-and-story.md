@@ -197,6 +197,8 @@ const storyManager = new StoryManager();
 - `resetArenaLogic()`
 - `updateArena()`
 - `resetMazeLogic()`
+- `startMazeDive(diveType)`
+- `returnToShore()`
 - `replayMazeLogic()`
 - `updateMaze()`
 - `checkMazeCollision(x, y, maze)`

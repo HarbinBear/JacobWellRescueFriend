@@ -150,6 +150,14 @@ export function draw() {
 
     // 迷宫模式：使用迷宫专属地图数据渲染
     const isMazeMode = state.screen === 'mazeRescue' && state.mazeRescue;
+
+    // 迷宫岸上阶段和结算阶段：跳过水下场景渲染，只渲染UI
+    if (isMazeMode && (state.mazeRescue.phase === 'shore' || state.mazeRescue.phase === 'debrief' || state.mazeRescue.phase === 'rescued')) {
+        ctx.restore();
+        drawUI();
+        return;
+    }
+
     const renderMap = isMazeMode ? state.mazeRescue.mazeMap : state.map;
     const renderWalls = isMazeMode ? state.mazeRescue.mazeWalls : state.walls;
     const renderRows = isMazeMode ? state.mazeRescue.mazeRows : CONFIG.rows;

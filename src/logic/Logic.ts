@@ -1286,7 +1286,7 @@ export function checkMazeCollision(x: number, y: number, maze: any): boolean {
 }
 
 // =============================================
-// 迷宫引导绳模式：初始化
+// 迷宫多次下潜闭环：初始化（生成新地图，进入岸上阶段）
 // =============================================
 export function resetMazeLogic() {
     // 重置基础状态（不调用 resetState，避免污染主线地图）
@@ -1342,36 +1342,34 @@ export function resetMazeLogic() {
     // 生成迷宫地图
     const mazeData = generateMazeMap();
 
-    // 设置玩家出生点
-    player.x = mazeData.spawnX;
-    player.y = mazeData.spawnY;
-    player.angle = Math.PI / 2; // 朝下
-    player.targetAngle = Math.PI / 2;
-    input.targetAngle = Math.PI / 2;
-
-    // 初始化 NPC（被救者）
-    state.npc.active = true;
-    state.npc.x = mazeData.npcInitX;
-    state.npc.y = mazeData.npcInitY;
-    state.npc.vx = 0;
-    state.npc.vy = 0;
-    state.npc.angle = -Math.PI / 2;
-    state.npc.state = 'wait';
-
     // 初始化相机
     state.camera = { zoom: 1, targetZoom: 1 };
 
-    // 初始化迷宫专属状态
+    // 初始化空的已探索快照
+    const emptyExplored: boolean[][] = [];
+    for (let r = 0; r < mazeData.mazeRows; r++) {
+        emptyExplored[r] = [];
+        for (let c = 0; c < mazeData.mazeCols; c++) {
+            emptyExplored[r][c] = false;
+        }
+    }
+
+    // 初始化迷宫专属状态 —— 直接进入岸上阶段
     state.mazeRescue = {
-        phase: 'play',
+        phase: 'shore',
+        diveType: 'scout',
         resultTimer: 0,
-        startTime: Date.now(),
+        startTime: 0,
         finishTime: 0,
         npcRescued: false,
         npcRescueHolding: false,
         npcRescueHoldStart: 0,
         npcRescueTouchId: null,
+        retreatHolding: false,
+        retreatHoldStart: 0,
+        retreatTouchId: null,
         minimapExpanded: false,
+        shoreScrollY: 0,
         mazeMap: mazeData.mazeMap,
         mazeWalls: mazeData.mazeWalls,
         mazeExplored: mazeData.mazeExplored,
@@ -1382,32 +1380,58 @@ export function resetMazeLogic() {
         exitY: mazeData.exitY,
         npcInitX: mazeData.npcInitX,
         npcInitY: mazeData.npcInitY,
-        playerPath: [{x: mazeData.spawnX, y: mazeData.spawnY}],
+        diveCount: 0,
+        npcFound: false,
+        maxDepthReached: 0,
+        totalRopePlaced: 0,
+        diveHistory: [],
+        playerPath: [],
+        thisExploredBefore: emptyExplored,
+        thisRopeCountBefore: 0,
+        thisMaxDepth: 0,
     };
+
+    // 初始化 NPC（被救者，岸上阶段不激活）
+    state.npc.active = false;
+    state.npc.x = mazeData.npcInitX;
+    state.npc.y = mazeData.npcInitY;
+    state.npc.vx = 0;
+    state.npc.vy = 0;
+    state.npc.angle = -Math.PI / 2;
+    state.npc.state = 'wait';
+
+    // 玩家放在出口位置（岸上阶段不显示，但预设好）
+    player.x = mazeData.exitX;
+    player.y = 3 * mazeData.mazeTileSize + mazeData.mazeTileSize / 2;
+    player.angle = Math.PI / 2;
+    player.targetAngle = Math.PI / 2;
+    input.targetAngle = Math.PI / 2;
 
     // 切换到迷宫模式
     state.screen = 'mazeRescue';
-
-    // 开场提示
-    storyManager.showText('找到被困者，用引导绳带他出去！', '#aef', 3000);
-    setTimeout(() => {
-        storyManager.showText('靠近墙壁静止可以铺设引导绳', 'rgba(180,220,255,0.9)', 3000);
-    }, 3500);
 }
 
 // =============================================
-// 迷宫引导绳模式：重玩（保留地图和绳子，重置NPC和玩家）
+// 迷宫多次下潜闭环：从岸上开始下潜
 // =============================================
-export function replayMazeLogic() {
+export function startMazeDive(diveType: string) {
     const maze = state.mazeRescue;
     if (!maze) return;
 
-    // 重置玩家
+    // 设置下潜类型
+    maze.diveType = diveType;
+    maze.phase = 'play';
+    maze.startTime = Date.now();
+    maze.finishTime = 0;
+    maze.resultTimer = 0;
+
+    // 重置玩家状态
     player.o2 = 100;
     player.n2 = 0;
     player.silt = 0;
     player.vx = 0;
     player.vy = 0;
+    // 玩家从出口（顶部）出发
     player.x = maze.exitX;
     player.y = 3 * maze.mazeTileSize + maze.mazeTileSize / 2;
     player.angle = Math.PI / 2;
@@ -1419,50 +1443,204 @@ export function replayMazeLogic() {
     state.story.redOverlay = 0;
     state.story.shake = 0;
 
-    // 重置NPC到初始位置
+    // 重置撤离状态
+    maze.retreatHolding = false;
+    maze.retreatHoldStart = 0;
+    maze.retreatTouchId = null;
+
+    // 重置NPC救援交互状态
+    maze.npcRescueHolding = false;
+    maze.npcRescueHoldStart = 0;
+    maze.npcRescueTouchId = null;
+
+    // 正式救援时重置NPC跟随状态
+    if (diveType === 'rescue') {
+        maze.npcRescued = false;
+    }
+
+    // 激活NPC
+    state.npc.active = true;
     state.npc.x = maze.npcInitX;
     state.npc.y = maze.npcInitY;
     state.npc.vx = 0;
     state.npc.vy = 0;
     state.npc.angle = -Math.PI / 2;
     state.npc.state = 'wait';
-    state.npc.active = true;
 
-    // 保留地图和绳子，只重置游戏状态
-    maze.phase = 'play';
-    maze.resultTimer = 0;
-    maze.startTime = Date.now();
-    maze.finishTime = 0;
-    maze.npcRescued = false;
-    maze.npcRescueHolding = false;
-    maze.npcRescueHoldStart = 0;
-    maze.npcRescueTouchId = null;
+    // 记录本次下潜开始时的探索快照（用于计算增量）
+    maze.thisExploredBefore = [];
+    for (let r = 0; r < maze.mazeRows; r++) {
+        maze.thisExploredBefore[r] = [];
+        for (let c = 0; c < maze.mazeCols; c++) {
+            maze.thisExploredBefore[r][c] = maze.mazeExplored[r] ? maze.mazeExplored[r][c] : false;
+        }
+    }
+    maze.thisRopeCountBefore = state.rope ? state.rope.ropes.length : 0;
+    maze.thisMaxDepth = 0;
     maze.playerPath = [{x: player.x, y: player.y}];
-    // 保留 minimapExpanded 状态
 
-    state.screen = 'mazeRescue';
-    storyManager.showText('再次出发！', '#aef', 2000);
+    // 绳索系统保留已有绳索，只重置当前铺设状态
+    if (state.rope) {
+        state.rope.active = false;
+        state.rope.current = {
+            start: null,
+            startWall: null,
+            end: null,
+            path: [],
+            basePoints: [],
+            slackFactor: 1,
+            mode: 'loose',
+            time: 0
+        };
+        state.rope.ui = {
+            visible: false,
+            type: null,
+            progress: 0,
+            anchor: null
+        };
+        state.rope.hold = {
+            active: false,
+            type: null,
+            timer: 0,
+            touchId: null,
+            anchor: null
+        };
+        state.rope.stillTimer = 0;
+    }
+
+    // 开场提示
+    if (diveType === 'rescue') {
+        storyManager.showText('正式救援！找到被困者，带他出去！', '#0f8', 3000);
+    } else {
+        if (maze.diveCount === 0) {
+            storyManager.showText('第一次下潜，先探探路吧', '#aef', 3000);
+            setTimeout(() => {
+                storyManager.showText('靠近墙壁静止可以铺设引导绳', 'rgba(180,220,255,0.9)', 3000);
+            }, 3500);
+        } else {
+            storyManager.showText(`第 ${maze.diveCount + 1} 次下潜，继续深入`, '#aef', 2500);
+        }
+    }
 }
 
 // =============================================
-// 迷宫引导绳模式：每帧更新
+// 迷宫多次下潜闭环：完成本次下潜，返回岸上
+// =============================================
+function finishMazeDive(returnReason: string) {
+    const maze = state.mazeRescue;
+    if (!maze) return;
+
+    // 计算本次下潜成果
+    const duration = Math.floor((Date.now() - maze.startTime) / 1000);
+    let newExploredCount = 0;
+    for (let r = 0; r < maze.mazeRows; r++) {
+        for (let c = 0; c < maze.mazeCols; c++) {
+            if (maze.mazeExplored[r] && maze.mazeExplored[r][c] &&
+                maze.thisExploredBefore[r] && !maze.thisExploredBefore[r][c]) {
+                newExploredCount++;
+            }
+        }
+    }
+    const ropePlaced = (state.rope ? state.rope.ropes.length : 0) - maze.thisRopeCountBefore;
+
+    // 记录下潜历史
+    maze.diveHistory.push({
+        diveType: maze.diveType,
+        duration: duration,
+        maxDepth: Math.floor(maze.thisMaxDepth / maze.mazeTileSize),
+        newExploredCount: newExploredCount,
+        ropePlaced: ropePlaced,
+        returnReason: returnReason,
+    });
+
+    // 更新跨下潜统计
+    maze.diveCount++;
+    maze.totalRopePlaced = state.rope ? state.rope.ropes.length : 0;
+    if (maze.thisMaxDepth > maze.maxDepthReached) {
+        maze.maxDepthReached = maze.thisMaxDepth;
+    }
+
+    // 进入结算阶段
+    maze.phase = 'debrief';
+    maze.resultTimer = 0;
+    maze.finishTime = Date.now();
+}
+
+// =============================================
+// 迷宫多次下潜闭环：从结算回到岸上
+// =============================================
+export function returnToShore() {
+    const maze = state.mazeRescue;
+    if (!maze) return;
+
+    maze.phase = 'shore';
+    maze.resultTimer = 0;
+    // 停用NPC
+    state.npc.active = false;
+}
+
+// =============================================
+// 迷宫多次下潜闭环：重玩（生成新地图，重新开始）
+// =============================================
+export function replayMazeLogic() {
+    // 直接调用完整重置，生成新地图
+    resetMazeLogic();
+}
+
+// =============================================
+// 迷宫多次下潜闭环：每帧更新
 // =============================================
 export function updateMaze() {
     if (state.screen !== 'mazeRescue') return;
     const maze = state.mazeRescue;
     if (!maze) return;
 
-    // 结算阶段：只计时
-    if (maze.phase === 'rescued' || maze.phase === 'dead') {
+    // === 岸上阶段：不需要更新游戏逻辑 ===
+    if (maze.phase === 'shore') {
+        return;
+    }
+
+    // === 结算阶段：只计时 ===
+    if (maze.phase === 'debrief' || maze.phase === 'rescued') {
         maze.resultTimer++;
         return;
     }
+
+    // === 上浮动画阶段 ===
+    if (maze.phase === 'surfacing') {
+        maze.resultTimer++;
+        // 玩家自动向上移动
+        player.vy = -3;
+        player.y += player.vy;
+        player.vx *= 0.9;
+        player.x += player.vx;
+        // 动画时间
+        if (!player.animTime) player.animTime = 0;
+        player.animTime += 0.1;
+        // 上浮完成后进入结算
+        if (maze.resultTimer >= CONFIG.maze.surfacingDuration) {
+            finishMazeDive(maze.npcRescued ? 'rescued' : 'retreat');
+        }
+        updateParticles();
+        updateSplashes();
+        return;
+    }
+
+    // === 游戏进行中 ===
 
     // 更新剧情文字（复用 storyManager）
     storyManager.update();
 
     // 绳索长按时冻结玩家
     if (state.rope && state.rope.hold && state.rope.hold.active) {
+        input.move = 0;
+        input.speedUp = false;
+        player.vx = 0;
+        player.vy = 0;
+    }
+
+    // 撤离长按时也冻结玩家
+    if (maze.retreatHolding) {
         input.move = 0;
         input.speedUp = false;
         player.vx = 0;
@@ -1504,6 +1682,11 @@ export function updateMaze() {
     // 动画时间
     if (!player.animTime) player.animTime = 0;
     player.animTime += 0.05 + Math.hypot(player.vx, player.vy) * 0.05;
+
+    // 记录本次最深到达
+    if (player.y > maze.thisMaxDepth) {
+        maze.thisMaxDepth = player.y;
+    }
 
     // 记录玩家轨迹 (每隔一段距离记录一次，避免数据过大)
     if (maze.playerPath.length === 0) {
@@ -1554,9 +1737,18 @@ export function updateMaze() {
             while (diff < -Math.PI) diff += Math.PI * 2;
             state.npc.angle += diff * 0.05;
         }
+
+        // 检测是否发现NPC（靠近一定距离就标记为已发现）
+        if (!maze.npcFound) {
+            const distToNpc = Math.hypot(player.x - state.npc.x, player.y - state.npc.y);
+            if (distToNpc < CONFIG.maze.npcRescueRange * 2) {
+                maze.npcFound = true;
+                storyManager.showText('发现被困者！', '#ff0', 2500);
+            }
+        }
     }
 
-    // --- 救援交互：靠近NPC长按 ---
+    // --- 救援交互：靠近NPC长按（仅正式救援下潜可绑绳） ---
     if (!maze.npcRescued && state.npc.active) {
         if (maze.npcRescueHolding) {
             const elapsed = (Date.now() - maze.npcRescueHoldStart) / 1000;
@@ -1570,14 +1762,28 @@ export function updateMaze() {
         }
     }
 
-    // --- 胜利检测：NPC已跟随且玩家到达出口 ---
-    if (maze.npcRescued && player.y <= maze.exitY + maze.mazeTileSize * 2) {
+    // --- 探路撤离协议：长按完成后开始上浮 ---
+    if (maze.diveType === 'scout' && maze.retreatHolding) {
+        const elapsed = (Date.now() - maze.retreatHoldStart) / 1000;
+        if (elapsed >= CONFIG.maze.retreatHoldDuration) {
+            maze.retreatHolding = false;
+            maze.phase = 'surfacing';
+            maze.resultTimer = 0;
+            storyManager.showText('安全上浮中...', '#aef', 2000);
+        }
+    }
+
+    // --- 胜利检测：NPC已跟随且玩家到达出口（仅正式救援） ---
+    if (maze.diveType === 'rescue' && maze.npcRescued && player.y <= maze.exitY + maze.mazeTileSize * 2) {
         const distToExit = Math.hypot(player.x - maze.exitX, player.y - maze.exitY);
         if (distToExit < maze.mazeTileSize * 2) {
             maze.phase = 'rescued';
             maze.resultTimer = 0;
             maze.finishTime = Date.now();
-            storyManager.showText('成功救出！', '#ff0', 99999);
+            // 记录到历史
+            finishMazeDive('rescued');
+            maze.phase = 'rescued'; // finishMazeDive会设为debrief，这里覆盖为rescued
+            storyManager.showText('🎉 成功救出！', '#ff0', 99999);
         }
     }
 
@@ -1587,11 +1793,12 @@ export function updateMaze() {
     if (vel > 1.5) o2Consumption += CONFIG.maze.o2ConsumptionMove;
     player.o2 -= o2Consumption;
 
+    // 氧气耗尽 = 被迫返回岸上（保留成果）
     if (player.o2 <= 0) {
         player.o2 = 0;
-        maze.phase = 'dead';
+        storyManager.showText('氧气不足，紧急上浮...', '#f80', 2500);
+        maze.phase = 'surfacing';
         maze.resultTimer = 0;
-        storyManager.showText('氧气耗尽...', '#f44', 99999);
     }
 
     // --- 更新探索地图 ---

@@ -1,5 +1,5 @@
 import { initTextures, draw } from './src/render/Render';
-import { resetGameLogic, update, resetArenaLogic, updateArena, resetMazeLogic, replayMazeLogic, updateMaze } from './src/logic/Logic';
+import { resetGameLogic, update, resetArenaLogic, updateArena, resetMazeLogic, replayMazeLogic, updateMaze, startMazeDive, returnToShore } from './src/logic/Logic';
 import { initInput } from './src/core/input';
 
 // 初始化纹理
@@ -10,7 +10,9 @@ initInput(
     (startStage: number = 1) => resetGameLogic(startStage, true),
     () => resetArenaLogic(),
     () => resetMazeLogic(),
-    () => replayMazeLogic()
+    () => replayMazeLogic(),
+    (diveType: string) => startMazeDive(diveType),
+    () => returnToShore()
 );
 
 // 启动游戏 (初始化但不开始)
