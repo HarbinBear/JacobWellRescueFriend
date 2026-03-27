@@ -66,7 +66,7 @@ export const CONFIG = {
     ropeAnchorDistance: 60,        // 靠近岩石多近才能锚定（距岩石表面的像素距离）
     ropeStillTimeToShow: 0.8,      // 静止多少秒后显示铺线按钮
     ropeStillSpeedThreshold: 1.5,  // 判定静止的速度阈值（低于此值视为静止）
-    ropeHoldDuration: 1.2,         // 长按多少秒完成铺线/结束操作
+    ropeHoldDuration: 0.6,         // 长按多少秒完成铺线/结束操作
     ropeButtonRadius: 32,          // UI按钮半径
     ropeButtonXRatio: 0.82,        // UI按钮X位置比例（占屏幕宽度）
     ropeButtonYRatio: 0.75,        // UI按钮Y位置比例（占屏幕高度）
@@ -212,12 +212,12 @@ export const CONFIG = {
         wallThickness: 2,       // 外围岩石厚度（格子数）
 
         // 氧气参数
-        o2ConsumptionBase: 0.004,   // 基础氧气消耗（比主线稍慢）
-        o2ConsumptionMove: 0.002,   // 移动额外消耗
+        o2ConsumptionBase: 0.008,   // 基础氧气消耗（加快，增加紧迫感）
+        o2ConsumptionMove: 0.005,   // 移动额外消耗
 
         // NPC（被救者）配置
         npcRescueRange: 80,         // 靠近NPC多近触发救援交互（像素）
-        npcRescueHoldDuration: 1.5, // 长按多少秒完成绑绳（秒）
+        npcRescueHoldDuration: 0.8, // 长按多少秒完成绑绳（秒）
         npcFollowSpeed: 3.2,        // NPC跟随速度
 
         // 小地图
@@ -232,7 +232,7 @@ export const CONFIG = {
         deadTimerBeforeResult: 120, // 死亡后多少帧显示结算
 
         // === 多次下潜闭环配置 ===
-        retreatHoldDuration: 2.0,   // 探路撤离长按秒数
+        retreatHoldDuration: 1.0,   // 探路撤离长按秒数
         retreatBtnRadius: 36,       // 撤离按钮半径
         retreatBtnXRatio: 0.18,     // 撤离按钮X位置比例
         retreatBtnYRatio: 0.88,     // 撤离按钮Y位置比例

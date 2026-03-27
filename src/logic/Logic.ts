@@ -1781,8 +1781,8 @@ export function updateMaze() {
         }
     }
 
-    // --- 探路撤离协议：长按完成后开始上浮 ---
-    if (maze.diveType === 'scout' && maze.retreatHolding) {
+    // --- 撤离协议：长按完成后开始上浮（未带人时可用） ---
+    if (!maze.npcRescued && maze.retreatHolding) {
         const elapsed = (Date.now() - maze.retreatHoldStart) / 1000;
         if (elapsed >= CONFIG.maze.retreatHoldDuration) {
             maze.retreatHolding = false;

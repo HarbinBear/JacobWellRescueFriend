@@ -200,7 +200,7 @@ const storyManager = new StoryManager();
 - `startMazeDive(diveType)`：触发下潜，先进入 `diving_in` 入水动效阶段（约90帧），动效结束后自动切到 `play`
 - `returnToShore()`
 - `replayMazeLogic()`
-- `updateMaze()`：迷宫每帧更新，包含 `shore`（岸上不更新）、`diving_in`（入水动效计时）、`play`（正式游戏）等阶段分支
+- `updateMaze()`：迷宫每帧更新，包含 `shore`（岸上不更新）、`diving_in`（入水动效计时）、`play`（正式游戏）等阶段分支；撤离按钮不区分下潜类型，只要未带人（`!maze.npcRescued`）就可长按上浮
 - `checkMazeCollision(x, y, maze)`
 - `checkCollision(x, y, isPlayer)`
 - `getNearestWallDist(x, y)`

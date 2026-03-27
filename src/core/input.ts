@@ -310,8 +310,8 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                         continue;
                     }
                 }
-                // 探路撤离按钮（仅侦察下潜可用）
-                if (maze.diveType === 'scout' && mazeRetreatTouchId === null) {
+                // 撤离按钮（未带人时可用）
+                if (!maze.npcRescued && mazeRetreatTouchId === null) {
                     const retreatBtnX = CONFIG.screenWidth * CONFIG.maze.retreatBtnXRatio;
                     const retreatBtnY = CONFIG.screenHeight * CONFIG.maze.retreatBtnYRatio;
                     const rdx = t.clientX - retreatBtnX;
@@ -435,7 +435,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
 
                 // 点击认知地图图标（信息卡片右上角的小地图区域）
                 const cardX = cw * 0.06;
-                const cardY = ch * 0.52;
+                const cardY = ch * 0.56;
                 const cardW = cw * 0.88;
                 const mapIconX = cardX + cardW - 40;
                 const mapIconY = cardY + 8;
@@ -448,7 +448,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
 
                 // 点击洞口（水面入口）下潜
                 const poolX = cw * 0.5;
-                const poolY = ch * 0.48;
+                const poolY = ch * 0.44;
                 const poolW = 80;
                 const poolH = 40;
                 const distToPool = Math.hypot(tx - poolX, ty - poolY);

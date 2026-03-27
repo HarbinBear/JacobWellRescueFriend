@@ -2001,8 +2001,8 @@ ctx.fillText(maze.diveType === 'rescue' ? '[救援]' : '[侦察]', 46, 24);
         }
     }
 
-    // 探路撤离按钮（仅侦察下潜，左下角）
-    if (maze.diveType === 'scout') {
+    // 撤离按钮（未带人时可用，左下角）
+    if (!maze.npcRescued) {
         const retreatBtnX = cw * CONFIG.maze.retreatBtnXRatio;
         const retreatBtnY = ch * CONFIG.maze.retreatBtnYRatio;
         const retreatR = CONFIG.maze.retreatBtnRadius;
@@ -2496,30 +2496,63 @@ function drawMazeShore(maze: any, cw: number, ch: number, time: number) {
 // 全屏认知地图查看页面
 // =============================================
 function drawMazeMapFullscreen(maze: any, cw: number, ch: number, time: number) {
-    // 背景
+    // 背景（旧纸张质感）
     ctx.globalAlpha = 1;
-    ctx.fillStyle = 'rgba(240,230,210,1)';
+    ctx.fillStyle = 'rgba(235,225,200,1)';
     ctx.fillRect(0, 0, cw, ch);
+    // 纸张纹理（随机斑点）
+    ctx.globalAlpha = 0.06;
+    for (let i = 0; i < 80; i++) {
+        const sx = Math.sin(i * 7.3 + 0.5) * cw * 0.5 + cw * 0.5;
+        const sy = Math.cos(i * 5.1 + 1.2) * ch * 0.5 + ch * 0.5;
+        const sr = Math.abs(2 + Math.sin(i * 3.7) * 1.5);
+        ctx.fillStyle = i % 3 === 0 ? '#8B7355' : '#A0926B';
+        ctx.beginPath();
+        ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    // 纸张折痕
+    ctx.globalAlpha = 0.04;
+    ctx.strokeStyle = '#8B7355';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(cw * 0.5, 0);
+    ctx.lineTo(cw * 0.5, ch);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, ch * 0.5);
+    ctx.lineTo(cw, ch * 0.5);
+    ctx.stroke();
 
-    // 标题
+    // 标题（手写风格）
+    ctx.globalAlpha = 0.85;
     ctx.fillStyle = '#5D4037';
-    ctx.font = 'bold 18px Arial';
+    ctx.font = 'italic bold 18px Georgia, serif';
     ctx.textAlign = 'center';
     ctx.fillText('认知地图', cw / 2, 30);
+    // 标题下划线（手绘波浪线）
+    ctx.strokeStyle = 'rgba(93,64,55,0.3)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let x = cw * 0.3; x < cw * 0.7; x += 3) {
+        const wy = 35 + Math.sin(x * 0.15) * 1.5;
+        if (x === cw * 0.3) ctx.moveTo(x, wy);
+        else ctx.lineTo(x, wy);
+    }
+    ctx.stroke();
 
     // 关闭提示
-    ctx.globalAlpha = 0.5;
+    ctx.globalAlpha = 0.4;
     ctx.fillStyle = '#888';
-    ctx.font = '12px Arial';
+    ctx.font = 'italic 11px Georgia, serif';
     ctx.fillText('点击任意位置关闭', cw / 2, ch - 16);
 
-    // 地图区域
-    const padding = 20;
+    // 地图区域计算
+    const padding = 24;
     const mapAreaW = cw - padding * 2;
-    const mapAreaH = ch - 70;
+    const mapAreaH = ch - 80;
     const cols = maze.mazeCols;
     const rows = maze.mazeRows;
-    // 保持比例
     const mapRatio = cols / rows;
     const areaRatio = mapAreaW / mapAreaH;
     let mapW: number, mapH: number;
@@ -2535,110 +2568,278 @@ function drawMazeMapFullscreen(maze: any, cw: number, ch: number, time: number) 
     const cellW = mapW / cols;
     const cellH = mapH / rows;
 
-    // 纸张底色
+    // 纸张底色（带圆角和阴影）
     ctx.globalAlpha = 1;
-    ctx.fillStyle = 'rgba(245,235,220,1)';
+    ctx.fillStyle = 'rgba(240,232,215,1)';
+    ctx.shadowColor = 'rgba(0,0,0,0.15)';
+    ctx.shadowBlur = 8;
+    ctx.shadowOffsetX = 2;
+    ctx.shadowOffsetY = 2;
     ctx.beginPath();
-    rrect(ctx, mapX - 4, mapY - 4, mapW + 8, mapH + 8, 6);
+    rrect(ctx, mapX - 6, mapY - 6, mapW + 12, mapH + 12, 8);
     ctx.fill();
-    ctx.strokeStyle = 'rgba(139,119,101,0.4)';
-    ctx.lineWidth = 1;
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
+
+    // 地图边框（手绘不规则线条）
+    ctx.strokeStyle = 'rgba(120,100,80,0.35)';
+    ctx.lineWidth = 1.5;
     ctx.beginPath();
-    rrect(ctx, mapX - 4, mapY - 4, mapW + 8, mapH + 8, 6);
+    // 上边
+    for (let x = mapX - 4; x < mapX + mapW + 4; x += 4) {
+        const jitter = Math.sin(x * 0.3) * 1.2;
+        if (x === mapX - 4) ctx.moveTo(x, mapY - 4 + jitter);
+        else ctx.lineTo(x, mapY - 4 + jitter);
+    }
+    // 右边
+    for (let y = mapY - 4; y < mapY + mapH + 4; y += 4) {
+        const jitter = Math.sin(y * 0.25) * 1.2;
+        ctx.lineTo(mapX + mapW + 4 + jitter, y);
+    }
+    // 下边
+    for (let x = mapX + mapW + 4; x > mapX - 4; x -= 4) {
+        const jitter = Math.sin(x * 0.28) * 1.2;
+        ctx.lineTo(x, mapY + mapH + 4 + jitter);
+    }
+    // 左边
+    for (let y = mapY + mapH + 4; y > mapY - 4; y -= 4) {
+        const jitter = Math.sin(y * 0.22) * 1.2;
+        ctx.lineTo(mapX - 4 + jitter, y);
+    }
+    ctx.closePath();
     ctx.stroke();
 
-    // 未探索区域底色
-    ctx.fillStyle = 'rgba(220,210,195,0.5)';
+    // 未探索区域底色（迷雾感）
+    ctx.globalAlpha = 0.3;
+    ctx.fillStyle = 'rgba(200,190,170,0.5)';
     ctx.fillRect(mapX, mapY, mapW, mapH);
+    // 未探索区域的问号标记
+    ctx.globalAlpha = 0.08;
+    ctx.fillStyle = '#8B7355';
+    ctx.font = '14px Georgia, serif';
+    ctx.textAlign = 'center';
+    for (let i = 0; i < 6; i++) {
+        const qx = mapX + mapW * (0.15 + i * 0.15);
+        const qy = mapY + mapH * (0.3 + Math.sin(i * 2.1) * 0.2);
+        ctx.fillText('?', qx, qy);
+    }
 
-    // 绘制已探索区域
-    ctx.globalAlpha = 0.9;
-    for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-            if (!maze.mazeExplored[r] || !maze.mazeExplored[r][c]) continue;
-            const cell = maze.mazeMap[r][c];
+    // === 手绘风格：将已探索区域按区块绘制，带笔迹抖动 ===
+    // 先用较大的采样步长扫描，画出不规则的区域轮廓
+    const step = 2; // 每2格采样一次，让线条更粗犷
+    ctx.globalAlpha = 0.7;
+
+    // 绘制已探索的水域区域（蓝色水彩笔触）
+    for (let r = 0; r < rows; r += step) {
+        for (let c = 0; c < cols; c += step) {
+            // 检查这个区块是否有已探索的格子
+            let hasExplored = false;
+            let isWater = false;
+            for (let dr = 0; dr < step && r + dr < rows; dr++) {
+                for (let dc = 0; dc < step && c + dc < cols; dc++) {
+                    if (maze.mazeExplored[r + dr] && maze.mazeExplored[r + dr][c + dc]) {
+                        hasExplored = true;
+                        if (maze.mazeMap[r + dr][c + dc] === 0) isWater = true;
+                    }
+                }
+            }
+            if (!hasExplored) continue;
+
             const px = mapX + c * cellW;
             const py = mapY + r * cellH;
-            if (cell === 0) {
-                ctx.fillStyle = 'rgba(160,200,230,0.8)';
+            const bw = step * cellW;
+            const bh = step * cellH;
+            // 手绘抖动偏移
+            const jx = Math.sin(r * 3.7 + c * 2.1) * 1.5;
+            const jy = Math.cos(r * 2.3 + c * 4.1) * 1.5;
+
+            if (isWater) {
+                // 水域：蓝色水彩笔触，不规则形状
+                ctx.fillStyle = `rgba(${120 + Math.sin(r + c) * 20},${175 + Math.sin(r * 2) * 15},${210 + Math.cos(c * 3) * 10},0.55)`;
+                ctx.beginPath();
+                ctx.moveTo(px + jx + 1, py + jy + 1);
+                ctx.lineTo(px + bw + jx - 1 + Math.sin(r) * 0.8, py + jy + Math.cos(c) * 0.8);
+                ctx.lineTo(px + bw + jx + Math.sin(r + 1) * 0.8, py + bh + jy - 1);
+                ctx.lineTo(px + jx - Math.cos(c + 1) * 0.8, py + bh + jy + Math.sin(r) * 0.5);
+                ctx.closePath();
+                ctx.fill();
             } else {
-                ctx.fillStyle = 'rgba(120,100,80,0.6)';
+                // 岩壁：棕色铅笔线条填充
+                ctx.fillStyle = `rgba(${100 + Math.sin(r * 1.5) * 15},${85 + Math.cos(c * 2) * 10},${65 + Math.sin(r + c) * 8},0.45)`;
+                ctx.beginPath();
+                ctx.moveTo(px + jx, py + jy);
+                ctx.lineTo(px + bw + jx + Math.sin(r * 2) * 1, py + jy + Math.cos(c * 2) * 1);
+                ctx.lineTo(px + bw + jx, py + bh + jy);
+                ctx.lineTo(px + jx + Math.cos(r) * 1, py + bh + jy + Math.sin(c) * 1);
+                ctx.closePath();
+                ctx.fill();
+                // 岩壁纹理线（铅笔划痕）
+                ctx.strokeStyle = `rgba(80,65,50,0.2)`;
+                ctx.lineWidth = 0.5;
+                ctx.beginPath();
+                ctx.moveTo(px + jx + 1, py + jy + bh * 0.3);
+                ctx.lineTo(px + bw + jx - 1, py + jy + bh * 0.6);
+                ctx.stroke();
             }
-            ctx.fillRect(px, py, Math.max(1, cellW + 0.5), Math.max(1, cellH + 0.5));
         }
     }
 
-    // 绳索路径
+    // 已探索区域的边缘轮廓（手绘不规则线条）
+    ctx.globalAlpha = 0.4;
+    ctx.strokeStyle = 'rgba(80,65,50,0.5)';
+    ctx.lineWidth = 1.2;
+    for (let r = 1; r < rows - 1; r++) {
+        for (let c = 1; c < cols - 1; c++) {
+            if (!maze.mazeExplored[r] || !maze.mazeExplored[r][c]) continue;
+            if (maze.mazeMap[r][c] !== 0) continue;
+            // 检查是否是边缘（相邻有未探索或岩壁）
+            const neighbors = [
+                [r - 1, c], [r + 1, c], [r, c - 1], [r, c + 1]
+            ];
+            for (const [nr, nc] of neighbors) {
+                const isEdge = !maze.mazeExplored[nr]?.[nc] || maze.mazeMap[nr][nc] !== 0;
+                if (isEdge) {
+                    const px = mapX + c * cellW + cellW / 2;
+                    const py = mapY + r * cellH + cellH / 2;
+                    const npx = mapX + nc * cellW + cellW / 2;
+                    const npy = mapY + nr * cellH + cellH / 2;
+                    const mx = (px + npx) / 2;
+                    const my = (py + npy) / 2;
+                    // 手绘短线段
+                    const jitter = Math.sin(r * 5.3 + c * 3.7) * 1.5;
+                    ctx.beginPath();
+                    ctx.moveTo(mx - cellW * 0.4 + jitter, my + Math.cos(r + c) * 0.8);
+                    ctx.lineTo(mx + cellW * 0.4 - jitter, my - Math.sin(r + c) * 0.8);
+                    ctx.stroke();
+                    break; // 每个边缘格只画一次
+                }
+            }
+        }
+    }
+
+    // 绳索路径（手绘虚线风格）
     if (state.rope && state.rope.ropes && state.rope.ropes.length > 0) {
-        ctx.globalAlpha = 0.8;
-        ctx.strokeStyle = 'rgba(200,150,50,0.9)';
-        ctx.lineWidth = 1.5;
+        ctx.globalAlpha = 0.75;
+        ctx.strokeStyle = 'rgba(180,130,40,0.85)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([4, 3]);
         for (const rope of state.rope.ropes) {
             if (!rope.path || rope.path.length < 2) continue;
             ctx.beginPath();
             const startPt = rope.path[0];
-            ctx.moveTo(mapX + (startPt.x / maze.mazeTileSize) * cellW,
-                       mapY + (startPt.y / maze.mazeTileSize) * cellH);
+            let sx = mapX + (startPt.x / maze.mazeTileSize) * cellW;
+            let sy = mapY + (startPt.y / maze.mazeTileSize) * cellH;
+            ctx.moveTo(sx + Math.sin(sy) * 0.8, sy + Math.cos(sx) * 0.8);
             for (let i = 1; i < rope.path.length; i++) {
                 const pt = rope.path[i];
-                ctx.lineTo(mapX + (pt.x / maze.mazeTileSize) * cellW,
-                           mapY + (pt.y / maze.mazeTileSize) * cellH);
+                const rx = mapX + (pt.x / maze.mazeTileSize) * cellW;
+                const ry = mapY + (pt.y / maze.mazeTileSize) * cellH;
+                // 手绘抖动
+                ctx.lineTo(rx + Math.sin(ry * 0.5 + i) * 1, ry + Math.cos(rx * 0.5 + i) * 1);
             }
             ctx.stroke();
         }
+        ctx.setLineDash([]);
     }
 
-    // 出口标记
+    // 出口标记（手绘三角箭头 + 文字）
     const exitMapX = mapX + (maze.exitX / maze.mazeTileSize) * cellW;
     const exitMapY = mapY + (maze.exitY / maze.mazeTileSize) * cellH;
-    ctx.globalAlpha = 0.9;
+    ctx.globalAlpha = 0.85;
     ctx.fillStyle = '#4CAF50';
+    // 手绘三角形
     ctx.beginPath();
-    ctx.arc(exitMapX, exitMapY, 5, 0, Math.PI * 2);
+    ctx.moveTo(exitMapX, exitMapY - 7);
+    ctx.lineTo(exitMapX - 5, exitMapY + 3);
+    ctx.lineTo(exitMapX + 5, exitMapY + 3);
+    ctx.closePath();
     ctx.fill();
+    // 手绘圈
+    ctx.strokeStyle = '#2E7D32';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    for (let a = 0; a < Math.PI * 2; a += 0.2) {
+        const cr = 7 + Math.sin(a * 3) * 0.8;
+        const cx = exitMapX + Math.cos(a) * cr;
+        const cy = exitMapY + Math.sin(a) * cr;
+        if (a === 0) ctx.moveTo(cx, cy);
+        else ctx.lineTo(cx, cy);
+    }
+    ctx.closePath();
+    ctx.stroke();
     ctx.fillStyle = '#2E7D32';
-    ctx.font = '10px Arial';
+    ctx.font = 'italic 10px Georgia, serif';
     ctx.textAlign = 'center';
-    ctx.fillText('出口', exitMapX, exitMapY - 8);
+    ctx.fillText('出口', exitMapX, exitMapY - 12);
 
-    // NPC 标记（已发现时显示）
+    // NPC 标记（已发现时显示，手绘X标记 + 脉冲）
     if (maze.npcFound) {
         const npcMapX = mapX + (maze.npcInitX / maze.mazeTileSize) * cellW;
         const npcMapY = mapY + (maze.npcInitY / maze.mazeTileSize) * cellH;
         const pulse = 0.6 + Math.sin(time * 3) * 0.4;
         ctx.globalAlpha = pulse;
-        ctx.fillStyle = '#FF5722';
+        // 手绘X标记
+        ctx.strokeStyle = '#D32F2F';
+        ctx.lineWidth = 2.5;
         ctx.beginPath();
-        ctx.arc(npcMapX, npcMapY, 5, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.globalAlpha = 0.9;
+        ctx.moveTo(npcMapX - 5, npcMapY - 5);
+        ctx.lineTo(npcMapX + 5 + Math.sin(time) * 0.5, npcMapY + 5);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(npcMapX + 5, npcMapY - 5);
+        ctx.lineTo(npcMapX - 5 + Math.cos(time) * 0.5, npcMapY + 5);
+        ctx.stroke();
+        // 手绘圈
+        ctx.strokeStyle = 'rgba(211,47,47,0.5)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (let a = 0; a < Math.PI * 2; a += 0.15) {
+            const cr = 9 + Math.sin(a * 4 + time) * 1.2;
+            const cx = npcMapX + Math.cos(a) * cr;
+            const cy = npcMapY + Math.sin(a) * cr;
+            if (a === 0) ctx.moveTo(cx, cy);
+            else ctx.lineTo(cx, cy);
+        }
+        ctx.closePath();
+        ctx.stroke();
+        ctx.globalAlpha = 0.85;
         ctx.fillStyle = '#BF360C';
-        ctx.font = '10px Arial';
-        ctx.fillText('被困者', npcMapX, npcMapY - 8);
+        ctx.font = 'italic 10px Georgia, serif';
+        ctx.fillText('被困者', npcMapX, npcMapY - 14);
     }
 
-    // 图例
-    ctx.globalAlpha = 0.7;
-    ctx.font = '11px Arial';
+    // 图例（手绘风格）
+    ctx.globalAlpha = 0.6;
+    ctx.font = 'italic 11px Georgia, serif';
     ctx.textAlign = 'left';
     const legendX = mapX + 4;
-    const legendY = mapY + mapH + 16;
-    ctx.fillStyle = 'rgba(160,200,230,0.9)';
-    ctx.fillRect(legendX, legendY - 6, 10, 10);
-    ctx.fillStyle = '#555';
+    const legendY = mapY + mapH + 18;
+    // 水域图例
+    ctx.fillStyle = 'rgba(130,180,210,0.7)';
+    ctx.beginPath();
+    ctx.arc(legendX + 5, legendY - 2, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#5D4037';
     ctx.fillText('水域', legendX + 14, legendY + 3);
-    ctx.fillStyle = 'rgba(120,100,80,0.7)';
-    ctx.fillRect(legendX + 60, legendY - 6, 10, 10);
-    ctx.fillStyle = '#555';
+    // 岩壁图例
+    ctx.fillStyle = 'rgba(100,85,65,0.6)';
+    ctx.beginPath();
+    ctx.arc(legendX + 65, legendY - 2, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#5D4037';
     ctx.fillText('岩壁', legendX + 74, legendY + 3);
-    ctx.strokeStyle = 'rgba(200,150,50,0.9)';
+    // 绳索图例
+    ctx.strokeStyle = 'rgba(180,130,40,0.85)';
     ctx.lineWidth = 2;
+    ctx.setLineDash([3, 2]);
     ctx.beginPath();
     ctx.moveTo(legendX + 120, legendY);
-    ctx.lineTo(legendX + 135, legendY);
+    ctx.lineTo(legendX + 138, legendY - 1 + Math.sin(legendX) * 0.5);
     ctx.stroke();
-    ctx.fillStyle = '#555';
-    ctx.fillText('绳索', legendX + 140, legendY + 3);
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#5D4037';
+    ctx.fillText('绳索', legendX + 142, legendY + 3);
 }
 
 // =============================================
