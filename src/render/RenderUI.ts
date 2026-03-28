@@ -4,6 +4,8 @@ import { ctx, canvas, logicW, logicH } from './Canvas';
 import { drawDiver, drawLungs, drawDiverSilhouette } from './RenderDiver';
 import { createFishEnemy } from '../logic/FishEnemy';
 import { triggerPlayerAttack } from '../logic/FishEnemy';
+import { getMazeSceneThemeConfigByIndex, getMazeMainThemeConfig } from '../world/mazeScene';
+import { getMazeThemeLegendItems } from './RenderMazeScene';
 
 // 调试按鈕：生成凶猛鱼（右上角，与其他调试信息分开放）
 export const DEBUG_FISH_BTN = {
@@ -2659,11 +2661,8 @@ function drawMazeMapFullscreen(maze: any, cw: number, ch: number, time: number) 
                 let waterColor = `rgba(${120 + Math.sin(r + c) * 20},${175 + Math.sin(r * 2) * 15},${210 + Math.cos(c * 3) * 10},0.55)`;
                 if (maze.sceneThemeMap) {
                     const tIdx = maze.sceneThemeMap[r] ? maze.sceneThemeMap[r][c] : -1;
-                    if (tIdx >= 0 && tIdx < CONFIG.maze.sceneThemeKeys.length) {
-                        const tKey = CONFIG.maze.sceneThemeKeys[tIdx];
-                        const tCfg = (CONFIG.maze.sceneThemes as any)[tKey];
-                        if (tCfg) waterColor = tCfg.mapColor;
-                    }
+                    const tCfg = getMazeSceneThemeConfigByIndex(maze.sceneThemeKeys, tIdx);
+                    if (tCfg) waterColor = tCfg.mapColor;
                 }
                 ctx.fillStyle = waterColor;
                 ctx.beginPath();
@@ -2824,28 +2823,24 @@ function drawMazeMapFullscreen(maze: any, cw: number, ch: number, time: number) 
     ctx.textAlign = 'left';
     const legendX = mapX + 4;
     let legendY = mapY + mapH + 16;
-    // 区域主题图例（动态生成，自动换行）
-    const themeKeys = CONFIG.maze.sceneThemeKeys;
+    const themeItems = getMazeThemeLegendItems(maze.sceneThemeKeys);
     let lx = legendX;
-    const legendItemW = 62; // 每项宽度
+    const legendItemW = 62;
     const legendMaxX = mapX + mapW - 10;
-    for (let ti = 0; ti < themeKeys.length; ti++) {
-        const tKey = themeKeys[ti];
-        const tCfg = (CONFIG.maze.sceneThemes as any)[tKey];
-        if (!tCfg) continue;
-        // 自动换行
+    for (let ti = 0; ti < themeItems.length; ti++) {
+        const item = themeItems[ti] as any;
+        if (!item) continue;
         if (lx + legendItemW > legendMaxX && ti > 0) {
             lx = legendX;
             legendY += 16;
         }
-        // 已发现的主题显示彩色，未发现的显示灰色
-        const discovered = maze.discoveredThemes && maze.discoveredThemes.includes(tKey);
-        ctx.fillStyle = discovered ? tCfg.mapColor : 'rgba(180,170,160,0.3)';
+        const discovered = maze.discoveredThemes && maze.discoveredThemes.includes(item.key);
+        ctx.fillStyle = discovered ? item.mapColor : 'rgba(180,170,160,0.3)';
         ctx.beginPath();
         ctx.arc(lx + 4, legendY - 2, 4, 0, Math.PI * 2);
         ctx.fill();
         ctx.fillStyle = discovered ? '#5D4037' : 'rgba(150,140,130,0.5)';
-        ctx.fillText(discovered ? tCfg.name : '???', lx + 12, legendY + 2);
+        ctx.fillText(discovered ? item.name : '???', lx + 12, legendY + 2);
         lx += legendItemW;
     }
     // 绳索图例
@@ -3076,7 +3071,7 @@ ctx.fillText(reason === 'o2' ? '氧气不足，紧急返回' : '安全返回岸�
             sy += 22;
             ctx.font = '13px Arial';
             for (const tKey of maze.thisNewThemes) {
-                const tCfg = (CONFIG.maze.sceneThemes as any)[tKey];
+                const tCfg = getMazeMainThemeConfig(tKey);
                 if (tCfg) {
                     ctx.fillStyle = tCfg.mapColor;
                     ctx.fillText(`● ${tCfg.name}`, cw / 2, sy);

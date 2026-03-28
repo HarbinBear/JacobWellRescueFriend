@@ -388,19 +388,19 @@ gameLoop
 
 当前最佳初始化路径是两段：
 
-#### 6.3.1 `src/world/map.ts`
+#### 6.3.1 `src/world/map.ts` + `src/world/mazeScene.ts`
 
-如果场景辨识度需要依赖迷宫结构分析，那么最合适的地方是 `generateMazeMap()`：
+如果场景辨识度需要依赖迷宫结构分析，那么最合适的地方仍然是迷宫生成阶段，但当前实现已经把职责拆成两层：
 
-- 在迷宫图确定后分析区域连通、洞室大小和深度分布
-- 产出主题分区、空间母题和候选物件点位
-- 和 `mazeMap / mazeWalls / mazeExplored` 一起返回
+- `src/world/map.ts` 负责迷宫主体结构生成，以及把场景元数据和迷宫基础数据一起返回
+- `src/world/mazeScene.ts` 负责主岩性定义、局部构造定义、主题选择、主题扩散、过渡混合和局部构造图生成
 
 这样做的优点是：
 
+- 地图结构生成与场景语义生成仍然同属世界层，不会跑到渲染层去决定“这片区域是什么”
 - 数据生成一次即可复用
 - 不需要运行时重复扫描整张图
-- 地图结构和场景辨识数据天然同步
+- 后续补空间母题或叙事物件时，也有明确的世界层落点
 
 #### 6.3.2 `src/logic/Logic.ts`
 
@@ -417,14 +417,20 @@ gameLoop
 
 ### 6.4 渲染层的主要改动落点
 
-#### 6.4.1 `src/render/Render.ts`
+#### 6.4.1 `src/render/Render.ts` + `src/render/RenderMazeScene.ts`
 
-适合承接：
+当前迷宫场景渲染已经拆成两层：
 
-- 不同主题区域的底色、壁面色温、局部雾感基调
-- 视口内的基础场景风格分发
+- `src/render/Render.ts` 只保留总绘制入口、模式分发和迷宫场景绘制调度
+- `src/render/RenderMazeScene.ts` 负责迷宫场景专属的主题取色、背景装饰、墙体造型和泥沙着色
 
-它不一定直接画完所有细节，但适合作为“迷宫当前区域主题”的总入口。
+因此后续如果是改：
+
+- 不同主岩性区域的底色、壁面色温、局部雾感基调
+- 局部构造对墙体轮廓和背景装饰的影响
+- 迷宫模式专属的颗粒着色和图例辅助逻辑
+
+优先去 `RenderMazeScene.ts`，而不是继续往 `Render.ts` 塞大段分支。
 
 #### 6.4.2 `src/render/RenderUI.ts`
 
@@ -553,39 +559,44 @@ gameLoop
 - 不引入明显掉帧
 - `npm run typecheck` 通过
 
-### 6.10 第一阶段实现记录（区域主题层，已完成）
+### 6.10 第一阶段实现记录（主岩性层，已完成）
 
-第一阶段"区域主题层"已落地，改动涉及以下文件：
+第一阶段“主岩性层”已落地，改动涉及以下文件：
 
-- **`src/core/config.ts`**：新增 `CONFIG.maze.sceneThemes`（4类主题的颜色、颗粒、地图色）和 `CONFIG.maze.sceneThemeKeys`
-- **`src/world/map.ts`**：`generateMazeMap()` 返回值新增 `mazeSceneThemeMap`；基于节点深度分带 + 随机打乱 + BFS Voronoi 扩散生成主题索引图
-- **`src/core/state.ts`**：`mazeRescue` 新增 `sceneThemeMap`、`discoveredThemes`、`thisNewThemes`、`currentThemeKey`
-- **`src/logic/Logic.ts`**：`resetMazeLogic()` 挂载主题数据；`startMazeDive()` 重置本次新发现；`updateMaze()` 检测区域主题切换并记录首次发现；`finishMazeDive()` 将 `newThemes` 归档到 `diveHistory`
-- **`src/render/Render.ts`**：实心内部填充、边缘岩石圆、内部高光均按每格主题着色；泥沙粒子颜色跟随区域主题
-- **`src/render/RenderUI.ts`**：认知地图水域着色跟随区域主题；图例改为动态显示已发现/未发现的区域主题；结算页增加"新发现区域类型"展示
+- **`src/core/config.ts`**：迷宫配置收口为参数入口，只保留 `themesPerGame`、`sceneTransitionWidth`、`stalactiteClusterChance` 这类生成参数，不再承担完整主题仓库与运行时容器职责
+- **`src/world/mazeScene.ts`**：集中定义主岩性配置（黄泥区、白石灰岩区、红褐沉积区、页岩夹层区、硬岩块裂区）、主题选择、颜色混合与场景图生成
+- **`src/world/map.ts`**：`generateMazeMap()` 返回值新增 `mazeSceneThemeKeys`、`mazeSceneThemeMap`、`mazeSceneBlendMap`、`mazeSceneStructureMap`
+- **`src/core/state.ts`**：`mazeRescue` 新增 `sceneThemeKeys`、`sceneThemeMap`、`sceneBlendMap`、`sceneStructureMap`
+- **`src/logic/Logic.ts`**：`resetMazeLogic()` 挂载每局迷宫自己的场景数据；`updateMaze()` 按每局主题列表记录首次发现；`finishMazeDive()` 把本次新发现主岩性归档到 `diveHistory`
+- **`src/render/RenderMazeScene.ts`**：集中处理迷宫主题取色、泥沙着色和图例辅助能力
+- **`src/render/Render.ts`**：只负责在正确时机调度迷宫场景取色、背景装饰和墙体造型绘制
+- **`src/render/RenderUI.ts`**：认知地图水域着色、图例和结算页都改为读取每局迷宫状态，而不再依赖全局配置运行时字段
 
-### 6.11 第二阶段实现记录（场景辨识度增强，已完成）
+### 6.11 第二阶段实现记录（局部构造层与模块化重构，已完成首版）
 
-第二阶段在第一阶段基础上做了三项重大增强：
+第二阶段在第一阶段基础上完成了三项关键增强：
 
-#### A. 主题种类扩充（4类 → 10类，每局随机选4~5类）
+#### A. 场景语义重构（三层语义替代旧单层主题）
 
-- **`src/core/config.ts`**：`sceneThemes` 从4类扩展到10类（黄泥、白石灰岩、红褐沉底、纯白空腔、钟乳石、大理石、黑曜石、砂岩、苔藓岩、页岩），每类新增 `rockShape`（岩石造型）和 `bgDecoType`（背景装饰类型）属性；新增 `allThemeKeys`（全部10类键名）和 `themesPerGame`（每局选取数量范围）；`sceneThemeKeys` 改为运行时动态填充
-- **`src/world/map.ts`**：每局从 `allThemeKeys` 中随机选取4~5类写入 `sceneThemeKeys`
+- **设计语义**：迷宫场景现在分为“主岩性层 / 局部构造层 / 空间母题层”
+- **当前代码已落地部分**：主岩性层和局部构造层
+- **关键调整**：
+  - `页岩` 保留为主岩性，用层理与片状轮廓表达
+  - 原本想表达的“花岗岩感”改名为 **`硬岩块裂区`**，避免地质命名和玩家感知脱节
+  - `钟乳石` 不再作为主岩性主题，而是降级为局部构造，覆盖在白石灰岩区或硬岩块裂区之上
 
 #### B. 区域衔接自然过渡（硬切 → 渐变混合）
 
-- **`src/world/map.ts`**：主题分配算法从简单BFS Voronoi改为**带距离的BFS + 双主题距离记录**；新增 `mazeSceneBlendMap` 返回每格到最近两个不同主题种子的距离和混合权重；过渡带宽度6格
-- **`src/core/state.ts`**：`mazeRescue` 新增 `sceneBlendMap` 字段
-- **`src/logic/Logic.ts`**：`resetMazeLogic()` 挂载 `sceneBlendMap`
-- **`src/render/Render.ts`**：新增 `getMazeThemeColor()` 和 `blendHexColors()` 辅助函数，墙体和内部填充在过渡带内按距离比例混合两个主题的颜色
+- **`src/world/mazeScene.ts`**：主题分配改为带距离记录的扩散；输出 `sceneBlendMap` 供过渡带使用
+- **`src/render/RenderMazeScene.ts`**：统一通过 `blendHexColors()` 和主题索引辅助函数处理墙体与内壁混色
+- **`src/render/Render.ts`**：不再内联主题混色逻辑，只保留调用
 
-#### C. 岩石造型差异化 + 背景装饰层
+#### C. 局部构造图 + 专用渲染模块
 
-- **`src/render/Render.ts`**：
-  - 墙体渲染从统一圆形改为按 `rockShape` 分5种造型：`round`（圆润泥团）、`angular`（棱角多边形）、`spiky`（尖刺突起）、`layered`（层叠片状）、`smooth`（光滑圆弧）
-  - 新增**背景装饰层**（在墙体之前绘制，`globalAlpha=0.15`，不参与碰撞和遮挡），按 `bgDecoType` 分9种装饰：`blobShadow`、`sharpEdge`、`layerLines`、`glowOrb`、`stalactites`、`veinLines`、`glintSpots`、`grainDots`、`mossPatches`
-- **`src/render/RenderUI.ts`**：认知地图图例布局改为自动换行，适配4~5个主题
+- **`src/world/mazeScene.ts`**：新增 `sceneStructureMap`，首版用于生成钟乳石簇覆盖层
+- **`src/render/RenderMazeScene.ts`**：把背景装饰、墙体造型、局部构造覆写和颗粒着色都集中到迷宫场景专用模块
+- **`src/render/Render.ts`**：从“既决定是什么又决定怎么画”的大文件，收缩成主要负责流程调度的入口文件
+- **`src/render/RenderUI.ts`**：图例辅助函数改由迷宫场景渲染模块提供，保持 UI 不重复实现迷宫场景解释逻辑
 ---
 
 ## 七、给后续模型的阅读顺序建议

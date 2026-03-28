@@ -190,9 +190,11 @@ export const state = {
             newThemes?: string[];   // 本次新发现的区域主题
         }[];
 
-        // === 场景辨识度：区域主题 ===
+        // === 场景辨识度：区域主题与局部构造 ===
+        sceneThemeKeys: string[];       // 本局迷宫启用的主岩性键名列表
         sceneThemeMap: number[][];      // 与迷宫网格对齐的主题索引图（0~N）
         sceneBlendMap: {theme2: number, blend: number}[][]; // 渐变过渡混合权重
+        sceneStructureMap: string[][];  // 与迷宫网格对齐的局部构造图
         discoveredThemes: string[];     // 跨下潜已发现的主题键名列表
         thisNewThemes: string[];        // 本次下潜新发现的主题键名列表
         currentThemeKey: string;        // 当前所在区域的主题键名

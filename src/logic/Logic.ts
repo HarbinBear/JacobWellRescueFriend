@@ -1,6 +1,7 @@
 import { CONFIG } from '../core/config';
 import { state, player, particles, input, resetState } from '../core/state';
 import { generateMap, generateArenaMap, generateMazeMap } from '../world/map';
+import { getMazeMainThemeConfig, getMazeSceneThemeKeyByIndex } from '../world/mazeScene';
 import { StoryManager } from '../story/StoryManager';
 import { Particle, createSplash, updateSplashes, triggerSilt, updateParticles } from './Particle';
 import { updateRopeSystem, findNearestWall } from './Rope';
@@ -1388,8 +1389,10 @@ export function resetMazeLogic() {
         totalRopePlaced: 0,
         diveHistory: [],
         // 场景辨识度
+        sceneThemeKeys: mazeData.mazeSceneThemeKeys,
         sceneThemeMap: mazeData.mazeSceneThemeMap,
         sceneBlendMap: mazeData.mazeSceneBlendMap,
+        sceneStructureMap: mazeData.mazeSceneStructureMap,
         discoveredThemes: [],
         thisNewThemes: [],
         currentThemeKey: '',
@@ -1835,19 +1838,16 @@ export function updateMaze() {
         const themeC = Math.floor(player.x / maze.mazeTileSize);
         if (themeR >= 0 && themeR < maze.mazeRows && themeC >= 0 && themeC < maze.mazeCols) {
             const themeIdx = maze.sceneThemeMap[themeR][themeC];
-            if (themeIdx >= 0 && themeIdx < CONFIG.maze.sceneThemeKeys.length) {
-                const themeKey = CONFIG.maze.sceneThemeKeys[themeIdx];
-                // 检测是否切换了区域主题
+            const themeKey = getMazeSceneThemeKeyByIndex(maze.sceneThemeKeys, themeIdx);
+            if (themeKey) {
                 if (themeKey !== maze.currentThemeKey) {
                     maze.currentThemeKey = themeKey;
-                    // 检测是否首次发现该主题
                     if (!maze.discoveredThemes.includes(themeKey)) {
                         maze.discoveredThemes.push(themeKey);
                         if (!maze.thisNewThemes.includes(themeKey)) {
                             maze.thisNewThemes.push(themeKey);
                         }
-                        // 显示发现提示
-                        const themeCfg = (CONFIG.maze.sceneThemes as any)[themeKey];
+                        const themeCfg = getMazeMainThemeConfig(themeKey);
                         if (themeCfg) {
                             storyManager.showText(`进入 ${themeCfg.name}`, 'rgba(200,220,255,0.9)', 2500);
                         }

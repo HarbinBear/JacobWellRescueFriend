@@ -1,6 +1,7 @@
 import { CONFIG } from '../core/config';
 import { state, target } from '../core/state';
 import { CAVE_MAP_DATA } from './mapData';
+import { createMazeSceneData } from './mazeScene';
 
 // 默认洞穴段配置（可通过 CONFIG.caveSegments 覆盖）
 // 每段: { name, startRow, endRow, centerCol(可选), width, widthVariance, drift, narrowStart(可选), narrowEndWidth(可选), targetCol(可选), pullStrength(可选) }
@@ -305,8 +306,10 @@ export function generateMazeMap(): {
     mazeMap: any[][];
     mazeWalls: any[];
     mazeExplored: boolean[][];
+    mazeSceneThemeKeys: string[];
     mazeSceneThemeMap: number[][];
     mazeSceneBlendMap: {theme2: number, blend: number}[][];
+    mazeSceneStructureMap: string[][];
     mazeCols: number;
     mazeRows: number;
     mazeTileSize: number;
@@ -1053,128 +1056,7 @@ export function generateMazeMap(): {
     }
 
     // === 场景辨识度：区域主题分配（每局随机选4~5类 + 渐变过渡） ===
-    // 从10类主题中随机选取本局使用的子集
-    const allKeys = CONFIG.maze.allThemeKeys.slice();
-    // Fisher-Yates 洗牌
-    for (let i = allKeys.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        const tmp = allKeys[i]; allKeys[i] = allKeys[j]; allKeys[j] = tmp;
-    }
-    const themesPerGame = CONFIG.maze.themesPerGame;
-    const pickCount = randInt(themesPerGame.min, themesPerGame.max);
-    const selectedKeys = allKeys.slice(0, pickCount);
-    // 写入运行时配置，供渲染和逻辑层读取
-    (CONFIG.maze as any).sceneThemeKeys = selectedKeys;
-    const themeKeys = selectedKeys;
-    const themeCount = themeKeys.length;
-
-    // 把所有节点按行排序，划分为 themeCount 个深度带
-    const sortedNodes = finalCandidate.nodes.slice().sort((a, b) => a.r - b.r);
-    const bandSize = Math.ceil(sortedNodes.length / themeCount);
-    // 为每个节点分配主题索引（在本局选中的子集内）
-    const nodeThemeMap = new Map<number, number>();
-    // 随机打乱深度带对应的主题索引
-    const shuffledThemeIndices: number[] = [];
-    for (let i = 0; i < themeCount; i++) shuffledThemeIndices.push(i);
-    for (let i = shuffledThemeIndices.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        const tmp = shuffledThemeIndices[i];
-        shuffledThemeIndices[i] = shuffledThemeIndices[j];
-        shuffledThemeIndices[j] = tmp;
-    }
-    for (let i = 0; i < sortedNodes.length; i++) {
-        const bandIndex = Math.min(Math.floor(i / bandSize), themeCount - 1);
-        nodeThemeMap.set(sortedNodes[i].id, shuffledThemeIndices[bandIndex]);
-    }
-
-    // 构建主题索引图 + 混合权重图（用于渐变过渡）
-    // mazeSceneThemeMap[r][c] = 主导主题索引
-    // mazeSceneBlendMap[r][c] = { theme2: 次要主题索引, blend: 混合权重0~1 }
-    const mazeSceneThemeMap: number[][] = [];
-    const mazeSceneBlendMap: {theme2: number, blend: number}[][] = [];
-    for (let r = 0; r < rows; r++) {
-        mazeSceneThemeMap[r] = new Array(cols).fill(-1);
-        mazeSceneBlendMap[r] = new Array(cols);
-        for (let c = 0; c < cols; c++) {
-            mazeSceneBlendMap[r][c] = { theme2: -1, blend: 0 };
-        }
-    }
-
-    // 用带距离的BFS从每个节点向外扩散，记录每格到最近两个不同主题种子的距离
-    const distMap: number[][] = [];
-    const dist2Map: number[][] = []; // 第二近的不同主题的距离
-    const theme1Map: number[][] = [];
-    const theme2Map: number[][] = [];
-    for (let r = 0; r < rows; r++) {
-        distMap[r] = new Array(cols).fill(Infinity);
-        dist2Map[r] = new Array(cols).fill(Infinity);
-        theme1Map[r] = new Array(cols).fill(-1);
-        theme2Map[r] = new Array(cols).fill(-1);
-    }
-
-    // BFS队列：{r, c, dist, theme}
-    const tQueue: {r: number, c: number, dist: number, theme: number}[] = [];
-    // 初始化：每个节点的中心格
-    for (const node of finalCandidate.nodes) {
-        const nr = clamp(Math.round(node.r), 0, rows - 1);
-        const nc = clamp(Math.round(node.c), 0, cols - 1);
-        const theme = nodeThemeMap.get(node.id) || 0;
-        if (distMap[nr][nc] === Infinity) {
-            distMap[nr][nc] = 0;
-            theme1Map[nr][nc] = theme;
-            tQueue.push({r: nr, c: nc, dist: 0, theme});
-        } else if (theme !== theme1Map[nr][nc] && dist2Map[nr][nc] === Infinity) {
-            dist2Map[nr][nc] = 0;
-            theme2Map[nr][nc] = theme;
-        }
-    }
-
-    // BFS扩散（记录最近和次近不同主题的距离）
-    let tHead = 0;
-    while (tHead < tQueue.length) {
-        const cur = tQueue[tHead++];
-        const neighbors = [
-            [cur.r - 1, cur.c], [cur.r + 1, cur.c],
-            [cur.r, cur.c - 1], [cur.r, cur.c + 1]
-        ];
-        const nextDist = cur.dist + 1;
-        for (const [nr, nc] of neighbors) {
-            if (nr < 0 || nr >= rows || nc < 0 || nc >= cols) continue;
-            if (nextDist < distMap[nr][nc]) {
-                // 如果当前最近主题和新主题不同，先把旧的推到次近
-                if (theme1Map[nr][nc] !== -1 && theme1Map[nr][nc] !== cur.theme) {
-                    if (distMap[nr][nc] < dist2Map[nr][nc]) {
-                        dist2Map[nr][nc] = distMap[nr][nc];
-                        theme2Map[nr][nc] = theme1Map[nr][nc];
-                    }
-                }
-                distMap[nr][nc] = nextDist;
-                theme1Map[nr][nc] = cur.theme;
-                tQueue.push({r: nr, c: nc, dist: nextDist, theme: cur.theme});
-            } else if (cur.theme !== theme1Map[nr][nc] && nextDist < dist2Map[nr][nc]) {
-                dist2Map[nr][nc] = nextDist;
-                theme2Map[nr][nc] = cur.theme;
-            }
-        }
-    }
-
-    // 根据距离计算混合权重（过渡带宽度6格）
-    const transitionWidth = 6;
-    for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-            mazeSceneThemeMap[r][c] = theme1Map[r][c] >= 0 ? theme1Map[r][c] : 0;
-            if (theme2Map[r][c] >= 0 && dist2Map[r][c] < Infinity) {
-                const d1 = distMap[r][c];
-                const d2 = dist2Map[r][c];
-                const totalDist = d1 + d2;
-                if (totalDist > 0 && d1 < transitionWidth && d2 < transitionWidth) {
-                    // 在过渡带内，按距离比例混合
-                    const blend = Math.max(0, Math.min(1, d1 / totalDist));
-                    mazeSceneBlendMap[r][c] = { theme2: theme2Map[r][c], blend };
-                }
-            }
-        }
-    }
+    const mazeScene = createMazeSceneData(finalCandidate.nodes, mazeMap, rows, cols);
 
     const exitX = exitCol * ts + ts / 2;
     const exitY = 0;
@@ -1187,8 +1069,10 @@ export function generateMazeMap(): {
         mazeMap,
         mazeWalls,
         mazeExplored,
-        mazeSceneThemeMap,
-        mazeSceneBlendMap,
+        mazeSceneThemeKeys: mazeScene.sceneThemeKeys,
+        mazeSceneThemeMap: mazeScene.sceneThemeMap,
+        mazeSceneBlendMap: mazeScene.sceneBlendMap,
+        mazeSceneStructureMap: mazeScene.sceneStructureMap,
         mazeCols: cols,
         mazeRows: rows,
         mazeTileSize: ts,
