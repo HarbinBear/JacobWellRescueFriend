@@ -1,3 +1,7 @@
+---
+# Please note: Do not modify the header of this document. If modified, CodeBuddy (Internal Edition) will apply the default logic settings.
+type: always
+---
 # 技术文档分卷 03：地图、剧情与主逻辑流程
 
 ## 本卷用途

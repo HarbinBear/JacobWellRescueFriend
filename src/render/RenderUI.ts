@@ -2820,28 +2820,39 @@ function drawMazeMapFullscreen(maze: any, cw: number, ch: number, time: number) 
 
     // 图例（手绘风格）
     ctx.globalAlpha = 0.6;
-    ctx.font = 'italic 11px Georgia, serif';
+    ctx.font = 'italic 10px Georgia, serif';
     ctx.textAlign = 'left';
     const legendX = mapX + 4;
-    const legendY = mapY + mapH + 18;
-    // 区域主题图例（动态生成）
+    let legendY = mapY + mapH + 16;
+    // 区域主题图例（动态生成，自动换行）
     const themeKeys = CONFIG.maze.sceneThemeKeys;
     let lx = legendX;
+    const legendItemW = 62; // 每项宽度
+    const legendMaxX = mapX + mapW - 10;
     for (let ti = 0; ti < themeKeys.length; ti++) {
         const tKey = themeKeys[ti];
         const tCfg = (CONFIG.maze.sceneThemes as any)[tKey];
         if (!tCfg) continue;
+        // 自动换行
+        if (lx + legendItemW > legendMaxX && ti > 0) {
+            lx = legendX;
+            legendY += 16;
+        }
         // 已发现的主题显示彩色，未发现的显示灰色
         const discovered = maze.discoveredThemes && maze.discoveredThemes.includes(tKey);
         ctx.fillStyle = discovered ? tCfg.mapColor : 'rgba(180,170,160,0.3)';
         ctx.beginPath();
-        ctx.arc(lx + 5, legendY - 2, 5, 0, Math.PI * 2);
+        ctx.arc(lx + 4, legendY - 2, 4, 0, Math.PI * 2);
         ctx.fill();
         ctx.fillStyle = discovered ? '#5D4037' : 'rgba(150,140,130,0.5)';
-        ctx.fillText(discovered ? tCfg.name : '???', lx + 14, legendY + 3);
-        lx += 70;
+        ctx.fillText(discovered ? tCfg.name : '???', lx + 12, legendY + 2);
+        lx += legendItemW;
     }
     // 绳索图例
+    if (lx + 50 > legendMaxX) {
+        lx = legendX;
+        legendY += 16;
+    }
     ctx.strokeStyle = 'rgba(180,130,40,0.85)';
     ctx.lineWidth = 2;
     ctx.setLineDash([3, 2]);
@@ -2851,7 +2862,7 @@ function drawMazeMapFullscreen(maze: any, cw: number, ch: number, time: number) 
     ctx.stroke();
     ctx.setLineDash([]);
     ctx.fillStyle = '#5D4037';
-    ctx.fillText('绳索', lx + 22, legendY + 3);
+    ctx.fillText('绳索', lx + 22, legendY + 2);
 }
 
 // =============================================

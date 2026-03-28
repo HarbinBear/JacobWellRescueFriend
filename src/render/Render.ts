@@ -188,63 +188,282 @@ export function draw() {
         }
     }
 
+    // 辅助函数：根据格子坐标获取混合后的颜色
+    function getMazeThemeColor(r: number, c: number, colorKey: string, fallback: string): string {
+        if (!isMazeMode || !state.mazeRescue.sceneThemeMap) return fallback;
+        const tIdx = state.mazeRescue.sceneThemeMap[r]?.[c];
+        if (tIdx === undefined || tIdx < 0 || tIdx >= CONFIG.maze.sceneThemeKeys.length) return fallback;
+        const tKey = CONFIG.maze.sceneThemeKeys[tIdx];
+        const tCfg = (CONFIG.maze.sceneThemes as any)[tKey];
+        if (!tCfg) return fallback;
+        // 检查是否在过渡带
+        const blend = state.mazeRescue.sceneBlendMap?.[r]?.[c];
+        if (blend && blend.blend > 0.05 && blend.theme2 >= 0 && blend.theme2 < CONFIG.maze.sceneThemeKeys.length) {
+            const t2Key = CONFIG.maze.sceneThemeKeys[blend.theme2];
+            const t2Cfg = (CONFIG.maze.sceneThemes as any)[t2Key];
+            if (t2Cfg) {
+                return blendHexColors(tCfg[colorKey], t2Cfg[colorKey], blend.blend);
+            }
+        }
+        return tCfg[colorKey];
+    }
+
+    // 辅助函数：混合两个hex颜色
+    function blendHexColors(hex1: string, hex2: string, t: number): string {
+        const r1 = parseInt(hex1.slice(1, 3), 16), g1 = parseInt(hex1.slice(3, 5), 16), b1 = parseInt(hex1.slice(5, 7), 16);
+        const r2 = parseInt(hex2.slice(1, 3), 16), g2 = parseInt(hex2.slice(3, 5), 16), b2 = parseInt(hex2.slice(5, 7), 16);
+        const r = Math.round(r1 * (1 - t) + r2 * t);
+        const g = Math.round(g1 * (1 - t) + g2 * t);
+        const b = Math.round(b1 * (1 - t) + b2 * t);
+        return `rgb(${r},${g},${b})`;
+    }
+
+    // === 背景装饰层（不参与碰撞和遮挡，在墙体之前绘制） ===
+    if (isMazeMode && state.mazeRescue.sceneThemeMap) {
+        ctx.save();
+        ctx.globalAlpha = 0.15;
+        for (let r = viewRowMin; r <= viewRowMax; r++) {
+            if (!renderMap[r]) continue;
+            for (let c = viewColMin; c <= viewColMax; c++) {
+                if (renderMap[r][c] !== 0) continue; // 只在水域空地绘制背景
+                const tIdx = state.mazeRescue.sceneThemeMap[r]?.[c];
+                if (tIdx === undefined || tIdx < 0 || tIdx >= CONFIG.maze.sceneThemeKeys.length) continue;
+                const tKey = CONFIG.maze.sceneThemeKeys[tIdx];
+                const tCfg = (CONFIG.maze.sceneThemes as any)[tKey];
+                if (!tCfg) continue;
+                const cx = c * renderTs + renderTs / 2;
+                const cy = r * renderTs + renderTs / 2;
+                // 只在部分格子绘制背景装饰（稀疏分布）
+                const hash = Math.sin(r * 127.1 + c * 311.7) * 43758.5453;
+                const prob = hash - Math.floor(hash);
+                if (prob > 0.25) continue;
+                const decoType = tCfg.bgDecoType || 'blobShadow';
+                switch (decoType) {
+                    case 'blobShadow': {
+                        // 模糊泥团阴影
+                        ctx.fillStyle = tCfg.wallColor;
+                        ctx.beginPath();
+                        ctx.arc(cx + (prob - 0.12) * 20, cy + (hash % 1 - 0.5) * 15, renderTs * 0.4, 0, Math.PI * 2);
+                        ctx.fill();
+                        break;
+                    }
+                    case 'sharpEdge': {
+                        // 远处锐利轮廓
+                        ctx.strokeStyle = tCfg.wallHighlight;
+                        ctx.lineWidth = 1;
+                        ctx.beginPath();
+                        ctx.moveTo(cx - renderTs * 0.3, cy + renderTs * 0.2);
+                        ctx.lineTo(cx, cy - renderTs * 0.3);
+                        ctx.lineTo(cx + renderTs * 0.3, cy + renderTs * 0.15);
+                        ctx.stroke();
+                        break;
+                    }
+                    case 'layerLines': {
+                        // 水平层叠线
+                        ctx.strokeStyle = tCfg.wallHighlight;
+                        ctx.lineWidth = 0.8;
+                        for (let i = 0; i < 3; i++) {
+                            const ly = cy - renderTs * 0.2 + i * renderTs * 0.2;
+                            ctx.beginPath();
+                            ctx.moveTo(cx - renderTs * 0.35, ly + Math.sin(c + i) * 2);
+                            ctx.lineTo(cx + renderTs * 0.35, ly + Math.cos(r + i) * 2);
+                            ctx.stroke();
+                        }
+                        break;
+                    }
+                    case 'glowOrb': {
+                        // 微弱光球
+                        const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, renderTs * 0.3);
+                        grad.addColorStop(0, 'rgba(200,210,220,0.2)');
+                        grad.addColorStop(1, 'rgba(200,210,220,0)');
+                        ctx.fillStyle = grad;
+                        ctx.beginPath();
+                        ctx.arc(cx, cy, renderTs * 0.3, 0, Math.PI * 2);
+                        ctx.fill();
+                        break;
+                    }
+                    case 'stalactites': {
+                        // 远处尖刺轮廓
+                        ctx.fillStyle = tCfg.wallColor;
+                        const spikeH = renderTs * (0.3 + prob * 0.3);
+                        ctx.beginPath();
+                        ctx.moveTo(cx - 4, cy + spikeH * 0.5);
+                        ctx.lineTo(cx, cy - spikeH * 0.5);
+                        ctx.lineTo(cx + 4, cy + spikeH * 0.5);
+                        ctx.fill();
+                        break;
+                    }
+                    case 'veinLines': {
+                        // 纹理线条
+                        ctx.strokeStyle = tCfg.wallHighlight;
+                        ctx.lineWidth = 0.6;
+                        ctx.beginPath();
+                        ctx.moveTo(cx - renderTs * 0.3, cy - renderTs * 0.2);
+                        ctx.quadraticCurveTo(cx + prob * 10, cy, cx + renderTs * 0.3, cy + renderTs * 0.2);
+                        ctx.stroke();
+                        break;
+                    }
+                    case 'glintSpots': {
+                        // 高反光点
+                        ctx.fillStyle = 'rgba(180,170,200,0.4)';
+                        ctx.beginPath();
+                        ctx.arc(cx + prob * 8, cy + (hash % 1 - 0.5) * 8, 1.5, 0, Math.PI * 2);
+                        ctx.fill();
+                        break;
+                    }
+                    case 'grainDots': {
+                        // 颗粒感散点
+                        ctx.fillStyle = tCfg.wallColor;
+                        for (let i = 0; i < 4; i++) {
+                            const dx = Math.sin(i * 2.3 + r) * renderTs * 0.25;
+                            const dy = Math.cos(i * 3.1 + c) * renderTs * 0.25;
+                            ctx.beginPath();
+                            ctx.arc(cx + dx, cy + dy, 1.2, 0, Math.PI * 2);
+                            ctx.fill();
+                        }
+                        break;
+                    }
+                    case 'mossPatches': {
+                        // 绿色附着斑块
+                        ctx.fillStyle = 'rgba(60,100,50,0.25)';
+                        ctx.beginPath();
+                        ctx.ellipse(cx + prob * 10, cy, renderTs * 0.2, renderTs * 0.15, prob * 3, 0, Math.PI * 2);
+                        ctx.fill();
+                        break;
+                    }
+                }
+            }
+        }
+        ctx.restore();
+    }
+
     // 绘制实心内部填充（无缝，无网格边框）
-    ctx.fillStyle = (isMazeMode && mazeThemeCfg) ? mazeThemeCfg.innerColor : '#1a1a1a';
     for(let r = viewRowMin; r <= viewRowMax; r++) {
         if(!renderMap[r]) continue;
         for(let c = viewColMin; c <= viewColMax; c++) {
             if(renderMap[r][c] === 2) {
+                ctx.fillStyle = isMazeMode ? getMazeThemeColor(r, c, 'innerColor', '#1a1a1a') : '#1a1a1a';
                 ctx.fillRect(c * renderTs - 0.5, r * renderTs - 0.5, renderTs + 1, renderTs + 1);
             }
         }
     }
 
-    // 绘制边缘岩石圆（叠加在方块上，形成自然轮廓）
-    ctx.fillStyle = (isMazeMode && mazeThemeCfg) ? mazeThemeCfg.wallColor : '#222';
-    const wallHighlight = (isMazeMode && mazeThemeCfg) ? mazeThemeCfg.wallHighlight : '#1a1a1a';
+    // 绘制边缘岩石（叠加在方块上，形成自然轮廓）—— 不同主题不同造型
     for(let w of renderWalls) {
         if(w.x > viewL && w.x < viewR && w.y > viewT && w.y < viewB) {
-            // 迷宫模式：根据墙体所在格子的主题着色
+            const wr = w.row;
+            const wc = w.col;
+            let wColor = '#222';
+            let wHighlight = '#1a1a1a';
+            let rockShape = 'round';
+
             if (isMazeMode && state.mazeRescue.sceneThemeMap) {
-                const wr = w.row;
-                const wc = w.col;
-                if (wr >= 0 && wr < renderRows && wc >= 0 && wc < renderCols) {
-                    const wThemeIdx = state.mazeRescue.sceneThemeMap[wr][wc];
-                    if (wThemeIdx >= 0 && wThemeIdx < CONFIG.maze.sceneThemeKeys.length) {
-                        const wKey = CONFIG.maze.sceneThemeKeys[wThemeIdx];
-                        const wTheme = (CONFIG.maze.sceneThemes as any)[wKey];
-                        if (wTheme) {
-                            ctx.fillStyle = wTheme.wallColor;
-                        }
-                    }
+                wColor = getMazeThemeColor(wr, wc, 'wallColor', '#222');
+                wHighlight = getMazeThemeColor(wr, wc, 'wallHighlight', '#1a1a1a');
+                // 获取岩石造型
+                const tIdx = state.mazeRescue.sceneThemeMap[wr]?.[wc];
+                if (tIdx !== undefined && tIdx >= 0 && tIdx < CONFIG.maze.sceneThemeKeys.length) {
+                    const tKey = CONFIG.maze.sceneThemeKeys[tIdx];
+                    const tCfg = (CONFIG.maze.sceneThemes as any)[tKey];
+                    if (tCfg && tCfg.rockShape) rockShape = tCfg.rockShape;
                 }
             }
-            ctx.beginPath();
-            ctx.arc(w.x, w.y, w.r, 0, Math.PI*2);
-            ctx.fill();
-            
-            // 内部高光
-            if (isMazeMode && state.mazeRescue.sceneThemeMap) {
-                const wr2 = w.row;
-                const wc2 = w.col;
-                if (wr2 >= 0 && wr2 < renderRows && wc2 >= 0 && wc2 < renderCols) {
-                    const wThemeIdx2 = state.mazeRescue.sceneThemeMap[wr2][wc2];
-                    if (wThemeIdx2 >= 0 && wThemeIdx2 < CONFIG.maze.sceneThemeKeys.length) {
-                        const wKey2 = CONFIG.maze.sceneThemeKeys[wThemeIdx2];
-                        const wTheme2 = (CONFIG.maze.sceneThemes as any)[wKey2];
-                        if (wTheme2) {
-                            ctx.fillStyle = wTheme2.wallHighlight;
-                        }
+
+            ctx.fillStyle = wColor;
+
+            switch (rockShape) {
+                case 'angular': {
+                    // 棱角分明的多边形
+                    const hash = Math.sin(wr * 127.1 + wc * 311.7) * 43758.5453;
+                    const sides = 5 + Math.floor((hash - Math.floor(hash)) * 3);
+                    ctx.beginPath();
+                    for (let i = 0; i < sides; i++) {
+                        const a = (i / sides) * Math.PI * 2 + (hash % 1) * 0.5;
+                        const rr = w.r * (0.7 + (Math.sin(a * 3 + hash) * 0.3));
+                        const px = w.x + Math.cos(a) * rr;
+                        const py = w.y + Math.sin(a) * rr;
+                        if (i === 0) ctx.moveTo(px, py);
+                        else ctx.lineTo(px, py);
                     }
+                    ctx.closePath();
+                    ctx.fill();
+                    // 高光
+                    ctx.fillStyle = wHighlight;
+                    ctx.beginPath();
+                    for (let i = 0; i < sides; i++) {
+                        const a = (i / sides) * Math.PI * 2 + (hash % 1) * 0.5;
+                        const rr = w.r * 0.45 * (0.7 + (Math.sin(a * 3 + hash) * 0.3));
+                        const px = w.x - w.r * 0.2 + Math.cos(a) * rr;
+                        const py = w.y - w.r * 0.2 + Math.sin(a) * rr;
+                        if (i === 0) ctx.moveTo(px, py);
+                        else ctx.lineTo(px, py);
+                    }
+                    ctx.closePath();
+                    ctx.fill();
+                    break;
                 }
-            } else {
-                ctx.fillStyle = '#1a1a1a';
+                case 'spiky': {
+                    // 上下尖刺状突起
+                    ctx.beginPath();
+                    ctx.arc(w.x, w.y, w.r * 0.7, 0, Math.PI * 2);
+                    ctx.fill();
+                    // 尖刺
+                    const spikeCount = 3 + Math.floor(Math.sin(wr * 5 + wc * 7) * 1.5 + 1.5);
+                    for (let i = 0; i < spikeCount; i++) {
+                        const a = (i / spikeCount) * Math.PI * 2 + wr * 0.3;
+                        const sLen = w.r * (0.8 + Math.sin(i * 2.7 + wc) * 0.4);
+                        ctx.beginPath();
+                        ctx.moveTo(w.x + Math.cos(a - 0.25) * w.r * 0.5, w.y + Math.sin(a - 0.25) * w.r * 0.5);
+                        ctx.lineTo(w.x + Math.cos(a) * sLen, w.y + Math.sin(a) * sLen);
+                        ctx.lineTo(w.x + Math.cos(a + 0.25) * w.r * 0.5, w.y + Math.sin(a + 0.25) * w.r * 0.5);
+                        ctx.fill();
+                    }
+                    // 高光
+                    ctx.fillStyle = wHighlight;
+                    ctx.beginPath();
+                    ctx.arc(w.x - w.r * 0.2, w.y - w.r * 0.2, w.r * 0.35, 0, Math.PI * 2);
+                    ctx.fill();
+                    break;
+                }
+                case 'layered': {
+                    // 层叠片状
+                    const layers = 3 + Math.floor(Math.sin(wr * 3 + wc * 5) + 1.5);
+                    for (let i = 0; i < layers; i++) {
+                        const ly = w.y - w.r * 0.5 + (i / layers) * w.r;
+                        const lw = w.r * (0.8 + Math.sin(i * 1.5 + wr) * 0.2);
+                        const lh = w.r / layers * 0.8;
+                        ctx.fillRect(w.x - lw, ly, lw * 2, lh);
+                    }
+                    // 高光线
+                    ctx.fillStyle = wHighlight;
+                    ctx.fillRect(w.x - w.r * 0.5, w.y - w.r * 0.3, w.r, w.r * 0.15);
+                    break;
+                }
+                case 'smooth': {
+                    // 光滑圆弧极简
+                    ctx.beginPath();
+                    ctx.arc(w.x, w.y, w.r, 0, Math.PI * 2);
+                    ctx.fill();
+                    // 大面积柔和高光
+                    ctx.fillStyle = wHighlight;
+                    ctx.beginPath();
+                    ctx.arc(w.x - w.r * 0.15, w.y - w.r * 0.15, w.r * 0.7, 0, Math.PI * 2);
+                    ctx.fill();
+                    break;
+                }
+                default: {
+                    // round: 圆润泥团状（默认）
+                    ctx.beginPath();
+                    ctx.arc(w.x, w.y, w.r, 0, Math.PI * 2);
+                    ctx.fill();
+                    // 内部高光
+                    ctx.fillStyle = wHighlight;
+                    ctx.beginPath();
+                    ctx.arc(w.x - w.r * 0.3, w.y - w.r * 0.3, w.r * 0.6, 0, Math.PI * 2);
+                    ctx.fill();
+                    break;
+                }
             }
-            ctx.beginPath();
-            ctx.arc(w.x - w.r*0.3, w.y - w.r*0.3, w.r*0.6, 0, Math.PI*2);
-            ctx.fill();
-            // 恢复默认墙色
-            ctx.fillStyle = (isMazeMode && mazeThemeCfg) ? mazeThemeCfg.wallColor : '#222';
         }
     }
 
@@ -893,7 +1112,7 @@ export function draw() {
         if(p.type !== 'silt') continue;
         let siltAlpha = p.alpha * Math.max(0, p.life);
         if (siltAlpha < 0.005) continue;
-        // 迷宫模式：泥沙颜色跟随区域主题
+        // 迷宫模式：泥沙颜色跟随区域主题（含渐变过渡）
         if (isMazeMode && state.mazeRescue.sceneThemeMap) {
             const sr = Math.floor(p.y / renderTs);
             const sc = Math.floor(p.x / renderTs);
@@ -903,7 +1122,18 @@ export function draw() {
                     const sKey = CONFIG.maze.sceneThemeKeys[sThemeIdx];
                     const sTheme = (CONFIG.maze.sceneThemes as any)[sKey];
                     if (sTheme) {
-                        ctx.fillStyle = sTheme.particleColor.replace('VAR', String(siltAlpha));
+                        let pColor = sTheme.particleColor;
+                        // 检查过渡混合
+                        const blend = state.mazeRescue.sceneBlendMap?.[sr]?.[sc];
+                        if (blend && blend.blend > 0.05 && blend.theme2 >= 0 && blend.theme2 < CONFIG.maze.sceneThemeKeys.length) {
+                            const s2Key = CONFIG.maze.sceneThemeKeys[blend.theme2];
+                            const s2Theme = (CONFIG.maze.sceneThemes as any)[s2Key];
+                            if (s2Theme) {
+                                // 简单混合：用主导主题的颜色模板
+                                pColor = sTheme.particleColor;
+                            }
+                        }
+                        ctx.fillStyle = pColor.replace('VAR', String(siltAlpha));
                         ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); ctx.fill();
                         continue;
                     }

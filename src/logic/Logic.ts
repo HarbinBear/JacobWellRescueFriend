@@ -1389,6 +1389,7 @@ export function resetMazeLogic() {
         diveHistory: [],
         // 场景辨识度
         sceneThemeMap: mazeData.mazeSceneThemeMap,
+        sceneBlendMap: mazeData.mazeSceneBlendMap,
         discoveredThemes: [],
         thisNewThemes: [],
         currentThemeKey: '',

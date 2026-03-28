@@ -1,3 +1,7 @@
+---
+# Please note: Do not modify the header of this document. If modified, CodeBuddy (Internal Edition) will apply the default logic settings.
+type: always
+---
 # 技术文档分卷 02：状态树、配置与输入系统
 
 ## 本卷用途

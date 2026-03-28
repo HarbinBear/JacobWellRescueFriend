@@ -1,3 +1,7 @@
+---
+# Please note: Do not modify the header of this document. If modified, CodeBuddy (Internal Edition) will apply the default logic settings.
+type: always
+---
 # 设计文档分卷 01：项目概览与核心原则
 
 ## 本卷用途

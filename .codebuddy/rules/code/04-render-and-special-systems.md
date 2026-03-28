@@ -1,3 +1,7 @@
+---
+# Please note: Do not modify the header of this document. If modified, CodeBuddy (Internal Edition) will apply the default logic settings.
+type: always
+---
 # 技术文档分卷 04：专项系统、渲染与维护落点
 
 ## 本卷用途
@@ -559,6 +563,29 @@ gameLoop
 - **`src/logic/Logic.ts`**：`resetMazeLogic()` 挂载主题数据；`startMazeDive()` 重置本次新发现；`updateMaze()` 检测区域主题切换并记录首次发现；`finishMazeDive()` 将 `newThemes` 归档到 `diveHistory`
 - **`src/render/Render.ts`**：实心内部填充、边缘岩石圆、内部高光均按每格主题着色；泥沙粒子颜色跟随区域主题
 - **`src/render/RenderUI.ts`**：认知地图水域着色跟随区域主题；图例改为动态显示已发现/未发现的区域主题；结算页增加"新发现区域类型"展示
+
+### 6.11 第二阶段实现记录（场景辨识度增强，已完成）
+
+第二阶段在第一阶段基础上做了三项重大增强：
+
+#### A. 主题种类扩充（4类 → 10类，每局随机选4~5类）
+
+- **`src/core/config.ts`**：`sceneThemes` 从4类扩展到10类（黄泥、白石灰岩、红褐沉底、纯白空腔、钟乳石、大理石、黑曜石、砂岩、苔藓岩、页岩），每类新增 `rockShape`（岩石造型）和 `bgDecoType`（背景装饰类型）属性；新增 `allThemeKeys`（全部10类键名）和 `themesPerGame`（每局选取数量范围）；`sceneThemeKeys` 改为运行时动态填充
+- **`src/world/map.ts`**：每局从 `allThemeKeys` 中随机选取4~5类写入 `sceneThemeKeys`
+
+#### B. 区域衔接自然过渡（硬切 → 渐变混合）
+
+- **`src/world/map.ts`**：主题分配算法从简单BFS Voronoi改为**带距离的BFS + 双主题距离记录**；新增 `mazeSceneBlendMap` 返回每格到最近两个不同主题种子的距离和混合权重；过渡带宽度6格
+- **`src/core/state.ts`**：`mazeRescue` 新增 `sceneBlendMap` 字段
+- **`src/logic/Logic.ts`**：`resetMazeLogic()` 挂载 `sceneBlendMap`
+- **`src/render/Render.ts`**：新增 `getMazeThemeColor()` 和 `blendHexColors()` 辅助函数，墙体和内部填充在过渡带内按距离比例混合两个主题的颜色
+
+#### C. 岩石造型差异化 + 背景装饰层
+
+- **`src/render/Render.ts`**：
+  - 墙体渲染从统一圆形改为按 `rockShape` 分5种造型：`round`（圆润泥团）、`angular`（棱角多边形）、`spiky`（尖刺突起）、`layered`（层叠片状）、`smooth`（光滑圆弧）
+  - 新增**背景装饰层**（在墙体之前绘制，`globalAlpha=0.15`，不参与碰撞和遮挡），按 `bgDecoType` 分9种装饰：`blobShadow`、`sharpEdge`、`layerLines`、`glowOrb`、`stalactites`、`veinLines`、`glintSpots`、`grainDots`、`mossPatches`
+- **`src/render/RenderUI.ts`**：认知地图图例布局改为自动换行，适配4~5个主题
 ---
 
 ## 七、给后续模型的阅读顺序建议

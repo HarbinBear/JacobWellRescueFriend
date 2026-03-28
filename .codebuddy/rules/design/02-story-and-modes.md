@@ -1,3 +1,7 @@
+---
+# Please note: Do not modify the header of this document. If modified, CodeBuddy (Internal Edition) will apply the default logic settings.
+type: always
+---
 # 设计文档分卷 02：剧情结构、关键事件与模式
 
 ## 本卷用途
