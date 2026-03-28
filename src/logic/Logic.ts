@@ -1387,6 +1387,11 @@ export function resetMazeLogic() {
         maxDepthReached: 0,
         totalRopePlaced: 0,
         diveHistory: [],
+        // 场景辨识度
+        sceneThemeMap: mazeData.mazeSceneThemeMap,
+        discoveredThemes: [],
+        thisNewThemes: [],
+        currentThemeKey: '',
         playerPath: [],
         thisExploredBefore: emptyExplored,
         thisRopeCountBefore: 0,
@@ -1480,6 +1485,8 @@ export function startMazeDive(diveType: string) {
     }
     maze.thisRopeCountBefore = state.rope ? state.rope.ropes.length : 0;
     maze.thisMaxDepth = 0;
+    maze.thisNewThemes = [];
+    maze.currentThemeKey = '';
     maze.playerPath = [{x: player.x, y: player.y}];
 
     // 绳索系统保留已有绳索，只重置当前铺设状态
@@ -1540,6 +1547,7 @@ function finishMazeDive(returnReason: string) {
         newExploredCount: newExploredCount,
         ropePlaced: ropePlaced,
         returnReason: returnReason,
+        newThemes: maze.thisNewThemes ? maze.thisNewThemes.slice() : [],
     });
 
     // 更新跨下潜统计
@@ -1818,6 +1826,34 @@ export function updateMaze() {
         storyManager.showText('氧气不足，紧急上浮...', '#f80', 2500);
         maze.phase = 'surfacing';
         maze.resultTimer = 0;
+    }
+
+    // --- 场景辨识度：检测当前区域主题 ---
+    if (maze.sceneThemeMap) {
+        const themeR = Math.floor(player.y / maze.mazeTileSize);
+        const themeC = Math.floor(player.x / maze.mazeTileSize);
+        if (themeR >= 0 && themeR < maze.mazeRows && themeC >= 0 && themeC < maze.mazeCols) {
+            const themeIdx = maze.sceneThemeMap[themeR][themeC];
+            if (themeIdx >= 0 && themeIdx < CONFIG.maze.sceneThemeKeys.length) {
+                const themeKey = CONFIG.maze.sceneThemeKeys[themeIdx];
+                // 检测是否切换了区域主题
+                if (themeKey !== maze.currentThemeKey) {
+                    maze.currentThemeKey = themeKey;
+                    // 检测是否首次发现该主题
+                    if (!maze.discoveredThemes.includes(themeKey)) {
+                        maze.discoveredThemes.push(themeKey);
+                        if (!maze.thisNewThemes.includes(themeKey)) {
+                            maze.thisNewThemes.push(themeKey);
+                        }
+                        // 显示发现提示
+                        const themeCfg = (CONFIG.maze.sceneThemes as any)[themeKey];
+                        if (themeCfg) {
+                            storyManager.showText(`进入 ${themeCfg.name}`, 'rgba(200,220,255,0.9)', 2500);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // --- 更新探索地图 ---

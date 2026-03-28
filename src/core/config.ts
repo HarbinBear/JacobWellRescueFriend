@@ -231,6 +231,56 @@ export const CONFIG = {
         // 结算
         deadTimerBeforeResult: 120, // 死亡后多少帧显示结算
 
+        // === 场景辨识度：区域主题配置 ===
+        sceneThemes: {
+            // 黄泥区：混浊、温脏、贴壁泥沙
+            muddy: {
+                name: '黄泥区',
+                wallColor: '#3a3020',
+                wallHighlight: '#4a3d28',
+                innerColor: '#2a2218',
+                waterTint: 'rgba(80,65,30,0.08)',
+                particleDensity: 1.6,
+                particleColor: 'rgba(140,110,60,VAR)',
+                mapColor: 'rgba(160,130,70,0.55)',
+            },
+            // 白石灰岩区：冷白、反光、硬
+            limestone: {
+                name: '白石灰岩区',
+                wallColor: '#3a3a3e',
+                wallHighlight: '#555560',
+                innerColor: '#28282c',
+                waterTint: 'rgba(180,190,210,0.06)',
+                particleDensity: 0.6,
+                particleColor: 'rgba(180,190,200,VAR)',
+                mapColor: 'rgba(170,180,200,0.55)',
+            },
+            // 红褐沉底区：锈、淤积、事故感
+            rusty: {
+                name: '红褐沉底区',
+                wallColor: '#3a2520',
+                wallHighlight: '#4d3028',
+                innerColor: '#2a1a15',
+                waterTint: 'rgba(120,50,30,0.07)',
+                particleDensity: 1.2,
+                particleColor: 'rgba(150,80,50,VAR)',
+                mapColor: 'rgba(170,100,70,0.55)',
+            },
+            // 纯白空腔区：空旷、寂静、近乎神圣
+            pristine: {
+                name: '纯白空腔区',
+                wallColor: '#404045',
+                wallHighlight: '#606068',
+                innerColor: '#303035',
+                waterTint: 'rgba(200,210,220,0.05)',
+                particleDensity: 0.3,
+                particleColor: 'rgba(200,210,220,VAR)',
+                mapColor: 'rgba(200,210,220,0.55)',
+            },
+        },
+        // 主题类型键名列表（用于随机分配）
+        sceneThemeKeys: ['muddy', 'limestone', 'rusty', 'pristine'] as string[],
+
         // === 多次下潜闭环配置 ===
         retreatHoldDuration: 1.0,   // 探路撤离长按秒数
         retreatBtnRadius: 36,       // 撤离按钮半径

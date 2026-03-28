@@ -305,6 +305,7 @@ export function generateMazeMap(): {
     mazeMap: any[][];
     mazeWalls: any[];
     mazeExplored: boolean[][];
+    mazeSceneThemeMap: number[][];
     mazeCols: number;
     mazeRows: number;
     mazeTileSize: number;
@@ -1050,6 +1051,70 @@ export function generateMazeMap(): {
         }
     }
 
+    // === 场景辨识度：区域主题分配 ===
+    // 基于节点深度（行号）将迷宫划分为若干水平带，每带分配一个主题
+    // 主题索引：0=muddy, 1=limestone, 2=rusty, 3=pristine
+    const themeKeys = CONFIG.maze.sceneThemeKeys;
+    const themeCount = themeKeys.length;
+
+    // 把所有节点按行排序，划分为 themeCount 个深度带
+    const sortedNodes = finalCandidate.nodes.slice().sort((a, b) => a.r - b.r);
+    const bandSize = Math.ceil(sortedNodes.length / themeCount);
+    // 为每个节点分配主题索引
+    const nodeThemeMap = new Map<number, number>();
+    // 随机打乱主题分配顺序，让每局不同
+    const shuffledThemeIndices: number[] = [];
+    for (let i = 0; i < themeCount; i++) shuffledThemeIndices.push(i);
+    for (let i = shuffledThemeIndices.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        const tmp = shuffledThemeIndices[i];
+        shuffledThemeIndices[i] = shuffledThemeIndices[j];
+        shuffledThemeIndices[j] = tmp;
+    }
+    for (let i = 0; i < sortedNodes.length; i++) {
+        const bandIndex = Math.min(Math.floor(i / bandSize), themeCount - 1);
+        nodeThemeMap.set(sortedNodes[i].id, shuffledThemeIndices[bandIndex]);
+    }
+
+    // 构建主题索引图：对每个空地格子，找最近节点的主题
+    const mazeSceneThemeMap: number[][] = [];
+    for (let r = 0; r < rows; r++) {
+        mazeSceneThemeMap[r] = new Array(cols).fill(-1);
+    }
+    // 用 BFS 从每个节点向外扩散填充主题（Voronoi 式分配）
+    const themeVisited: boolean[][] = [];
+    for (let r = 0; r < rows; r++) {
+        themeVisited[r] = new Array(cols).fill(false);
+    }
+    // 初始化队列：每个节点的中心格
+    const tQueue: {r: number, c: number, theme: number}[] = [];
+    for (const node of finalCandidate.nodes) {
+        const nr = clamp(Math.round(node.r), 0, rows - 1);
+        const nc = clamp(Math.round(node.c), 0, cols - 1);
+        const theme = nodeThemeMap.get(node.id) || 0;
+        if (!themeVisited[nr][nc]) {
+            themeVisited[nr][nc] = true;
+            mazeSceneThemeMap[nr][nc] = theme;
+            tQueue.push({r: nr, c: nc, theme});
+        }
+    }
+    // BFS 扩散
+    let tHead = 0;
+    while (tHead < tQueue.length) {
+        const cur = tQueue[tHead++];
+        const neighbors = [
+            [cur.r - 1, cur.c], [cur.r + 1, cur.c],
+            [cur.r, cur.c - 1], [cur.r, cur.c + 1]
+        ];
+        for (const [nr, nc] of neighbors) {
+            if (nr < 0 || nr >= rows || nc < 0 || nc >= cols) continue;
+            if (themeVisited[nr][nc]) continue;
+            themeVisited[nr][nc] = true;
+            mazeSceneThemeMap[nr][nc] = cur.theme;
+            tQueue.push({r: nr, c: nc, theme: cur.theme});
+        }
+    }
+
     const exitX = exitCol * ts + ts / 2;
     const exitY = 0;
     const npcInitX = npcNode.c * ts + ts / 2;
@@ -1061,6 +1126,7 @@ export function generateMazeMap(): {
         mazeMap,
         mazeWalls,
         mazeExplored,
+        mazeSceneThemeMap,
         mazeCols: cols,
         mazeRows: rows,
         mazeTileSize: ts,

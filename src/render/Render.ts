@@ -173,8 +173,23 @@ export function draw() {
     let viewColMin = Math.max(0, Math.floor(viewL / renderTs) - 1);
     let viewColMax = Math.min(renderCols - 1, Math.floor(viewR / renderTs) + 1);
 
+    // 迷宫模式：根据区域主题获取当前视口中心的主题配置
+    let mazeThemeCfg: any = null;
+    let mazeThemeIdx = -1;
+    if (isMazeMode && state.mazeRescue.sceneThemeMap) {
+        const themeR = Math.floor(player.y / renderTs);
+        const themeC = Math.floor(player.x / renderTs);
+        if (themeR >= 0 && themeR < renderRows && themeC >= 0 && themeC < renderCols) {
+            mazeThemeIdx = state.mazeRescue.sceneThemeMap[themeR][themeC];
+            if (mazeThemeIdx >= 0 && mazeThemeIdx < CONFIG.maze.sceneThemeKeys.length) {
+                const key = CONFIG.maze.sceneThemeKeys[mazeThemeIdx];
+                mazeThemeCfg = (CONFIG.maze.sceneThemes as any)[key];
+            }
+        }
+    }
+
     // 绘制实心内部填充（无缝，无网格边框）
-    ctx.fillStyle = '#1a1a1a';
+    ctx.fillStyle = (isMazeMode && mazeThemeCfg) ? mazeThemeCfg.innerColor : '#1a1a1a';
     for(let r = viewRowMin; r <= viewRowMax; r++) {
         if(!renderMap[r]) continue;
         for(let c = viewColMin; c <= viewColMax; c++) {
@@ -185,18 +200,51 @@ export function draw() {
     }
 
     // 绘制边缘岩石圆（叠加在方块上，形成自然轮廓）
-    ctx.fillStyle = '#222';
+    ctx.fillStyle = (isMazeMode && mazeThemeCfg) ? mazeThemeCfg.wallColor : '#222';
+    const wallHighlight = (isMazeMode && mazeThemeCfg) ? mazeThemeCfg.wallHighlight : '#1a1a1a';
     for(let w of renderWalls) {
         if(w.x > viewL && w.x < viewR && w.y > viewT && w.y < viewB) {
+            // 迷宫模式：根据墙体所在格子的主题着色
+            if (isMazeMode && state.mazeRescue.sceneThemeMap) {
+                const wr = w.row;
+                const wc = w.col;
+                if (wr >= 0 && wr < renderRows && wc >= 0 && wc < renderCols) {
+                    const wThemeIdx = state.mazeRescue.sceneThemeMap[wr][wc];
+                    if (wThemeIdx >= 0 && wThemeIdx < CONFIG.maze.sceneThemeKeys.length) {
+                        const wKey = CONFIG.maze.sceneThemeKeys[wThemeIdx];
+                        const wTheme = (CONFIG.maze.sceneThemes as any)[wKey];
+                        if (wTheme) {
+                            ctx.fillStyle = wTheme.wallColor;
+                        }
+                    }
+                }
+            }
             ctx.beginPath();
             ctx.arc(w.x, w.y, w.r, 0, Math.PI*2);
             ctx.fill();
             
-            ctx.fillStyle = '#1a1a1a';
+            // 内部高光
+            if (isMazeMode && state.mazeRescue.sceneThemeMap) {
+                const wr2 = w.row;
+                const wc2 = w.col;
+                if (wr2 >= 0 && wr2 < renderRows && wc2 >= 0 && wc2 < renderCols) {
+                    const wThemeIdx2 = state.mazeRescue.sceneThemeMap[wr2][wc2];
+                    if (wThemeIdx2 >= 0 && wThemeIdx2 < CONFIG.maze.sceneThemeKeys.length) {
+                        const wKey2 = CONFIG.maze.sceneThemeKeys[wThemeIdx2];
+                        const wTheme2 = (CONFIG.maze.sceneThemes as any)[wKey2];
+                        if (wTheme2) {
+                            ctx.fillStyle = wTheme2.wallHighlight;
+                        }
+                    }
+                }
+            } else {
+                ctx.fillStyle = '#1a1a1a';
+            }
             ctx.beginPath();
             ctx.arc(w.x - w.r*0.3, w.y - w.r*0.3, w.r*0.6, 0, Math.PI*2);
             ctx.fill();
-            ctx.fillStyle = '#222';
+            // 恢复默认墙色
+            ctx.fillStyle = (isMazeMode && mazeThemeCfg) ? mazeThemeCfg.wallColor : '#222';
         }
     }
 
@@ -845,6 +893,23 @@ export function draw() {
         if(p.type !== 'silt') continue;
         let siltAlpha = p.alpha * Math.max(0, p.life);
         if (siltAlpha < 0.005) continue;
+        // 迷宫模式：泥沙颜色跟随区域主题
+        if (isMazeMode && state.mazeRescue.sceneThemeMap) {
+            const sr = Math.floor(p.y / renderTs);
+            const sc = Math.floor(p.x / renderTs);
+            if (sr >= 0 && sr < renderRows && sc >= 0 && sc < renderCols) {
+                const sThemeIdx = state.mazeRescue.sceneThemeMap[sr][sc];
+                if (sThemeIdx >= 0 && sThemeIdx < CONFIG.maze.sceneThemeKeys.length) {
+                    const sKey = CONFIG.maze.sceneThemeKeys[sThemeIdx];
+                    const sTheme = (CONFIG.maze.sceneThemes as any)[sKey];
+                    if (sTheme) {
+                        ctx.fillStyle = sTheme.particleColor.replace('VAR', String(siltAlpha));
+                        ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); ctx.fill();
+                        continue;
+                    }
+                }
+            }
+        }
         ctx.fillStyle = `rgba(120, 100, 80, ${siltAlpha})`;
         ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); ctx.fill();
     }

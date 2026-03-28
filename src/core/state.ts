@@ -189,6 +189,12 @@ export const state = {
             returnReason: string;   // 'retreat'（主动撤离）| 'o2'（氧气耗尽）| 'rescued'（救援成功）
         }[];
 
+        // === 场景辨识度：区域主题 ===
+        sceneThemeMap: number[][];      // 与迷宫网格对齐的主题索引图（0~3）
+        discoveredThemes: string[];     // 跨下潜已发现的主题键名列表
+        thisNewThemes: string[];        // 本次下潜新发现的主题键名列表
+        currentThemeKey: string;        // 当前所在区域的主题键名
+
         // === 本次下潜运行态数据 ===
         playerPath: {x: number, y: number}[]; // 记录玩家移动轨迹
         thisExploredBefore: boolean[][]; // 本次下潜开始时的已探索快照（用于计算增量）
