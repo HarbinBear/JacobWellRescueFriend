@@ -1,8 +1,8 @@
 import { CONFIG } from '../core/config';
 
-export type MazeMainThemeKey = 'muddy' | 'limestone' | 'rusty' | 'shale' | 'hardRock';
-export type MazeRockShape = 'round' | 'angular' | 'layered' | 'smooth' | 'spiky';
-export type MazeBackgroundDecorationType = 'blobShadow' | 'sharpEdge' | 'layerLines' | 'veinLines' | 'grainDots' | 'glowOrb';
+export type MazeMainThemeKey = 'muddy' | 'limestone' | 'rusty' | 'hardRock';
+export type MazeRockShape = 'round' | 'angular' | 'smooth' | 'spiky';
+export type MazeBackgroundDecorationType = 'blobShadow' | 'sharpEdge' | 'veinLines' | 'grainDots' | 'glowOrb';
 export type MazeStructureKey = 'none' | 'stalactite';
 
 export interface MazeSceneCellBlend {
@@ -40,7 +40,6 @@ const MAZE_MAIN_THEME_KEYS: MazeMainThemeKey[] = [
     'muddy',
     'limestone',
     'rusty',
-    'shale',
     'hardRock',
 ];
 
@@ -80,18 +79,6 @@ const MAZE_MAIN_THEMES: Record<MazeMainThemeKey, MazeMainThemeConfig> = {
         mapColor: 'rgba(170,100,70,0.55)',
         rockShape: 'round',
         bgDecoType: 'veinLines',
-    },
-    shale: {
-        name: '页岩夹层区',
-        wallColor: '#302828',
-        wallHighlight: '#453838',
-        innerColor: '#201a1a',
-        waterTint: 'rgba(80,60,60,0.07)',
-        particleDensity: 0.9,
-        particleColor: 'rgba(130,100,100,VAR)',
-        mapColor: 'rgba(150,120,120,0.55)',
-        rockShape: 'layered',
-        bgDecoType: 'layerLines',
     },
     hardRock: {
         name: '硬岩块裂区',
@@ -292,7 +279,7 @@ export function createMazeSceneData(
         }
     }
 
-    const transitionWidth = CONFIG.maze.sceneTransitionWidth || 6;
+    const transitionWidth = CONFIG.maze.sceneTransitionWidth || 12;
     for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
             sceneThemeMap[r][c] = theme1Map[r][c] >= 0 ? theme1Map[r][c] : 0;
@@ -302,10 +289,21 @@ export function createMazeSceneData(
             const d2 = dist2Map[r][c];
             const total = d1 + d2;
             if (total <= 0) continue;
-            if (d1 < transitionWidth && d2 < transitionWidth) {
+
+            // 使用基于距离比例的宽过渡带 + smoothstep 曲线，让区域间过渡非常自然
+            const ratio = d1 / total; // 0 = 完全属于主题1, 1 = 完全属于主题2
+            // 只要离边界（ratio=0.5）足够近就开始混合
+            // transitionWidth 控制过渡带宽度：值越大，过渡越宽越柔和
+            const halfTW = transitionWidth / Math.max(total, 1);
+            const blendStart = Math.max(0, 0.5 - halfTW);
+            const blendEnd = Math.min(1, 0.5 + halfTW);
+            if (ratio > blendStart && ratio < blendEnd) {
+                // smoothstep 插值：让过渡曲线更平滑，避免线性过渡的生硬感
+                const t = (ratio - blendStart) / (blendEnd - blendStart);
+                const smooth = t * t * (3 - 2 * t);
                 sceneBlendMap[r][c] = {
                     theme2: theme2Map[r][c],
-                    blend: Math.max(0, Math.min(1, d1 / total)),
+                    blend: smooth,
                 };
             }
         }

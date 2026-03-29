@@ -73,22 +73,41 @@ export function drawMazeBackgroundDecorations(
             const themeConfig = getMazeSceneThemeConfigByIndex(maze.sceneThemeKeys, themeIndex);
             if (!themeConfig) continue;
 
+            // 在过渡带上根据混合比例概率性选择装饰类型
+            let decoType = themeConfig.bgDecoType;
+            let decoWallColor = themeConfig.wallColor;
+            let decoHighlight = themeConfig.wallHighlight;
+            const blend = maze.sceneBlendMap?.[r]?.[c];
+            if (blend && blend.blend > 0.1 && blend.theme2 >= 0) {
+                const secondary = getMazeSceneThemeConfigByIndex(maze.sceneThemeKeys, blend.theme2);
+                if (secondary) {
+                    // 用稳定哈希决定该格用哪种装饰
+                    const decoHash = Math.sin(r * 91.37 + c * 213.51) * 43758.5453;
+                    const decoProb = decoHash - Math.floor(decoHash);
+                    if (decoProb < blend.blend) {
+                        decoType = secondary.bgDecoType;
+                        decoWallColor = secondary.wallColor;
+                        decoHighlight = secondary.wallHighlight;
+                    }
+                }
+            }
+
             const cx = c * renderTs + renderTs / 2;
             const cy = r * renderTs + renderTs / 2;
             const hash = Math.sin(r * 127.1 + c * 311.7) * 43758.5453;
             const prob = hash - Math.floor(hash);
             if (prob > 0.25) continue;
 
-            switch (themeConfig.bgDecoType) {
+            switch (decoType) {
                 case 'blobShadow': {
-                    ctx.fillStyle = themeConfig.wallColor;
+                    ctx.fillStyle = decoWallColor;
                     ctx.beginPath();
                     ctx.arc(cx + (prob - 0.12) * 20, cy + (hash % 1 - 0.5) * 15, renderTs * 0.4, 0, Math.PI * 2);
                     ctx.fill();
                     break;
                 }
                 case 'sharpEdge': {
-                    ctx.strokeStyle = themeConfig.wallHighlight;
+                    ctx.strokeStyle = decoHighlight;
                     ctx.lineWidth = 1;
                     ctx.beginPath();
                     ctx.moveTo(cx - renderTs * 0.3, cy + renderTs * 0.2);
@@ -97,20 +116,9 @@ export function drawMazeBackgroundDecorations(
                     ctx.stroke();
                     break;
                 }
-                case 'layerLines': {
-                    ctx.strokeStyle = themeConfig.wallHighlight;
-                    ctx.lineWidth = 0.8;
-                    for (let i = 0; i < 3; i++) {
-                        const ly = cy - renderTs * 0.2 + i * renderTs * 0.2;
-                        ctx.beginPath();
-                        ctx.moveTo(cx - renderTs * 0.35, ly + Math.sin(c + i) * 2);
-                        ctx.lineTo(cx + renderTs * 0.35, ly + Math.cos(r + i) * 2);
-                        ctx.stroke();
-                    }
-                    break;
-                }
+
                 case 'veinLines': {
-                    ctx.strokeStyle = themeConfig.wallHighlight;
+                    ctx.strokeStyle = decoHighlight;
                     ctx.lineWidth = 0.6;
                     ctx.beginPath();
                     ctx.moveTo(cx - renderTs * 0.3, cy - renderTs * 0.2);
@@ -119,7 +127,7 @@ export function drawMazeBackgroundDecorations(
                     break;
                 }
                 case 'grainDots': {
-                    ctx.fillStyle = themeConfig.wallColor;
+                    ctx.fillStyle = decoWallColor;
                     for (let i = 0; i < 4; i++) {
                         const dx = Math.sin(i * 2.3 + r) * renderTs * 0.25;
                         const dy = Math.cos(i * 3.1 + c) * renderTs * 0.25;
@@ -158,7 +166,23 @@ export function drawMazeWallShape(
     const themeIndex = maze ? maze.sceneThemeMap[row]?.[col] : -1;
     const themeConfig = getMazeSceneThemeConfigByIndex(maze?.sceneThemeKeys, themeIndex);
     const structureKey = maze?.sceneStructureMap?.[row]?.[col] || 'none';
-    const rockShape = structureKey === 'stalactite' ? 'spiky' : (themeConfig?.rockShape || 'round');
+
+    // 在过渡带上根据混合比例概率性选择造型，让造型也自然过渡
+    let rockShape = structureKey === 'stalactite' ? 'spiky' : (themeConfig?.rockShape || 'round');
+    if (structureKey !== 'stalactite' && maze) {
+        const blend = maze.sceneBlendMap?.[row]?.[col];
+        if (blend && blend.blend > 0.1 && blend.theme2 >= 0) {
+            const secondary = getMazeSceneThemeConfigByIndex(maze.sceneThemeKeys, blend.theme2);
+            if (secondary && secondary.rockShape !== rockShape) {
+                // 用稳定哈希决定该格用哪种造型，避免每帧闪烁
+                const shapeHash = Math.sin(row * 73.17 + col * 157.93) * 43758.5453;
+                const shapeProb = shapeHash - Math.floor(shapeHash);
+                if (shapeProb < blend.blend) {
+                    rockShape = secondary.rockShape;
+                }
+            }
+        }
+    }
 
     ctx.fillStyle = wallColor;
 
@@ -191,18 +215,7 @@ export function drawMazeWallShape(
             ctx.fill();
             break;
         }
-        case 'layered': {
-            const layers = 3 + Math.floor(Math.sin(row * 3 + col * 5) + 1.5);
-            for (let i = 0; i < layers; i++) {
-                const ly = wall.y - wall.r * 0.5 + (i / layers) * wall.r;
-                const lw = wall.r * (0.8 + Math.sin(i * 1.5 + row) * 0.2);
-                const lh = wall.r / layers * 0.8;
-                ctx.fillRect(wall.x - lw, ly, lw * 2, lh);
-            }
-            ctx.fillStyle = wallHighlight;
-            ctx.fillRect(wall.x - wall.r * 0.5, wall.y - wall.r * 0.3, wall.r, wall.r * 0.15);
-            break;
-        }
+
         case 'smooth': {
             ctx.beginPath();
             ctx.arc(wall.x, wall.y, wall.r, 0, Math.PI * 2);

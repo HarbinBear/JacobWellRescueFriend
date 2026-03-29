@@ -232,8 +232,8 @@ export const CONFIG = {
         deadTimerBeforeResult: 120, // 死亡后多少帧显示结算
 
         // === 场景辨识度参数入口 ===
-        themesPerGame: { min: 4, max: 5 },
-        sceneTransitionWidth: 6,
+        themesPerGame: { min: 3, max: 4 },
+        sceneTransitionWidth: 100,
         stalactiteClusterChance: 0.3,
 
         // === 多次下潜闭环配置 ===
