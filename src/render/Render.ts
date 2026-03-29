@@ -1,7 +1,7 @@
 import { CONFIG } from '../core/config';
 import { state, player, target, particles, touches } from '../core/state';
 import { canvas, ctx, dpr, logicW, logicH } from './Canvas';
-import { drawFlashlight, computeSiltAttenuation, isLineOfSight } from './RenderLight';
+import { drawFlashlight, computeSiltAttenuation, isLineOfSight, drawVPL, drawVPLColor } from './RenderLight';
 import { drawDiver } from './RenderDiver';
 import { drawUI, drawControls, drawSlashEffect } from './RenderUI';
 import { drawRopesWorld, drawRopeButton } from './RenderRope';
@@ -400,6 +400,8 @@ export function draw() {
     for(let src of lightSources) {
         if(src && src.active) {
             drawFlashlight(ctx, src.x, src.y, src.angle, src.dist, 'volumetric');
+            // VPL 着色（在主 canvas 上用 screen 模式绘制反弹光颜色）
+            drawVPLColor(ctx, src.x, src.y, src.angle, src.dist);
         }
     }
 
@@ -568,7 +570,14 @@ export function draw() {
         lightCtx.fill();
     }
 
-    lightCtx.restore(); 
+    // VPL 在遮罩层上挖洞，使反弹光能照亮岩石表面
+    for(let src of maskSources) {
+        if(src.active) {
+            drawVPL(lightCtx, src.x, src.y, src.angle, src.dist);
+        }
+    }
+
+    lightCtx.restore();
 
     ctx.drawImage(lightLayer as unknown as CanvasImageSource, 0, 0, canvas.width, canvas.height, 0, 0, logicW, logicH);
 

@@ -221,6 +221,12 @@ export function isLineOfSight(x1: number, y1: number, x2: number, y2: number, ma
     return true;
 }
 
+// 稳健的最小角度差计算（处理 ±π 跳变）
+function angleDiff(a: number, b: number): number {
+    let d = Math.atan2(Math.sin(a - b), Math.cos(a - b));
+    return Math.abs(d);
+}
+
 // 统一的手电筒绘制函数
 // siltData: 可选的泥沙衰减数据（来自 computeSiltAttenuation），null 表示无泥沙
 export function drawFlashlight(renderCtx: CanvasRenderingContext2D, x: number, y: number, angle: number, rayDist: number, mode: string = 'mask', siltData: any = null) {
@@ -231,6 +237,10 @@ export function drawFlashlight(renderCtx: CanvasRenderingContext2D, x: number, y
     if (mode === 'mask') {
         if (siltData) {
             let { perStep, rays, steps, stride, stepDist } = siltData;
+            let fovRad = CONFIG.fov * Math.PI / 180;
+            let halfFov = fovRad / 2;
+            let edgeFadeRatio = 0.3;
+            let fadeStartAngle = halfFov * (1 - edgeFadeRatio);
 
             let calcBrightness = (dr: number) => {
                 if (dr < 0.5) return 1.0;
@@ -246,6 +256,16 @@ export function drawFlashlight(renderCtx: CanvasRenderingContext2D, x: number, y
                 let dx1 = p1.x - x, dy1 = p1.y - y;
                 let len1 = Math.hypot(dx1, dy1) || 1;
                 let maxLen = Math.max(len0, len1);
+
+                // 计算角度淡出（使用稳健的角度差）
+                let a0 = Math.atan2(dy0, dx0);
+                let a1 = Math.atan2(dy1, dx1);
+                let da0 = angleDiff(a0, angle);
+                let da1 = angleDiff(a1, angle);
+                let fade0 = da0 < fadeStartAngle ? 1.0 : Math.max(0, 1 - (da0 - fadeStartAngle) / (halfFov * edgeFadeRatio));
+                let fade1 = da1 < fadeStartAngle ? 1.0 : Math.max(0, 1 - (da1 - fadeStartAngle) / (halfFov * edgeFadeRatio));
+                let avgFade = (fade0 + fade1) / 2;
+                if (avgFade < 0.01) continue;
 
                 for (let s = 0; s < steps; s++) {
                     let nearDist = s * stepDist;
@@ -272,8 +292,8 @@ export function drawFlashlight(renderCtx: CanvasRenderingContext2D, x: number, y
                     let nx1 = x + dx1 * nearRatio1, ny1 = y + dy1 * nearRatio1;
                     let fx1 = x + dx1 * farRatio1,  fy1 = y + dy1 * farRatio1;
 
-                    let nearAlpha = calcBrightness(nearDist / rayDist) * nearTransAvg;
-                    let farAlpha  = calcBrightness(farDist  / rayDist) * farTransAvg;
+                    let nearAlpha = calcBrightness(nearDist / rayDist) * nearTransAvg * avgFade;
+                    let farAlpha  = calcBrightness(farDist  / rayDist) * farTransAvg * avgFade;
                     if (nearAlpha < 0.005 && farAlpha < 0.005) continue;
 
                     let grad = renderCtx.createLinearGradient(
@@ -292,15 +312,39 @@ export function drawFlashlight(renderCtx: CanvasRenderingContext2D, x: number, y
                 }
             }
 
-            // 边缘缺口处理
+            // 边缘缺口处理：只在射线被墙壁截断时羽化，光锥自然末端不额外延伸
             let featherDist = CONFIG.lightEdgeFeather || 25;
             for (let i = 0; i < poly.length - 1; i++) {
                 let finalTrans = (perStep[i * stride + steps] + perStep[Math.min(i+1,rays) * stride + steps]) / 2;
                 if (finalTrans < 0.05) continue;
                 let p0 = poly[i], p1 = poly[i+1];
+                // 只有射线被墙壁截断（距离明显小于最大距离）时才做羽化
+                let avgDist = (p0.dist + p1.dist) / 2;
+                if (avgDist > rayDist * 0.92) continue;
                 let dx0 = p0.x-x, dy0 = p0.y-y, len0 = Math.hypot(dx0,dy0)||1;
                 let dx1 = p1.x-x, dy1 = p1.y-y, len1 = Math.hypot(dx1,dy1)||1;
-                renderCtx.fillStyle = `rgba(255,255,255,${finalTrans*0.3})`;
+                // 角度淡出也应用到羽化（使用稳健的角度差）
+                let a0 = Math.atan2(dy0, dx0);
+                let a1 = Math.atan2(dy1, dx1);
+                let da0 = angleDiff(a0, angle);
+                let da1 = angleDiff(a1, angle);
+                let fade0 = da0 < fadeStartAngle ? 1.0 : Math.max(0, 1 - (da0 - fadeStartAngle) / (halfFov * edgeFadeRatio));
+                let fade1 = da1 < fadeStartAngle ? 1.0 : Math.max(0, 1 - (da1 - fadeStartAngle) / (halfFov * edgeFadeRatio));
+                let avgFade = (fade0 + fade1) / 2;
+                if (avgFade < 0.05) continue;
+
+                // 羽化alpha从墙壁处的亮度开始，向外渐变到0
+                let wallBrightness = calcBrightness(avgDist / rayDist);
+                let featherBaseAlpha = finalTrans * wallBrightness * 0.5 * avgFade;
+                if (featherBaseAlpha < 0.01) continue;
+                let grad = renderCtx.createLinearGradient(
+                    (p0.x+p1.x)/2, (p0.y+p1.y)/2,
+                    (p0.x+p1.x)/2+(dx0/len0+dx1/len1)*0.5*featherDist,
+                    (p0.y+p1.y)/2+(dy0/len0+dy1/len1)*0.5*featherDist
+                );
+                grad.addColorStop(0, `rgba(255,255,255,${featherBaseAlpha})`);
+                grad.addColorStop(1, 'rgba(255,255,255,0)');
+                renderCtx.fillStyle = grad;
                 renderCtx.beginPath();
                 renderCtx.moveTo(p0.x, p0.y);
                 renderCtx.lineTo(p0.x+(dx0/len0)*featherDist, p0.y+(dy0/len0)*featherDist);
@@ -310,102 +354,280 @@ export function drawFlashlight(renderCtx: CanvasRenderingContext2D, x: number, y
                 renderCtx.fill();
             }
         } else {
-            // 无泥沙：简单径向渐变
-            let mainGradient = renderCtx.createRadialGradient(x, y, 0, x, y, rayDist);
-            mainGradient.addColorStop(0,    'rgba(255,255,255,1.0)');
-            mainGradient.addColorStop(0.5,  'rgba(255,255,255,0.95)');
-            mainGradient.addColorStop(0.85, 'rgba(255,255,255,0.6)');
-            mainGradient.addColorStop(1,    'rgba(255,255,255,0)');
-            renderCtx.fillStyle = mainGradient;
-            renderCtx.beginPath();
-            renderCtx.moveTo(x, y);
-            for (let p of poly) renderCtx.lineTo(p.x, p.y);
-            renderCtx.closePath();
-            renderCtx.fill();
+            // 无泥沙：逐扇区绘制，加入角度淡出让光锥边缘柔和
+            let fovRad = CONFIG.fov * Math.PI / 180;
+            let halfFov = fovRad / 2;
+            let edgeFadeRatio = 0.3;
+            let fadeStartAngle = halfFov * (1 - edgeFadeRatio);
 
-            // 边缘缺口
-            let featherDist = CONFIG.lightEdgeFeather || 25;
-            let featherPoly = poly.map((p: any) => {
-                let dx = p.x-x, dy = p.y-y, len = Math.hypot(dx,dy)||1;
-                return { x: p.x+(dx/len)*featherDist, y: p.y+(dy/len)*featherDist };
-            });
-            let featherGrad = renderCtx.createRadialGradient(x, y, 0, x, y, rayDist+featherDist);
-            featherGrad.addColorStop(0,   'rgba(255,255,255,0.4)');
-            featherGrad.addColorStop(0.7, 'rgba(255,255,255,0.2)');
-            featherGrad.addColorStop(1,   'rgba(255,255,255,0)');
-            renderCtx.fillStyle = featherGrad;
-            renderCtx.beginPath();
-            renderCtx.moveTo(x, y);
-            for (let p of featherPoly) renderCtx.lineTo(p.x, p.y);
-            renderCtx.closePath();
-            renderCtx.fill();
-        }
-    } else if (mode === 'volumetric') {
-        renderCtx.globalCompositeOperation = 'screen';
-        let grad = renderCtx.createRadialGradient(x, y, 0, x, y, rayDist);
-        grad.addColorStop(0, CONFIG.flashlightColor);
-        grad.addColorStop(1, 'rgba(255,250,200,0)');
-        renderCtx.fillStyle = grad;
-        renderCtx.beginPath();
-        renderCtx.moveTo(x, y);
-        for(let p of poly) renderCtx.lineTo(p.x, p.y);
-        renderCtx.closePath();
-        renderCtx.fill();
+            let calcBrightness = (dr: number) => {
+                if (dr < 0.5) return 1.0;
+                if (dr < 0.85) return 1.0 - (dr - 0.5) / 0.35 * 0.4;
+                return 0.6 * (1 - (dr - 0.85) / 0.15);
+            };
 
-        let centerPoly = getLightPolygon(x, y, angle, rayDist, CONFIG.flashlightCenterFov);
-        let centerGrad = renderCtx.createRadialGradient(x, y, 0, x, y, rayDist);
-        centerGrad.addColorStop(0, CONFIG.flashlightCenterColor);
-        centerGrad.addColorStop(1, 'rgba(255,255,220,0)');
-        renderCtx.fillStyle = centerGrad;
-        renderCtx.beginPath();
-        renderCtx.moveTo(x, y);
-        for(let p of centerPoly) renderCtx.lineTo(p.x, p.y);
-        renderCtx.closePath();
-        renderCtx.fill();
+            for (let i = 0; i < poly.length - 1; i++) {
+                let p0 = poly[i];
+                let p1 = poly[i + 1];
+                // 计算角度偏移（使用稳健的角度差）
+                let a0 = Math.atan2(p0.y - y, p0.x - x);
+                let a1 = Math.atan2(p1.y - y, p1.x - x);
+                let da0 = angleDiff(a0, angle);
+                let da1 = angleDiff(a1, angle);
+                let fade0 = da0 < fadeStartAngle ? 1.0 : Math.max(0, 1 - (da0 - fadeStartAngle) / (halfFov * edgeFadeRatio));
+                let fade1 = da1 < fadeStartAngle ? 1.0 : Math.max(0, 1 - (da1 - fadeStartAngle) / (halfFov * edgeFadeRatio));
+                let avgFade = (fade0 + fade1) / 2;
+                if (avgFade < 0.01) continue;
 
-        // VPL (Virtual Point Lights) 反弹光效果
-        // 遍历光线多边形的顶点，如果顶点距离小于最大距离，说明打在了墙上
-        const active = getActiveMapContext();
-        const isMazeMode = state.screen === 'mazeRescue' && state.mazeRescue;
-        
-        for (let i = 0; i < poly.length; i++) {
-            let p = poly[i];
-            // 如果距离接近最大距离，说明没有打在墙上，而是消失在水里
-            if (p.dist > rayDist * 0.95) continue;
-            
-            // 只有一部分射线产生反弹光，避免性能问题和过度曝光
-            if (i % 3 !== 0) continue;
+                let dx0 = p0.x - x, dy0 = p0.y - y;
+                let len0 = Math.hypot(dx0, dy0) || 1;
+                let dx1 = p1.x - x, dy1 = p1.y - y;
+                let len1 = Math.hypot(dx1, dy1) || 1;
+                let maxLen = Math.max(len0, len1);
 
-            // 获取打中墙壁位置的颜色
-            let r = Math.floor(p.y / active.tileSize);
-            let c = Math.floor(p.x / active.tileSize);
-            
-            let bounceColor = 'rgba(150, 150, 150, 0.15)'; // 默认反弹光颜色
-            if (isMazeMode) {
-                // 迷宫模式下，反弹光颜色取墙壁的主题色
-                let wallColor = getMazeThemeColorByCell(r, c, 'wallColor', '#999');
-                // 将 hex 颜色转换为 rgba
-                if (wallColor.startsWith('#')) {
-                    let hex = wallColor.replace('#', '');
-                    if (hex.length === 3) hex = hex[0]+hex[0]+hex[1]+hex[1]+hex[2]+hex[2];
-                    let rVal = parseInt(hex.substring(0, 2), 16);
-                    let gVal = parseInt(hex.substring(2, 4), 16);
-                    let bVal = parseInt(hex.substring(4, 6), 16);
-                    bounceColor = `rgba(${rVal}, ${gVal}, ${bVal}, 0.15)`;
+                // 沿径向分段绘制，同时应用角度淡出
+                let segCount = 6;
+                let segStep = maxLen / segCount;
+                for (let s = 0; s < segCount; s++) {
+                    let nearDist = s * segStep;
+                    let farDist = Math.min((s + 1) * segStep, maxLen);
+
+                    let nearRatio0 = Math.min(nearDist / len0, 1);
+                    let farRatio0 = Math.min(farDist / len0, 1);
+                    let nearRatio1 = Math.min(nearDist / len1, 1);
+                    let farRatio1 = Math.min(farDist / len1, 1);
+
+                    let nx0 = x + dx0 * nearRatio0, ny0 = y + dy0 * nearRatio0;
+                    let fx0 = x + dx0 * farRatio0,  fy0 = y + dy0 * farRatio0;
+                    let nx1 = x + dx1 * nearRatio1, ny1 = y + dy1 * nearRatio1;
+                    let fx1 = x + dx1 * farRatio1,  fy1 = y + dy1 * farRatio1;
+
+                    let nearAlpha = calcBrightness(nearDist / rayDist) * avgFade;
+                    let farAlpha  = calcBrightness(farDist  / rayDist) * avgFade;
+                    if (nearAlpha < 0.005 && farAlpha < 0.005) continue;
+
+                    let grad = renderCtx.createLinearGradient(
+                        (nx0+nx1)/2, (ny0+ny1)/2, (fx0+fx1)/2, (fy0+fy1)/2
+                    );
+                    grad.addColorStop(0, `rgba(255,255,255,${nearAlpha})`);
+                    grad.addColorStop(1, `rgba(255,255,255,${farAlpha})`);
+                    renderCtx.fillStyle = grad;
+                    renderCtx.beginPath();
+                    renderCtx.moveTo(nx0, ny0);
+                    renderCtx.lineTo(fx0, fy0);
+                    renderCtx.lineTo(fx1, fy1);
+                    renderCtx.lineTo(nx1, ny1);
+                    renderCtx.closePath();
+                    renderCtx.fill();
                 }
             }
 
-            // 绘制反弹光晕
-            let bounceRadius = 60;
-            let bounceGrad = renderCtx.createRadialGradient(p.x, p.y, 0, p.x, p.y, bounceRadius);
-            bounceGrad.addColorStop(0, bounceColor);
-            bounceGrad.addColorStop(1, 'rgba(0,0,0,0)');
-            
-            renderCtx.fillStyle = bounceGrad;
+            // 边缘缺口羽化：只在射线被墙壁截断时羽化，光锥自然末端不额外延伸
+            let featherDist = CONFIG.lightEdgeFeather || 25;
+            for (let i = 0; i < poly.length - 1; i++) {
+                let p0 = poly[i], p1 = poly[i+1];
+                // 只有射线被墙壁截断（距离明显小于最大距离）时才做羽化
+                let avgDist = (p0.dist + p1.dist) / 2;
+                if (avgDist > rayDist * 0.92) continue;
+                let dx0 = p0.x-x, dy0 = p0.y-y, len0 = Math.hypot(dx0,dy0)||1;
+                let dx1 = p1.x-x, dy1 = p1.y-y, len1 = Math.hypot(dx1,dy1)||1;
+                // 角度淡出也应用到羽化（使用稳健的角度差）
+                let a0 = Math.atan2(dy0, dx0);
+                let a1 = Math.atan2(dy1, dx1);
+                let da0 = angleDiff(a0, angle);
+                let da1 = angleDiff(a1, angle);
+                let fade0 = da0 < fadeStartAngle ? 1.0 : Math.max(0, 1 - (da0 - fadeStartAngle) / (halfFov * edgeFadeRatio));
+                let fade1 = da1 < fadeStartAngle ? 1.0 : Math.max(0, 1 - (da1 - fadeStartAngle) / (halfFov * edgeFadeRatio));
+                let avgFade = (fade0 + fade1) / 2;
+                if (avgFade < 0.05) continue;
+
+                // 羽化alpha从墙壁处的亮度开始，向外渐变到0
+                let wallBrightness = calcBrightness(avgDist / rayDist);
+                let featherBaseAlpha = wallBrightness * 0.5 * avgFade;
+                if (featherBaseAlpha < 0.01) continue;
+                let grad = renderCtx.createLinearGradient(
+                    (p0.x+p1.x)/2, (p0.y+p1.y)/2,
+                    (p0.x+p1.x)/2+(dx0/len0+dx1/len1)*0.5*featherDist,
+                    (p0.y+p1.y)/2+(dy0/len0+dy1/len1)*0.5*featherDist
+                );
+                grad.addColorStop(0, `rgba(255,255,255,${featherBaseAlpha})`);
+                grad.addColorStop(1, 'rgba(255,255,255,0)');
+                renderCtx.fillStyle = grad;
+                renderCtx.beginPath();
+                renderCtx.moveTo(p0.x, p0.y);
+                renderCtx.lineTo(p0.x+(dx0/len0)*featherDist, p0.y+(dy0/len0)*featherDist);
+                renderCtx.lineTo(p1.x+(dx1/len1)*featherDist, p1.y+(dy1/len1)*featherDist);
+                renderCtx.lineTo(p1.x, p1.y);
+                renderCtx.closePath();
+                renderCtx.fill();
+            }
+        }
+    } else if (mode === 'volumetric') {
+        renderCtx.globalCompositeOperation = 'screen';
+        let fovRad = CONFIG.fov * Math.PI / 180;
+        let halfFov = fovRad / 2;
+        // 边缘淡出区域占总FOV的比例（越大边缘越柔和）
+        let edgeFadeRatio = 0.35;
+        let fadeStartAngle = halfFov * (1 - edgeFadeRatio);
+
+        // 外层泛光：逐扇区绘制，加入角度衰减
+        for (let i = 0; i < poly.length - 1; i++) {
+            let p0 = poly[i];
+            let p1 = poly[i + 1];
+            // 计算这两条射线相对于光轴的角度偏移（使用稳健的角度差）
+            let a0 = Math.atan2(p0.y - y, p0.x - x);
+            let a1 = Math.atan2(p1.y - y, p1.x - x);
+            let da0 = angleDiff(a0, angle);
+            let da1 = angleDiff(a1, angle);
+            // 角度衰减：中心全亮，边缘渐变到0
+            let fade0 = da0 < fadeStartAngle ? 1.0 : Math.max(0, 1 - (da0 - fadeStartAngle) / (halfFov * edgeFadeRatio));
+            let fade1 = da1 < fadeStartAngle ? 1.0 : Math.max(0, 1 - (da1 - fadeStartAngle) / (halfFov * edgeFadeRatio));
+            let avgFade = (fade0 + fade1) / 2;
+            if (avgFade < 0.01) continue;
+
+            // 解析泛光颜色的alpha并乘以角度衰减
+            let baseAlpha = 0.2; // CONFIG.flashlightColor 的 alpha
+            let finalAlpha = baseAlpha * avgFade;
+
+            // 径向渐变与mask层的calcBrightness曲线匹配，避免光重复
+            let grad = renderCtx.createRadialGradient(x, y, 0, x, y, rayDist);
+            grad.addColorStop(0, `rgba(255, 247, 160, ${finalAlpha})`);
+            grad.addColorStop(0.5, `rgba(255, 247, 160, ${finalAlpha * 0.95})`);
+            grad.addColorStop(0.85, `rgba(255, 250, 200, ${finalAlpha * 0.4})`);
+            grad.addColorStop(1, 'rgba(255,250,200,0)');
+            renderCtx.fillStyle = grad;
             renderCtx.beginPath();
-            renderCtx.arc(p.x, p.y, bounceRadius, 0, Math.PI * 2);
+            renderCtx.moveTo(x, y);
+            renderCtx.lineTo(p0.x, p0.y);
+            renderCtx.lineTo(p1.x, p1.y);
+            renderCtx.closePath();
             renderCtx.fill();
         }
+
+        // 中心光束：同样逐扇区绘制，加入角度衰减
+        let centerPoly = getLightPolygon(x, y, angle, rayDist, CONFIG.flashlightCenterFov);
+        let centerFovRad = CONFIG.flashlightCenterFov * Math.PI / 180;
+        let centerHalfFov = centerFovRad / 2;
+        let centerFadeStart = centerHalfFov * (1 - edgeFadeRatio);
+
+        for (let i = 0; i < centerPoly.length - 1; i++) {
+            let p0 = centerPoly[i];
+            let p1 = centerPoly[i + 1];
+            let a0 = Math.atan2(p0.y - y, p0.x - x);
+            let a1 = Math.atan2(p1.y - y, p1.x - x);
+            let da0 = angleDiff(a0, angle);
+            let da1 = angleDiff(a1, angle);
+            let fade0 = da0 < centerFadeStart ? 1.0 : Math.max(0, 1 - (da0 - centerFadeStart) / (centerHalfFov * edgeFadeRatio));
+            let fade1 = da1 < centerFadeStart ? 1.0 : Math.max(0, 1 - (da1 - centerFadeStart) / (centerHalfFov * edgeFadeRatio));
+            let avgFade = (fade0 + fade1) / 2;
+            if (avgFade < 0.01) continue;
+
+            let baseAlpha = 0.41; // CONFIG.flashlightCenterColor 的 alpha
+            let finalAlpha = baseAlpha * avgFade;
+
+            // 径向渐变与mask层匹配
+            let grad = renderCtx.createRadialGradient(x, y, 0, x, y, rayDist);
+            grad.addColorStop(0, `rgba(253, 253, 37, ${finalAlpha})`);
+            grad.addColorStop(0.5, `rgba(253, 253, 37, ${finalAlpha * 0.95})`);
+            grad.addColorStop(0.85, `rgba(255, 255, 220, ${finalAlpha * 0.4})`);
+            grad.addColorStop(1, 'rgba(255,255,220,0)');
+            renderCtx.fillStyle = grad;
+            renderCtx.beginPath();
+            renderCtx.moveTo(x, y);
+            renderCtx.lineTo(p0.x, p0.y);
+            renderCtx.lineTo(p1.x, p1.y);
+            renderCtx.closePath();
+            renderCtx.fill();
+        }
+
+        // VPL 不在这里绘制了，改为独立函数 drawVPL，在遮罩层上绘制
+        // 但仍然把 poly 缓存起来供外部使用
+        (drawFlashlight as any)._lastVolumetricPoly = poly;
+        (drawFlashlight as any)._lastVolumetricRayDist = rayDist;
     }
+    renderCtx.restore();
+}
+
+// VPL（虚拟点光源）独立绘制函数
+// 在光照遮罩层上用 destination-out 模式绘制，使 VPL 光晕能穿透岩石遮罩照亮岩石
+export function drawVPL(lightCtx: CanvasRenderingContext2D, x: number, y: number, angle: number, rayDist: number) {
+    let poly = getLightPolygon(x, y, angle, rayDist, CONFIG.fov);
+    const active = getActiveMapContext();
+    const isMazeMode = state.screen === 'mazeRescue' && state.mazeRescue;
+
+    for (let i = 0; i < poly.length; i++) {
+        let p = poly[i];
+        // 如果距离接近最大距离，说明没有打在墙上，而是消失在水里
+        if (p.dist > rayDist * 0.95) continue;
+
+        // 只有一部分射线产生反弹光，避免性能问题和过度曝光
+        if (i % 3 !== 0) continue;
+
+        // VPL 强度随距离衰减：离光源越远，反弹光越弱
+        let distRatio = p.dist / rayDist;
+        let distFade = Math.max(0, 1 - distRatio * 0.6);
+
+        let bounceRadius = 60;
+        let bounceAlpha = 0.25 * distFade;
+
+        // 在遮罩层上用 destination-out 挖洞，让 VPL 区域变亮
+        let bounceGrad = lightCtx.createRadialGradient(p.x, p.y, 0, p.x, p.y, bounceRadius);
+        bounceGrad.addColorStop(0, `rgba(255,255,255,${bounceAlpha})`);
+        bounceGrad.addColorStop(0.5, `rgba(255,255,255,${bounceAlpha * 0.4})`);
+        bounceGrad.addColorStop(1, 'rgba(255,255,255,0)');
+
+        lightCtx.fillStyle = bounceGrad;
+        lightCtx.beginPath();
+        lightCtx.arc(p.x, p.y, bounceRadius, 0, Math.PI * 2);
+        lightCtx.fill();
+    }
+}
+
+// VPL 体积光着色函数（在主 canvas 上用 screen 模式绘制颜色）
+export function drawVPLColor(renderCtx: CanvasRenderingContext2D, x: number, y: number, angle: number, rayDist: number) {
+    let poly = getLightPolygon(x, y, angle, rayDist, CONFIG.fov);
+    const active = getActiveMapContext();
+    const isMazeMode = state.screen === 'mazeRescue' && state.mazeRescue;
+
+    renderCtx.save();
+    renderCtx.globalCompositeOperation = 'screen';
+
+    for (let i = 0; i < poly.length; i++) {
+        let p = poly[i];
+        if (p.dist > rayDist * 0.95) continue;
+        if (i % 3 !== 0) continue;
+
+        let distRatio = p.dist / rayDist;
+        let distFade = Math.max(0, 1 - distRatio * 0.6);
+
+        // 获取打中墙壁位置的颜色
+        let r = Math.floor(p.y / active.tileSize);
+        let c = Math.floor(p.x / active.tileSize);
+
+        let rVal = 150, gVal = 150, bVal = 150;
+        if (isMazeMode) {
+            let wallColor = getMazeThemeColorByCell(r, c, 'wallColor', '#999');
+            if (wallColor.startsWith('#')) {
+                let hex = wallColor.replace('#', '');
+                if (hex.length === 3) hex = hex[0]+hex[0]+hex[1]+hex[1]+hex[2]+hex[2];
+                rVal = parseInt(hex.substring(0, 2), 16);
+                gVal = parseInt(hex.substring(2, 4), 16);
+                bVal = parseInt(hex.substring(4, 6), 16);
+            }
+        }
+
+        let bounceRadius = 60;
+        let bounceAlpha = 0.12 * distFade;
+
+        let bounceGrad = renderCtx.createRadialGradient(p.x, p.y, 0, p.x, p.y, bounceRadius);
+        bounceGrad.addColorStop(0, `rgba(${rVal}, ${gVal}, ${bVal}, ${bounceAlpha})`);
+        bounceGrad.addColorStop(1, 'rgba(0,0,0,0)');
+
+        renderCtx.fillStyle = bounceGrad;
+        renderCtx.beginPath();
+        renderCtx.arc(p.x, p.y, bounceRadius, 0, Math.PI * 2);
+        renderCtx.fill();
+    }
+
     renderCtx.restore();
 }
