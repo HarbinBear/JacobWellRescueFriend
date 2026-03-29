@@ -1,5 +1,6 @@
 import { CONFIG } from '../core/config';
 import { state } from '../core/state';
+import { getMazeThemeColorByCell } from './RenderMazeScene';
 
 function getActiveMapContext() {
     if (state.screen === 'mazeRescue' && state.mazeRescue) {
@@ -361,6 +362,50 @@ export function drawFlashlight(renderCtx: CanvasRenderingContext2D, x: number, y
         for(let p of centerPoly) renderCtx.lineTo(p.x, p.y);
         renderCtx.closePath();
         renderCtx.fill();
+
+        // VPL (Virtual Point Lights) 反弹光效果
+        // 遍历光线多边形的顶点，如果顶点距离小于最大距离，说明打在了墙上
+        const active = getActiveMapContext();
+        const isMazeMode = state.screen === 'mazeRescue' && state.mazeRescue;
+        
+        for (let i = 0; i < poly.length; i++) {
+            let p = poly[i];
+            // 如果距离接近最大距离，说明没有打在墙上，而是消失在水里
+            if (p.dist > rayDist * 0.95) continue;
+            
+            // 只有一部分射线产生反弹光，避免性能问题和过度曝光
+            if (i % 3 !== 0) continue;
+
+            // 获取打中墙壁位置的颜色
+            let r = Math.floor(p.y / active.tileSize);
+            let c = Math.floor(p.x / active.tileSize);
+            
+            let bounceColor = 'rgba(150, 150, 150, 0.15)'; // 默认反弹光颜色
+            if (isMazeMode) {
+                // 迷宫模式下，反弹光颜色取墙壁的主题色
+                let wallColor = getMazeThemeColorByCell(r, c, 'wallColor', '#999');
+                // 将 hex 颜色转换为 rgba
+                if (wallColor.startsWith('#')) {
+                    let hex = wallColor.replace('#', '');
+                    if (hex.length === 3) hex = hex[0]+hex[0]+hex[1]+hex[1]+hex[2]+hex[2];
+                    let rVal = parseInt(hex.substring(0, 2), 16);
+                    let gVal = parseInt(hex.substring(2, 4), 16);
+                    let bVal = parseInt(hex.substring(4, 6), 16);
+                    bounceColor = `rgba(${rVal}, ${gVal}, ${bVal}, 0.15)`;
+                }
+            }
+
+            // 绘制反弹光晕
+            let bounceRadius = 60;
+            let bounceGrad = renderCtx.createRadialGradient(p.x, p.y, 0, p.x, p.y, bounceRadius);
+            bounceGrad.addColorStop(0, bounceColor);
+            bounceGrad.addColorStop(1, 'rgba(0,0,0,0)');
+            
+            renderCtx.fillStyle = bounceGrad;
+            renderCtx.beginPath();
+            renderCtx.arc(p.x, p.y, bounceRadius, 0, Math.PI * 2);
+            renderCtx.fill();
+        }
     }
     renderCtx.restore();
 }

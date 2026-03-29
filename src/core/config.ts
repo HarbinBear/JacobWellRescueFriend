@@ -15,13 +15,13 @@ export const CONFIG = {
     fishArenaMode: true,
 
     // 游戏参数
-    ambient: 0.5,        // 环境光亮度
-    lightRange: 350,      // 手电筒距离 (竖屏视野长，稍微增加距离)
+    ambient: 0.05,        // 环境光亮度
+    lightRange: 400,      // 手电筒距离 (竖屏视野长，稍微增加距离)
     fov: 70,              // 视野角度 (竖屏稍微增加视野)
     moveSpeed: 14,         // 移动速度
     safeAscentSpeed: 2.5, // 安全上浮速度阈值
     siltFactor: 1.0,      // 扬尘产生倍率
-    rayCount: 60,        // 射线数量
+    rayCount: 120,        // 射线数量
     siltLife: 1,         // 扬尘生命周期
     bloodLife: 2,         // 血迹生命周期
     turnSpeed: 0.08,      // 转向速度 (单摇杆操作可能需要更灵敏的转向)
@@ -41,18 +41,18 @@ export const CONFIG = {
     
     // 光照参数
     ambientLightSurface: 1.0,     // 水面/浅层环境光亮度
-    ambientLightDeep: 0.1,       // 深层最低环境光亮度
+    ambientLightDeep: 0.05,       // 深层最低环境光亮度
     darknessStartDepth: 2500,     // 开始变暗的深度 (第一洞室底部)
     flashlightColor: 'rgba(255, 247, 160, 0.2)', // 手电筒泛光颜色
     flashlightCenterColor: 'rgba(253, 253, 37, 0.41)', // 手电筒中心光束颜色
     flashlightCenterFov: 25,      // 中心光束角度
     
     // 自身发光参数
-    selfGlowRadius: 260,          // 自身发光半径（迷宫模式调亮）
+    selfGlowRadius: 230,          // 自身发光半径（迷宫模式调亮）
     selfGlowIntensity: 0.9,       // 自身发光强度 (0-1, 越大越亮)
     
     // 视野与遮挡参数
-    lightEdgeFeather: 25,          // 光照边缘羽化距离（像素，越大边缘越柔和）
+    lightEdgeFeather: 100,          // 光照边缘羽化距离（像素，越大边缘越柔和）
     ambientPerceptionRadius: 80,   // 周围环境感知半径（非手电筒方向也能微弱看到近距离东西）
     ambientPerceptionIntensity: 0.35, // 周围环境感知强度 (0-1)
 
