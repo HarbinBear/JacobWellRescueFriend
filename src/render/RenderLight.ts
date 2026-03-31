@@ -69,6 +69,26 @@ function getBlueNoise(): Float32Array {
 
 let _blueNoiseFrame = 0;
 
+// ============ getLightPolygon 帧缓存（避免同一帧重复计算）============
+let _polyCache: Map<string, any[]> = new Map();
+let _polyCacheFrame = -1;
+
+function getCachedLightPolygon(sx: number, sy: number, angle: number, maxDist: number, fovDeg: number): any[] {
+    // 每帧第一次调用时清空缓存
+    let frame = _blueNoiseFrame;
+    if (frame !== _polyCacheFrame) {
+        _polyCache.clear();
+        _polyCacheFrame = frame;
+    }
+    // 用参数生成缓存key（精度截断避免浮点差异）
+    let key = `${(sx|0)},${(sy|0)},${(angle*100|0)},${(maxDist|0)},${fovDeg}`;
+    let cached = _polyCache.get(key);
+    if (cached) return cached;
+    let result = getLightPolygon(sx, sy, angle, maxDist, fovDeg);
+    _polyCache.set(key, result);
+    return result;
+}
+
 export function sampleBlueNoise(u: number, v: number): number {
     let tex = getBlueNoise();
     let size = BLUE_NOISE_SIZE;
@@ -232,7 +252,7 @@ function angleDiff(a: number, b: number): number {
 export function drawFlashlight(renderCtx: CanvasRenderingContext2D, x: number, y: number, angle: number, rayDist: number, mode: string = 'mask', siltData: any = null) {
     renderCtx.save();
 
-    let poly = getLightPolygon(x, y, angle, rayDist, CONFIG.fov);
+    let poly = getCachedLightPolygon(x, y, angle, rayDist, CONFIG.fov);
 
     if (mode === 'mask') {
         if (siltData) {
@@ -385,8 +405,8 @@ export function drawFlashlight(renderCtx: CanvasRenderingContext2D, x: number, y
                 let len1 = Math.hypot(dx1, dy1) || 1;
                 let maxLen = Math.max(len0, len1);
 
-                // 沿径向分段绘制，同时应用角度淡出
-                let segCount = 6;
+                // 沿径向分段绘制，同时应用角度淡出（3段足够，减少draw call）
+                let segCount = 3;
                 let segStep = maxLen / segCount;
                 for (let s = 0; s < segCount; s++) {
                     let nearDist = s * segStep;
@@ -470,26 +490,43 @@ export function drawFlashlight(renderCtx: CanvasRenderingContext2D, x: number, y
         let edgeFadeRatio = 0.35;
         let fadeStartAngle = halfFov * (1 - edgeFadeRatio);
 
-        // 外层泛光：逐扇区绘制，加入角度衰减
+        // 外层泛光：批量绘制中心区域（avgFade≈1），逐个绘制边缘衰减区域
+        // 先预计算每个扇区的角度衰减
+        let outerFades: number[] = [];
         for (let i = 0; i < poly.length - 1; i++) {
-            let p0 = poly[i];
-            let p1 = poly[i + 1];
-            // 计算这两条射线相对于光轴的角度偏移（使用稳健的角度差）
+            let p0 = poly[i], p1 = poly[i + 1];
             let a0 = Math.atan2(p0.y - y, p0.x - x);
             let a1 = Math.atan2(p1.y - y, p1.x - x);
             let da0 = angleDiff(a0, angle);
             let da1 = angleDiff(a1, angle);
-            // 角度衰减：中心全亮，边缘渐变到0
             let fade0 = da0 < fadeStartAngle ? 1.0 : Math.max(0, 1 - (da0 - fadeStartAngle) / (halfFov * edgeFadeRatio));
             let fade1 = da1 < fadeStartAngle ? 1.0 : Math.max(0, 1 - (da1 - fadeStartAngle) / (halfFov * edgeFadeRatio));
-            let avgFade = (fade0 + fade1) / 2;
-            if (avgFade < 0.01) continue;
+            outerFades.push((fade0 + fade1) / 2);
+        }
 
-            // 解析泛光颜色的alpha并乘以角度衰减
-            let baseAlpha = 0.2; // CONFIG.flashlightColor 的 alpha
-            let finalAlpha = baseAlpha * avgFade;
+        // 批量绘制中心全亮区域（一个渐变 + 一个合并path）
+        let outerBaseAlpha = 0.2;
+        let outerGrad = renderCtx.createRadialGradient(x, y, 0, x, y, rayDist);
+        outerGrad.addColorStop(0, `rgba(255, 247, 160, ${outerBaseAlpha})`);
+        outerGrad.addColorStop(0.5, `rgba(255, 247, 160, ${outerBaseAlpha * 0.95})`);
+        outerGrad.addColorStop(0.85, `rgba(255, 250, 200, ${outerBaseAlpha * 0.4})`);
+        outerGrad.addColorStop(1, 'rgba(255,250,200,0)');
+        renderCtx.fillStyle = outerGrad;
+        renderCtx.beginPath();
+        for (let i = 0; i < poly.length - 1; i++) {
+            if (outerFades[i] < 0.95) continue; // 只合并全亮区域
+            renderCtx.moveTo(x, y);
+            renderCtx.lineTo(poly[i].x, poly[i].y);
+            renderCtx.lineTo(poly[i + 1].x, poly[i + 1].y);
+            renderCtx.closePath();
+        }
+        renderCtx.fill();
 
-            // 径向渐变与mask层的calcBrightness曲线匹配，避免光重复
+        // 逐个绘制边缘衰减区域（数量少，开销可控）
+        for (let i = 0; i < poly.length - 1; i++) {
+            let avgFade = outerFades[i];
+            if (avgFade >= 0.95 || avgFade < 0.01) continue;
+            let finalAlpha = outerBaseAlpha * avgFade;
             let grad = renderCtx.createRadialGradient(x, y, 0, x, y, rayDist);
             grad.addColorStop(0, `rgba(255, 247, 160, ${finalAlpha})`);
             grad.addColorStop(0.5, `rgba(255, 247, 160, ${finalAlpha * 0.95})`);
@@ -498,34 +535,51 @@ export function drawFlashlight(renderCtx: CanvasRenderingContext2D, x: number, y
             renderCtx.fillStyle = grad;
             renderCtx.beginPath();
             renderCtx.moveTo(x, y);
-            renderCtx.lineTo(p0.x, p0.y);
-            renderCtx.lineTo(p1.x, p1.y);
+            renderCtx.lineTo(poly[i].x, poly[i].y);
+            renderCtx.lineTo(poly[i + 1].x, poly[i + 1].y);
             renderCtx.closePath();
             renderCtx.fill();
         }
 
-        // 中心光束：同样逐扇区绘制，加入角度衰减
-        let centerPoly = getLightPolygon(x, y, angle, rayDist, CONFIG.flashlightCenterFov);
+        // 中心光束：同样批量+边缘分离
+        let centerPoly = getCachedLightPolygon(x, y, angle, rayDist, CONFIG.flashlightCenterFov);
         let centerFovRad = CONFIG.flashlightCenterFov * Math.PI / 180;
         let centerHalfFov = centerFovRad / 2;
         let centerFadeStart = centerHalfFov * (1 - edgeFadeRatio);
 
+        let centerFades: number[] = [];
         for (let i = 0; i < centerPoly.length - 1; i++) {
-            let p0 = centerPoly[i];
-            let p1 = centerPoly[i + 1];
+            let p0 = centerPoly[i], p1 = centerPoly[i + 1];
             let a0 = Math.atan2(p0.y - y, p0.x - x);
             let a1 = Math.atan2(p1.y - y, p1.x - x);
             let da0 = angleDiff(a0, angle);
             let da1 = angleDiff(a1, angle);
             let fade0 = da0 < centerFadeStart ? 1.0 : Math.max(0, 1 - (da0 - centerFadeStart) / (centerHalfFov * edgeFadeRatio));
             let fade1 = da1 < centerFadeStart ? 1.0 : Math.max(0, 1 - (da1 - centerFadeStart) / (centerHalfFov * edgeFadeRatio));
-            let avgFade = (fade0 + fade1) / 2;
-            if (avgFade < 0.01) continue;
+            centerFades.push((fade0 + fade1) / 2);
+        }
 
-            let baseAlpha = 0.41; // CONFIG.flashlightCenterColor 的 alpha
-            let finalAlpha = baseAlpha * avgFade;
+        let centerBaseAlpha = 0.41;
+        let centerGrad = renderCtx.createRadialGradient(x, y, 0, x, y, rayDist);
+        centerGrad.addColorStop(0, `rgba(253, 253, 37, ${centerBaseAlpha})`);
+        centerGrad.addColorStop(0.5, `rgba(253, 253, 37, ${centerBaseAlpha * 0.95})`);
+        centerGrad.addColorStop(0.85, `rgba(255, 255, 220, ${centerBaseAlpha * 0.4})`);
+        centerGrad.addColorStop(1, 'rgba(255,255,220,0)');
+        renderCtx.fillStyle = centerGrad;
+        renderCtx.beginPath();
+        for (let i = 0; i < centerPoly.length - 1; i++) {
+            if (centerFades[i] < 0.95) continue;
+            renderCtx.moveTo(x, y);
+            renderCtx.lineTo(centerPoly[i].x, centerPoly[i].y);
+            renderCtx.lineTo(centerPoly[i + 1].x, centerPoly[i + 1].y);
+            renderCtx.closePath();
+        }
+        renderCtx.fill();
 
-            // 径向渐变与mask层匹配
+        for (let i = 0; i < centerPoly.length - 1; i++) {
+            let avgFade = centerFades[i];
+            if (avgFade >= 0.95 || avgFade < 0.01) continue;
+            let finalAlpha = centerBaseAlpha * avgFade;
             let grad = renderCtx.createRadialGradient(x, y, 0, x, y, rayDist);
             grad.addColorStop(0, `rgba(253, 253, 37, ${finalAlpha})`);
             grad.addColorStop(0.5, `rgba(253, 253, 37, ${finalAlpha * 0.95})`);
@@ -534,8 +588,8 @@ export function drawFlashlight(renderCtx: CanvasRenderingContext2D, x: number, y
             renderCtx.fillStyle = grad;
             renderCtx.beginPath();
             renderCtx.moveTo(x, y);
-            renderCtx.lineTo(p0.x, p0.y);
-            renderCtx.lineTo(p1.x, p1.y);
+            renderCtx.lineTo(centerPoly[i].x, centerPoly[i].y);
+            renderCtx.lineTo(centerPoly[i + 1].x, centerPoly[i + 1].y);
             renderCtx.closePath();
             renderCtx.fill();
         }
@@ -551,24 +605,22 @@ export function drawFlashlight(renderCtx: CanvasRenderingContext2D, x: number, y
 // VPL（虚拟点光源）独立绘制函数
 // 在光照遮罩层上用 destination-out 模式绘制，使 VPL 光晕能穿透岩石遮罩照亮岩石
 export function drawVPL(lightCtx: CanvasRenderingContext2D, x: number, y: number, angle: number, rayDist: number) {
-    let poly = getLightPolygon(x, y, angle, rayDist, CONFIG.fov);
-    const active = getActiveMapContext();
-    const isMazeMode = state.screen === 'mazeRescue' && state.mazeRescue;
+    let poly = getCachedLightPolygon(x, y, angle, rayDist, CONFIG.fov);
 
     for (let i = 0; i < poly.length; i++) {
         let p = poly[i];
         // 如果距离接近最大距离，说明没有打在墙上，而是消失在水里
         if (p.dist > rayDist * 0.95) continue;
 
-        // 只有一部分射线产生反弹光，避免性能问题和过度曝光
-        if (i % 3 !== 0) continue;
+        // 降低采样率：每5条射线取1条，大幅减少draw call
+        if (i % 5 !== 0) continue;
 
         // VPL 强度随距离衰减：离光源越远，反弹光越弱
         let distRatio = p.dist / rayDist;
         let distFade = Math.max(0, 1 - distRatio * 0.6);
 
         let bounceRadius = 60;
-        let bounceAlpha = 0.25 * distFade;
+        let bounceAlpha = 0.3 * distFade;
 
         // 在遮罩层上用 destination-out 挖洞，让 VPL 区域变亮
         let bounceGrad = lightCtx.createRadialGradient(p.x, p.y, 0, p.x, p.y, bounceRadius);
@@ -585,7 +637,7 @@ export function drawVPL(lightCtx: CanvasRenderingContext2D, x: number, y: number
 
 // VPL 体积光着色函数（在主 canvas 上用 screen 模式绘制颜色）
 export function drawVPLColor(renderCtx: CanvasRenderingContext2D, x: number, y: number, angle: number, rayDist: number) {
-    let poly = getLightPolygon(x, y, angle, rayDist, CONFIG.fov);
+    let poly = getCachedLightPolygon(x, y, angle, rayDist, CONFIG.fov);
     const active = getActiveMapContext();
     const isMazeMode = state.screen === 'mazeRescue' && state.mazeRescue;
 
@@ -595,7 +647,7 @@ export function drawVPLColor(renderCtx: CanvasRenderingContext2D, x: number, y: 
     for (let i = 0; i < poly.length; i++) {
         let p = poly[i];
         if (p.dist > rayDist * 0.95) continue;
-        if (i % 3 !== 0) continue;
+        if (i % 5 !== 0) continue;
 
         let distRatio = p.dist / rayDist;
         let distFade = Math.max(0, 1 - distRatio * 0.6);
@@ -617,7 +669,7 @@ export function drawVPLColor(renderCtx: CanvasRenderingContext2D, x: number, y: 
         }
 
         let bounceRadius = 60;
-        let bounceAlpha = 0.12 * distFade;
+        let bounceAlpha = 0.15 * distFade;
 
         let bounceGrad = renderCtx.createRadialGradient(p.x, p.y, 0, p.x, p.y, bounceRadius);
         bounceGrad.addColorStop(0, `rgba(${rVal}, ${gVal}, ${bVal}, ${bounceAlpha})`);

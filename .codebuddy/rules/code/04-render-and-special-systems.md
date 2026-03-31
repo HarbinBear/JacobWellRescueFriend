@@ -118,23 +118,47 @@ type: always
 
 ### 2.3 常见渲染模块职责
 
-从目录命名可以推断当前渲染子模块大致包括：
+当前渲染子模块包括：
 
 - `Canvas.ts`：画布与上下文基础能力
 - `Render.ts`：总绘制入口
 - `RenderUI.ts`：UI、菜单、HUD、按钮、提示文案
-- `RenderLight.ts`：光照与遮罩
+- `RenderLight.ts`：光照 CPU 端计算（射线碰撞、泥沙衰减、视线检测）
+- `WebGLLight.ts`：光照 GPU 端渲染（WebGL shader，替代旧 Canvas 2D 光照绘制）
 - `RenderRope.ts`：绳索绘制
 - `RenderFishEnemy.ts`：敌鱼绘制
 - `RenderDiver.ts`：潜水员与角色绘制
+- `RenderMazeScene.ts`：迷宫场景专属渲染（主题取色、背景装饰、墙体造型）
 
-### 2.4 修改渲染时的优先落点
+### 2.4 光照混合架构说明
+
+光照系统采用 **Canvas 2D + WebGL 混合架构**：
+
+- **CPU 端**（`RenderLight.ts`）：射线碰撞检测（`getLightPolygon`）、泥沙衰减计算（`computeSiltAttenuation`）、视线检测（`isLineOfSight`）
+- **GPU 端**（`WebGLLight.ts`）：用独立 WebGL canvas 渲染光照遮罩和体积光，通过 fragment shader 在一个 draw call 中完成手电筒光锥、自身发光、环境感知、漫散射、VPL 反弹光
+- **合成**：WebGL canvas 通过 `drawImage` 合成到主 Canvas 2D 画布
+
+这种架构将光照 draw call 从 600~2200 次/帧降低到 2 次/帧（遮罩 + 体积光各 1 次），解决了手机端性能问题。
+
+#### 手机端 WebGL 兼容性关键点
+
+WebGL canvas 在微信小游戏手机端有两个必须遵守的兼容性约束：
+
+1. **`preserveDrawingBuffer: true` 是必须的**。WebGL 规范默认 `preserveDrawingBuffer: false`，意味着每次合成操作后 drawing buffer 会被自动清空。在手机 GPU 上，`drawImage` 读取 WebGL canvas 时如果 buffer 已被清空就会读到空白。桌面端通常有隐式 buffer 保留所以不会暴露问题，但手机端严格遵循规范。因此 `getContext('webgl')` 必须传入 `{ preserveDrawingBuffer: true }`。
+
+2. **每次 `drawArrays` 后必须调用 `gl.flush()`**。手机 GPU 的 `drawArrays` 只是把命令提交到命令队列，不保证立即执行完毕。如果紧接着用 `ctx.drawImage(glCanvas)` 读取，GPU 可能还没渲染完。`gl.flush()` 确保命令队列被提交执行。
+
+此外还建议设置 `premultipliedAlpha: false` 避免预乘 alpha 导致颜色混合异常。
+
+### 2.5 修改渲染时的优先落点
 
 如果需求是：
 
 - HUD 布局、菜单按钮、结算文本、操作提示
   - 先看 `RenderUI.ts`
-- 手电光照、黑暗遮罩、光束样式
+- 手电光照效果、光锥形状、亮度曲线
+  - 先看 `WebGLLight.ts` 中的 shader 代码
+- 射线碰撞、泥沙遮挡算法
   - 先看 `RenderLight.ts`
 - 绳子外观、绳结、钉子、收紧表现
   - 先看 `RenderRope.ts`

@@ -1,7 +1,8 @@
 import { CONFIG } from '../core/config';
 import { state, player, target, particles, touches } from '../core/state';
 import { canvas, ctx, dpr, logicW, logicH } from './Canvas';
-import { drawFlashlight, computeSiltAttenuation, isLineOfSight, drawVPL, drawVPLColor } from './RenderLight';
+import { computeSiltAttenuation, isLineOfSight, getLightPolygon } from './RenderLight';
+import { initWebGLLight, isWebGLAvailable, uploadPolyData, uploadSiltData, uploadVPLData, renderLightMask, renderVolumetricLight, getGLCanvas } from './WebGLLight';
 import { drawDiver } from './RenderDiver';
 import { drawUI, drawControls, drawSlashEffect } from './RenderUI';
 import { drawRopesWorld, drawRopeButton } from './RenderRope';
@@ -13,11 +14,9 @@ export { canvas, ctx };
 
 // 资源缓存
 const wallPatternCanvas = wx.createCanvas(); // 岩石纹理
-const lightLayer = wx.createCanvas(); // 光照遮罩层
-lightLayer.width = canvas.width;
-lightLayer.height = canvas.height;
-const lightCtx = lightLayer.getContext('2d');
-lightCtx.scale(dpr, dpr);
+
+// WebGL 光照标志
+let _useWebGL = false;
 
 // --- 预生成岩石纹理 ---
 export function initTextures() {
@@ -31,6 +30,14 @@ export function initTextures() {
         pCtx.beginPath();
         pCtx.arc(Math.random()*100, Math.random()*100, Math.random()*3, 0, Math.PI*2);
         pCtx.fill();
+    }
+    
+    // 初始化 WebGL 光照
+    _useWebGL = initWebGLLight();
+    if (_useWebGL) {
+        console.log('[光照] WebGL 路径已启用');
+    } else {
+        console.warn('[光照] WebGL 不可用，已启用 Canvas 2D fallback 光照');
     }
 }
 
@@ -369,7 +376,7 @@ export function draw() {
     // --- 绘制凶猛鱼敌人（在角色之前）---
     drawAllFishEnemies(ctx);
 
-    // --- 绘制体积光 ---
+    // --- 计算光照参数（体积光和遮罩共用）---
     let vRayDist = CONFIG.lightRange;
     
     if(state.story.stage === 4 && state.story.flags.narrowVision) {
@@ -379,31 +386,11 @@ export function draw() {
         vRayDist = 30; 
     }
 
-    const lightSources = [
-        { 
-            x: player.x, 
-            y: player.y, 
-            angle: player.angle, 
-            // 竞技场模式和迷宫模式下手电筒不受深度限制
-            active: (state.screen === 'fishArena' || state.screen === 'mazeRescue' ? true : player.y > 600) && flashlightActive, 
-            dist: vRayDist 
-        },
-        { 
-            x: state.npc ? state.npc.x : 0, 
-            y: state.npc ? state.npc.y : 0, 
-            angle: state.npc ? state.npc.angle : 0, 
-            active: state.npc && state.npc.active && state.npc.y > 600 && CONFIG.bShowNpcFlashLight, 
-            dist: vRayDist * 0.5 
-        }
-    ];
-
-    for(let src of lightSources) {
-        if(src && src.active) {
-            drawFlashlight(ctx, src.x, src.y, src.angle, src.dist, 'volumetric');
-            // VPL 着色（在主 canvas 上用 screen 模式绘制反弹光颜色）
-            drawVPLColor(ctx, src.x, src.y, src.angle, src.dist);
-        }
-    }
+    let playerFlashlightActive = (state.screen === 'fishArena' || state.screen === 'mazeRescue' ? true : player.y > 600) && flashlightActive;
+    let npcActive = !!(state.npc && state.npc.active && state.npc.y > 600 && CONFIG.bShowNpcFlashLight);
+    let npcX = state.npc ? state.npc.x : 0;
+    let npcY = state.npc ? state.npc.y : 0;
+    let npcAngle = state.npc ? state.npc.angle : 0;
 
     // --- 绘制角色 ---
 
@@ -424,13 +411,7 @@ export function draw() {
 
     ctx.restore();
 
-    // 2. 光照遮罩计算
-    lightCtx.save();
-    lightCtx.setTransform(1, 0, 0, 1, 0, 0);
-    lightCtx.clearRect(0, 0, canvas.width, canvas.height);
-    lightCtx.restore();
-    lightCtx.globalCompositeOperation = 'source-over';
-    
+    // 2. 光照遮罩计算（WebGL）
     let depthFactor = 0;
     if (player.y < CONFIG.darknessStartDepth) {
         depthFactor = player.y / CONFIG.darknessStartDepth;
@@ -441,35 +422,22 @@ export function draw() {
     let baseAmbient = CONFIG.ambientLightSurface * (1 - depthFactor);
     if (baseAmbient < CONFIG.ambientLightDeep) baseAmbient = CONFIG.ambientLightDeep;
     let currentAmbient = baseAmbient;
-    
     let maskAlpha = Math.max(0, 1 - currentAmbient);
-
-    if(depthFactor < 0.3) {
-        let blueTint = Math.max(0, (1 - depthFactor * 3) * 25);
-        let g = Math.floor(blueTint / 3);
-        let b = Math.floor(blueTint);
-        lightCtx.fillStyle = `rgba(0, ${g}, ${b}, ${maskAlpha})`;
-    } else {
-        lightCtx.fillStyle = `rgba(2, 4, 10, ${maskAlpha})`;
-    }
-    
-    lightCtx.fillRect(0, 0, logicW, logicH);
 
     let rayDist = CONFIG.lightRange;
 
     // 第三关：手电筒损坏闪烁效果
     if(state.story.flags.flashlightBroken) {
-        // 手电筒固定灭（靠近二三洞室连接处后）
         if(state.story.flags.flashlightFixedOff) {
             flashlightActive = false;
+            playerFlashlightActive = false;
             rayDist = 0;
         } else {
             let t = Date.now() / 1000;
-            // 不规律闪烁：用多个不同频率的正弦叠加
             let flicker = Math.sin(t * 1.3) * Math.sin(t * 1.7) * Math.sin(t * 2.1);
-            flashlightActive = flicker > -0.3; // 大部分时间亮着，偏暗时关闭
+            flashlightActive = flicker > -0.3;
+            playerFlashlightActive = (state.screen === 'fishArena' || state.screen === 'mazeRescue' ? true : player.y > 600) && flashlightActive;
             if(flashlightActive) {
-                // 亮度也不稳定
                 rayDist = CONFIG.lightRange * (0.5 + Math.abs(flicker) * 0.5);
             }
         }
@@ -477,109 +445,75 @@ export function draw() {
 
     if(state.story.stage === 4 && state.story.flags.narrowVision) {
         let factor = Math.max(0, player.o2 / 80);
-        rayDist = 20 + factor * 80; 
-        let alpha = 0.95 + (1-factor) * 0.05; 
-        lightCtx.fillStyle = `rgba(2, 4, 10, ${alpha})`;
-        lightCtx.fillRect(0, 0, logicW, logicH);
+        rayDist = 20 + factor * 80;
+        maskAlpha = 0.95 + (1-factor) * 0.05;
     } else if(state.story.flags.narrowVision) {
-        rayDist = 30; 
-        lightCtx.fillStyle = 'rgba(2, 4, 10, 0.95)'; 
-        lightCtx.fillRect(0, 0, logicW, logicH);
+        rayDist = 30;
+        maskAlpha = 0.95;
     }
 
-    lightCtx.save();
-    lightCtx.translate(logicW/2 + shakeX, logicH/2 + shakeY);
-    lightCtx.scale(zoom, zoom);
-    lightCtx.translate(-player.x, -player.y);
-    
-    lightCtx.globalCompositeOperation = 'destination-out';
-    
-    const maskSources = [
-        { 
-            x: player.x, 
-            y: player.y, 
-            angle: player.angle, 
-            // 竞技场模式和迷宫模式下手电筒不受深度限制
-            active: (state.screen === 'fishArena' || state.screen === 'mazeRescue' ? true : player.y > 600) && flashlightActive, 
-            dist: rayDist 
-        },
-        {   
-            x: state.npc ? state.npc.x : 0, 
-            y: state.npc ? state.npc.y : 0, 
-            angle: state.npc ? state.npc.angle : 0, 
-            active: state.npc && state.npc.active && state.npc.y > 600 && CONFIG.bShowNpcFlashLight, 
-            dist: rayDist * 0.9 
-        }
-    ];
-
-    for(let src of maskSources) {
-        if(src.active) {
-            let siltData = null;
-            if (src.x === player.x && src.y === player.y && player.silt > 0) {
-                siltData = computeSiltAttenuation(src.x, src.y, src.angle, src.dist, CONFIG.fov, particles);
+    if (_useWebGL && isWebGLAvailable()) {
+        // WebGL 路径：CPU 端计算射线碰撞和泥沙，上传到 GPU，一个 draw call 完成所有光照
+        let poly = playerFlashlightActive ? getLightPolygon(player.x, player.y, player.angle, rayDist, CONFIG.fov) : [];
+        let siltData = null;
+        let hasSilt = false;
+        let siltSteps = 0;
+        
+        if (playerFlashlightActive && player.silt > 0) {
+            siltData = computeSiltAttenuation(player.x, player.y, player.angle, rayDist, CONFIG.fov, particles);
+            if (siltData) {
+                hasSilt = true;
+                siltSteps = siltData.steps;
             }
-
-            drawFlashlight(lightCtx, src.x, src.y, src.angle, src.dist, 'mask', siltData);
-            
-            let glowRadius = CONFIG.selfGlowRadius;
-            let intensity = CONFIG.selfGlowIntensity;
-            
-            let glowGrad = lightCtx.createRadialGradient(src.x, src.y, 0, src.x, src.y, glowRadius);
-            glowGrad.addColorStop(0, `rgba(255, 255, 255, ${intensity})`); 
-            glowGrad.addColorStop(0.5, `rgba(255, 255, 255, ${intensity * 0.5})`); 
-            glowGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');   
-            
-            lightCtx.fillStyle = glowGrad;
-            lightCtx.beginPath();
-            lightCtx.arc(src.x, src.y, glowRadius, 0, Math.PI*2);
-            lightCtx.fill();
-
-            let ambientPerception = CONFIG.ambientPerceptionRadius || 80;
-            let ambientIntensity = CONFIG.ambientPerceptionIntensity || 0.35;
-            let ambGrad = lightCtx.createRadialGradient(src.x, src.y, 0, src.x, src.y, ambientPerception);
-            ambGrad.addColorStop(0, `rgba(255, 255, 255, ${ambientIntensity})`);
-            ambGrad.addColorStop(0.6, `rgba(255, 255, 255, ${ambientIntensity * 0.4})`);
-            ambGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
-            lightCtx.fillStyle = ambGrad;
-            lightCtx.beginPath();
-            lightCtx.arc(src.x, src.y, ambientPerception, 0, Math.PI*2);
-            lightCtx.fill();
         }
-    }
-
-    // 漫散射模拟
-    let scatterDist = rayDist * 0.6;
-    let scatterX = player.x + Math.cos(player.angle) * scatterDist;
-    let scatterY = player.y + Math.sin(player.angle) * scatterDist;
-    
-    let scatterGlow = lightCtx.createRadialGradient(
-        scatterX, scatterY, 0,
-        scatterX, scatterY, rayDist * 0.8
-    );
-    scatterGlow.addColorStop(0, 'rgba(255, 255, 255, 0.1)');
-    scatterGlow.addColorStop(1, 'rgba(255, 255, 255, 0)');
-    
-    lightCtx.fillStyle = scatterGlow;
-    lightCtx.beginPath();
-    lightCtx.arc(scatterX, scatterY, rayDist * 0.8, 0, Math.PI*2);
-    lightCtx.fill();
-
-    if(target.found || isLineOfSight(player.x, player.y, target.x, target.y, rayDist)) {
-        lightCtx.beginPath();
-        lightCtx.arc(target.x, target.y, 25, 0, Math.PI*2);
-        lightCtx.fill();
-    }
-
-    // VPL 在遮罩层上挖洞，使反弹光能照亮岩石表面
-    for(let src of maskSources) {
-        if(src.active) {
-            drawVPL(lightCtx, src.x, src.y, src.angle, src.dist);
+        
+        // 上传数据到 GPU 纹理
+        uploadPolyData(poly, rayDist);
+        uploadSiltData(siltData);
+        let vplCount = uploadVPLData(poly, rayDist) || 0;
+        
+        // 渲染体积光（screen 模式叠加到主画布）
+        renderVolumetricLight({
+            playerX: player.x, playerY: player.y,
+            zoom, shakeX, shakeY,
+            angle: player.angle, maxDist: vRayDist,
+            flashlightActive: playerFlashlightActive,
+            npcX, npcY, npcAngle, npcDist: vRayDist * 0.5, npcActive,
+            polyCount: poly.length, vplCount
+        });
+        
+        // 将体积光合成到主画布（screen 模式）
+        ctx.save();
+        ctx.globalCompositeOperation = 'screen';
+        ctx.drawImage(getGLCanvas() as unknown as CanvasImageSource, 0, 0, canvas.width, canvas.height, 0, 0, logicW, logicH);
+        ctx.restore();
+        
+        // 渲染光照遮罩
+        renderLightMask({
+            playerX: player.x, playerY: player.y,
+            zoom, shakeX, shakeY,
+            angle: player.angle, maxDist: rayDist,
+            flashlightActive: playerFlashlightActive,
+            maskAlpha,
+            hasSilt, siltSteps,
+            npcX, npcY, npcAngle, npcDist: rayDist * 0.9, npcActive,
+            polyCount: poly.length, vplCount
+        });
+        
+        // 将遮罩合成到主画布
+        ctx.drawImage(getGLCanvas() as unknown as CanvasImageSource, 0, 0, canvas.width, canvas.height, 0, 0, logicW, logicH);
+    } else {
+        // WebGL 不可用的紧急 fallback（不应该走到这里）
+        // 在控制台输出醒目警告
+        if (!(state as any)._webglWarned) {
+            console.error('!!! 严重警告：WebGL 光照初始化失败，光照系统无法正常工作 !!!');
+            console.error('请检查设备 WebGL 支持情况和 shader 编译日志');
+            (state as any)._webglWarned = true;
         }
+        // 最低限度的黑暗遮罩，至少让深水区变黑
+        ctx.fillStyle = `rgba(0, 2, 8, ${maskAlpha})`;
+        ctx.fillRect(0, 0, logicW, logicH);
     }
-
-    lightCtx.restore();
-
-    ctx.drawImage(lightLayer as unknown as CanvasImageSource, 0, 0, canvas.width, canvas.height, 0, 0, logicW, logicH);
 
     // 绘制灰色物体（氧气罐造型）
     // 鱼眼出现前：模糊隐约；鱼眼出现后：清晰可见
