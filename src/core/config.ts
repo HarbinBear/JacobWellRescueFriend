@@ -21,7 +21,7 @@ export const CONFIG = {
     moveSpeed: 14,         // 移动速度
     safeAscentSpeed: 2.5, // 安全上浮速度阈值
     siltFactor: 1.0,      // 扬尘产生倍率
-    rayCount: 120,        // 射线数量
+    rayCount: 360,        // 射线数量（越高光锥边缘越平滑）
     siltLife: 1,         // 扬尘生命周期
     bloodLife: 2,         // 血迹生命周期
     turnSpeed: 0.08,      // 转向速度 (单摇杆操作可能需要更灵敏的转向)

@@ -20,7 +20,7 @@ let posBuffer: WebGLBuffer | null = null;
 // 光锥多边形纹理（将射线碰撞结果编码为纹理）
 let polyTexture: WebGLTexture | null = null;
 let polyTexData: Float32Array | null = null;
-const POLY_TEX_WIDTH = 256; // 最多256条射线
+const POLY_TEX_WIDTH = 512; // 光锥角度分辨率，越高光锥边缘越平滑
 
 // 泥沙衰减纹理
 let siltTexture: WebGLTexture | null = null;
@@ -30,7 +30,7 @@ const SILT_TEX_HEIGHT = 32; // 最多32步
 // VPL 点纹理（存储反弹光位置和颜色）
 let vplTexture: WebGLTexture | null = null;
 let vplTexData: Float32Array | null = null;
-const MAX_VPL_POINTS = 64;
+const MAX_VPL_POINTS = 128;
 
 // uniform 位置缓存
 let uniforms: Record<string, WebGLUniformLocation | null> = {};
@@ -318,8 +318,8 @@ export function uploadVPLData(poly: any[], maxDist: number, getWallColor?: (r: n
         let p = poly[i];
         // 只取打在墙上的射线（距离 < 95% 最大距离）
         if (p.dist > maxDist * 0.95) continue;
-        // 降低采样率
-        if (i % 5 !== 0) continue;
+        // 每隔2条射线采样一个 VPL 点，128 点足够覆盖整个光锥
+        if (i % 2 !== 0) continue;
         
         let distRatio = p.dist / maxDist;
         let distFade = Math.max(0, 1 - distRatio * 0.6);

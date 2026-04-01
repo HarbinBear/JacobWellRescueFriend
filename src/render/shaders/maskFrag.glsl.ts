@@ -1,7 +1,7 @@
 // 主光照遮罩 fragment shader
 // 在一个 draw call 中完成：手电筒光锥遮罩 + 自身发光 + 环境感知 + 漫散射 + VPL
 export const MASK_FRAG_SRC = `
-precision mediump float;
+precision highp float;
 varying vec2 v_uv;
 
 // 屏幕与相机
@@ -49,6 +49,9 @@ uniform float u_npcAngle;
 uniform float u_npcDist;
 uniform float u_npcActive;
 
+// 纹理尺寸常量（与 WebGLLight.ts 中 POLY_TEX_WIDTH 保持一致）
+const float POLY_TEX_SIZE = 512.0;
+
 // 稳健的角度差计算
 float angleDiff(float a, float b) {
     float d = a - b;
@@ -76,7 +79,7 @@ float queryOcclusionDist(float fragAngle, float lightAngle, float fov) {
     da = da - floor(da / 6.2831853 + 0.5) * 6.2831853;
     float t = (da + halfFov) / fov;
     if (t < 0.0 || t > 1.0) return 0.0;
-    float texU = (t * u_polyCount + 0.5) / 256.0;
+    float texU = (t * u_polyCount + 0.5) / POLY_TEX_SIZE;
     vec4 s = texture2D(u_polyTex, vec2(texU, 0.25));
     return s.r * u_maxDist;
 }
@@ -89,7 +92,7 @@ float querySiltTransmittance(float fragAngle, float lightAngle, float fov, float
     da = da - floor(da / 6.2831853 + 0.5) * 6.2831853;
     float rayT = (da + halfFov) / fov;
     if (rayT < 0.0 || rayT > 1.0) return 1.0;
-    float texU = (rayT * u_polyCount + 0.5) / 256.0;
+    float texU = (rayT * u_polyCount + 0.5) / POLY_TEX_SIZE;
     float stepT = clamp(dist / u_maxDist, 0.0, 1.0);
     vec4 s = texture2D(u_siltTex, vec2(texU, stepT));
     return s.r;
@@ -202,9 +205,9 @@ void main() {
     }
     
     // VPL 反弹光
-    for (int i = 0; i < 64; i++) {
+    for (int i = 0; i < 128; i++) {
         if (float(i) >= u_vplCount) break;
-        float texU = (float(i) + 0.5) / 64.0;
+        float texU = (float(i) + 0.5) / 128.0;
         vec4 vplData = texture2D(u_vplTex, vec2(texU, 0.5));
         vec2 vplPos = vplData.xy;
         float vplRadius = 60.0;

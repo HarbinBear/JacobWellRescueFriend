@@ -1,6 +1,6 @@
 // 体积光 fragment shader（在主画布上用 screen 模式叠加暖色泛光）
 export const VOLUMETRIC_FRAG_SRC = `
-precision mediump float;
+precision highp float;
 varying vec2 v_uv;
 
 uniform vec2 u_resolution;
@@ -25,6 +25,9 @@ uniform float u_npcAngle;
 uniform float u_npcDist;
 uniform float u_npcActive;
 
+// 纹理尺寸常量（与 WebGLLight.ts 中 POLY_TEX_WIDTH 保持一致）
+const float POLY_TEX_SIZE = 512.0;
+
 float angleDiff(float a, float b) {
     float d = a - b;
     d = d - floor(d / 6.2831853 + 0.5) * 6.2831853;
@@ -43,7 +46,7 @@ float queryOcclusionDist(float fragAngle, float lightAngle, float fov) {
     da = da - floor(da / 6.2831853 + 0.5) * 6.2831853;
     float t = (da + halfFov) / fov;
     if (t < 0.0 || t > 1.0) return 0.0;
-    float texU = (t * u_polyCount + 0.5) / 256.0;
+    float texU = (t * u_polyCount + 0.5) / POLY_TEX_SIZE;
     vec4 s = texture2D(u_polyTex, vec2(texU, 0.25));
     return s.r * u_maxDist;
 }
@@ -108,9 +111,9 @@ void main() {
     }
     
     // VPL 着色（暖色反弹光）
-    for (int i = 0; i < 64; i++) {
+    for (int i = 0; i < 128; i++) {
         if (float(i) >= u_vplCount) break;
-        float texU = (float(i) + 0.5) / 64.0;
+        float texU = (float(i) + 0.5) / 128.0;
         vec4 vplData = texture2D(u_vplTex, vec2(texU, 0.5));
         vec2 vplPos = vplData.xy;
         vec3 vplColor = vec3(vplData.z, vplData.z * 0.9, vplData.z * 0.7);
