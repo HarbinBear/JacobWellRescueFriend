@@ -210,12 +210,13 @@ void main() {
         float texU = (float(i) + 0.5) / 128.0;
         vec4 vplData = texture2D(u_vplTex, vec2(texU, 0.5));
         vec2 vplPos = vplData.xy;
-        float vplRadius = 60.0;
+        float vplRadius = 40.0;
         float vplAlpha = vplData.a;
         if (vplAlpha < 0.01) continue;
         float vplDist = length(worldPos - vplPos);
         if (vplDist < vplRadius) {
             float vplT = vplDist / vplRadius;
+            // 用 smoothFade 让衰减曲线更平滑，边缘不突兀
             float vplFade = vplAlpha * (1.0 - smoothFade(vplT));
             totalLight += vplFade;
         }

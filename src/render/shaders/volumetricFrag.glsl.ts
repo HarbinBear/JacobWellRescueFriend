@@ -117,12 +117,13 @@ void main() {
         vec4 vplData = texture2D(u_vplTex, vec2(texU, 0.5));
         vec2 vplPos = vplData.xy;
         vec3 vplColor = vec3(vplData.z, vplData.z * 0.9, vplData.z * 0.7);
-        float vplAlpha = vplData.a * 0.15;
+        float vplAlpha = vplData.a * 0.08;
         if (vplAlpha < 0.005) continue;
         float vplDist = length(worldPos - vplPos);
-        float vplRadius = 60.0;
+        float vplRadius = 40.0;
         if (vplDist < vplRadius) {
             float vplFade = 1.0 - vplDist / vplRadius;
+            vplFade = vplFade * vplFade; // 二次衰减，边缘更柔和
             color += vplColor * vplAlpha * vplFade;
         }
     }

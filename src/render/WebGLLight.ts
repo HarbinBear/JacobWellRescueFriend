@@ -323,7 +323,8 @@ export function uploadVPLData(poly: any[], maxDist: number, getWallColor?: (r: n
         
         let distRatio = p.dist / maxDist;
         let distFade = Math.max(0, 1 - distRatio * 0.6);
-        let bounceAlpha = 0.3 * distFade;
+        // 基础亮度降低，因为高采样率下 VPL 点密集，叠加后总亮度会很高
+        let bounceAlpha = 0.12 * distFade;
         
         // 获取墙壁颜色亮度
         let colorBrightness = 0.6; // 默认
