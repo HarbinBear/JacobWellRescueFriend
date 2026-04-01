@@ -129,7 +129,7 @@ GameGlobal.addBubble = function(x: number, y: number) {
 };
 
 export function updateParticles() {
-    if(Math.random() < 0.02) particles.push(new Particle(player.x, player.y, 'bubble'));
+    // 不再自动生成水中悬浮气泡
     for(let i=particles.length-1; i>=0; i--) {
         let p = particles[i];
         p.update();

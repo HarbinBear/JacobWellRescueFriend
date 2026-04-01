@@ -336,13 +336,12 @@ export function generateMazeMap(): {
         c: number;
         roomRX: number;
         roomRY: number;
-        tag: 'main' | 'branch' | 'deadEnd' | 'chamber';
+        tag: 'main' | 'branch' | 'deadEnd';
     };
 
     type Candidate = {
         grid: number[][];
         nodes: MazeNode[];
-        chamberNodes: MazeNode[];
         spawnNode: MazeNode;
         npcNode: MazeNode;
         exitCol: number;
@@ -401,74 +400,20 @@ export function generateMazeMap(): {
     }
 
     function digPocket(grid: number[][], node: MazeNode, scale: number) {
-        if (node.tag === 'chamber') {
-            // 随机决定洞室形状类型
-            const shapeType = Math.random();
-            if (shapeType < 0.3) {
-                // 哑铃形 (两个大洞室中间一条小缝)
-                const angle = Math.random() * Math.PI;
-                const dist = node.roomRX * scale * 1.5;
-                const cx1 = node.c + Math.cos(angle) * dist;
-                const cy1 = node.r + Math.sin(angle) * dist;
-                const cx2 = node.c - Math.cos(angle) * dist;
-                const cy2 = node.r - Math.sin(angle) * dist;
-                
-                digEllipse(grid, cy1, cx1, node.roomRX * scale * 0.8, node.roomRY * scale * 0.8);
-                digEllipse(grid, cy2, cx2, node.roomRX * scale * 0.8, node.roomRY * scale * 0.8);
-                
-                // 连接缝隙
-                const points = [{r: cy1, c: cx1}, {r: cy2, c: cx2}];
-                carvePolyline(grid, points, 1.5, 1.5);
-            } else if (shapeType < 0.6) {
-                // 漏斗形
-                const dir = Math.random() < 0.5 ? 1 : -1; // 向上或向下漏斗
-                const height = node.roomRY * scale * 2;
-                const topWidth = node.roomRX * scale * 2;
-                const bottomWidth = 2;
-                
-                for (let r = 0; r < height; r++) {
-                    const currentWidth = topWidth - (topWidth - bottomWidth) * (r / height);
-                    const actualR = node.r + (dir === 1 ? r : -r);
-                    if (actualR > 0 && actualR < rows - 1) {
-                        for (let c = -currentWidth/2; c <= currentWidth/2; c++) {
-                            const actualC = Math.floor(node.c + c);
-                            if (actualC > 0 && actualC < cols - 1) {
-                                grid[actualR][actualC] = 0;
-                            }
-                        }
-                    }
-                }
-            } else {
-                // 不规则大洞室 (多个重叠椭圆)
-                const lumps = randInt(4, 7);
-                for (let i = 0; i < lumps; i++) {
-                    const ox = rand(-node.roomRX * 0.8, node.roomRX * 0.8);
-                    const oy = rand(-node.roomRY * 0.8, node.roomRY * 0.8);
-                    digEllipse(
-                        grid,
-                        node.r + oy,
-                        node.c + ox,
-                        node.roomRX * scale * rand(0.6, 1.2),
-                        node.roomRY * scale * rand(0.6, 1.2)
-                    );
-                }
-            }
-        } else {
-            // 普通节点
-            const lumps = node.tag === 'deadEnd' ? randInt(2, 3) : randInt(1, 2);
-            const spreadX = 0.35;
-            const spreadY = 0.35;
-            for (let i = 0; i < lumps; i++) {
-                const ox = rand(-node.roomRX * spreadX, node.roomRX * spreadX);
-                const oy = rand(-node.roomRY * spreadY, node.roomRY * spreadY);
-                digEllipse(
-                    grid,
-                    node.r + oy,
-                    node.c + ox,
-                    node.roomRX * scale * rand(0.86, 1.08),
-                    node.roomRY * scale * rand(0.86, 1.12)
-                );
-            }
+        // 所有节点统一用小型洞袋，不再生成大洞室
+        const lumps = node.tag === 'deadEnd' ? randInt(2, 3) : randInt(1, 2);
+        const spreadX = 0.35;
+        const spreadY = 0.35;
+        for (let i = 0; i < lumps; i++) {
+            const ox = rand(-node.roomRX * spreadX, node.roomRX * spreadX);
+            const oy = rand(-node.roomRY * spreadY, node.roomRY * spreadY);
+            digEllipse(
+                grid,
+                node.r + oy,
+                node.c + ox,
+                node.roomRX * scale * rand(0.86, 1.08),
+                node.roomRY * scale * rand(0.86, 1.12)
+            );
         }
     }
 
@@ -584,27 +529,22 @@ export function generateMazeMap(): {
             grid[r] = new Array(cols).fill(1);
         }
 
+        const wallThick = mazeCfg.wallThickness || 5;
         let nextNodeId = 0;
         const nodes: MazeNode[] = [];
-        const chamberNodes: MazeNode[] = [];
         const edges = new Set<string>();
         const mainNodes: MazeNode[] = [];
 
-        function createNode(r: number, c: number, tag: 'main' | 'branch' | 'deadEnd' | 'chamber', scale: number): MazeNode {
-            const chamberScaleX = tag === 'chamber' ? rand(3.5, 5.0) : rand(1.2, 2.0);
-            const chamberScaleY = tag === 'chamber' ? rand(3.5, 5.0) : rand(1.2, 2.0);
+        function createNode(r: number, c: number, tag: 'main' | 'branch' | 'deadEnd', scale: number): MazeNode {
             const node: MazeNode = {
                 id: nextNodeId++,
-                r: clamp(Math.round(r), 3, rows - 4),
-                c: clamp(Math.round(c), 3, cols - 4),
-                roomRX: chamberScaleX * scale,
-                roomRY: chamberScaleY * scale,
+                r: clamp(Math.round(r), wallThick + 1, rows - wallThick - 2),
+                c: clamp(Math.round(c), wallThick + 1, cols - wallThick - 2),
+                roomRX: rand(1.2, 1.8) * scale,
+                roomRY: rand(1.2, 1.8) * scale,
                 tag,
             };
             nodes.push(node);
-            if (tag === 'chamber') {
-                chamberNodes.push(node);
-            }
             return node;
         }
 
@@ -614,111 +554,98 @@ export function generateMazeMap(): {
             edges.add(key);
         }
 
-        const exitCol = clamp(Math.floor(cols / 2) + randInt(-4, 4), 5, cols - 6);
-        const laneCount = 6;
+        // 可用区域（排除厚边缘）
+        const innerLeft = wallThick + 2;
+        const innerRight = cols - wallThick - 3;
+        const innerTop = wallThick + 2;
+        const innerBottom = rows - wallThick - 3;
+
+        const exitCol = clamp(Math.floor(cols / 2) + randInt(-4, 4), innerLeft + 2, innerRight - 2);
+        const laneCount = 8;
         const laneCols: number[] = [];
         for (let i = 0; i < laneCount; i++) {
             const t = i / (laneCount - 1);
-            laneCols.push(Math.round(6 + t * (cols - 13)));
+            laneCols.push(Math.round(innerLeft + t * (innerRight - innerLeft)));
         }
 
         let laneIndex = clamp(Math.floor(laneCount / 2) + randInt(-1, 1), 0, laneCount - 1);
         let sideDir = Math.random() < 0.5 ? -1 : 1;
-        const mainCount = 13;
-        const spawnNode = createNode(4, exitCol + randInt(-1, 1), 'main', 1.02);
+        // 增加主路节点数，让路线更曲折
+        const mainCount = 18;
+        const spawnNode = createNode(innerTop + 2, exitCol + randInt(-1, 1), 'main', 1.02);
         mainNodes.push(spawnNode);
 
-        for (let i = 1; i < mainCount - 1; i++) {
+        for (let i = 1; i < mainCount; i++) {
             if (laneIndex <= 1) sideDir = 1;
             else if (laneIndex >= laneCount - 2) sideDir = -1;
             else if (Math.random() < 0.72) sideDir *= -1;
             laneIndex = clamp(laneIndex + sideDir * randInt(1, 2), 0, laneCount - 1);
-            const row = 4 + (i / (mainCount - 1)) * (rows - 11) + rand(-1.4, 1.4);
+            const row = innerTop + 2 + (i / mainCount) * (innerBottom - innerTop - 4) + rand(-1.4, 1.4);
             const col = laneCols[laneIndex] + rand(-1.8, 1.8);
-            mainNodes.push(createNode(row, col, 'main', rand(0.92, 1.08)));
+            mainNodes.push(createNode(row, col, 'main', rand(0.88, 1.05)));
         }
-
-        const npcBaseCol = laneCols[clamp(laneIndex + sideDir * randInt(-1, 1), 0, laneCount - 1)] + rand(-2.2, 2.2);
-        const npcNode = createNode(rows - 5, npcBaseCol, 'main', 1.08);
-        mainNodes.push(npcNode);
 
         for (let i = 0; i < mainNodes.length - 1; i++) {
             addEdge(mainNodes[i], mainNodes[i + 1]);
         }
 
-        const chamberAnchorIndexes: number[] = [];
-        for (let i = 2; i < mainNodes.length - 2; i++) {
-            if (Math.random() < 0.34) {
-                chamberAnchorIndexes.push(i);
-            }
-        }
-        if (chamberAnchorIndexes.length < 2) {
-            chamberAnchorIndexes.push(3, Math.max(5, Math.floor(mainNodes.length * 0.6)));
-        }
+        // NPC 放在主路径的 40%~70% 深度处的某个分支上，而非最底部
+        const npcMainIdx = randInt(Math.floor(mainNodes.length * 0.4), Math.floor(mainNodes.length * 0.7));
+        const npcAnchor = mainNodes[npcMainIdx];
+        // NPC 偏离主路，放在一条分支的末端
+        const npcLateralDir = Math.random() < 0.5 ? -1 : 1;
+        const npcNode = createNode(
+            npcAnchor.r + rand(3, 8),
+            npcAnchor.c + npcLateralDir * rand(6, 14),
+            'main',
+            1.02
+        );
+        addEdge(npcAnchor, npcNode);
 
-        const usedAnchors = new Set<number>();
-        for (const rawIndex of chamberAnchorIndexes) {
-            const index = clamp(rawIndex, 2, mainNodes.length - 3);
-            if (usedAnchors.has(index)) continue;
-            usedAnchors.add(index);
-            const anchor = mainNodes[index];
-            const chamber = createNode(
-                anchor.r + rand(-2.5, 2.5),
-                anchor.c + rand(-5.5, 5.5),
-                'chamber',
-                rand(0.96, 1.12)
-            );
-            addEdge(anchor, chamber);
-            addEdge(chamber, mainNodes[index - 1]);
-            addEdge(chamber, mainNodes[index + 1]);
-            if (Math.random() < 0.65) {
-                addEdge(chamber, mainNodes[clamp(index + randInt(2, 3), 0, mainNodes.length - 1)]);
-            }
-        }
-
+        // 大量分叉支路
         const branchRoots: MazeNode[] = [];
-        for (let i = 1; i < mainNodes.length - 1; i++) {
+        for (let i = 1; i < mainNodes.length; i++) {
             branchRoots.push(mainNodes[i]);
-            if (Math.random() < 0.55) branchRoots.push(mainNodes[i]);
+            if (Math.random() < 0.6) branchRoots.push(mainNodes[i]);
         }
 
         const loopableNodes: MazeNode[] = [];
         for (const node of mainNodes) {
             loopableNodes.push(node);
         }
-        for (const node of chamberNodes) {
-            loopableNodes.push(node);
-        }
+        loopableNodes.push(npcNode);
 
-        const deepBranchCount = 12;
+        // 大幅增加深度分叉数量
+        const deepBranchCount = 28;
         for (let i = 0; i < deepBranchCount; i++) {
             const root = branchRoots[randInt(0, branchRoots.length - 1)];
             let prev = root;
             let lateralDir = Math.random() < 0.5 ? -1 : 1;
-            const chainLength = randInt(1, 3);
+            const chainLength = randInt(1, 4);
             const branchNodes: MazeNode[] = [];
             for (let step = 0; step < chainLength; step++) {
                 const isDeadEnd = step === chainLength - 1;
                 const next = createNode(
-                    prev.r + rand(3.4, 7.8) + (Math.random() < 0.18 ? rand(-4.2, -1.2) : 0),
-                    prev.c + lateralDir * rand(5.2, 9.6) + rand(-1.6, 1.6),
+                    prev.r + rand(2.5, 7.0) + (Math.random() < 0.25 ? rand(-5.0, -1.5) : 0),
+                    prev.c + lateralDir * rand(4.0, 10.0) + rand(-1.6, 1.6),
                     isDeadEnd ? 'deadEnd' : 'branch',
-                    isDeadEnd ? rand(0.94, 1.12) : rand(0.82, 0.96)
+                    isDeadEnd ? rand(0.88, 1.06) : rand(0.78, 0.92)
                 );
                 addEdge(prev, next);
                 branchNodes.push(next);
                 loopableNodes.push(next);
-                if (Math.random() < 0.42) lateralDir *= -1;
+                if (Math.random() < 0.45) lateralDir *= -1;
                 prev = next;
             }
 
-            if (branchNodes.length >= 2 && Math.random() < 0.35) {
+            // 回环连接
+            if (branchNodes.length >= 2 && Math.random() < 0.4) {
                 const tail = branchNodes[branchNodes.length - 1];
                 const candidates = loopableNodes.filter(node => {
                     if (node.id === tail.id || node.id === root.id) return false;
                     const rowDist = Math.abs(node.r - tail.r);
                     const colDist = Math.abs(node.c - tail.c);
-                    return rowDist >= 4 && rowDist <= 14 && colDist >= 3 && colDist <= 15;
+                    return rowDist >= 3 && rowDist <= 16 && colDist >= 2 && colDist <= 18;
                 });
                 if (candidates.length > 0) {
                     const loopTo = candidates[randInt(0, candidates.length - 1)];
@@ -728,79 +655,86 @@ export function generateMazeMap(): {
             }
         }
 
-        const extraDeadEnds = 5;
+        // 大幅增加额外死路
+        const extraDeadEnds = 18;
         for (let i = 0; i < extraDeadEnds; i++) {
             const root = loopableNodes[randInt(0, loopableNodes.length - 1)];
             const leaf = createNode(
-                root.r + rand(-6.5, 6.5),
-                root.c + (Math.random() < 0.5 ? -1 : 1) * rand(5.4, 11.5),
+                root.r + rand(-7.0, 7.0),
+                root.c + (Math.random() < 0.5 ? -1 : 1) * rand(4.5, 12.0),
                 'deadEnd',
-                rand(0.92, 1.08)
+                rand(0.88, 1.05)
             );
             addEdge(root, leaf);
             loopableNodes.push(leaf);
         }
 
+        // 挖洞
         for (const node of nodes) {
             const scale = node.tag === 'main'
-                ? rand(0.92, 1.06)
+                ? rand(0.88, 1.02)
                 : node.tag === 'deadEnd'
-                    ? rand(0.95, 1.16)
-                    : rand(0.82, 0.94);
+                    ? rand(0.90, 1.10)
+                    : rand(0.78, 0.90);
             digPocket(grid, node, scale);
         }
 
+        // 挖通道（通道更窄）
         edges.forEach(key => {
             const [aId, bId] = key.split('-').map(Number);
             const a = nodes[aId];
             const b = nodes[bId];
             const dist = Math.hypot(a.c - b.c, a.r - b.r);
-            // 加宽通道，减少小路
-            const widthA = a.tag === 'main' && b.tag === 'main' ? rand(1.2, 1.8) : rand(0.9, 1.4);
-            const widthB = a.tag === 'deadEnd' || b.tag === 'deadEnd' ? rand(0.8, 1.2) : rand(0.9, 1.4);
-            const bend = clamp(dist * rand(0.08, 0.19), 0.8, 3.4);
+            const widthA = a.tag === 'main' && b.tag === 'main' ? rand(1.0, 1.5) : rand(0.8, 1.2);
+            const widthB = a.tag === 'deadEnd' || b.tag === 'deadEnd' ? rand(0.7, 1.0) : rand(0.8, 1.2);
+            const bend = clamp(dist * rand(0.08, 0.22), 0.8, 4.0);
             carveConnection(grid, a, b, widthA, widthB, bend);
         });
 
         roughen(grid);
 
-        digPocket(grid, spawnNode, 0.96);
-        digPocket(grid, npcNode, 1.02);
-        for (const chamber of chamberNodes) {
-            digPocket(grid, chamber, 1.05);
-            for (let i = 0; i < 2; i++) {
-                digEllipse(
-                    grid,
-                    chamber.r + rand(-1.2, 1.2),
-                    chamber.c + rand(-1.2, 1.2),
-                    chamber.roomRX * rand(0.32, 0.48),
-                    chamber.roomRY * rand(0.32, 0.5)
-                );
-            }
-        }
+        // 二次挖洞保证关键节点连通
+        digPocket(grid, spawnNode, 0.92);
+        digPocket(grid, npcNode, 0.96);
         for (const node of nodes) {
-            if (node.tag !== 'deadEnd' && node.tag !== 'chamber' && Math.random() < 0.22) {
-                digPocket(grid, node, 0.72);
+            if (node.tag !== 'deadEnd' && Math.random() < 0.18) {
+                digPocket(grid, node, 0.68);
             }
         }
-        digEllipse(grid, 2.3, exitCol, 1.05, 1.1);
-        digEllipse(grid, 1.1, exitCol, 0.85, 0.95);
-        grid[0][exitCol] = 0;
 
-        for (let r = 0; r < rows; r++) {
-            grid[r][0] = 1;
-            grid[r][cols - 1] = 1;
-        }
-        for (let c = 0; c < cols; c++) {
-            grid[0][c] = 1;
-            grid[rows - 1][c] = 1;
+        // 挖大洞口（比之前大很多）
+        digEllipse(grid, wallThick + 0.5, exitCol, 2.5, 2.0);
+        digEllipse(grid, wallThick - 0.5, exitCol, 2.0, 1.5);
+        for (let dr = 0; dr < wallThick; dr++) {
+            // 确保洞口从顶部边缘一直贯通到内部
+            for (let dc = -2; dc <= 2; dc++) {
+                const ec = exitCol + dc;
+                if (ec >= 0 && ec < cols) {
+                    grid[dr][ec] = 0;
+                }
+            }
         }
         grid[0][exitCol] = 0;
+        grid[0][exitCol - 1] = 0;
+        grid[0][exitCol + 1] = 0;
+
+        // 加厚边缘墙壁（确保地图外围有足够厚的岩石）
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                const atEdge = r < wallThick || r >= rows - wallThick || c < wallThick || c >= cols - wallThick;
+                if (atEdge) {
+                    // 洞口区域除外
+                    const isExitHole = r < wallThick && Math.abs(c - exitCol) <= 2;
+                    if (!isExitHole) {
+                        grid[r][c] = 1;
+                    }
+                }
+            }
+        }
 
         return {
             grid,
             nodes,
-            chamberNodes,
             spawnNode,
             npcNode,
             exitCol,
@@ -927,10 +861,9 @@ export function generateMazeMap(): {
 
         const openRatio = openCount / (rows * cols);
         const reachableRatio = openCount > 0 ? reachableCount / openCount : 0;
-        const chamberFriendly = candidate.chamberNodes.length >= 2;
         const maxAllowedRowRun = 60;
         const maxAllowedColRun = 60;
-        const maxAllowedWindowOpen = 200;
+        const maxAllowedWindowOpen = 120;
         const accepted = (
             openRatio >= 0.15 &&
             openRatio <= 0.7 &&
@@ -944,16 +877,17 @@ export function generateMazeMap(): {
             maxColRun <= maxAllowedColRun &&
             maxWindowOpen <= maxAllowedWindowOpen
         );
-        let score = 0;        score += Math.max(0, 1 - Math.abs(openRatio - 0.3) / 0.13) * 220;
+        let score = 0;
+        score += Math.max(0, 1 - Math.abs(openRatio - 0.22) / 0.10) * 220;
         score += Math.min(reachableRatio, 1) * 180;
-        score += Math.max(0, Math.min(1, pathLen / (rows * 1.65))) * 190;
-        score += Math.max(0, Math.min(1, deadEnds / 70)) * 120;
-        score += Math.max(0, Math.min(1, junctions / 150)) * 110; // 放宽岔点得分上限
-        score += Math.max(0, Math.min(1, pathDecisionCount / 26)) * 125;
-        score += Math.max(0, Math.min(1, turnCount / 22)) * 110;
+        score += Math.max(0, Math.min(1, pathLen / (rows * 1.8))) * 200;
+        score += Math.max(0, Math.min(1, deadEnds / 100)) * 150;
+        score += Math.max(0, Math.min(1, junctions / 200)) * 130;
+        score += Math.max(0, Math.min(1, pathDecisionCount / 35)) * 140;
+        score += Math.max(0, Math.min(1, turnCount / 30)) * 120;
         score += Math.max(0, 1 - Math.max(0, maxRowRun - 10) / 8) * 110;
         score += Math.max(0, 1 - Math.max(0, maxColRun - 12) / 8) * 110;
-        score += Math.max(0, 1 - Math.abs(maxWindowOpen - (chamberFriendly ? 40 : 26)) / (chamberFriendly ? 18 : 12)) * 150;
+        score += Math.max(0, 1 - Math.abs(maxWindowOpen - 26) / 12) * 150;
         if (!accepted) score -= 220;
 
         return {

@@ -1413,7 +1413,9 @@ export function resetMazeLogic() {
 
     // 玩家放在出口位置（岸上阶段不显示，但预设好）
     player.x = mazeData.exitX;
-    player.y = 3 * mazeData.mazeTileSize + mazeData.mazeTileSize / 2;
+    // 使用边缘厚度计算安全出生Y（在洞口内侧）
+    const wallThick = CONFIG.maze.wallThickness || 5;
+    player.y = (wallThick + 1) * mazeData.mazeTileSize + mazeData.mazeTileSize / 2;
     player.angle = Math.PI / 2;
     player.targetAngle = Math.PI / 2;
     input.targetAngle = Math.PI / 2;
@@ -1445,7 +1447,9 @@ export function startMazeDive(diveType: string) {
     player.vy = 0;
     // 玩家从出口（顶部）出发
     player.x = maze.exitX;
-    player.y = 3 * maze.mazeTileSize + maze.mazeTileSize / 2;
+    // 使用边缘厚度计算安全出生Y（在洞口内侧）
+    const wallThick = CONFIG.maze.wallThickness || 5;
+    player.y = (wallThick + 1) * maze.mazeTileSize + maze.mazeTileSize / 2;
     player.angle = Math.PI / 2;
     player.targetAngle = Math.PI / 2;
     input.targetAngle = Math.PI / 2;
