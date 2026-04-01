@@ -1689,8 +1689,8 @@ export function updateMaze() {
     while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
     player.angle += angleDiff * CONFIG.turnSpeed;
 
-    let speed = CONFIG.moveSpeed * 0.3;
-    if (input.speedUp) speed = CONFIG.moveSpeed;
+    let speed = (CONFIG.maze.moveSpeed || CONFIG.moveSpeed) * 0.3;
+    if (input.speedUp) speed = CONFIG.maze.moveSpeed || CONFIG.moveSpeed;
     if (state.debug.fastMove) speed *= CONFIG.debugSpeedMultiplier;
 
     if (input.move > 0) {

@@ -561,27 +561,57 @@ export function generateMazeMap(): {
         const innerBottom = rows - wallThick - 3;
 
         const exitCol = clamp(Math.floor(cols / 2) + randInt(-4, 4), innerLeft + 2, innerRight - 2);
-        const laneCount = 8;
+        // 横向和纵向都分车道，允许迷宫向任意方向发展
+        const laneCountX = 8;
+        const laneCountY = 8;
         const laneCols: number[] = [];
-        for (let i = 0; i < laneCount; i++) {
-            const t = i / (laneCount - 1);
+        const laneRows: number[] = [];
+        for (let i = 0; i < laneCountX; i++) {
+            const t = i / (laneCountX - 1);
             laneCols.push(Math.round(innerLeft + t * (innerRight - innerLeft)));
         }
+        for (let i = 0; i < laneCountY; i++) {
+            const t = i / (laneCountY - 1);
+            laneRows.push(Math.round(innerTop + t * (innerBottom - innerTop)));
+        }
 
-        let laneIndex = clamp(Math.floor(laneCount / 2) + randInt(-1, 1), 0, laneCount - 1);
-        let sideDir = Math.random() < 0.5 ? -1 : 1;
-        // 增加主路节点数，让路线更曲折
-        const mainCount = 18;
+        let laneIdxX = clamp(Math.floor(laneCountX / 2) + randInt(-1, 1), 0, laneCountX - 1);
+        let laneIdxY = 0; // 从顶部开始
+        let sideDirX = Math.random() < 0.5 ? -1 : 1;
+        let sideDirY = 1; // 初始向下
+        // 主路节点数
+        const mainCount = 20;
         const spawnNode = createNode(innerTop + 2, exitCol + randInt(-1, 1), 'main', 1.02);
         mainNodes.push(spawnNode);
 
+        // 蛇形游走：每步随机决定是横向还是纵向移动
         for (let i = 1; i < mainCount; i++) {
-            if (laneIndex <= 1) sideDir = 1;
-            else if (laneIndex >= laneCount - 2) sideDir = -1;
-            else if (Math.random() < 0.72) sideDir *= -1;
-            laneIndex = clamp(laneIndex + sideDir * randInt(1, 2), 0, laneCount - 1);
-            const row = innerTop + 2 + (i / mainCount) * (innerBottom - innerTop - 4) + rand(-1.4, 1.4);
-            const col = laneCols[laneIndex] + rand(-1.8, 1.8);
+            // 随机决定这一步主要向哪个方向发展
+            const goHorizontal = Math.random() < 0.45; // 45%概率横向移动
+            
+            if (goHorizontal) {
+                // 横向移动为主
+                if (laneIdxX <= 1) sideDirX = 1;
+                else if (laneIdxX >= laneCountX - 2) sideDirX = -1;
+                else if (Math.random() < 0.6) sideDirX *= -1;
+                laneIdxX = clamp(laneIdxX + sideDirX * randInt(1, 3), 0, laneCountX - 1);
+                // 纵向也稍微移动
+                laneIdxY = clamp(laneIdxY + randInt(0, 1), 0, laneCountY - 1);
+            } else {
+                // 纵向移动为主
+                if (laneIdxY <= 1) sideDirY = 1;
+                else if (laneIdxY >= laneCountY - 2) sideDirY = -1;
+                else if (Math.random() < 0.5) sideDirY *= -1;
+                laneIdxY = clamp(laneIdxY + sideDirY * randInt(1, 2), 0, laneCountY - 1);
+                // 横向也稍微移动
+                if (Math.random() < 0.7) {
+                    sideDirX *= -1;
+                    laneIdxX = clamp(laneIdxX + sideDirX * randInt(0, 1), 0, laneCountX - 1);
+                }
+            }
+            
+            const row = laneRows[laneIdxY] + rand(-2.0, 2.0);
+            const col = laneCols[laneIdxX] + rand(-2.0, 2.0);
             mainNodes.push(createNode(row, col, 'main', rand(0.88, 1.05)));
         }
 
@@ -589,13 +619,30 @@ export function generateMazeMap(): {
             addEdge(mainNodes[i], mainNodes[i + 1]);
         }
 
-        // NPC 放在主路径的 40%~70% 深度处的某个分支上，而非最底部
-        const npcMainIdx = randInt(Math.floor(mainNodes.length * 0.4), Math.floor(mainNodes.length * 0.7));
-        const npcAnchor = mainNodes[npcMainIdx];
+        // NPC 放在离出发点足够远的位置（大半个地图远），不限方向
+        const mapDiag = Math.hypot(innerRight - innerLeft, innerBottom - innerTop);
+        const npcMinDist = mapDiag * (mazeCfg.npcMinDistRatio || 0.55);
+        // 从主路节点中找离出发点足够远的节点
+        let npcAnchorCandidates = mainNodes.filter((n, idx) => {
+            if (idx === 0) return false;
+            const dist = Math.hypot(n.c - spawnNode.c, n.r - spawnNode.r);
+            return dist >= npcMinDist * 0.6; // 先用较松的标准筛选
+        });
+        // 如果没有足够远的，取最远的几个
+        if (npcAnchorCandidates.length === 0) {
+            const sorted = mainNodes.slice(1).sort((a, b) => {
+                const da = Math.hypot(a.c - spawnNode.c, a.r - spawnNode.r);
+                const db = Math.hypot(b.c - spawnNode.c, b.r - spawnNode.r);
+                return db - da;
+            });
+            npcAnchorCandidates = sorted.slice(0, Math.max(1, Math.floor(sorted.length * 0.3)));
+        }
+        const npcAnchor = npcAnchorCandidates[randInt(0, npcAnchorCandidates.length - 1)];
         // NPC 偏离主路，放在一条分支的末端
         const npcLateralDir = Math.random() < 0.5 ? -1 : 1;
+        const npcVerticalDir = Math.random() < 0.5 ? -1 : 1;
         const npcNode = createNode(
-            npcAnchor.r + rand(3, 8),
+            npcAnchor.r + npcVerticalDir * rand(3, 8),
             npcAnchor.c + npcLateralDir * rand(6, 14),
             'main',
             1.02
@@ -616,17 +663,19 @@ export function generateMazeMap(): {
         loopableNodes.push(npcNode);
 
         // 大幅增加深度分叉数量
-        const deepBranchCount = 28;
+        const deepBranchCount = 30;
         for (let i = 0; i < deepBranchCount; i++) {
             const root = branchRoots[randInt(0, branchRoots.length - 1)];
             let prev = root;
             let lateralDir = Math.random() < 0.5 ? -1 : 1;
+            let verticalDir = Math.random() < 0.5 ? -1 : 1;
             const chainLength = randInt(1, 4);
             const branchNodes: MazeNode[] = [];
             for (let step = 0; step < chainLength; step++) {
                 const isDeadEnd = step === chainLength - 1;
+                // 分支也可以向任意方向发展
                 const next = createNode(
-                    prev.r + rand(2.5, 7.0) + (Math.random() < 0.25 ? rand(-5.0, -1.5) : 0),
+                    prev.r + verticalDir * rand(2.5, 7.0) + rand(-2.0, 2.0),
                     prev.c + lateralDir * rand(4.0, 10.0) + rand(-1.6, 1.6),
                     isDeadEnd ? 'deadEnd' : 'branch',
                     isDeadEnd ? rand(0.88, 1.06) : rand(0.78, 0.92)
@@ -635,6 +684,7 @@ export function generateMazeMap(): {
                 branchNodes.push(next);
                 loopableNodes.push(next);
                 if (Math.random() < 0.45) lateralDir *= -1;
+                if (Math.random() < 0.3) verticalDir *= -1;
                 prev = next;
             }
 
@@ -880,7 +930,7 @@ export function generateMazeMap(): {
         let score = 0;
         score += Math.max(0, 1 - Math.abs(openRatio - 0.22) / 0.10) * 220;
         score += Math.min(reachableRatio, 1) * 180;
-        score += Math.max(0, Math.min(1, pathLen / (rows * 1.8))) * 200;
+        score += Math.max(0, Math.min(1, pathLen / (Math.max(rows, cols) * 1.5))) * 200;
         score += Math.max(0, Math.min(1, deadEnds / 100)) * 150;
         score += Math.max(0, Math.min(1, junctions / 200)) * 130;
         score += Math.max(0, Math.min(1, pathDecisionCount / 35)) * 140;
