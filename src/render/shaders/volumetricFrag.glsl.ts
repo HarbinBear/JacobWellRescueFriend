@@ -82,19 +82,19 @@ vec3 computeVolumetric(vec2 worldPos, vec2 lightPos, float lightAngle, float max
     float radialFade = invSq * edgeCut;
     
     // HDR 体积光：外层暖色泛光
-    float outerIntensity = 0.5 * angularFade * radialFade * occFade;
+    float outerIntensity = 1.2 * angularFade * radialFade * occFade;
     vec3 outerColor = vec3(1.0, 0.969, 0.627) * outerIntensity;
     
     // 中心区域增强
     float centerHalfFov = centerFov * 0.5;
     float centerBlend = 1.0 - smoothstep(0.0, centerHalfFov, da);
-    float centerIntensity = 0.6 * centerBlend * radialFade * occFade;
+    float centerIntensity = 1.5 * centerBlend * radialFade * occFade;
     vec3 centerColor = vec3(0.992, 0.992, 0.145) * centerIntensity;
     
-    // HDR 合并后 tone mapping
+    // HDR 合并后带白点的 Reinhard tone mapping
     vec3 hdrColor = outerColor + centerColor;
-    // 逐通道 Reinhard tone mapping
-    return hdrColor / (1.0 + hdrColor);
+    float wp = 5.0;
+    return hdrColor * (1.0 + hdrColor / (wp * wp)) / (1.0 + hdrColor);
 }
 
 void main() {
@@ -132,8 +132,9 @@ void main() {
         }
     }
     
-    // 逐通道 Reinhard tone mapping
-    color = color / (1.0 + color);
+    // 逐通道带白点的 Reinhard tone mapping
+    float wp2 = 5.0;
+    color = color * (1.0 + color / (wp2 * wp2)) / (1.0 + color);
     
     float a = max(color.r, max(color.g, color.b));
     if (a < 0.001) discard;

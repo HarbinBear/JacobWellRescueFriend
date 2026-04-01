@@ -138,8 +138,9 @@ float computeFlashlight(vec2 worldPos, vec2 lightPos, float lightAngle, float ma
     float edgeCut = 1.0 - smoothFade(clamp((dist - maxDist * 0.85) / (maxDist * 0.3), 0.0, 1.0));
     float radialFade = invSq * edgeCut;
     
-    // 手电筒光强：HDR 值，近处可以很亮（>1.0）
-    float intensity = 2.5;
+    // 手电筒光强：HDR 值，近处非常亮
+    // 值越高，近处越亮，但 Reinhard tone mapping 会自动压制不过曝
+    float intensity = 8.0;
     
     // 泥沙衰减（仅主光源）
     float siltFade = 1.0;
@@ -227,9 +228,11 @@ void main() {
         }
     }
     
-    // Reinhard tone mapping：将 HDR 光照压缩到 [0,1]
-    // 公式：L_out = L / (1 + L)，近处亮但不过曝，远处暗但有细节
-    float toneMapped = totalLight / (1.0 + totalLight);
+    // 改进的 Reinhard tone mapping：用白点参数控制压缩曲线
+    // 公式：L_out = L * (1 + L/W²) / (1 + L)，W 是白点
+    // W 越大，高亮区域保留越多细节
+    float whitePoint = 6.0;
+    float toneMapped = totalLight * (1.0 + totalLight / (whitePoint * whitePoint)) / (1.0 + totalLight);
     
     // 深蓝色基底（被照亮的水的颜色）
     vec3 darkWaterColor = vec3(0.008, 0.016, 0.039);
@@ -240,9 +243,9 @@ void main() {
     vec3 finalColor = mix(darkWaterColor, litWaterColor, toneMapped);
     
     // alpha：用 tone mapped 值控制遮罩透明度
-    // pow 让亮区更透，暗区更实
-    float lightPow = pow(toneMapped, 0.6);
-    float minAlpha = 0.06; // 即使最亮处也保留微弱的蓝色遮罩
+    // pow 指数越低，亮区越透明
+    float lightPow = pow(toneMapped, 0.45);
+    float minAlpha = 0.03; // 最亮处几乎完全透明
     float finalAlpha = darkness * mix(1.0, minAlpha, lightPow);
     
     gl_FragColor = vec4(finalColor, finalAlpha);
