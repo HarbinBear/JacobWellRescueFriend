@@ -28,6 +28,18 @@ uniform float u_npcAngle;
 uniform float u_npcDist;
 uniform float u_npcActive;
 
+// 手电筒参数化
+uniform float u_flatRatio;
+uniform float u_edgeFadeRatio;
+uniform float u_volOuterIntensity;
+uniform float u_volCenterIntensity;
+uniform vec3 u_volOuterColor;
+uniform vec3 u_volCenterColor;
+
+// VPL 参数化
+uniform float u_vplRadius;
+uniform float u_vplVolStrength;
+
 // 纹理尺寸常量（与 WebGLLight.ts 中 POLY_TEX_WIDTH 保持一致）
 const float POLY_TEX_SIZE = 512.0;
 
@@ -43,6 +55,11 @@ vec2 screenToWorld(vec2 uv) {
     return centered / u_zoom + u_playerPos;
 }
 
+float smoothFade(float t) {
+    t = clamp(t, 0.0, 1.0);
+    return t * t * (3.0 - 2.0 * t);
+}
+
 float queryOcclusionDist(float fragAngle, float lightAngle, float fov) {
     float halfFov = fov * 0.5;
     float da = fragAngle - lightAngle;
@@ -54,7 +71,6 @@ float queryOcclusionDist(float fragAngle, float lightAngle, float fov) {
     return s.r * u_maxDist;
 }
 
-// HDR 体积光：物理平方反比衰减 + tone mapping
 vec3 computeVolumetric(vec2 worldPos, vec2 lightPos, float lightAngle, float maxDist, float fov, float centerFov) {
     vec2 toFrag = worldPos - lightPos;
     float dist = length(toFrag);
@@ -65,11 +81,10 @@ vec3 computeVolumetric(vec2 worldPos, vec2 lightPos, float lightAngle, float max
     float da = angleDiff(fragAngle, lightAngle);
     if (da > halfFov + 0.1) return vec3(0.0);
     
-    // 角度淡出
-    float edgeFadeRatio = 0.4;
-    float fadeStartAngle = halfFov * (1.0 - edgeFadeRatio);
+    // 角度淡出：与遮罩层一致
+    float fadeStartAngle = halfFov * (1.0 - u_edgeFadeRatio);
     float angularFade = da < fadeStartAngle ? 1.0 :
-        1.0 - smoothstep(0.0, 1.0, (da - fadeStartAngle) / (halfFov * edgeFadeRatio));
+        1.0 - smoothFade((da - fadeStartAngle) / (halfFov * u_edgeFadeRatio + 0.001));
     
     // 遮挡
     float featherDist = maxDist * 0.2;
@@ -77,27 +92,27 @@ vec3 computeVolumetric(vec2 worldPos, vec2 lightPos, float lightAngle, float max
     if (dist > occDist + featherDist) return vec3(0.0);
     float occFade = dist > occDist ? (1.0 - smoothstep(0.0, 1.0, (dist - occDist) / featherDist)) : 1.0;
     
-    // 物理平方反比衰减（HDR）
-    float minDist = maxDist * 0.08;
-    float effectiveDist = max(dist, minDist);
-    float invSq = (minDist * minDist) / (effectiveDist * effectiveDist);
-    float edgeCut = 1.0 - smoothstep(0.0, 1.0, clamp((dist - maxDist * 0.85) / (maxDist * 0.3), 0.0, 1.0));
-    float radialFade = invSq * edgeCut;
+    // 径向衰减：与遮罩层一致，前 flatRatio 全亮，然后平滑衰减
+    float dr = dist / maxDist;
+    float radialFade;
+    if (dr < u_flatRatio) {
+        radialFade = 1.0;
+    } else {
+        float t = (dr - u_flatRatio) / (1.0 - u_flatRatio + 0.001);
+        radialFade = 1.0 - smoothFade(t);
+    }
     
-    // HDR 体积光：外层暖色泛光
-    float outerIntensity = 1.2 * angularFade * radialFade * occFade;
-    vec3 outerColor = vec3(1.0, 0.969, 0.627) * outerIntensity;
+    // 外层暖色泛光
+    float outerAlpha = u_volOuterIntensity * angularFade * radialFade * occFade;
+    vec3 outerColor = u_volOuterColor * outerAlpha;
     
     // 中心区域增强
     float centerHalfFov = centerFov * 0.5;
     float centerBlend = 1.0 - smoothstep(0.0, centerHalfFov, da);
-    float centerIntensity = 1.5 * centerBlend * radialFade * occFade;
-    vec3 centerColor = vec3(0.992, 0.992, 0.145) * centerIntensity;
+    float centerAlpha = u_volCenterIntensity * centerBlend * radialFade * occFade;
+    vec3 centerColor = u_volCenterColor * centerAlpha;
     
-    // HDR 合并后带白点的 Reinhard tone mapping
-    vec3 hdrColor = outerColor + centerColor;
-    float wp = 5.0;
-    return hdrColor * (1.0 + hdrColor / (wp * wp)) / (1.0 + hdrColor);
+    return outerColor + centerColor;
 }
 
 void main() {
@@ -114,7 +129,7 @@ void main() {
         color += computeVolumetric(worldPos, u_npcPos, u_npcAngle, u_npcDist, u_fov, u_centerFov) * 0.5;
     }
     
-    // VPL 着色（暖色反弹光，物理平方反比衰减）
+    // VPL 着色（暖色反弹光）
     for (int i = 0; i < 128; i++) {
         if (float(i) >= u_vplCount) break;
         float texU = (float(i) + 0.5) / 128.0;
@@ -122,22 +137,14 @@ void main() {
         vec2 vplPos = vplData.xy;
         vec3 vplColor = vec3(vplData.z, vplData.z * 0.9, vplData.z * 0.7);
         float vplAlpha = vplData.a;
-        if (vplAlpha < 0.01) continue;
+        if (vplAlpha < 0.005) continue;
         float vplDist = length(worldPos - vplPos);
-        float vplRadius = 55.0;
-        if (vplDist < vplRadius) {
-            // 物理平方反比衰减
-            float vplMinDist = 6.0;
-            float vplEffDist = max(vplDist, vplMinDist);
-            float vplInvSq = (vplMinDist * vplMinDist) / (vplEffDist * vplEffDist);
-            float vplEdge = 1.0 - smoothstep(0.0, 1.0, clamp((vplDist - vplRadius * 0.7) / (vplRadius * 0.3), 0.0, 1.0));
-            color += vplColor * vplAlpha * 0.12 * vplInvSq * vplEdge;
+        if (vplDist < u_vplRadius) {
+            float vplFade = 1.0 - vplDist / u_vplRadius;
+            vplFade = vplFade * vplFade; // 二次衰减，边缘更柔和
+            color += vplColor * vplAlpha * u_vplVolStrength * vplFade;
         }
     }
-    
-    // 逐通道带白点的 Reinhard tone mapping
-    float wp2 = 5.0;
-    color = color * (1.0 + color / (wp2 * wp2)) / (1.0 + color);
     
     float a = max(color.r, max(color.g, color.b));
     if (a < 0.001) discard;

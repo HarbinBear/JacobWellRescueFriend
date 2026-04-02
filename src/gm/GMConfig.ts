@@ -30,6 +30,24 @@ export interface GMTab {
 
 export const TABS: GMTab[] = [
     {
+        name: '手电筒',
+        items: [
+            { type: 'number', label: 'flatRatio(全亮区占比)', path: 'flashlight.flatRatio', min: 0, max: 1, step: 0.05, precision: 2 },
+            { type: 'number', label: 'edgeFadeRatio(边缘淡出)', path: 'flashlight.edgeFadeRatio', min: 0.05, max: 0.8, step: 0.05, precision: 2 },
+            { type: 'number', label: 'maskPow(遮罩pow)', path: 'flashlight.maskPow', min: 0.1, max: 2, step: 0.05, precision: 2 },
+            { type: 'number', label: 'maskMinAlpha(最亮处透明)', path: 'flashlight.maskMinAlpha', min: 0, max: 0.5, step: 0.01, precision: 2 },
+            { type: 'number', label: 'volOuter(外层泛光强度)', path: 'flashlight.volOuterIntensity', min: 0, max: 2, step: 0.05, precision: 2 },
+            { type: 'number', label: 'volCenter(中心光束强度)', path: 'flashlight.volCenterIntensity', min: 0, max: 2, step: 0.05, precision: 2 },
+            { type: 'number', label: 'vplBounce(VPL反弹基数)', path: 'flashlight.vplBounceBase', min: 0, max: 2, step: 0.05, precision: 2 },
+            { type: 'number', label: 'vplRadius(VPL半径)', path: 'flashlight.vplRadius', min: 20, max: 200, step: 5 },
+            { type: 'number', label: 'vplMask(VPL遮罩层)', path: 'flashlight.vplMaskStrength', min: 0, max: 5, step: 0.1, precision: 1 },
+            { type: 'number', label: 'vplVol(VPL体积光层)', path: 'flashlight.vplVolStrength', min: 0, max: 2, step: 0.05, precision: 2 },
+            { type: 'number', label: 'scatter(漫散射强度)', path: 'flashlight.scatterIntensity', min: 0, max: 1, step: 0.02, precision: 2 },
+            { type: 'number', label: 'scatterDist(散射距离比)', path: 'flashlight.scatterDistRatio', min: 0.1, max: 1, step: 0.05, precision: 2 },
+            { type: 'number', label: 'scatterR(散射半径比)', path: 'flashlight.scatterRadiusRatio', min: 0.1, max: 1.5, step: 0.05, precision: 2 },
+        ]
+    },
+    {
         name: '光照',
         items: [
             { type: 'number', label: 'ambient(环境光)', path: 'ambient', min: 0, max: 1, step: 0.01, precision: 3 },

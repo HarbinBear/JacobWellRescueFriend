@@ -174,7 +174,15 @@ export function initWebGLLight(): boolean {
             'u_polyTex', 'u_polyCount',
             'u_siltTex', 'u_hasSilt', 'u_siltSteps',
             'u_vplTex', 'u_vplCount',
-            'u_npcPos', 'u_npcAngle', 'u_npcDist', 'u_npcActive'
+            'u_npcPos', 'u_npcAngle', 'u_npcDist', 'u_npcActive',
+            // 手电筒参数化
+            'u_flatRatio', 'u_edgeFadeRatio', 'u_maskPow', 'u_maskMinAlpha',
+            'u_vplRadius', 'u_vplMaskStrength',
+            'u_scatterIntensity', 'u_scatterDistRatio', 'u_scatterRadiusRatio',
+            // 体积光参数化
+            'u_volOuterIntensity', 'u_volCenterIntensity',
+            'u_volOuterColor', 'u_volCenterColor',
+            'u_vplVolStrength'
         ];
         _maskUniforms = getUniforms(gl, _maskProgram, uniformNames);
         _volUniforms = getUniforms(gl, _volProgram, uniformNames);
@@ -322,9 +330,9 @@ export function uploadVPLData(poly: any[], maxDist: number, getWallColor?: (r: n
         if (i % 2 !== 0) continue;
         
         let distRatio = p.dist / maxDist;
-        // 物理衰减：近处反弹强，远处弱（shader 端有 tone mapping 兜底，不怕过亮）
+        // 衰减：近处反弹强，远处弱
         let distFade = Math.max(0, 1 - distRatio * distRatio); // 平方衰减
-        let bounceAlpha = 0.25 * distFade;
+        let bounceAlpha = CONFIG.flashlight.vplBounceBase * distFade;
         
         // 获取墙壁颜色亮度
         let colorBrightness = 0.6; // 默认
@@ -397,6 +405,24 @@ function setCommonUniforms(u: Record<string, WebGLUniformLocation | null>, param
     gl.uniform1f(u['u_npcAngle']!, params.npcAngle);
     gl.uniform1f(u['u_npcDist']!, params.npcDist);
     gl.uniform1f(u['u_npcActive']!, params.npcActive ? 1.0 : 0.0);
+    
+    // 手电筒参数化
+    const fl = CONFIG.flashlight;
+    gl.uniform1f(u['u_flatRatio']!, fl.flatRatio);
+    gl.uniform1f(u['u_edgeFadeRatio']!, fl.edgeFadeRatio);
+    gl.uniform1f(u['u_maskPow']!, fl.maskPow);
+    gl.uniform1f(u['u_maskMinAlpha']!, fl.maskMinAlpha);
+    gl.uniform1f(u['u_vplRadius']!, fl.vplRadius);
+    gl.uniform1f(u['u_vplMaskStrength']!, fl.vplMaskStrength);
+    gl.uniform1f(u['u_scatterIntensity']!, fl.scatterIntensity);
+    gl.uniform1f(u['u_scatterDistRatio']!, fl.scatterDistRatio);
+    gl.uniform1f(u['u_scatterRadiusRatio']!, fl.scatterRadiusRatio);
+    // 体积光参数化
+    gl.uniform1f(u['u_volOuterIntensity']!, fl.volOuterIntensity);
+    gl.uniform1f(u['u_volCenterIntensity']!, fl.volCenterIntensity);
+    gl.uniform3f(u['u_volOuterColor']!, fl.volOuterColor[0], fl.volOuterColor[1], fl.volOuterColor[2]);
+    gl.uniform3f(u['u_volCenterColor']!, fl.volCenterColor[0], fl.volCenterColor[1], fl.volCenterColor[2]);
+    gl.uniform1f(u['u_vplVolStrength']!, fl.vplVolStrength);
 }
 
 function bindTextures(u: Record<string, WebGLUniformLocation | null>) {

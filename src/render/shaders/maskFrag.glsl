@@ -29,6 +29,21 @@ uniform float u_ambientIntensity;
 // 遮罩基础
 uniform float u_maskAlpha;
 
+// 手电筒参数化
+uniform float u_flatRatio;        // 径向全亮区占比
+uniform float u_edgeFadeRatio;    // 角度边缘淡出区占比
+uniform float u_maskPow;          // 遮罩 alpha 的 pow 指数
+uniform float u_maskMinAlpha;     // 最亮处最小遮罩 alpha
+
+// VPL 参数化
+uniform float u_vplRadius;        // VPL 影响半径
+uniform float u_vplMaskStrength;  // VPL 在遮罩层的亮度系数
+
+// 漫散射参数化
+uniform float u_scatterIntensity;    // 漫散射强度
+uniform float u_scatterDistRatio;    // 漫散射中心距离占 maxDist 比例
+uniform float u_scatterRadiusRatio;  // 漫散射半径占 maxDist 比例
+
 // 光锥多边形纹理
 uniform sampler2D u_polyTex;
 uniform float u_polyCount;
@@ -98,6 +113,7 @@ float querySiltTransmittance(float fragAngle, float lightAngle, float fov, float
 }
 
 // 计算手电筒光源的亮度贡献
+// 均匀铺光模型：中间一大段全亮，到边缘迅速但平滑地变暗
 float computeFlashlight(vec2 worldPos, vec2 lightPos, float lightAngle, float maxDist, float fov, float centerFov, bool isPrimary) {
     vec2 toFrag = worldPos - lightPos;
     float dist = length(toFrag);
@@ -109,11 +125,10 @@ float computeFlashlight(vec2 worldPos, vec2 lightPos, float lightAngle, float ma
     
     if (da > halfFov + 0.1) return 0.0;
     
-    // 角度淡出：从 FOV 的 60% 处开始渐变到边缘
-    float edgeFadeRatio = 0.4;
-    float fadeStartAngle = halfFov * (1.0 - edgeFadeRatio);
+    // 角度淡出：从 FOV 的 (1 - edgeFadeRatio) 处开始渐变到边缘
+    float fadeStartAngle = halfFov * (1.0 - u_edgeFadeRatio);
     float angularFade = da < fadeStartAngle ? 1.0 : 
-        1.0 - smoothFade((da - fadeStartAngle) / (halfFov * edgeFadeRatio));
+        1.0 - smoothFade((da - fadeStartAngle) / (halfFov * u_edgeFadeRatio + 0.001));
     
     // 遮挡查询
     float occDist = queryOcclusionDist(fragAngle, lightAngle, fov);
@@ -127,14 +142,13 @@ float computeFlashlight(vec2 worldPos, vec2 lightPos, float lightAngle, float ma
         occFade = (1.0 - smoothFade(t)) * 0.5;
     }
     
-    // 径向衰减：使用更宽的全亮区和更平滑的衰减
-    // 前 30% 全亮，30%-100% 平滑衰减到 0
+    // 径向衰减：前 flatRatio 全亮，之后平滑衰减到 0
     float dr = dist / maxDist;
     float radialFade;
-    if (dr < 0.3) {
+    if (dr < u_flatRatio) {
         radialFade = 1.0;
     } else {
-        float t = (dr - 0.3) / 0.7;
+        float t = (dr - u_flatRatio) / (1.0 - u_flatRatio + 0.001);
         radialFade = 1.0 - smoothFade(t);
     }
     
@@ -193,13 +207,13 @@ void main() {
     
     // 漫散射
     if (u_flashlightActive > 0.5) {
-        float scatterDist = u_maxDist * 0.6;
+        float scatterDist = u_maxDist * u_scatterDistRatio;
         vec2 scatterPos = u_playerPos + vec2(cos(u_angle), sin(u_angle)) * scatterDist;
-        float scatterR = u_maxDist * 0.8;
+        float scatterR = u_maxDist * u_scatterRadiusRatio;
         float sDist = length(worldPos - scatterPos);
         if (sDist < scatterR) {
             float scatterT = sDist / scatterR;
-            totalLight += 0.1 * (1.0 - smoothFade(scatterT));
+            totalLight += u_scatterIntensity * (1.0 - smoothFade(scatterT));
         }
     }
     
@@ -209,20 +223,18 @@ void main() {
         float texU = (float(i) + 0.5) / 128.0;
         vec4 vplData = texture2D(u_vplTex, vec2(texU, 0.5));
         vec2 vplPos = vplData.xy;
-        float vplRadius = 40.0;
         float vplAlpha = vplData.a;
         if (vplAlpha < 0.01) continue;
         float vplDist = length(worldPos - vplPos);
-        if (vplDist < vplRadius) {
-            float vplT = vplDist / vplRadius;
+        if (vplDist < u_vplRadius) {
+            float vplT = vplDist / u_vplRadius;
             // 用 smoothFade 让衰减曲线更平滑，边缘不突兀
-            float vplFade = vplAlpha * (1.0 - smoothFade(vplT));
+            float vplFade = vplAlpha * u_vplMaskStrength * (1.0 - smoothFade(vplT));
             totalLight += vplFade;
         }
     }
     
-    // 最终遮罩：光照区域用深蓝色调而非完全透明
-    // 这样被照亮的区域会带有深水蓝色调，而不是灰色遮罩感
+    // 最终遮罩
     float lightClamped = clamp(totalLight, 0.0, 1.0);
     
     // 深蓝色基底（被照亮的水的颜色）
@@ -233,11 +245,9 @@ void main() {
     // 光照越强，颜色越偏向深蓝（而非完全透明）
     vec3 finalColor = mix(darkWaterColor, litWaterColor, lightClamped);
     
-    // alpha：光照区域大幅降低遮罩不透明度，但保留一点蓝色调
-    // 使用 pow 让亮区更透，暗区更实
-    float lightPow = pow(lightClamped, 0.7);
-    float minAlpha = 0.08; // 即使最亮处也保留微弱的蓝色遮罩
-    float finalAlpha = darkness * mix(1.0, minAlpha, lightPow);
+    // alpha：光照区域大幅降低遮罩不透明度
+    float lightPow = pow(lightClamped, u_maskPow);
+    float finalAlpha = darkness * mix(1.0, u_maskMinAlpha, lightPow);
     
     gl_FragColor = vec4(finalColor, finalAlpha);
 }

@@ -24,6 +24,18 @@ uniform float u_npcAngle;
 uniform float u_npcDist;
 uniform float u_npcActive;
 
+// 手电筒参数化
+uniform float u_flatRatio;
+uniform float u_edgeFadeRatio;
+uniform float u_volOuterIntensity;
+uniform float u_volCenterIntensity;
+uniform vec3 u_volOuterColor;
+uniform vec3 u_volCenterColor;
+
+// VPL 参数化
+uniform float u_vplRadius;
+uniform float u_vplVolStrength;
+
 // 纹理尺寸常量（与 WebGLLight.ts 中 POLY_TEX_WIDTH 保持一致）
 const float POLY_TEX_SIZE = 512.0;
 
@@ -37,6 +49,11 @@ vec2 screenToWorld(vec2 uv) {
     vec2 screenPos = vec2(uv.x, 1.0 - uv.y) * u_resolution;
     vec2 centered = screenPos - u_resolution * 0.5 - u_shake;
     return centered / u_zoom + u_playerPos;
+}
+
+float smoothFade(float t) {
+    t = clamp(t, 0.0, 1.0);
+    return t * t * (3.0 - 2.0 * t);
 }
 
 float queryOcclusionDist(float fragAngle, float lightAngle, float fov) {
@@ -60,11 +77,10 @@ vec3 computeVolumetric(vec2 worldPos, vec2 lightPos, float lightAngle, float max
     float da = angleDiff(fragAngle, lightAngle);
     if (da > halfFov + 0.1) return vec3(0.0);
     
-    // 角度淡出
-    float edgeFadeRatio = 0.4;
-    float fadeStartAngle = halfFov * (1.0 - edgeFadeRatio);
+    // 角度淡出：与遮罩层一致
+    float fadeStartAngle = halfFov * (1.0 - u_edgeFadeRatio);
     float angularFade = da < fadeStartAngle ? 1.0 :
-        1.0 - smoothstep(0.0, 1.0, (da - fadeStartAngle) / (halfFov * edgeFadeRatio));
+        1.0 - smoothFade((da - fadeStartAngle) / (halfFov * u_edgeFadeRatio + 0.001));
     
     // 遮挡
     float featherDist = maxDist * 0.2;
@@ -72,25 +88,25 @@ vec3 computeVolumetric(vec2 worldPos, vec2 lightPos, float lightAngle, float max
     if (dist > occDist + featherDist) return vec3(0.0);
     float occFade = dist > occDist ? (1.0 - smoothstep(0.0, 1.0, (dist - occDist) / featherDist)) : 1.0;
     
-    // 径向衰减：与遮罩层一致，前30%全亮，然后平滑衰减
+    // 径向衰减：与遮罩层一致，前 flatRatio 全亮，然后平滑衰减
     float dr = dist / maxDist;
     float radialFade;
-    if (dr < 0.3) {
+    if (dr < u_flatRatio) {
         radialFade = 1.0;
     } else {
-        float t = (dr - 0.3) / 0.7;
-        radialFade = (1.0 - t) * (1.0 - t);
+        float t = (dr - u_flatRatio) / (1.0 - u_flatRatio + 0.001);
+        radialFade = 1.0 - smoothFade(t);
     }
     
-    // 统一的手电筒光：外层暖色泛光 + 中心区域自然增强
-    float outerAlpha = 0.2 * angularFade * radialFade * occFade;
-    vec3 outerColor = vec3(1.0, 0.969, 0.627) * outerAlpha;
+    // 外层暖色泛光
+    float outerAlpha = u_volOuterIntensity * angularFade * radialFade * occFade;
+    vec3 outerColor = u_volOuterColor * outerAlpha;
     
-    // 中心区域增强：使用 smoothstep 让中心和边缘自然融合
+    // 中心区域增强
     float centerHalfFov = centerFov * 0.5;
     float centerBlend = 1.0 - smoothstep(0.0, centerHalfFov, da);
-    float centerAlpha = 0.25 * centerBlend * radialFade * occFade;
-    vec3 centerColor = vec3(0.992, 0.992, 0.145) * centerAlpha;
+    float centerAlpha = u_volCenterIntensity * centerBlend * radialFade * occFade;
+    vec3 centerColor = u_volCenterColor * centerAlpha;
     
     return outerColor + centerColor;
 }
@@ -116,14 +132,13 @@ void main() {
         vec4 vplData = texture2D(u_vplTex, vec2(texU, 0.5));
         vec2 vplPos = vplData.xy;
         vec3 vplColor = vec3(vplData.z, vplData.z * 0.9, vplData.z * 0.7);
-        float vplAlpha = vplData.a * 0.08;
+        float vplAlpha = vplData.a;
         if (vplAlpha < 0.005) continue;
         float vplDist = length(worldPos - vplPos);
-        float vplRadius = 40.0;
-        if (vplDist < vplRadius) {
-            float vplFade = 1.0 - vplDist / vplRadius;
+        if (vplDist < u_vplRadius) {
+            float vplFade = 1.0 - vplDist / u_vplRadius;
             vplFade = vplFade * vplFade; // 二次衰减，边缘更柔和
-            color += vplColor * vplAlpha * vplFade;
+            color += vplColor * vplAlpha * u_vplVolStrength * vplFade;
         }
     }
     

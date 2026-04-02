@@ -16,8 +16,8 @@ export const CONFIG = {
 
     // 游戏参数
     ambient: 0.01,        // 环境光亮度
-    lightRange: 400,      // 手电筒距离 (竖屏视野长，稍微增加距离)
-    fov: 70,              // 视野角度 (竖屏稍微增加视野)
+    lightRange: 800,      // 手电筒距离 (竖屏视野长，稍微增加距离)
+    fov: 60,              // 视野角度 (竖屏稍微增加视野)
     moveSpeed: 14,         // 移动速度
     safeAscentSpeed: 2.5, // 安全上浮速度阈值
     siltFactor: 1.0,      // 扬尘产生倍率
@@ -49,7 +49,7 @@ export const CONFIG = {
     
     // 自身发光参数
     selfGlowRadius: 230,          // 自身发光半径（迷宫模式调亮）
-    selfGlowIntensity: 0.35,      // 自身发光强度 (0-1, 越大越亮)
+    selfGlowIntensity: 0.1,      // 自身发光强度 (0-1, 越大越亮)
     
     // 视野与遮挡参数
     lightEdgeFeather: 100,          // 光照边缘羽化距离（像素，越大边缘越柔和）
@@ -247,6 +247,32 @@ export const CONFIG = {
         retreatBtnYRatio: 0.88,     // 撤离按钮Y位置比例
         surfacingDuration: 60,      // 上浮动画帧数（1秒）
         debriefShowDelay: 30,       // 结算页延迟显示帧数
+    },
+
+    // ===== 手电筒光照参数 =====
+    flashlight: {
+        // 遮罩层（决定哪里被照亮、哪里黑暗）
+        flatRatio: 0.65,              // 径向全亮区占比（0~1，前这么多比例的距离内亮度不衰减）
+        edgeFadeRatio: 0.35,         // 角度边缘淡出区占比（0~1，从 FOV 的 (1-此值) 处开始渐变到边缘）
+        maskPow: 0.75,               // 遮罩 alpha 的 pow 指数（越低亮区越透明）
+        maskMinAlpha: 0.10,          // 最亮处的最小遮罩 alpha（越低越透明）
+
+        // 体积光层（决定光路上可见的暖色光柱）
+        volOuterIntensity: 0.6,     // 外层暖色泛光强度
+        volCenterIntensity: 0.1,    // 中心光束强度
+        volOuterColor: [1.0, 0.969, 0.627],   // 外层泛光颜色 RGB (0~1)
+        volCenterColor: [0.992, 0.992, 0.145], // 中心光束颜色 RGB (0~1)
+
+        // VPL 反弹光
+        vplBounceBase: 0.4,          // VPL 基础反弹强度（CPU 端上传时的 alpha 基数）
+        vplRadius: 20.0,             // VPL 影响半径（像素）
+        vplMaskStrength: 1.2,        // VPL 在遮罩层的亮度系数
+        vplVolStrength: 0.2,         // VPL 在体积光层的亮度系数
+
+        // 漫散射
+        scatterIntensity: 0.16,      // 漫散射强度
+        scatterDistRatio: 0.6,       // 漫散射中心距离占 maxDist 比例
+        scatterRadiusRatio: 0.8,     // 漫散射半径占 maxDist 比例
     },
 
     // ===== 玩家攻击（挥氧气瓶）配置 =====
