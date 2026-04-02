@@ -9,6 +9,7 @@ export const CONFIG = {
     debug: true,              // 调试模式：显示小地图和实时坐标
     debugSpeedMultiplier: 1,  // 调试模式下的移动速度系数
     bShowNpcFlashLight: false,
+    infiniteO2: false,        // 无限氧气（所有模式生效）
 
     // ===== 食人鱼纯享版开关 =====
     // true：主界面显示纯享版入口，正式关卡置灰不可进入
@@ -16,7 +17,7 @@ export const CONFIG = {
 
     // 游戏参数
     ambient: 0.01,        // 环境光亮度
-    lightRange: 800,      // 手电筒距离 (竖屏视野长，稍微增加距离)
+    lightRange: 650,      // 手电筒距离 (竖屏视野长，稍微增加距离)
     fov: 60,              // 视野角度 (竖屏稍微增加视野)
     moveSpeed: 14,         // 移动速度
     safeAscentSpeed: 2.5, // 安全上浮速度阈值
@@ -252,7 +253,7 @@ export const CONFIG = {
     // ===== 手电筒光照参数 =====
     flashlight: {
         // 遮罩层（决定哪里被照亮、哪里黑暗）
-        flatRatio: 0.65,              // 径向全亮区占比（0~1，前这么多比例的距离内亮度不衰减）
+        flatRatio: 0,              // 径向全亮区占比（0~1，前这么多比例的距离内亮度不衰减）
         edgeFadeRatio: 0.35,         // 角度边缘淡出区占比（0~1，从 FOV 的 (1-此值) 处开始渐变到边缘）
         maskPow: 0.75,               // 遮罩 alpha 的 pow 指数（越低亮区越透明）
         maskMinAlpha: 0.10,          // 最亮处的最小遮罩 alpha（越低越透明）
@@ -273,6 +274,25 @@ export const CONFIG = {
         scatterIntensity: 0.16,      // 漫散射强度
         scatterDistRatio: 0.6,       // 漫散射中心距离占 maxDist 比例
         scatterRadiusRatio: 0.8,     // 漫散射半径占 maxDist 比例
+    },
+
+    // ===== 后处理（曝光 + Tone Mapping）配置 =====
+    postProcess: {
+        // 手动曝光
+        enableManualExposure: false,     // 是否启用手动曝光
+        manualExposure: 1.0,             // 手动曝光值（>1 提亮，<1 压暗）
+
+        // 自动曝光
+        enableAutoExposure: true,       // 是否启用自动曝光
+        autoExposureMin: 0.5,            // 自动曝光最低值
+        autoExposureMax: 2.5,            // 自动曝光最高值
+        autoExposureSpeed: 0.02,         // 自动曝光适应速度（越小越慢）
+        autoExposureTarget: 0.4,        // 目标平均亮度（画面整体想维持在多亮）
+
+        // Tone Mapping
+        enableToneMapping: false,        // 是否启用 Tone Mapping
+        toneMappingMode: 0,              // 0=Reinhard, 1=ACES
+        reinhardWhitePoint: 2.0,         // Reinhard 扩展白点（越大允许越亮的值保留）
     },
 
     // ===== 玩家攻击（挥氧气瓶）配置 =====

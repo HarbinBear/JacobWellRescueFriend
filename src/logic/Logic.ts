@@ -920,8 +920,11 @@ if(state.debug.fastMove) speed *= CONFIG.debugSpeedMultiplier;
 
     player.o2 -= o2Consumption; 
 
+    // 无限氧气开关
+    if (CONFIG.infiniteO2) player.o2 = 100;
+
     let depthM = Math.floor(player.y / CONFIG.tileSize);
-    let depthFactor = Math.max(0, (depthM - 5) / 20); 
+    let depthFactor = Math.max(0, (depthM - 5) / 20);
     
     player.n2 += depthFactor * 0.005; 
     
@@ -1827,6 +1830,9 @@ export function updateMaze() {
     let o2Consumption = CONFIG.maze.o2ConsumptionBase;
     if (vel > 1.5) o2Consumption += CONFIG.maze.o2ConsumptionMove;
     player.o2 -= o2Consumption;
+
+    // 无限氧气开关
+    if (CONFIG.infiniteO2) player.o2 = 100;
 
     // 氧气耗尽 = 被迫返回岸上（保留成果）
     if (player.o2 <= 0) {

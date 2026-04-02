@@ -43,6 +43,12 @@ uniform float u_maskMinAlpha;     // 最亮处最小遮罩 alpha
 uniform float u_vplRadius;        // VPL 影响半径
 uniform float u_vplMaskStrength;  // VPL 在遮罩层的亮度系数
 
+// 后处理参数
+uniform float u_exposure;             // 曝光值（手动或自动）
+uniform float u_enableToneMapping;    // 是否启用 tone mapping
+uniform float u_toneMappingMode;      // 0=Reinhard, 1=ACES
+uniform float u_reinhardWhitePoint;   // Reinhard 扩展白点
+
 // 漫散射参数化
 uniform float u_scatterIntensity;    // 漫散射强度
 uniform float u_scatterDistRatio;    // 漫散射中心距离占 maxDist 比例
@@ -238,6 +244,26 @@ void main() {
         }
     }
     
+    // 曝光
+    totalLight *= u_exposure;
+
+    // Tone Mapping
+    if (u_enableToneMapping > 0.5) {
+        if (u_toneMappingMode < 0.5) {
+            // Reinhard 扩展
+            float wp2 = u_reinhardWhitePoint * u_reinhardWhitePoint;
+            totalLight = totalLight * (1.0 + totalLight / wp2) / (1.0 + totalLight);
+        } else {
+            // ACES Filmic
+            float a = 2.51;
+            float b = 0.03;
+            float c = 2.43;
+            float d = 0.59;
+            float e = 0.14;
+            totalLight = clamp((totalLight * (a * totalLight + b)) / (totalLight * (c * totalLight + d) + e), 0.0, 1.0);
+        }
+    }
+
     // 最终遮罩
     float lightClamped = clamp(totalLight, 0.0, 1.0);
     

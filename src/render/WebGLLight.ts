@@ -182,7 +182,9 @@ export function initWebGLLight(): boolean {
             // 体积光参数化
             'u_volOuterIntensity', 'u_volCenterIntensity',
             'u_volOuterColor', 'u_volCenterColor',
-            'u_vplVolStrength'
+            'u_vplVolStrength',
+            // 后处理
+            'u_exposure', 'u_enableToneMapping', 'u_toneMappingMode', 'u_reinhardWhitePoint'
         ];
         _maskUniforms = getUniforms(gl, _maskProgram, uniformNames);
         _volUniforms = getUniforms(gl, _volProgram, uniformNames);
@@ -375,6 +377,47 @@ function setupProgram(prog: WebGLProgram, u: Record<string, WebGLUniformLocation
     gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
 }
 
+// ============ 自动曝光状态 ============
+let _autoExposureValue = 1.0;  // 当前自动曝光值（平滑后）
+let _lastFrameAvgLight = 0.25; // 上一帧的平均亮度估算
+
+// 根据配置计算当前帧的曝光值
+function computeExposure(flashlightActive: boolean): number {
+    const pp = CONFIG.postProcess;
+    let exposure = 1.0;
+
+    // 自动曝光：根据上一帧估算的平均亮度调整
+    if (pp.enableAutoExposure) {
+        // 简化估算：手电筒开着时亮度较高，关着时亮度很低
+        // 用手电筒状态 + VPL 数量 + 自发光等因素估算场景亮度
+        let estimatedBrightness = 0.05; // 基础环境亮度
+        if (flashlightActive) {
+            estimatedBrightness += 0.35; // 手电筒贡献
+        }
+        estimatedBrightness += CONFIG.selfGlowIntensity * 0.3; // 自发光贡献
+        estimatedBrightness += (CONFIG.ambientPerceptionIntensity || 0.35) * 0.15; // 环境感知贡献
+
+        _lastFrameAvgLight = estimatedBrightness;
+
+        // 目标曝光 = 目标亮度 / 当前亮度
+        let targetExposure = pp.autoExposureTarget / Math.max(_lastFrameAvgLight, 0.01);
+        targetExposure = Math.max(pp.autoExposureMin, Math.min(pp.autoExposureMax, targetExposure));
+
+        // 平滑过渡
+        _autoExposureValue += (targetExposure - _autoExposureValue) * pp.autoExposureSpeed;
+        _autoExposureValue = Math.max(pp.autoExposureMin, Math.min(pp.autoExposureMax, _autoExposureValue));
+
+        exposure = _autoExposureValue;
+    }
+
+    // 手动曝光叠加
+    if (pp.enableManualExposure) {
+        exposure *= pp.manualExposure;
+    }
+
+    return exposure;
+}
+
 function setCommonUniforms(u: Record<string, WebGLUniformLocation | null>, params: {
     playerX: number, playerY: number,
     zoom: number, shakeX: number, shakeY: number,
@@ -423,6 +466,14 @@ function setCommonUniforms(u: Record<string, WebGLUniformLocation | null>, param
     gl.uniform3f(u['u_volOuterColor']!, fl.volOuterColor[0], fl.volOuterColor[1], fl.volOuterColor[2]);
     gl.uniform3f(u['u_volCenterColor']!, fl.volCenterColor[0], fl.volCenterColor[1], fl.volCenterColor[2]);
     gl.uniform1f(u['u_vplVolStrength']!, fl.vplVolStrength);
+
+    // 后处理参数
+    const pp = CONFIG.postProcess;
+    const exposure = computeExposure(params.flashlightActive);
+    gl.uniform1f(u['u_exposure']!, exposure);
+    gl.uniform1f(u['u_enableToneMapping']!, pp.enableToneMapping ? 1.0 : 0.0);
+    gl.uniform1f(u['u_toneMappingMode']!, pp.toneMappingMode);
+    gl.uniform1f(u['u_reinhardWhitePoint']!, pp.reinhardWhitePoint);
 }
 
 function bindTextures(u: Record<string, WebGLUniformLocation | null>) {

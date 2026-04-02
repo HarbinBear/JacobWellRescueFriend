@@ -40,6 +40,12 @@ uniform vec3 u_volCenterColor;
 uniform float u_vplRadius;
 uniform float u_vplVolStrength;
 
+// 后处理参数
+uniform float u_exposure;
+uniform float u_enableToneMapping;
+uniform float u_toneMappingMode;
+uniform float u_reinhardWhitePoint;
+
 // 纹理尺寸常量（与 WebGLLight.ts 中 POLY_TEX_WIDTH 保持一致）
 const float POLY_TEX_SIZE = 512.0;
 
@@ -146,6 +152,26 @@ void main() {
         }
     }
     
+    // 曝光
+    color *= u_exposure;
+
+    // Tone Mapping
+    if (u_enableToneMapping > 0.5) {
+        if (u_toneMappingMode < 0.5) {
+            // Reinhard 扩展
+            float wp2 = u_reinhardWhitePoint * u_reinhardWhitePoint;
+            color = color * (1.0 + color / wp2) / (1.0 + color);
+        } else {
+            // ACES Filmic
+            float a = 2.51;
+            float b = 0.03;
+            float c = 2.43;
+            float d = 0.59;
+            float e = 0.14;
+            color = clamp((color * (a * color + b)) / (color * (c * color + d) + e), 0.0, 1.0);
+        }
+    }
+
     float a = max(color.r, max(color.g, color.b));
     if (a < 0.001) discard;
     gl_FragColor = vec4(color, a);

@@ -75,6 +75,7 @@ export const TABS: GMTab[] = [
             { type: 'number', label: 'debugSpeedMultiplier(速度倍率)', path: 'debugSpeedMultiplier', min: 0.1, max: 10, step: 0.5, precision: 1 },
             { type: 'bool', label: 'bShowNpcFlashLight(NPC手电)', path: 'bShowNpcFlashLight' },
             { type: 'bool', label: 'fishArenaMode(纯享版模式)', path: 'fishArenaMode' },
+            { type: 'bool', label: 'infiniteO2(无限氧气)', path: 'infiniteO2' },
         ]
     },
     {
@@ -92,6 +93,21 @@ export const TABS: GMTab[] = [
             { type: 'number', label: 'attack.range(攻击距离)', path: 'attack.range', min: 20, max: 200, step: 5 },
             { type: 'number', label: 'attack.angle(攻击角度)', path: 'attack.angle', min: 30, max: 360, step: 10 },
             { type: 'number', label: 'attack.cooldown(攻击CD帧)', path: 'attack.cooldown', min: 30, max: 600, step: 30 },
+        ]
+    },
+    {
+        name: '后处理',
+        items: [
+            { type: 'bool', label: '手动曝光开关', path: 'postProcess.enableManualExposure' },
+            { type: 'number', label: '手动曝光值', path: 'postProcess.manualExposure', min: 0.1, max: 5, step: 0.1, precision: 1 },
+            { type: 'bool', label: '自动曝光开关', path: 'postProcess.enableAutoExposure' },
+            { type: 'number', label: '自动曝光最小值', path: 'postProcess.autoExposureMin', min: 0.1, max: 2, step: 0.1, precision: 1 },
+            { type: 'number', label: '自动曝光最大值', path: 'postProcess.autoExposureMax', min: 1, max: 10, step: 0.5, precision: 1 },
+            { type: 'number', label: '自动曝光速度', path: 'postProcess.autoExposureSpeed', min: 0.001, max: 0.2, step: 0.005, precision: 3 },
+            { type: 'number', label: '自动曝光目标亮度', path: 'postProcess.autoExposureTarget', min: 0.05, max: 1, step: 0.05, precision: 2 },
+            { type: 'bool', label: 'ToneMapping开关', path: 'postProcess.enableToneMapping' },
+            { type: 'number', label: 'ToneMapping模式(0=Reinhard,1=ACES)', path: 'postProcess.toneMappingMode', min: 0, max: 1, step: 1 },
+            { type: 'number', label: 'Reinhard白点', path: 'postProcess.reinhardWhitePoint', min: 0.5, max: 10, step: 0.5, precision: 1 },
         ]
     },
 ];
