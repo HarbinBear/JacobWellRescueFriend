@@ -1,7 +1,3 @@
-// ⚠️ 此文件由 scripts/buildShaders.js 自动生成，请勿手动编辑
-// 源文件：maskFrag.glsl
-// 如需修改 shader，请编辑 maskFrag.glsl 然后运行 npm run shaders
-export const MASK_FRAG_SRC = `
 // 主光照遮罩 fragment shader
 // 在一个 draw call 中完成：手电筒光锥遮罩 + 自身发光 + 环境感知 + 漫散射 + VPL
 precision highp float;
@@ -101,7 +97,7 @@ float querySiltTransmittance(float fragAngle, float lightAngle, float fov, float
     return s.r;
 }
 
-// HDR 手电筒光源：使用物理平方反比衰减，返回值可超过 1.0
+// 计算手电筒光源的亮度贡献
 float computeFlashlight(vec2 worldPos, vec2 lightPos, float lightAngle, float maxDist, float fov, float centerFov, bool isPrimary) {
     vec2 toFrag = worldPos - lightPos;
     float dist = length(toFrag);
@@ -131,19 +127,16 @@ float computeFlashlight(vec2 worldPos, vec2 lightPos, float lightAngle, float ma
         occFade = (1.0 - smoothFade(t)) * 0.5;
     }
     
-    // 物理平方反比衰减（HDR）
-    // 用一个最小距离避免除零，同时让近处非常亮
-    float minDist = maxDist * 0.08; // 近处全亮区
-    float effectiveDist = max(dist, minDist);
-    // 归一化：让 minDist 处亮度为 1.0，更远处按平方反比衰减
-    float invSq = (minDist * minDist) / (effectiveDist * effectiveDist);
-    // 在 maxDist 边缘平滑截断到 0，避免硬边
-    float edgeCut = 1.0 - smoothFade(clamp((dist - maxDist * 0.85) / (maxDist * 0.3), 0.0, 1.0));
-    float radialFade = invSq * edgeCut;
-    
-    // 手电筒光强：HDR 值，近处非常亮
-    // 值越高，近处越亮，但 Reinhard tone mapping 会自动压制不过曝
-    float intensity = 8.0;
+    // 径向衰减：使用更宽的全亮区和更平滑的衰减
+    // 前 30% 全亮，30%-100% 平滑衰减到 0
+    float dr = dist / maxDist;
+    float radialFade;
+    if (dr < 0.3) {
+        radialFade = 1.0;
+    } else {
+        float t = (dr - 0.3) / 0.7;
+        radialFade = 1.0 - smoothFade(t);
+    }
     
     // 泥沙衰减（仅主光源）
     float siltFade = 1.0;
@@ -151,9 +144,9 @@ float computeFlashlight(vec2 worldPos, vec2 lightPos, float lightAngle, float ma
         siltFade = querySiltTransmittance(fragAngle, lightAngle, fov, dist);
     }
     
-    float brightness = intensity * angularFade * radialFade * occFade * siltFade;
+    float brightness = angularFade * radialFade * occFade * siltFade;
     
-    return brightness; // HDR：不 clamp，允许超过 1.0
+    return clamp(brightness, 0.0, 1.0);
 }
 
 void main() {
@@ -210,32 +203,27 @@ void main() {
         }
     }
     
-    // VPL 反弹光（物理平方反比衰减）
+    // VPL 反弹光
     for (int i = 0; i < 128; i++) {
         if (float(i) >= u_vplCount) break;
         float texU = (float(i) + 0.5) / 128.0;
         vec4 vplData = texture2D(u_vplTex, vec2(texU, 0.5));
         vec2 vplPos = vplData.xy;
+        float vplRadius = 40.0;
         float vplAlpha = vplData.a;
         if (vplAlpha < 0.01) continue;
         float vplDist = length(worldPos - vplPos);
-        float vplRadius = 55.0;
         if (vplDist < vplRadius) {
-            // 物理平方反比衰减
-            float vplMinDist = 8.0;
-            float vplEffDist = max(vplDist, vplMinDist);
-            float vplInvSq = (vplMinDist * vplMinDist) / (vplEffDist * vplEffDist);
-            // 边缘平滑截断
-            float vplEdge = 1.0 - smoothFade(clamp((vplDist - vplRadius * 0.7) / (vplRadius * 0.3), 0.0, 1.0));
-            totalLight += vplAlpha * 0.6 * vplInvSq * vplEdge;
+            float vplT = vplDist / vplRadius;
+            // 用 smoothFade 让衰减曲线更平滑，边缘不突兀
+            float vplFade = vplAlpha * (1.0 - smoothFade(vplT));
+            totalLight += vplFade;
         }
     }
     
-    // 改进的 Reinhard tone mapping：用白点参数控制压缩曲线
-    // 公式：L_out = L * (1 + L/W²) / (1 + L)，W 是白点
-    // W 越大，高亮区域保留越多细节
-    float whitePoint = 6.0;
-    float toneMapped = totalLight * (1.0 + totalLight / (whitePoint * whitePoint)) / (1.0 + totalLight);
+    // 最终遮罩：光照区域用深蓝色调而非完全透明
+    // 这样被照亮的区域会带有深水蓝色调，而不是灰色遮罩感
+    float lightClamped = clamp(totalLight, 0.0, 1.0);
     
     // 深蓝色基底（被照亮的水的颜色）
     vec3 darkWaterColor = vec3(0.008, 0.016, 0.039);
@@ -243,14 +231,13 @@ void main() {
     vec3 litWaterColor = vec3(0.02, 0.04, 0.12);
     
     // 光照越强，颜色越偏向深蓝（而非完全透明）
-    vec3 finalColor = mix(darkWaterColor, litWaterColor, toneMapped);
+    vec3 finalColor = mix(darkWaterColor, litWaterColor, lightClamped);
     
-    // alpha：用 tone mapped 值控制遮罩透明度
-    // pow 指数越低，亮区越透明
-    float lightPow = pow(toneMapped, 0.45);
-    float minAlpha = 0.03; // 最亮处几乎完全透明
+    // alpha：光照区域大幅降低遮罩不透明度，但保留一点蓝色调
+    // 使用 pow 让亮区更透，暗区更实
+    float lightPow = pow(lightClamped, 0.7);
+    float minAlpha = 0.08; // 即使最亮处也保留微弱的蓝色遮罩
     float finalAlpha = darkness * mix(1.0, minAlpha, lightPow);
     
     gl_FragColor = vec4(finalColor, finalAlpha);
 }
-`;
