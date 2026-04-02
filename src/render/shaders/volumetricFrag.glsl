@@ -1,7 +1,3 @@
-// ⚠️ 此文件由 scripts/buildShaders.js 自动生成，请勿手动编辑
-// 源文件：volumetricFrag.glsl
-// 如需修改 shader，请编辑 volumetricFrag.glsl 然后运行 npm run shaders
-export const VOLUMETRIC_FRAG_SRC = `
 // 体积光 fragment shader（在主画布上用 screen 模式叠加暖色泛光）
 precision highp float;
 varying vec2 v_uv;
@@ -135,4 +131,3 @@ void main() {
     if (a < 0.001) discard;
     gl_FragColor = vec4(color, a);
 }
-`;

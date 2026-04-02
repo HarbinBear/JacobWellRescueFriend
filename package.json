@@ -7,6 +7,7 @@
     "typecheck": "tsc --noEmit",
     "watch": "tsc --watch",
     "clean": "rmdir /s /q dist 2>nul || true",
+    "shaders": "node scripts/buildShaders.js",
     "maze:inspect": "node scripts/inspectMaze.js"
   },
   "devDependencies": {

@@ -2,6 +2,9 @@ node_modules/
 dist/
 *.tsbuildinfo
 
+# shader 自动生成产物（源文件是 .glsl，由 npm run shaders 生成 .glsl.ts）
+src/render/shaders/*.glsl.ts
+
 .DS_Store
 Thumbs.db
 

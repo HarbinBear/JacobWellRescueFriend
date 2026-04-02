@@ -1,7 +1,3 @@
-// ⚠️ 此文件由 scripts/buildShaders.js 自动生成，请勿手动编辑
-// 源文件：maskFrag.glsl
-// 如需修改 shader，请编辑 maskFrag.glsl 然后运行 npm run shaders
-export const MASK_FRAG_SRC = `
 // 主光照遮罩 fragment shader
 // 在一个 draw call 中完成：手电筒光锥遮罩 + 自身发光 + 环境感知 + 漫散射 + VPL
 precision highp float;
@@ -245,4 +241,3 @@ void main() {
     
     gl_FragColor = vec4(finalColor, finalAlpha);
 }
-`;
