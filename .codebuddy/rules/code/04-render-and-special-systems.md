@@ -80,7 +80,7 @@ type: always
 
 ### 1.4 三个专项系统的协作特点
 
-这三个系统都不是“完全自治模块”，而是：
+这三个系统都不是"完全自治模块"，而是：
 
 - 由 `Logic.ts` 驱动更新时机
 - 通过 `state` 与其他层交换数据
@@ -90,6 +90,24 @@ type: always
 
 **专项逻辑模块负责算法和局部规则，总入口文件负责调度。**
 
+### 1.5 GM 运行时调参面板 `src/gm/GMPanel.ts`
+
+GM 面板是一个独立的运行时调参工具，不依赖逻辑层或状态树，直接读写 `CONFIG` 对象。
+
+它的职责包括：
+
+- 在屏幕顶部中央提供 GM 按钮入口
+- 打开后展示分 Tab 的参数面板（光照 / Debug / 玩法）
+- 支持 number 和 bool 两种条目类型
+- number 条目支持加减按钮和微信键盘直接输入
+- 面板打开时拦截所有游戏输入
+
+接入方式：
+
+- **渲染层**：`Render.ts` 的 `draw()` 末尾调用 `drawGMButton()` 和 `drawGMPanel()`，始终在最顶层绘制
+- **输入层**：`input.ts` 的 `touchStart / touchMove / touchEnd` 中优先让 GM 面板消费事件
+
+如果需要新增可调参数，只需在 `GMPanel.ts` 的 `TABS` 数组中添加条目即可，不需要改动其他文件。
 ---
 
 ## 二、渲染总入口 `src/render/Render.ts`
@@ -129,6 +147,7 @@ type: always
 - `RenderFishEnemy.ts`：敌鱼绘制
 - `RenderDiver.ts`：潜水员与角色绘制
 - `RenderMazeScene.ts`：迷宫场景专属渲染（主题取色、背景装饰、墙体造型）
+- `GMPanel.ts`（`src/gm/`）：GM 运行时调参面板，在 `draw()` 末尾最顶层绘制
 
 ### 2.4 光照混合架构说明
 
@@ -277,6 +296,18 @@ gameLoop
 - `src/logic/Logic.ts` 中的 `resetArenaLogic()` 与 `updateArena()`
 - `src/core/config.ts` 中的 `fishArena`
 - `src/render/RenderUI.ts`
+
+### 4.8 改 GM 调参面板
+
+优先检查：
+
+- `src/gm/GMPanel.ts`
+
+常见动作：
+
+- 新增可调参数：在 `TABS` 数组对应 Tab 的 `items` 中添加条目
+- 新增 Tab 页签：在 `TABS` 数组中添加新对象
+- 调整面板布局：修改文件顶部的布局常量
 
 ---
 
@@ -651,6 +682,7 @@ gameLoop
 - UI：`src/render/RenderUI.ts`
 - 光照：`src/render/RenderLight.ts`
 - 粒子：`src/logic/Particle.ts`
+- GM 调参：`src/gm/GMPanel.ts`
 
 ---
 

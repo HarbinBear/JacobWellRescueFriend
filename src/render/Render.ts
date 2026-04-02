@@ -8,6 +8,7 @@ import { drawUI, drawControls, drawSlashEffect } from './RenderUI';
 import { drawRopesWorld, drawRopeButton } from './RenderRope';
 import { drawAllFishEnemies, drawFishBiteEffect } from './RenderFishEnemy';
 import { drawMazeBackgroundDecorations, drawMazeWallShape, getMazeParticleColorByWorld, getMazeThemeColorByCell } from './RenderMazeScene';
+import { drawGMButton, drawGMPanel } from '../gm/GMPanel';
 
 // 向后兼容，重新导出 canvas 和 ctx
 export { canvas, ctx };
@@ -887,4 +888,8 @@ export function draw() {
         
         ctx.restore();
     }
+
+    // 5. GM工具面板（最顶层，始终绘制）
+    drawGMButton(ctx);
+    drawGMPanel(ctx);
 }

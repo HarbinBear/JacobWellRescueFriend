@@ -57,6 +57,7 @@ type: always
 ```text
 src/
   core/     核心状态、配置、输入
+  gm/       GM 运行时调参面板
   logic/    主更新循环与专项玩法逻辑
   render/   总渲染入口与各专项绘制模块
   story/    剧情管理与文本演出

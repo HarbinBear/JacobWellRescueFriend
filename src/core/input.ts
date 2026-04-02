@@ -2,6 +2,7 @@ import { CONFIG } from './config';
 import { state, input, touches, player } from './state';
 import { createFishEnemy, triggerPlayerAttack, findSafeSpawnPosition } from '../logic/FishEnemy';
 import { DEBUG_FISH_BTN, ATTACK_BTN, FLASHLIGHT_BTN } from '../render/RenderUI';
+import { isGMOpen, handleGMTouchStart, handleGMTouchMove, handleGMTouchEnd } from '../gm/GMPanel';
 
 // 章节页滑动状态
 let chapterTouchStartY = 0;
@@ -140,6 +141,14 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
     }
 
     wx.onTouchStart((res) => {
+        // GM面板优先消费触摸事件
+        const gmTouch = res.touches[res.touches.length - 1];
+        if (gmTouch && handleGMTouchStart(gmTouch.clientX, gmTouch.clientY)) {
+            return;
+        }
+        // GM面板打开时拦截所有游戏输入
+        if (isGMOpen()) return;
+
         if(state.screen === 'menu') {
             const touch = res.touches[0];
             const tx = touch.clientX;
@@ -354,6 +363,13 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
     });
 
     wx.onTouchMove((res) => {
+        // GM面板优先消费滑动事件
+        if (isGMOpen()) {
+            const t = res.touches[0];
+            if (t) handleGMTouchMove(t.clientX, t.clientY);
+            return;
+        }
+
         // 放弃按钮长按计时（在 update 循环中处理，这里不需要）
         if(state.screen === 'menu' && state.menuScreen === 'chapter') {
             const touch = res.touches[0];
@@ -415,6 +431,13 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
     });
 
     wx.onTouchEnd((res) => {
+        // GM面板优先消费触摸结束事件
+        if (isGMOpen()) {
+            const t = res.changedTouches[0];
+            if (t) handleGMTouchEnd(t.clientX, t.clientY);
+            return;
+        }
+
         // 迷宫模式：岸上阶段点击处理
         if (state.screen === 'mazeRescue' && state.mazeRescue && state.mazeRescue.phase === 'shore') {
             const touch = res.changedTouches[0];
