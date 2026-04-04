@@ -262,11 +262,11 @@ export const CONFIG = {
         density: 2,                 // 每个格子内的尘埃数量（基础值，受深度缩放）
         cellSize: 100,               // 尘埃采样格子大小（像素，越小越密集但越耗性能）
         baseSize: 0.3,              // 尘埃基础半径（像素）
-        sizeVariation: 0.5,         // 尘埃大小随机变化范围
+        sizeVariation: 0.1,         // 尘埃大小随机变化范围
         driftSpeed: 0.8,            // 漂移速度（越大飘得越快）
         driftAmplitude: 3.0,        // 漂移幅度（像素，越大飘得越远）
         baseAlpha: 0.06,            // 暗色层基础透明度（刚好能感知到）
-        litAlpha: 0.3,             // 亮色层基础透明度（被手电照亮时）
+        litAlpha: 0.5,             // 亮色层基础透明度（被手电照亮时）
         litRadius: 1.0,             // 散射光晕半径倍数
         litFalloff: 0.3,            // 散射光晕衰减系数
         flashlightBoost: 1.0,       // 手电照射增强系数
@@ -284,7 +284,7 @@ export const CONFIG = {
 
         // 体积光层（决定光路上可见的暖色光柱）
         volOuterIntensity: 0.25,     // 外层暖色泛光强度
-        volCenterIntensity: 0.5,    // 中心光束强度
+        volCenterIntensity: 0.25,    // 中心光束强度
         volOuterColor: [1.0, 0.969, 0.627],   // 外层泛光颜色 RGB (0~1)
         volCenterColor: [0.992, 0.992, 0.145], // 中心光束颜色 RGB (0~1)
 
