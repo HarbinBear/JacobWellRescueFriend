@@ -1009,7 +1009,7 @@ export function generateMazeMap(): {
                 }
                 if (border) {
                     // 基础墙体，保证碰撞覆盖
-                    const wall = {
+                    const wall: any = {
                         x: c * ts + ts / 2 + (Math.random() - 0.5) * ts * 0.4,
                         y: r * ts + ts / 2 + (Math.random() - 0.5) * ts * 0.4,
                         r: ts * (0.5 + Math.random() * 0.2),
@@ -1021,17 +1021,22 @@ export function generateMazeMap(): {
                     mazeMap[r][c] = wall;
                     
                     // 额外添加1-2个随机圆，打破网格感，表现结构无规则
+                    // 额外圆同时挂到基础 wall 的 extras 数组上，供碰撞检测使用
                     const extraCount = Math.random() < 0.5 ? 1 : 2;
+                    const extras: any[] = [];
                     for (let i = 0; i < extraCount; i++) {
-                        mazeWalls.push({
+                        const extra = {
                             x: c * ts + ts / 2 + (Math.random() - 0.5) * ts * 0.8,
                             y: r * ts + ts / 2 + (Math.random() - 0.5) * ts * 0.8,
                             r: ts * (0.3 + Math.random() * 0.5),
                             row: r,
                             col: c,
                             isBorder: true
-                        });
+                        };
+                        mazeWalls.push(extra);
+                        extras.push(extra);
                     }
+                    wall.extras = extras;
                 } else {
                     mazeMap[r][c] = 2;
                 }

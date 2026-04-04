@@ -5,7 +5,7 @@ import { state, player } from '../core/state';
 // 内联碰撞检测（避免与 Logic.ts 循环导入）
 // =============================================
 function checkCollisionLocal(x: number, y: number): boolean {
-    const { tileSize } = CONFIG;
+    const { tileSize, playerRadius } = CONFIG;
     const r = Math.floor(y / tileSize);
     const c = Math.floor(x / tileSize);
     for (let ry = r - 1; ry <= r + 1; ry++) {
@@ -14,11 +14,11 @@ function checkCollisionLocal(x: number, y: number): boolean {
             const cell = state.map[ry][rc];
             if (!cell) continue;
             if (typeof cell === 'object') {
-                if (Math.hypot(x - cell.x, y - cell.y) < cell.r + 10) return true;
+                if (Math.hypot(x - cell.x, y - cell.y) < cell.r + playerRadius) return true;
             } else if (cell === 2) {
                 const cx = rc * tileSize + tileSize / 2;
                 const cy = ry * tileSize + tileSize / 2;
-                if (Math.abs(x - cx) < tileSize / 2 + 10 && Math.abs(y - cy) < tileSize / 2 + 10) return true;
+                if (Math.abs(x - cx) < tileSize / 2 + playerRadius && Math.abs(y - cy) < tileSize / 2 + playerRadius) return true;
             }
         }
     }

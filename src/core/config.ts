@@ -29,6 +29,9 @@ export const CONFIG = {
     acceleration: 0.005,   // 加速度
     waterDrag: 0.98,       // 水阻力
     
+    // 玩家碰撞半径（主线/竞技场通用，碰撞检测时 dist < wall.r + playerRadius）
+    playerRadius: 10,
+
     // 地图参数
     tileSize: 40,
     cols: 80,
@@ -215,6 +218,9 @@ export const CONFIG = {
         // 迷宫模式移动速度（比主线慢）
         moveSpeed: 10,          // 迷宫模式基础移动速度（主线14）
 
+        // 玩家碰撞半径（迷宫格子120px，通道宽3格=360px，12px半径合适）
+        playerRadius: 12,
+
         // 氧气参数
         o2ConsumptionBase: 0.008,   // 基础氧气消耗（加快，增加紧迫感）
         o2ConsumptionMove: 0.005,   // 移动额外消耗
@@ -287,11 +293,11 @@ export const CONFIG = {
         autoExposureMin: 0.5,            // 自动曝光最低值
         autoExposureMax: 2.5,            // 自动曝光最高值
         autoExposureSpeed: 0.02,         // 自动曝光适应速度（越小越慢）
-        autoExposureTarget: 0.4,        // 目标平均亮度（画面整体想维持在多亮）
+        autoExposureTarget: 0.5,        // 目标平均亮度（画面整体想维持在多亮）
 
         // Tone Mapping
-        enableToneMapping: false,        // 是否启用 Tone Mapping
-        toneMappingMode: 0,              // 0=Reinhard, 1=ACES
+        enableToneMapping: true,        // 是否启用 Tone Mapping
+        toneMappingMode: 1,              // 0=Reinhard, 1=ACES
         reinhardWhitePoint: 2.0,         // Reinhard 扩展白点（越大允许越亮的值保留）
     },
 
