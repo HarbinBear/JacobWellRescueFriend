@@ -9,6 +9,7 @@ import { drawRopesWorld, drawRopeButton } from './RenderRope';
 import { drawAllFishEnemies, drawFishBiteEffect } from './RenderFishEnemy';
 import { drawMazeBackgroundDecorations, drawMazeWallShape, getMazeParticleColorByWorld, getMazeThemeColorByCell } from './RenderMazeScene';
 import { drawGMButton, drawGMPanel } from '../gm/GMPanel';
+import { updateDustTime, drawDustDarkLayer, drawDustLitLayer } from './DustMotes';
 
 // 向后兼容，重新导出 canvas 和 ctx
 export { canvas, ctx };
@@ -410,6 +411,10 @@ export function draw() {
     let hasTank = !state.story.flags.tankDamaged;
     drawDiver(ctx, player.x, player.y, player.angle, null, player.animTime, hasTank);
 
+    // 绘制暗色悬浮尘埃（光照前，作为移动参照物）
+    updateDustTime(1 / 60);
+    drawDustDarkLayer(ctx, viewL, viewR, viewT, viewB, zoom);
+
     ctx.restore();
 
     // 2. 光照遮罩计算（WebGL）
@@ -786,6 +791,14 @@ export function draw() {
         
         ctx.restore();
     }
+
+    // 绘制亮色悬浮尘埃（光照后，被手电照亮的尘埃散射发光）
+    ctx.save();
+    ctx.translate(logicW/2 + shakeX, logicH/2 + shakeY);
+    ctx.scale(zoom, zoom);
+    ctx.translate(-player.x, -player.y);
+    drawDustLitLayer(ctx, viewL, viewR, viewT, viewB, zoom, playerFlashlightActive);
+    ctx.restore();
 
     // 绘制泥沙粒子（在光照层之上，使泥沙遮盖光照）
     ctx.save();

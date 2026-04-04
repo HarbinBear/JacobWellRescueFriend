@@ -18,7 +18,7 @@ export const CONFIG = {
     // 游戏参数
     ambient: 0.01,        // 环境光亮度
     lightRange: 650,      // 手电筒距离 (竖屏视野长，稍微增加距离)
-    fov: 60,              // 视野角度 (竖屏稍微增加视野)
+    fov: 65,              // 视野角度 (竖屏稍微增加视野)
     moveSpeed: 14,         // 移动速度
     safeAscentSpeed: 2.5, // 安全上浮速度阈值
     siltFactor: 1.0,      // 扬尘产生倍率
@@ -47,9 +47,9 @@ export const CONFIG = {
     ambientLightSurface: 1.0,     // 水面/浅层环境光亮度
     ambientLightDeep: 0.01,       // 深层最低环境光亮度
     darknessStartDepth: 2500,     // 开始变暗的深度 (第一洞室底部)
-    flashlightColor: 'rgba(255, 247, 160, 0.2)', // 手电筒泛光颜色
-    flashlightCenterColor: 'rgba(253, 253, 37, 0.41)', // 手电筒中心光束颜色
-    flashlightCenterFov: 25,      // 中心光束角度
+    flashlightColor: 'rgba(255, 247, 160, 0.13)', // 手电筒泛光颜色
+    flashlightCenterColor: 'rgba(253, 253, 37, 0.3)', // 手电筒中心光束颜色
+    flashlightCenterFov: 50,      // 中心光束角度
     
     // 自身发光参数
     selfGlowRadius: 230,          // 自身发光半径（迷宫模式调亮）
@@ -256,6 +256,24 @@ export const CONFIG = {
         debriefShowDelay: 30,       // 结算页延迟显示帧数
     },
 
+    // ===== 悬浮尘埃配置 =====
+    dust: {
+        enabled: true,              // 是否启用悬浮尘埃
+        density: 2,                 // 每个格子内的尘埃数量（基础值，受深度缩放）
+        cellSize: 100,               // 尘埃采样格子大小（像素，越小越密集但越耗性能）
+        baseSize: 0.3,              // 尘埃基础半径（像素）
+        sizeVariation: 0.5,         // 尘埃大小随机变化范围
+        driftSpeed: 0.8,            // 漂移速度（越大飘得越快）
+        driftAmplitude: 3.0,        // 漂移幅度（像素，越大飘得越远）
+        baseAlpha: 0.06,            // 暗色层基础透明度（刚好能感知到）
+        litAlpha: 0.3,             // 亮色层基础透明度（被手电照亮时）
+        litRadius: 1.0,             // 散射光晕半径倍数
+        litFalloff: 0.3,            // 散射光晕衰减系数
+        flashlightBoost: 1.0,       // 手电照射增强系数
+        depthDensityScale: 1.0,     // 深水区密度缩放上限
+        depthDensityStart: 500,     // 开始增加密度的深度（像素）
+    },
+
     // ===== 手电筒光照参数 =====
     flashlight: {
         // 遮罩层（决定哪里被照亮、哪里黑暗）
@@ -265,8 +283,8 @@ export const CONFIG = {
         maskMinAlpha: 0.10,          // 最亮处的最小遮罩 alpha（越低越透明）
 
         // 体积光层（决定光路上可见的暖色光柱）
-        volOuterIntensity: 0.6,     // 外层暖色泛光强度
-        volCenterIntensity: 0.1,    // 中心光束强度
+        volOuterIntensity: 0.25,     // 外层暖色泛光强度
+        volCenterIntensity: 0.5,    // 中心光束强度
         volOuterColor: [1.0, 0.969, 0.627],   // 外层泛光颜色 RGB (0~1)
         volCenterColor: [0.992, 0.992, 0.145], // 中心光束颜色 RGB (0~1)
 
@@ -296,7 +314,7 @@ export const CONFIG = {
         autoExposureTarget: 0.5,        // 目标平均亮度（画面整体想维持在多亮）
 
         // Tone Mapping
-        enableToneMapping: true,        // 是否启用 Tone Mapping
+        enableToneMapping: false,        // 是否启用 Tone Mapping
         toneMappingMode: 1,              // 0=Reinhard, 1=ACES
         reinhardWhitePoint: 2.0,         // Reinhard 扩展白点（越大允许越亮的值保留）
     },

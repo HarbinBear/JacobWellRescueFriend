@@ -96,6 +96,25 @@ export const TABS: GMTab[] = [
         ]
     },
     {
+        name: '尘埃',
+        items: [
+            { type: 'bool', label: '启用尘埃', path: 'dust.enabled' },
+            { type: 'number', label: '密度(每格)', path: 'dust.density', min: 1, max: 10, step: 1 },
+            { type: 'number', label: '格子大小', path: 'dust.cellSize', min: 40, max: 200, step: 10 },
+            { type: 'number', label: '基础大小', path: 'dust.baseSize', min: 0.3, max: 4, step: 0.1, precision: 1 },
+            { type: 'number', label: '大小变化', path: 'dust.sizeVariation', min: 0, max: 3, step: 0.1, precision: 1 },
+            { type: 'number', label: '漂移速度', path: 'dust.driftSpeed', min: 0.05, max: 2, step: 0.05, precision: 2 },
+            { type: 'number', label: '漂移幅度', path: 'dust.driftAmplitude', min: 0.5, max: 10, step: 0.5, precision: 1 },
+            { type: 'number', label: '暗色透明度', path: 'dust.baseAlpha', min: 0.01, max: 0.3, step: 0.01, precision: 2 },
+            { type: 'number', label: '亮色透明度', path: 'dust.litAlpha', min: 0.05, max: 1, step: 0.05, precision: 2 },
+            { type: 'number', label: '散射光晕半径', path: 'dust.litRadius', min: 1, max: 8, step: 0.5, precision: 1 },
+            { type: 'number', label: '散射衰减', path: 'dust.litFalloff', min: 0.05, max: 1, step: 0.05, precision: 2 },
+            { type: 'number', label: '手电增强', path: 'dust.flashlightBoost', min: 0.1, max: 3, step: 0.1, precision: 1 },
+            { type: 'number', label: '深水密度上限', path: 'dust.depthDensityScale', min: 0.5, max: 3, step: 0.1, precision: 1 },
+            { type: 'number', label: '密度增加深度', path: 'dust.depthDensityStart', min: 0, max: 3000, step: 100 },
+        ]
+    },
+    {
         name: '后处理',
         items: [
             { type: 'bool', label: '手动曝光开关', path: 'postProcess.enableManualExposure' },
