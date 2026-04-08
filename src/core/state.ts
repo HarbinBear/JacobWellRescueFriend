@@ -122,18 +122,29 @@ export const state = {
         // 当前正在进行的滑动触点（最多支持2个），实时更新位置
         activeTouches: {} as Record<number, {
             startX: number; startY: number;  // 触点起始位置
-            prevX: number; prevY: number;    // 上一帧位置（用于计算瞬时速度）
+            prevX: number; prevY: number;    // 上一帧位置（用于计算输入速度）
             currX: number; currY: number;    // 当前位置
-            lastMoveTime: number;            // 上一次移动的时间戳
+            localSide: number;               // 触点相对角色左侧(-1)/右侧(1)/中间(0)
+            consumedDistance: number;        // 当前这次输入已消费的有效行程（像素）
+            finished: boolean;               // 单次输入的有效行程是否已完成，松手前不再继续驱动
         }>,
-        // 划水动画触发计数（每次搓屏+1，P2联动用）
-        strokeCount: 0,
-        // 划水动画计时（帧，用于触发划水表现）
-        strokeTimer: 0,
         // 调试辅助线用：上一次输入方向
         lastInputAngle: 0,
         // 调试辅助线用：本帧是否有输入
         hasInput: false,
+        // 角色表现运行态：左右脚前进踢水进度/强度
+        leftKickProgress: 0,
+        rightKickProgress: 0,
+        leftKickStrength: 0,
+        rightKickStrength: 0,
+        // 角色表现运行态：左右侧拐弯修正进度/强度
+        leftTurnProgress: 0,
+        rightTurnProgress: 0,
+        leftTurnStrength: 0,
+        rightTurnStrength: 0,
+        // 角色表现运行态：整体前进/转向可视化混合量
+        forwardVisual: 0,
+        turnVisual: 0,
     },
     // 食人鱼纯享版竞技场状态
     fishArena: null as null | {
@@ -319,10 +330,18 @@ export function resetState() {
     // 重置手动挡状态
     state.manualDrive = {
         activeTouches: {},
-        strokeCount: 0,
-        strokeTimer: 0,
         lastInputAngle: 0,
         hasInput: false,
+        leftKickProgress: 0,
+        rightKickProgress: 0,
+        leftKickStrength: 0,
+        rightKickStrength: 0,
+        leftTurnProgress: 0,
+        rightTurnProgress: 0,
+        leftTurnStrength: 0,
+        rightTurnStrength: 0,
+        forwardVisual: 0,
+        turnVisual: 0,
     };
 
     state.rope = {

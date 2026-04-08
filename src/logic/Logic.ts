@@ -17,13 +17,11 @@ export { findNearestWall };
 /**
  * 处理手动挡模式下的玩家移动
  *
- * 正确的水下物理模型：
- * 1. 推力沿输入方向施加（搓哪个方向，力就往哪个方向推）
- * 2. 身体朝向被动跟随速度方向（水中流线型身体自然对齐运动方向）
- * 3. 各向异性水阻：前向阻力小、侧向阻力大
- *    → 这是身体对齐速度方向的物理原因
- * 4. 向后搓时：推力反向 → 先减速 → 速度反转 → 身体跟着转过来
- *    不会出现"向后搓却往前冲"的荒谬情况
+ * 当前版本采用“逐触点、整段有效行程持续消费”的输入模型：
+ * 1. 每个触点从按下到松开，只对应一次完整踢水生命周期
+ * 2. 整段有效行程都会持续驱动移动与表现，不会只在前半段生效
+ * 3. 同一段输入距离下，输入速度越快，推进和转向越强
+ * 4. 左右腿映射基于角色局部坐标，而不是屏幕左右
  *
  * 返回 true 表示手动挡已处理移动，调用方应跳过自动挡逻辑
  */
@@ -32,17 +30,37 @@ function processManualDrive(): boolean {
     const md = state.manualDrive;
     if (!md) return false;
 
-    // 划水动画计时衰减
-    if (md.strokeTimer > 0) md.strokeTimer--;
+    const cfg = CONFIG.manualDrive;
+    const debugMul = state.debug.fastMove ? CONFIG.debugSpeedMultiplier : 1;
 
-    const touchIds = Object.keys(md.activeTouches);
-    let hasStroke = false;       // 本帧是否有有效划水动作
-    let inputAngle = 0;         // 输入方向（推力方向）
-    let strokeStrength = 0;     // 划水力度（帧间位移）
+    md.hasInput = false;
 
-    // 键盘虚拟触点（id=-1）需要每帧自动递增 curr
+    let strongestInputAngle = md.lastInputAngle;
+    let strongestInputDelta = 0;
+
+    let leftKickProgress = 0;
+    let rightKickProgress = 0;
+    let leftKickStrength = 0;
+    let rightKickStrength = 0;
+    let leftTurnProgress = 0;
+    let rightTurnProgress = 0;
+    let leftTurnStrength = 0;
+    let rightTurnStrength = 0;
+    let forwardVisual = 0;
+    let turnVisual = 0;
+
+    // 键盘虚拟触点允许持续产生新的单次输入生命周期，便于桌面调试
     const kbTouch = md.activeTouches[-1];
     if (kbTouch) {
+        if (kbTouch.finished) {
+            kbTouch.startX = kbTouch.currX;
+            kbTouch.startY = kbTouch.currY;
+            kbTouch.prevX = kbTouch.currX;
+            kbTouch.prevY = kbTouch.currY;
+            kbTouch.consumedDistance = 0;
+            kbTouch.finished = false;
+        }
+
         const kbDx = kbTouch.currX - kbTouch.prevX;
         const kbDy = kbTouch.currY - kbTouch.prevY;
         if (kbDx !== 0 || kbDy !== 0) {
@@ -53,68 +71,134 @@ function processManualDrive(): boolean {
         }
     }
 
-    // 遍历所有活跃触点，取帧间位移最大的那个作为本帧划水源
+    const touchIds = Object.keys(md.activeTouches);
     for (const id of touchIds) {
         const td = md.activeTouches[id as any];
+        if (!td) continue;
+
+        const totalDx = td.currX - td.startX;
+        const totalDy = td.currY - td.startY;
+        const totalDist = Math.hypot(totalDx, totalDy);
         const frameDx = td.currX - td.prevX;
         const frameDy = td.currY - td.prevY;
         const frameDist = Math.hypot(frameDx, frameDy);
 
-        if (frameDist >= CONFIG.manualDrive.minSwipeDist) {
-            if (frameDist > strokeStrength) {
-                hasStroke = true;
-                strokeStrength = frameDist;
+        if (totalDist < cfg.minSwipeDist) {
+            td.prevX = td.currX;
+            td.prevY = td.currY;
+            continue;
+        }
 
-                let swipeAngle = Math.atan2(frameDy, frameDx);
-                // 键盘虚拟触点（id=-1）不反转方向
-                if (CONFIG.manualDrive.reverseDir && Number(id) >= 0) {
-                    swipeAngle += Math.PI;
-                }
-                while (swipeAngle > Math.PI) swipeAngle -= Math.PI * 2;
-                while (swipeAngle < -Math.PI) swipeAngle += Math.PI * 2;
-                inputAngle = swipeAngle;
+        let inputX = totalDx / totalDist;
+        let inputY = totalDy / totalDist;
+        if (cfg.reverseDir && Number(id) >= 0) {
+            inputX = -inputX;
+            inputY = -inputY;
+        }
+
+        const effectiveDistance = Math.max(cfg.minSwipeDist, cfg.effectiveDistance);
+        const effectiveDistNow = Math.min(totalDist, effectiveDistance);
+        const deltaDistance = td.finished ? 0 : Math.max(0, effectiveDistNow - td.consumedDistance);
+        const effectiveProgress = effectiveDistNow / effectiveDistance;
+        const progressStrength = 0.35 + effectiveProgress * cfg.thrustDistanceScale;
+        const speedStrength = frameDist * cfg.thrustSpeedScale;
+        const thrustPower = Math.min(cfg.thrustMax, (cfg.thrustBase + progressStrength + speedStrength) * debugMul);
+        const turnPower = Math.min(cfg.turnMax, (cfg.turnBase + frameDist * cfg.turnSpeedScale) * debugMul);
+
+        const cosA = Math.cos(player.angle);
+        const sinA = Math.sin(player.angle);
+        const forwardDotRaw = inputX * cosA + inputY * sinA;
+        const lateralDot = inputX * (-sinA) + inputY * cosA;
+        const forwardDot = Math.max(0, forwardDotRaw);
+        const backwardTurn = Math.max(0, -forwardDotRaw) * cfg.backwardTurnScale;
+        const turnAmount = Math.min(1, Math.abs(lateralDot) + backwardTurn);
+
+        let turnSign = 0;
+        if (Math.abs(lateralDot) > 0.08) {
+            turnSign = lateralDot > 0 ? 1 : -1;
+        } else if (backwardTurn > 0.001) {
+            turnSign = td.localSide === 0 ? 1 : td.localSide;
+        }
+
+        if (deltaDistance > 0) {
+            const distanceRatio = deltaDistance / effectiveDistance;
+            const deltaForward = thrustPower * distanceRatio * forwardDot;
+            const deltaTurn = turnPower * distanceRatio * turnAmount;
+
+            if (deltaForward > 0.0001) {
+                player.vx += cosA * deltaForward;
+                player.vy += sinA * deltaForward;
+            }
+
+            if (deltaTurn > 0.0001 && turnSign !== 0) {
+                player.angle += turnSign * deltaTurn;
+                player.targetAngle = player.angle;
+            }
+
+            md.hasInput = true;
+
+            const inputAngle = Math.atan2(inputY, inputX);
+            const inputDelta = deltaDistance * (forwardDot + turnAmount + frameDist * 0.02);
+            if (inputDelta > strongestInputDelta) {
+                strongestInputDelta = inputDelta;
+                strongestInputAngle = inputAngle;
             }
         }
 
-        // 每帧结束后把 prev 推进到 curr
+        td.consumedDistance = Math.max(td.consumedDistance, effectiveDistNow);
+        if (totalDist >= effectiveDistance) {
+            td.finished = true;
+        }
+
+        const visualProgress = effectiveProgress;
+        const kickVisual = forwardDot * visualProgress;
+        const turnVisualSigned = turnSign * turnAmount * visualProgress;
+        const kickStrengthNorm = Math.min(1, 0.22 + forwardDot * 0.48 + frameDist * 0.035);
+        const turnStrengthNorm = Math.min(1, 0.18 + turnAmount * 0.52 + frameDist * 0.03);
+
+        if (td.localSide < 0) {
+            leftKickProgress = Math.max(leftKickProgress, visualProgress);
+            leftKickStrength = Math.max(leftKickStrength, Math.min(1, kickStrengthNorm));
+            leftTurnProgress = Math.max(leftTurnProgress, visualProgress);
+            leftTurnStrength = Math.max(leftTurnStrength, Math.min(1, turnStrengthNorm));
+        } else if (td.localSide > 0) {
+            rightKickProgress = Math.max(rightKickProgress, visualProgress);
+            rightKickStrength = Math.max(rightKickStrength, Math.min(1, kickStrengthNorm));
+            rightTurnProgress = Math.max(rightTurnProgress, visualProgress);
+            rightTurnStrength = Math.max(rightTurnStrength, Math.min(1, turnStrengthNorm));
+        } else {
+            leftKickProgress = Math.max(leftKickProgress, visualProgress);
+            rightKickProgress = Math.max(rightKickProgress, visualProgress);
+            leftKickStrength = Math.max(leftKickStrength, Math.min(1, kickStrengthNorm));
+            rightKickStrength = Math.max(rightKickStrength, Math.min(1, kickStrengthNorm));
+            leftTurnProgress = Math.max(leftTurnProgress, visualProgress);
+            rightTurnProgress = Math.max(rightTurnProgress, visualProgress);
+            leftTurnStrength = Math.max(leftTurnStrength, Math.min(1, turnStrengthNorm));
+            rightTurnStrength = Math.max(rightTurnStrength, Math.min(1, turnStrengthNorm));
+        }
+
+        forwardVisual += kickVisual;
+        turnVisual += turnVisualSigned;
+
         td.prevX = td.currX;
         td.prevY = td.currY;
     }
 
-    // ========== 物理模拟 ==========
+    md.lastInputAngle = strongestInputAngle;
+    md.leftKickProgress = leftKickProgress;
+    md.rightKickProgress = rightKickProgress;
+    md.leftKickStrength = leftKickStrength;
+    md.rightKickStrength = rightKickStrength;
+    md.leftTurnProgress = leftTurnProgress;
+    md.rightTurnProgress = rightTurnProgress;
+    md.leftTurnStrength = leftTurnStrength;
+    md.rightTurnStrength = rightTurnStrength;
+    md.forwardVisual = Math.min(1, forwardVisual);
+    md.turnVisual = Math.max(-1, Math.min(1, turnVisual));
 
-    const cfg = CONFIG.manualDrive;
-    const debugMul = state.debug.fastMove ? CONFIG.debugSpeedMultiplier : 1;
-
-    // --- 第一步：施加推力（沿输入方向，不是沿身体朝向！） ---
-    if (hasStroke) {
-        let thrust = cfg.thrustBase + strokeStrength * cfg.thrustSwipeScale;
-        thrust = Math.min(thrust, cfg.thrustMax);
-
-        // 推力直接沿输入方向施加
-        player.vx += Math.cos(inputAngle) * thrust * debugMul;
-        player.vy += Math.sin(inputAngle) * thrust * debugMul;
-
-        // 记录输入方向供调试辅助线使用
-        md.lastInputAngle = inputAngle;
-        md.hasInput = true;
-
-        // 划水动画触发
-        if (md.strokeTimer <= 0) {
-            md.strokeCount++;
-            md.strokeTimer = 15;
-        }
-    } else {
-        md.hasInput = false;
-    }
-
-    // --- 第二步：各向异性水阻 ---
-    // 将速度分解为身体朝向的前向分量和侧向分量
-    // 前向阻力小（流线型），侧向阻力大
-    // 这会自然地让速度方向趋向身体朝向
+    // 各向异性水阻
     const cosA = Math.cos(player.angle);
     const sinA = Math.sin(player.angle);
-
     const vForward = player.vx * cosA + player.vy * sinA;
     const vLateral = -player.vx * sinA + player.vy * cosA;
 
@@ -124,21 +208,18 @@ function processManualDrive(): boolean {
     player.vx = vForwardDamped * cosA - vLateralDamped * sinA;
     player.vy = vForwardDamped * sinA + vLateralDamped * cosA;
 
-    // --- 第三步：身体朝向被动跟随速度方向 ---
-    // 水中流线型身体会自然对齐运动方向
+    // 身体朝向被动跟随速度方向
     const speed = Math.hypot(player.vx, player.vy);
     if (speed > cfg.bodyAlignMinSpeed) {
         const velAngle = Math.atan2(player.vy, player.vx);
         let angleDiff = velAngle - player.angle;
         while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
         while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-
-        // 身体朝向平滑跟随速度方向
         player.angle += angleDiff * cfg.bodyAlignRate;
         player.targetAngle = player.angle;
     }
 
-    // --- 第四步：限速 ---
+    // 限速
     const maxSpd = cfg.maxSpeed * debugMul;
     if (speed > maxSpd) {
         player.vx *= maxSpd / speed;

@@ -48,6 +48,17 @@ function getChapterCardBounds(cw, ch, scrollY) {
     ];
 }
 
+function getTouchLocalSide(touchX: number, touchY: number) {
+    const relX = touchX - CONFIG.screenWidth * 0.5;
+    const relY = touchY - CONFIG.screenHeight * 0.5;
+    const rightX = -Math.sin(player.angle);
+    const rightY = Math.cos(player.angle);
+    const dot = relX * rightX + relY * rightY;
+    if (dot > 12) return 1;
+    if (dot < -12) return -1;
+    return 0;
+}
+
 export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?, onReturnToShore?) {
     // PC 调试键盘支持 
     if (typeof window !== 'undefined' && window.addEventListener) {
@@ -76,14 +87,15 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                             startX: 0, startY: 0,
                             prevX: 0, prevY: 0,
                             currX: dx * step, currY: dy * step,
-                            lastMoveTime: Date.now(),
+                            localSide: 0,
+                            consumedDistance: 0,
+                            finished: false,
                         };
                     } else {
                         const td = md.activeTouches[-1];
                         // curr 在方向上持续递增（不重置 prev，由逻辑层推进）
                         td.currX += dx * step;
                         td.currY += dy * step;
-                        td.lastMoveTime = Date.now();
                     }
                 } else {
                     delete md.activeTouches[-1];
@@ -392,7 +404,9 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                         prevY: t.clientY,
                         currX: t.clientX,
                         currY: t.clientY,
-                        lastMoveTime: Date.now(),
+                        localSide: getTouchLocalSide(t.clientX, t.clientY),
+                        consumedDistance: 0,
+                        finished: false,
                     };
                 }
             } else {
@@ -452,7 +466,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                     // 只更新 curr，不动 prev（prev 由 processManualDrive 每帧推进）
                     td.currX = t.clientX;
                     td.currY = t.clientY;
-                    td.lastMoveTime = Date.now();
+                    td.localSide = getTouchLocalSide(t.clientX, t.clientY);
                 }
             }
             return;

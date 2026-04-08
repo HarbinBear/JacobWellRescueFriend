@@ -399,17 +399,40 @@ export function draw() {
     // 绘制 NPC
     if(state.npc && state.npc.active) {
         const npcColors = {
-            suit: '#333',
-            body: '#d44',
-            tank: '#bef',
-            mask: '#fa0'
+            suit: '#2b353c',
+            body: '#7c5353',
+            tank: '#bfd4dc',
+            mask: '#d68c4b',
+            fin: '#263238',
+            accent: '#8aa7b3',
+            skin: '#c4a48e'
         };
-        drawDiver(ctx, state.npc.x, state.npc.y, state.npc.angle, npcColors, Date.now()/150);
+        drawDiver(ctx, state.npc.x, state.npc.y, state.npc.angle, npcColors, {
+            animTime: Date.now() / 150,
+            hasTank: true,
+            vx: state.npc.vx,
+            vy: state.npc.vy,
+        });
     }
 
     // 绘制玩家
     let hasTank = !state.story.flags.tankDamaged;
-    drawDiver(ctx, player.x, player.y, player.angle, null, player.animTime, hasTank);
+    drawDiver(ctx, player.x, player.y, player.angle, null, {
+        animTime: player.animTime,
+        hasTank,
+        vx: player.vx,
+        vy: player.vy,
+        leftKickProgress: state.manualDrive.leftKickProgress,
+        rightKickProgress: state.manualDrive.rightKickProgress,
+        leftKickStrength: state.manualDrive.leftKickStrength,
+        rightKickStrength: state.manualDrive.rightKickStrength,
+        leftTurnProgress: state.manualDrive.leftTurnProgress,
+        rightTurnProgress: state.manualDrive.rightTurnProgress,
+        leftTurnStrength: state.manualDrive.leftTurnStrength,
+        rightTurnStrength: state.manualDrive.rightTurnStrength,
+        forwardVisual: state.manualDrive.forwardVisual,
+        turnVisual: state.manualDrive.turnVisual,
+    });
 
     // 绘制暗色悬浮尘埃（光照前，作为移动参照物）
     updateDustTime(1 / 60);

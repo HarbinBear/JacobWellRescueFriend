@@ -77,4 +77,5 @@ type: always
 - **主线与竞技场的运行时调度中心是 `src/logic/Logic.ts`。**
 - **统一渲染出口是 `src/render/Render.ts`。**
 - **参数调优总入口是 `src/core/config.ts`。**
+- **手动挡输入与潜水员动作表现的第一版链路已经接通，当前默认以 `src/core/config.ts` 的 `manualDrive` 与 `diver` 参数作为主要调优入口。**
 - **这是一个强状态驱动项目，很多行为依赖 `state.screen`、`state.story.stage`、`state.story.flags`、`state.npc.state` 等字段协同。**

@@ -324,28 +324,53 @@ export const CONFIG = {
     manualDrive: {
         enabled: true,             // 是否启用手动挡模式（false=自动挡/摇杆）
 
-        // --- 推力参数 ---
-        thrustBase: 0.10,           // 每帧基础推力（沿输入方向施加）
-        thrustSwipeScale: 0.025,    // 帧间位移（像素）到额外推力的映射系数
-        thrustMax: 1.2,             // 单帧最大推力上限
+        // --- 输入行程参数 ---
+        effectiveDistance: 184,      // 一次输入可持续生效的有效行程（像素）
+        minSwipeDist: 2,             // 输入起效的最小位移（像素）
+        reverseDir: true,            // 是否反转方向（true=推水方向与移动方向相反）
+        maxTouchPoints: 2,           // 最大同时识别的触点数（支持双指交替搓）
+
+        // --- 推进参数 ---
+        thrustBase: 1,            // 整段有效行程内的基础推进强度
+        thrustDistanceScale: 0.95,   // 有效行程推进到后段时的额外推进增量
+        thrustSpeedScale: 0.1,     // 输入速度（帧间位移像素）到额外推进的映射系数
+        thrustMax: 6,              // 单帧推进强度上限
+
+        // --- 转向参数 ---
+        turnBase: 0.58,              // 整段有效行程内的基础转向强度
+        turnSpeedScale: 0.03,       // 输入速度到额外转向强度的映射系数
+        turnMax: 2,               // 单帧转向强度上限（弧度系数）
+        backwardTurnScale: 1.15,     // 后向输入折算为转向输入的权重
 
         // --- 速度与阻力参数 ---
-        maxSpeed: 5.0,              // 最大速度
+        maxSpeed: 10,               // 最大速度
         dragForward: 0.95,          // 前向水阻（沿身体朝向，流线型阻力小）
         dragLateral: 0.82,          // 侧向水阻（垂直于身体朝向，阻力大）
-        // 侧向阻力 > 前向阻力 → 身体自然对齐速度方向
 
         // --- 身体朝向跟随参数 ---
-        bodyAlignRate: 0.12,        // 身体朝向跟随速度方向的速率（0~1，越大越快对齐）
-        bodyAlignMinSpeed: 0.3,     // 速度低于此值时身体不跟随（避免静止时抖动）
-
-        // --- 输入参数 ---
-        minSwipeDist: 2,            // 帧间最小有效位移（像素，低于此值视为手指静止）
-        reverseDir: true,           // 是否反转方向（true=推水方向与移动方向相反）
-        maxTouchPoints: 2,          // 最大同时识别的触点数（支持双指交替搓）
+        bodyAlignRate: 0.12,         // 身体朝向跟随速度方向的速率（0~1，越大越快对齐）
+        bodyAlignMinSpeed: 0.3,      // 速度低于此值时身体不跟随（避免静止时抖动）
 
         // --- 调试辅助线 ---
         debugDraw: false,           // 是否绘制辅助线（速度向量、身体朝向、输入方向、推力方向）
+    },
+
+    // ===== 角色表现（潜水员）配置 =====
+    diver: {
+        armIdleFrequency: 0.42,     // 手臂待机摆动频率
+        armIdleAmplitude: 0.018,    // 手臂待机摆动幅度（弧度）
+        armKickSwing: 0.2,         // 手臂随单侧踢水的轻微摆动幅度
+        armTurnSwing: 1.0,         // 手臂参与转向修正的摆幅
+        legKickFrequency: 0.58,     // 无输入时的轻微滑行踢水频率
+        legKickAmplitude: 0.05,     // 无输入时的轻微滑行踢水幅度
+        kickRecoverLength: 4.6,     // 抬腿回收时的小腿收回量
+        kickDriveLength: 6.4,       // 踢水发力时的小腿伸展量
+        turnLegOffset: 2.2,         // 拐弯时腿部外摆偏移量
+        idleDriftSpeed: 0.32,       // 漂浮待机摆动速度
+        finSpreadBase: 1.0,         // 蛙鞋基础开合
+        finSpreadSwim: 0.55,        // 轻微滑行时的额外开合
+        finSpreadStroke: 1.0,       // 输入踢水期间的额外开合
+        finTurnSkew: 0.28,          // 拐弯时蛙鞋的偏转量
     },
 
     // ===== 玩家攻击（挥氧气瓶）配置 =====
