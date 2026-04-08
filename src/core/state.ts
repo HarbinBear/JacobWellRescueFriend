@@ -124,10 +124,11 @@ export const state = {
             startX: number; startY: number;  // 触点起始位置
             prevX: number; prevY: number;    // 上一帧位置（用于计算输入速度）
             currX: number; currY: number;    // 当前位置
-            localSide: number;               // 触点相对角色左侧(-1)/右侧(1)/中间(0)
+            strokeSide: number;              // 本次输入分配到的腿侧：左(-1)/右(1)
             consumedDistance: number;        // 当前这次输入已消费的有效行程（像素）
             finished: boolean;               // 单次输入的有效行程是否已完成，松手前不再继续驱动
         }>,
+        nextStrokeSide: -1,                 // 下一次新输入应分配到哪条腿（左右轮流）
         // 调试辅助线用：上一次输入方向
         lastInputAngle: 0,
         // 调试辅助线用：本帧是否有输入
@@ -330,6 +331,7 @@ export function resetState() {
     // 重置手动挡状态
     state.manualDrive = {
         activeTouches: {},
+        nextStrokeSide: -1,
         lastInputAngle: 0,
         hasInput: false,
         leftKickProgress: 0,

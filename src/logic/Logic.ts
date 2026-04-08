@@ -21,7 +21,7 @@ export { findNearestWall };
  * 1. 每个触点从按下到松开，只对应一次完整踢水生命周期
  * 2. 整段有效行程都会持续驱动移动与表现，不会只在前半段生效
  * 3. 同一段输入距离下，输入速度越快，推进和转向越强
- * 4. 左右腿映射基于角色局部坐标，而不是屏幕左右
+ * 4. 左右腿按每次新输入的顺序左右轮流分配，不再取决于触点位置
  *
  * 返回 true 表示手动挡已处理移动，调用方应跳过自动挡逻辑
  */
@@ -131,7 +131,7 @@ function processManualDrive(): boolean {
         if (Math.abs(lateralDot) > 0.08) {
             turnSign = lateralDot > 0 ? 1 : -1;
         } else if (backwardTurn > 0.001) {
-            turnSign = td.localSide === 0 ? 1 : td.localSide;
+            turnSign = td.strokeSide;
         }
 
         if (deltaDistance > 0) {
@@ -170,24 +170,15 @@ function processManualDrive(): boolean {
         const kickStrengthNorm = wasFinished ? 0 : Math.min(1, 0.28 + forwardDot * 0.52 + frameDist * 0.018);
         const turnStrengthNorm = wasFinished ? 0 : Math.min(1, 0.2 + turnAmount * 0.55 + frameDist * 0.015);
 
-        if (td.localSide < 0) {
+        if (td.strokeSide < 0) {
             leftKickProgressTarget = Math.max(leftKickProgressTarget, visualProgress);
             leftKickStrengthTarget = Math.max(leftKickStrengthTarget, Math.min(1, kickStrengthNorm));
             leftTurnProgressTarget = Math.max(leftTurnProgressTarget, visualProgress);
             leftTurnStrengthTarget = Math.max(leftTurnStrengthTarget, Math.min(1, turnStrengthNorm));
-        } else if (td.localSide > 0) {
-            rightKickProgressTarget = Math.max(rightKickProgressTarget, visualProgress);
-            rightKickStrengthTarget = Math.max(rightKickStrengthTarget, Math.min(1, kickStrengthNorm));
-            rightTurnProgressTarget = Math.max(rightTurnProgressTarget, visualProgress);
-            rightTurnStrengthTarget = Math.max(rightTurnStrengthTarget, Math.min(1, turnStrengthNorm));
         } else {
-            leftKickProgressTarget = Math.max(leftKickProgressTarget, visualProgress);
             rightKickProgressTarget = Math.max(rightKickProgressTarget, visualProgress);
-            leftKickStrengthTarget = Math.max(leftKickStrengthTarget, Math.min(1, kickStrengthNorm));
             rightKickStrengthTarget = Math.max(rightKickStrengthTarget, Math.min(1, kickStrengthNorm));
-            leftTurnProgressTarget = Math.max(leftTurnProgressTarget, visualProgress);
             rightTurnProgressTarget = Math.max(rightTurnProgressTarget, visualProgress);
-            leftTurnStrengthTarget = Math.max(leftTurnStrengthTarget, Math.min(1, turnStrengthNorm));
             rightTurnStrengthTarget = Math.max(rightTurnStrengthTarget, Math.min(1, turnStrengthNorm));
         }
 
