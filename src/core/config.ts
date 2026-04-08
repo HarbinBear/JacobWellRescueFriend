@@ -331,21 +331,27 @@ export const CONFIG = {
         maxTouchPoints: 2,           // 最大同时识别的触点数（支持双指交替搓）
 
         // --- 推进参数 ---
-        thrustBase: 1,            // 整段有效行程内的基础推进强度
-        thrustDistanceScale: 0.95,   // 有效行程推进到后段时的额外推进增量
-        thrustSpeedScale: 0.1,     // 输入速度（帧间位移像素）到额外推进的映射系数
-        thrustMax: 6,              // 单帧推进强度上限
+        thrustBase: 1.35,            // 整段有效行程内的基础推进强度
+        thrustDistanceScale: 1.05,   // 有效行程推进到后段时的额外推进增量
+        thrustSpeedScale: 0.06,      // 输入速度（帧间位移像素）到额外推进的映射系数
+        thrustMax: 5.2,              // 单帧推进强度上限
 
         // --- 转向参数 ---
         turnBase: 0.58,              // 整段有效行程内的基础转向强度
-        turnSpeedScale: 0.03,       // 输入速度到额外转向强度的映射系数
-        turnMax: 2,               // 单帧转向强度上限（弧度系数）
+        turnSpeedScale: 0.03,        // 输入速度到额外转向强度的映射系数
+        turnMax: 2,                  // 单帧转向强度上限（弧度系数）
         backwardTurnScale: 1.15,     // 后向输入折算为转向输入的权重
 
         // --- 速度与阻力参数 ---
-        maxSpeed: 10,               // 最大速度
-        dragForward: 0.95,          // 前向水阻（沿身体朝向，流线型阻力小）
-        dragLateral: 0.82,          // 侧向水阻（垂直于身体朝向，阻力大）
+        maxSpeed: 11,                // 最大速度
+        dragForward: 0.975,          // 前向水阻（沿身体朝向，流线型阻力小）
+        dragLateral: 0.9,            // 侧向水阻（垂直于身体朝向，阻力大）
+
+        // --- 动作表现平滑参数 ---
+        kickProgressRate: 0.065,     // 踢水进度单帧推进上限（限制动作过快）
+        kickRecoverRate: 0.028,      // 输入结束后的踢水回收速度（形成慢后摇）
+        kickStrengthRise: 0.16,      // 踢水力度抬升速度
+        kickStrengthDecay: 0.05,     // 踢水力度衰减速度
 
         // --- 身体朝向跟随参数 ---
         bodyAlignRate: 0.12,         // 身体朝向跟随速度方向的速率（0~1，越大越快对齐）
@@ -359,12 +365,16 @@ export const CONFIG = {
     diver: {
         armIdleFrequency: 0.42,     // 手臂待机摆动频率
         armIdleAmplitude: 0.018,    // 手臂待机摆动幅度（弧度）
-        armKickSwing: 0.2,         // 手臂随单侧踢水的轻微摆动幅度
-        armTurnSwing: 1.0,         // 手臂参与转向修正的摆幅
+        armKickSwing: 0.2,          // 手臂随单侧踢水的轻微摆动幅度
+        armTurnSwing: 1.0,          // 手臂参与转向修正的摆幅
+        armCloseBySpeed: 0.42,      // 速度升高时手臂向身体收拢的幅度
         legKickFrequency: 0.58,     // 无输入时的轻微滑行踢水频率
         legKickAmplitude: 0.05,     // 无输入时的轻微滑行踢水幅度
-        kickRecoverLength: 4.6,     // 抬腿回收时的小腿收回量
-        kickDriveLength: 6.4,       // 踢水发力时的小腿伸展量
+        kickRecoverLength: 4.6,     // 回收阶段的大腿后带量
+        kickDriveLength: 6.4,       // 发力阶段的大腿前送量
+        kickBodyWave: 1.8,          // 踢水时从身体传到腿部的扭动力度
+        finDriveLength: 8.6,        // 脚蹼在发力阶段的额外后扫距离
+        finRecoverLength: 3.2,      // 脚蹼在回收阶段的前收距离
         turnLegOffset: 2.2,         // 拐弯时腿部外摆偏移量
         idleDriftSpeed: 0.32,       // 漂浮待机摆动速度
         finSpreadBase: 1.0,         // 蛙鞋基础开合

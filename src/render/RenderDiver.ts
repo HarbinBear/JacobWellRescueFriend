@@ -102,6 +102,7 @@ function drawLegAndFin(
     turnProgress: number,
     turnStrength: number,
     swimCycle: number,
+    bodyYaw: number,
     colors: DiverColors,
 ) {
     const cfg = CONFIG.diver;
@@ -109,11 +110,15 @@ function drawLegAndFin(
     const turnEase = easeStroke(turnProgress) * turnStrength;
     const idleLift = swimCycle * cfg.legKickAmplitude;
     const turnOffset = turnEase * cfg.turnLegOffset;
+    const bodyWave = (kickEase * 2 - 1) * cfg.kickBodyWave;
 
-    const kneeX = hipX - cfg.kickRecoverLength + kickEase * (cfg.kickDriveLength + cfg.kickRecoverLength) - turnOffset;
-    const kneeY = hipY + side * (idleLift * 2.8 + turnOffset * 0.65);
-    const ankleX = kneeX - 8.8 + kickEase * 7.2;
-    const ankleY = kneeY + side * (idleLift * 2.0 + turnOffset * 0.45);
+    const thighDrive = -cfg.kickRecoverLength + kickEase * (cfg.kickDriveLength + cfg.kickRecoverLength);
+    const finDrive = cfg.finRecoverLength - kickEase * (cfg.finDriveLength + cfg.finRecoverLength);
+
+    const kneeX = hipX + thighDrive - turnOffset - bodyWave * 0.22;
+    const kneeY = hipY + side * (idleLift * 2.1 + turnOffset * 0.58 + bodyWave * 0.18 + bodyYaw * 0.45);
+    const ankleX = kneeX + finDrive - bodyWave * 0.4;
+    const ankleY = kneeY + side * (idleLift * 1.35 + turnOffset * 0.24 + bodyWave * 0.3);
 
     renderCtx.strokeStyle = colors.suit;
     renderCtx.lineCap = 'round';
@@ -125,18 +130,18 @@ function drawLegAndFin(
     renderCtx.lineTo(ankleX, ankleY);
     renderCtx.stroke();
 
-    const finLen = 13.5 + kickEase * 1.2;
+    const finLen = 13.5 + kickEase * 1.6;
     const finSpread = cfg.finSpreadBase + kickEase * cfg.finSpreadStroke + Math.abs(swimCycle) * cfg.finSpreadSwim;
-    const finAngle = side * (0.12 + idleLift * 0.18 + turnEase * cfg.finTurnSkew);
+    const finAngle = side * (0.08 + idleLift * 0.12 + turnEase * cfg.finTurnSkew + bodyWave * 0.035);
 
-    const tipX = ankleX - finLen;
-    const tipY = ankleY + side * finAngle * finLen * 0.35;
-    const baseUpX = ankleX + 1.0;
-    const baseUpY = ankleY - finSpread * 0.38;
-    const baseDownX = ankleX + 1.0;
-    const baseDownY = ankleY + finSpread * 0.38;
-    const splitX = ankleX - finLen * 0.72;
-    const splitY = ankleY + side * finAngle * finLen * 0.22;
+    const tipX = ankleX + finDrive - finLen;
+    const tipY = ankleY + side * finAngle * finLen * 0.42;
+    const baseUpX = ankleX + 1.1;
+    const baseUpY = ankleY - finSpread * 0.42;
+    const baseDownX = ankleX + 1.1;
+    const baseDownY = ankleY + finSpread * 0.42;
+    const splitX = ankleX + finDrive * 0.45 - finLen * 0.72;
+    const splitY = ankleY + side * finAngle * finLen * 0.26;
 
     renderCtx.fillStyle = colors.fin;
     renderCtx.beginPath();
@@ -202,27 +207,31 @@ export function drawDiver(
 
     const driftX = Math.sin(time * cfg.idleDriftSpeed) * 1.2 * idleBlend + Math.sin(time * (cfg.idleDriftSpeed * 1.8)) * 0.12;
     const driftY = Math.cos(time * (cfg.idleDriftSpeed * 0.82)) * 0.8 * idleBlend;
-    const bodyRoll = turnAmount * 0.12 + turnVisual * 0.08 + Math.sin(time * (cfg.idleDriftSpeed * 0.95)) * 0.02 * idleBlend;
-    const bodyYaw = turnAmount * 1.2 + turnVisual * 0.65;
+    const leftKickWave = easeStroke(leftKickProgress) * leftKickStrength;
+    const rightKickWave = easeStroke(rightKickProgress) * rightKickStrength;
+    const kickWave = leftKickWave - rightKickWave;
+    const bodyRoll = turnAmount * 0.12 + turnVisual * 0.08 + kickWave * 0.035 + Math.sin(time * (cfg.idleDriftSpeed * 0.95)) * 0.02 * idleBlend;
+    const bodyYaw = turnAmount * 1.2 + turnVisual * 0.65 + kickWave * 0.28;
     const torsoCompress = 1 - forwardVisual * 0.035;
     const swimCycle = Math.sin(time * cfg.legKickFrequency);
 
-    const leftArmKick = easeStroke(leftKickProgress) * leftKickStrength;
-    const rightArmKick = easeStroke(rightKickProgress) * rightKickStrength;
+    const leftArmKick = leftKickWave;
+    const rightArmKick = rightKickWave;
     const leftArmTurn = easeStroke(leftTurnProgress) * leftTurnStrength;
     const rightArmTurn = easeStroke(rightTurnProgress) * rightTurnStrength;
+    const armClose = swimBlend * cfg.armCloseBySpeed;
 
-    const leftArmUpper = Math.PI + 0.68 + Math.sin(time * cfg.armIdleFrequency) * cfg.armIdleAmplitude * idleBlend + leftArmKick * cfg.armKickSwing - leftArmTurn * cfg.armTurnSwing + turnVisual * 0.08;
-    const rightArmUpper = Math.PI - 0.68 - Math.sin(time * cfg.armIdleFrequency) * cfg.armIdleAmplitude * idleBlend - rightArmKick * cfg.armKickSwing + rightArmTurn * cfg.armTurnSwing + turnVisual * 0.08;
-    const leftArmLower = leftArmUpper + 0.22 - leftArmKick * 0.08 + leftArmTurn * 0.12;
-    const rightArmLower = rightArmUpper - 0.22 + rightArmKick * 0.08 - rightArmTurn * 0.12;
+    const leftArmUpper = Math.PI + 0.68 - armClose + Math.sin(time * cfg.armIdleFrequency) * cfg.armIdleAmplitude * idleBlend + leftArmKick * cfg.armKickSwing - leftArmTurn * cfg.armTurnSwing + turnVisual * 0.08;
+    const rightArmUpper = Math.PI - 0.68 + armClose - Math.sin(time * cfg.armIdleFrequency) * cfg.armIdleAmplitude * idleBlend - rightArmKick * cfg.armKickSwing + rightArmTurn * cfg.armTurnSwing + turnVisual * 0.08;
+    const leftArmLower = leftArmUpper + 0.22 - leftArmKick * 0.08 + leftArmTurn * 0.12 - armClose * 0.18;
+    const rightArmLower = rightArmUpper - 0.22 + rightArmKick * 0.08 - rightArmTurn * 0.12 + armClose * 0.18;
 
     renderCtx.save();
     renderCtx.translate(x + driftX, y + driftY);
     renderCtx.rotate(angle + bodyRoll);
 
-    drawLegAndFin(renderCtx, -8.2, -4.2, -1, leftKickProgress, leftKickStrength, leftTurnProgress, leftTurnStrength, swimCycle * idleBlend, c);
-    drawLegAndFin(renderCtx, -8.2, 4.2, 1, rightKickProgress, rightKickStrength, rightTurnProgress, rightTurnStrength, -swimCycle * idleBlend, c);
+    drawLegAndFin(renderCtx, -8.2, -4.2, -1, leftKickProgress, leftKickStrength, leftTurnProgress, leftTurnStrength, swimCycle * idleBlend, bodyYaw, c);
+    drawLegAndFin(renderCtx, -8.2, 4.2, 1, rightKickProgress, rightKickStrength, rightTurnProgress, rightTurnStrength, -swimCycle * idleBlend, bodyYaw, c);
 
     renderCtx.save();
     renderCtx.scale(torsoCompress, 1);
@@ -281,19 +290,6 @@ export function drawDiver(
     renderCtx.beginPath();
     renderCtx.arc(15.8, 0, 6.5, 0, Math.PI * 2);
     renderCtx.fill();
-
-    renderCtx.fillStyle = 'rgba(255,255,255,0.08)';
-    renderCtx.beginPath();
-    renderCtx.ellipse(14.2, -2.2, 3.6, 1.7, -0.25, 0, Math.PI * 2);
-    renderCtx.fill();
-
-    renderCtx.fillStyle = c.mask;
-    renderCtx.strokeStyle = '#162027';
-    renderCtx.lineWidth = 1.1;
-    renderCtx.beginPath();
-    renderCtx.ellipse(18.3, 0, 4.1, 3.4, 0, 0, Math.PI * 2);
-    renderCtx.fill();
-    renderCtx.stroke();
 
     renderCtx.restore();
 }

@@ -33,21 +33,34 @@ function processManualDrive(): boolean {
     const cfg = CONFIG.manualDrive;
     const debugMul = state.debug.fastMove ? CONFIG.debugSpeedMultiplier : 1;
 
+    const moveScalar = (current: number, target: number, rise: number, fall: number) => {
+        if (target > current) return Math.min(target, current + rise);
+        return Math.max(target, current - fall);
+    };
+
+    const moveSignedScalar = (current: number, target: number, rise: number, fall: number) => {
+        const delta = target - current;
+        if (Math.abs(delta) < 0.0001) return target;
+        const step = delta > 0 ? rise : fall;
+        if (Math.abs(delta) <= step) return target;
+        return current + Math.sign(delta) * step;
+    };
+
     md.hasInput = false;
 
     let strongestInputAngle = md.lastInputAngle;
     let strongestInputDelta = 0;
 
-    let leftKickProgress = 0;
-    let rightKickProgress = 0;
-    let leftKickStrength = 0;
-    let rightKickStrength = 0;
-    let leftTurnProgress = 0;
-    let rightTurnProgress = 0;
-    let leftTurnStrength = 0;
-    let rightTurnStrength = 0;
-    let forwardVisual = 0;
-    let turnVisual = 0;
+    let leftKickProgressTarget = 0;
+    let rightKickProgressTarget = 0;
+    let leftKickStrengthTarget = 0;
+    let rightKickStrengthTarget = 0;
+    let leftTurnProgressTarget = 0;
+    let rightTurnProgressTarget = 0;
+    let leftTurnStrengthTarget = 0;
+    let rightTurnStrengthTarget = 0;
+    let forwardVisualTarget = 0;
+    let turnVisualTarget = 0;
 
     // 键盘虚拟触点允许持续产生新的单次输入生命周期，便于桌面调试
     const kbTouch = md.activeTouches[-1];
@@ -98,7 +111,8 @@ function processManualDrive(): boolean {
 
         const effectiveDistance = Math.max(cfg.minSwipeDist, cfg.effectiveDistance);
         const effectiveDistNow = Math.min(totalDist, effectiveDistance);
-        const deltaDistance = td.finished ? 0 : Math.max(0, effectiveDistNow - td.consumedDistance);
+        const wasFinished = td.finished;
+        const deltaDistance = wasFinished ? 0 : Math.max(0, effectiveDistNow - td.consumedDistance);
         const effectiveProgress = effectiveDistNow / effectiveDistance;
         const progressStrength = 0.35 + effectiveProgress * cfg.thrustDistanceScale;
         const speedStrength = frameDist * cfg.thrustSpeedScale;
@@ -150,51 +164,39 @@ function processManualDrive(): boolean {
             td.finished = true;
         }
 
-        const visualProgress = effectiveProgress;
+        const visualProgress = wasFinished ? 0 : effectiveProgress;
         const kickVisual = forwardDot * visualProgress;
         const turnVisualSigned = turnSign * turnAmount * visualProgress;
-        const kickStrengthNorm = Math.min(1, 0.22 + forwardDot * 0.48 + frameDist * 0.035);
-        const turnStrengthNorm = Math.min(1, 0.18 + turnAmount * 0.52 + frameDist * 0.03);
+        const kickStrengthNorm = wasFinished ? 0 : Math.min(1, 0.28 + forwardDot * 0.52 + frameDist * 0.018);
+        const turnStrengthNorm = wasFinished ? 0 : Math.min(1, 0.2 + turnAmount * 0.55 + frameDist * 0.015);
 
         if (td.localSide < 0) {
-            leftKickProgress = Math.max(leftKickProgress, visualProgress);
-            leftKickStrength = Math.max(leftKickStrength, Math.min(1, kickStrengthNorm));
-            leftTurnProgress = Math.max(leftTurnProgress, visualProgress);
-            leftTurnStrength = Math.max(leftTurnStrength, Math.min(1, turnStrengthNorm));
+            leftKickProgressTarget = Math.max(leftKickProgressTarget, visualProgress);
+            leftKickStrengthTarget = Math.max(leftKickStrengthTarget, Math.min(1, kickStrengthNorm));
+            leftTurnProgressTarget = Math.max(leftTurnProgressTarget, visualProgress);
+            leftTurnStrengthTarget = Math.max(leftTurnStrengthTarget, Math.min(1, turnStrengthNorm));
         } else if (td.localSide > 0) {
-            rightKickProgress = Math.max(rightKickProgress, visualProgress);
-            rightKickStrength = Math.max(rightKickStrength, Math.min(1, kickStrengthNorm));
-            rightTurnProgress = Math.max(rightTurnProgress, visualProgress);
-            rightTurnStrength = Math.max(rightTurnStrength, Math.min(1, turnStrengthNorm));
+            rightKickProgressTarget = Math.max(rightKickProgressTarget, visualProgress);
+            rightKickStrengthTarget = Math.max(rightKickStrengthTarget, Math.min(1, kickStrengthNorm));
+            rightTurnProgressTarget = Math.max(rightTurnProgressTarget, visualProgress);
+            rightTurnStrengthTarget = Math.max(rightTurnStrengthTarget, Math.min(1, turnStrengthNorm));
         } else {
-            leftKickProgress = Math.max(leftKickProgress, visualProgress);
-            rightKickProgress = Math.max(rightKickProgress, visualProgress);
-            leftKickStrength = Math.max(leftKickStrength, Math.min(1, kickStrengthNorm));
-            rightKickStrength = Math.max(rightKickStrength, Math.min(1, kickStrengthNorm));
-            leftTurnProgress = Math.max(leftTurnProgress, visualProgress);
-            rightTurnProgress = Math.max(rightTurnProgress, visualProgress);
-            leftTurnStrength = Math.max(leftTurnStrength, Math.min(1, turnStrengthNorm));
-            rightTurnStrength = Math.max(rightTurnStrength, Math.min(1, turnStrengthNorm));
+            leftKickProgressTarget = Math.max(leftKickProgressTarget, visualProgress);
+            rightKickProgressTarget = Math.max(rightKickProgressTarget, visualProgress);
+            leftKickStrengthTarget = Math.max(leftKickStrengthTarget, Math.min(1, kickStrengthNorm));
+            rightKickStrengthTarget = Math.max(rightKickStrengthTarget, Math.min(1, kickStrengthNorm));
+            leftTurnProgressTarget = Math.max(leftTurnProgressTarget, visualProgress);
+            rightTurnProgressTarget = Math.max(rightTurnProgressTarget, visualProgress);
+            leftTurnStrengthTarget = Math.max(leftTurnStrengthTarget, Math.min(1, turnStrengthNorm));
+            rightTurnStrengthTarget = Math.max(rightTurnStrengthTarget, Math.min(1, turnStrengthNorm));
         }
 
-        forwardVisual += kickVisual;
-        turnVisual += turnVisualSigned;
+        forwardVisualTarget += kickVisual;
+        turnVisualTarget += turnVisualSigned;
 
         td.prevX = td.currX;
         td.prevY = td.currY;
     }
-
-    md.lastInputAngle = strongestInputAngle;
-    md.leftKickProgress = leftKickProgress;
-    md.rightKickProgress = rightKickProgress;
-    md.leftKickStrength = leftKickStrength;
-    md.rightKickStrength = rightKickStrength;
-    md.leftTurnProgress = leftTurnProgress;
-    md.rightTurnProgress = rightTurnProgress;
-    md.leftTurnStrength = leftTurnStrength;
-    md.rightTurnStrength = rightTurnStrength;
-    md.forwardVisual = Math.min(1, forwardVisual);
-    md.turnVisual = Math.max(-1, Math.min(1, turnVisual));
 
     // 各向异性水阻
     const cosA = Math.cos(player.angle);
@@ -209,7 +211,7 @@ function processManualDrive(): boolean {
     player.vy = vForwardDamped * sinA + vLateralDamped * cosA;
 
     // 身体朝向被动跟随速度方向
-    const speed = Math.hypot(player.vx, player.vy);
+    let speed = Math.hypot(player.vx, player.vy);
     if (speed > cfg.bodyAlignMinSpeed) {
         const velAngle = Math.atan2(player.vy, player.vx);
         let angleDiff = velAngle - player.angle;
@@ -224,7 +226,25 @@ function processManualDrive(): boolean {
     if (speed > maxSpd) {
         player.vx *= maxSpd / speed;
         player.vy *= maxSpd / speed;
+        speed = maxSpd;
     }
+
+    const carryRatio = maxSpd > 0.0001 ? Math.max(0, Math.min(1, speed / maxSpd)) : 0;
+    const progressFall = Math.max(0.001, cfg.kickRecoverRate * (1 - carryRatio * 0.6));
+    const strengthFall = Math.max(0.001, cfg.kickStrengthDecay * (1 - carryRatio * 0.5));
+    const visualFall = Math.max(0.001, cfg.kickStrengthDecay * (1 - carryRatio * 0.55));
+
+    md.lastInputAngle = strongestInputAngle;
+    md.leftKickProgress = moveScalar(md.leftKickProgress, leftKickProgressTarget, cfg.kickProgressRate, progressFall);
+    md.rightKickProgress = moveScalar(md.rightKickProgress, rightKickProgressTarget, cfg.kickProgressRate, progressFall);
+    md.leftKickStrength = moveScalar(md.leftKickStrength, leftKickStrengthTarget, cfg.kickStrengthRise, strengthFall);
+    md.rightKickStrength = moveScalar(md.rightKickStrength, rightKickStrengthTarget, cfg.kickStrengthRise, strengthFall);
+    md.leftTurnProgress = moveScalar(md.leftTurnProgress, leftTurnProgressTarget, cfg.kickProgressRate, progressFall);
+    md.rightTurnProgress = moveScalar(md.rightTurnProgress, rightTurnProgressTarget, cfg.kickProgressRate, progressFall);
+    md.leftTurnStrength = moveScalar(md.leftTurnStrength, leftTurnStrengthTarget, cfg.kickStrengthRise, strengthFall);
+    md.rightTurnStrength = moveScalar(md.rightTurnStrength, rightTurnStrengthTarget, cfg.kickStrengthRise, strengthFall);
+    md.forwardVisual = moveScalar(md.forwardVisual, Math.min(1, forwardVisualTarget), cfg.kickStrengthRise, visualFall);
+    md.turnVisual = moveSignedScalar(md.turnVisual, Math.max(-1, Math.min(1, turnVisualTarget)), cfg.kickStrengthRise, visualFall);
 
     return true;
 }
