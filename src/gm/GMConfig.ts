@@ -115,6 +115,23 @@ export const TABS: GMTab[] = [
         ]
     },
     {
+        name: '手动挡',
+        items: [
+            { type: 'bool', label: '启用手动挡', path: 'manualDrive.enabled' },
+            { type: 'bool', label: '调试辅助线', path: 'manualDrive.debugDraw' },
+            { type: 'number', label: '基础推力', path: 'manualDrive.thrustBase', min: 0.05, max: 2, step: 0.05, precision: 2 },
+            { type: 'number', label: '搓速推力系数', path: 'manualDrive.thrustSwipeScale', min: 0, max: 0.2, step: 0.005, precision: 3 },
+            { type: 'number', label: '最大推力', path: 'manualDrive.thrustMax', min: 0.3, max: 5, step: 0.1, precision: 1 },
+            { type: 'number', label: '最大速度', path: 'manualDrive.maxSpeed', min: 1, max: 15, step: 0.5, precision: 1 },
+            { type: 'number', label: '前向水阻', path: 'manualDrive.dragForward', min: 0.8, max: 0.99, step: 0.01, precision: 2 },
+            { type: 'number', label: '侧向水阻', path: 'manualDrive.dragLateral', min: 0.5, max: 0.98, step: 0.02, precision: 2 },
+            { type: 'number', label: '身体跟随速率', path: 'manualDrive.bodyAlignRate', min: 0.01, max: 0.5, step: 0.01, precision: 2 },
+            { type: 'number', label: '跟随最低速度', path: 'manualDrive.bodyAlignMinSpeed', min: 0.05, max: 2, step: 0.05, precision: 2 },
+            { type: 'number', label: '帧间死区', path: 'manualDrive.minSwipeDist', min: 0.5, max: 10, step: 0.5, precision: 1 },
+            { type: 'bool', label: '反转方向', path: 'manualDrive.reverseDir' },
+        ]
+    },
+    {
         name: '后处理',
         items: [
             { type: 'bool', label: '手动曝光开关', path: 'postProcess.enableManualExposure' },

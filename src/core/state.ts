@@ -117,6 +117,24 @@ export const state = {
         cooldownTimer: number;  // 冷却计时（>0 表示冷却中）
         angle: number;          // 攻击方向（玩家朝向）
     },
+    // 手动挡（搓屏移动）运行态
+    manualDrive: {
+        // 当前正在进行的滑动触点（最多支持2个），实时更新位置
+        activeTouches: {} as Record<number, {
+            startX: number; startY: number;  // 触点起始位置
+            prevX: number; prevY: number;    // 上一帧位置（用于计算瞬时速度）
+            currX: number; currY: number;    // 当前位置
+            lastMoveTime: number;            // 上一次移动的时间戳
+        }>,
+        // 划水动画触发计数（每次搓屏+1，P2联动用）
+        strokeCount: 0,
+        // 划水动画计时（帧，用于触发划水表现）
+        strokeTimer: 0,
+        // 调试辅助线用：上一次输入方向
+        lastInputAngle: 0,
+        // 调试辅助线用：本帧是否有输入
+        hasInput: false,
+    },
     // 食人鱼纯享版竞技场状态
     fishArena: null as null | {
         round: number;          // 当前轮次（从1开始）
@@ -296,6 +314,15 @@ export function resetState() {
         timer: 0,
         cooldownTimer: 0,
         angle: 0,
+    };
+
+    // 重置手动挡状态
+    state.manualDrive = {
+        activeTouches: {},
+        strokeCount: 0,
+        strokeTimer: 0,
+        lastInputAngle: 0,
+        hasInput: false,
     };
 
     state.rope = {

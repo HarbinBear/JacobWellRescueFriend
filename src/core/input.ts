@@ -63,7 +63,34 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
             if (keys.a) dx -= 1;
             if (keys.d) dx += 1;
 
-            if (dx !== 0 || dy !== 0) {
+            if (CONFIG.manualDrive.enabled) {
+                // 手动挡模式：键盘模拟持续搓屏
+                // 每次 updateKeyInput 被调用（keydown/keyup），更新虚拟触点
+                // 关键：curr 每帧递增，让逻辑层能检测到帧间位移
+                const md = state.manualDrive;
+                if (dx !== 0 || dy !== 0) {
+                    // 键盘不需要反转方向，直接用方向向量
+                    const step = 20; // 每帧虚拟位移步长（像素）
+                    if (!md.activeTouches[-1]) {
+                        md.activeTouches[-1] = {
+                            startX: 0, startY: 0,
+                            prevX: 0, prevY: 0,
+                            currX: dx * step, currY: dy * step,
+                            lastMoveTime: Date.now(),
+                        };
+                    } else {
+                        const td = md.activeTouches[-1];
+                        // curr 在方向上持续递增（不重置 prev，由逻辑层推进）
+                        td.currX += dx * step;
+                        td.currY += dy * step;
+                        td.lastMoveTime = Date.now();
+                    }
+                } else {
+                    delete md.activeTouches[-1];
+                }
+                input.move = 0;
+                input.speedUp = false;
+            } else if (dx !== 0 || dy !== 0) {
                 input.move = 1;
                 input.targetAngle = Math.atan2(dy, dx);
                 input.speedUp = keys.shift;
@@ -72,6 +99,8 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                 input.speedUp = false;
             }
         };
+
+        // 手动挡键盘：不再需要 prevKeys 和脉冲产生逻辑，updateKeyInput 已处理
 
         window.addEventListener('keydown', (e) => {
             if(state.screen === 'menu') {
@@ -351,13 +380,30 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                 }
             }
 
-            // 摇杆：只绑定第一个未被其他功能占用的触点
-            if (touches.joystickId === null) {
-                touches.joystickId = t.identifier;
-                touches.start = { x: t.clientX, y: t.clientY };
-                touches.curr = { x: t.clientX, y: t.clientY };
-                input.move = 0;
-                input.speedUp = false;
+            // 手动挡模式：记录滑动起始点，实时跟踪
+            if (CONFIG.manualDrive.enabled) {
+                const md = state.manualDrive;
+                const activeCount = Object.keys(md.activeTouches).length;
+                if (activeCount < CONFIG.manualDrive.maxTouchPoints) {
+                    md.activeTouches[t.identifier] = {
+                        startX: t.clientX,
+                        startY: t.clientY,
+                        prevX: t.clientX,
+                        prevY: t.clientY,
+                        currX: t.clientX,
+                        currY: t.clientY,
+                        lastMoveTime: Date.now(),
+                    };
+                }
+            } else {
+                // 自动挡（摇杆）：只绑定第一个未被其他功能占用的触点
+                if (touches.joystickId === null) {
+                    touches.joystickId = t.identifier;
+                    touches.start = { x: t.clientX, y: t.clientY };
+                    touches.curr = { x: t.clientX, y: t.clientY };
+                    input.move = 0;
+                    input.speedUp = false;
+                }
             }
         }
     });
@@ -396,6 +442,22 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                 }
             }
         }
+
+        // 手动挡模式：touchMove 只更新当前位置，prev 由逻辑层推进
+        if (CONFIG.manualDrive.enabled) {
+            const md = state.manualDrive;
+            for (let t of res.touches) {
+                const td = md.activeTouches[t.identifier];
+                if (td) {
+                    // 只更新 curr，不动 prev（prev 由 processManualDrive 每帧推进）
+                    td.currX = t.clientX;
+                    td.currY = t.clientY;
+                    td.lastMoveTime = Date.now();
+                }
+            }
+            return;
+        }
+
         for(let t of res.touches) {
             if(t.identifier === touches.joystickId) {
                 touches.curr = { x: t.clientX, y: t.clientY };
@@ -703,6 +765,14 @@ function handleTouchEnd(changedTouches) {
             state.rope.hold.touchId = null;
             state.rope.ui.progress = 0;
         }
+        // 手动挡模式：滑动结束时清除触点
+        if (CONFIG.manualDrive.enabled && state.manualDrive) {
+            const md = state.manualDrive;
+            if (md.activeTouches[t.identifier]) {
+                delete md.activeTouches[t.identifier];
+            }
+        }
+
         if(t.identifier === touches.joystickId) {
             touches.joystickId = null;
             input.move = 0;

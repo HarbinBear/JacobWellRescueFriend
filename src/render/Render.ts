@@ -902,6 +902,85 @@ export function draw() {
         ctx.restore();
     }
 
+    // 手动挡调试辅助线（在所有游戏内容之上、GM面板之下绘制）
+    if (CONFIG.manualDrive.enabled && CONFIG.manualDrive.debugDraw &&
+        (state.screen === 'play' || state.screen === 'fishArena' || state.screen === 'mazeRescue')) {
+        const cx = CONFIG.screenWidth / 2;
+        const cy = CONFIG.screenHeight / 2;
+        const speed = Math.hypot(player.vx, player.vy);
+        const md = state.manualDrive;
+
+        // 辅助线长度缩放
+        const lineLen = 60;
+        const velScale = 15;
+
+        // 1. 身体朝向（绿色实线）
+        ctx.strokeStyle = '#0f0';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx + Math.cos(player.angle) * lineLen, cy + Math.sin(player.angle) * lineLen);
+        ctx.stroke();
+        // 朝向箭头
+        const arrowSize = 8;
+        const arrowAngle = player.angle;
+        ctx.fillStyle = '#0f0';
+        ctx.beginPath();
+        ctx.moveTo(cx + Math.cos(arrowAngle) * lineLen, cy + Math.sin(arrowAngle) * lineLen);
+        ctx.lineTo(cx + Math.cos(arrowAngle) * (lineLen - arrowSize) + Math.cos(arrowAngle + 2.5) * arrowSize,
+                   cy + Math.sin(arrowAngle) * (lineLen - arrowSize) + Math.sin(arrowAngle + 2.5) * arrowSize);
+        ctx.lineTo(cx + Math.cos(arrowAngle) * (lineLen - arrowSize) + Math.cos(arrowAngle - 2.5) * arrowSize,
+                   cy + Math.sin(arrowAngle) * (lineLen - arrowSize) + Math.sin(arrowAngle - 2.5) * arrowSize);
+        ctx.fill();
+
+        // 2. 速度向量（黄色实线）
+        if (speed > 0.1) {
+            ctx.strokeStyle = '#ff0';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(cx + player.vx * velScale, cy + player.vy * velScale);
+            ctx.stroke();
+        }
+
+        // 3. 输入方向（红色虚线，只在有输入时显示）
+        if (md.hasInput) {
+            ctx.strokeStyle = '#f44';
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([4, 4]);
+            ctx.beginPath();
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(cx + Math.cos(md.lastInputAngle) * lineLen * 0.8,
+                       cy + Math.sin(md.lastInputAngle) * lineLen * 0.8);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+        // 4. 前向/侧向速度分量（小文字）
+        const cosA = Math.cos(player.angle);
+        const sinA = Math.sin(player.angle);
+        const vFwd = player.vx * cosA + player.vy * sinA;
+        const vLat = -player.vx * sinA + player.vy * cosA;
+
+        ctx.font = '11px monospace';
+        ctx.fillStyle = '#fff';
+        ctx.textAlign = 'left';
+        ctx.fillText(`速度: ${speed.toFixed(2)}`, cx + 40, cy - 45);
+        ctx.fillStyle = '#0f0';
+        ctx.fillText(`前向: ${vFwd.toFixed(2)}`, cx + 40, cy - 33);
+        ctx.fillStyle = '#f80';
+        ctx.fillText(`侧向: ${vLat.toFixed(2)}`, cx + 40, cy - 21);
+
+        // 5. 身体朝向与输入方向的夹角
+        if (md.hasInput) {
+            let diff = md.lastInputAngle - player.angle;
+            while (diff > Math.PI) diff -= Math.PI * 2;
+            while (diff < -Math.PI) diff += Math.PI * 2;
+            ctx.fillStyle = '#f44';
+            ctx.fillText(`偏差: ${(diff * 180 / Math.PI).toFixed(1)}°`, cx + 40, cy - 9);
+        }
+    }
+
     // 5. GM工具面板（最顶层，始终绘制）
     drawGMButton(ctx);
     drawGMPanel(ctx);

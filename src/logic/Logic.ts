@@ -12,6 +12,142 @@ const storyManager = new StoryManager();
 // 导出 findNearestWall 供渲染层使用
 export { findNearestWall };
 
+// --- 手动挡移动处理 ---
+
+/**
+ * 处理手动挡模式下的玩家移动
+ *
+ * 正确的水下物理模型：
+ * 1. 推力沿输入方向施加（搓哪个方向，力就往哪个方向推）
+ * 2. 身体朝向被动跟随速度方向（水中流线型身体自然对齐运动方向）
+ * 3. 各向异性水阻：前向阻力小、侧向阻力大
+ *    → 这是身体对齐速度方向的物理原因
+ * 4. 向后搓时：推力反向 → 先减速 → 速度反转 → 身体跟着转过来
+ *    不会出现"向后搓却往前冲"的荒谬情况
+ *
+ * 返回 true 表示手动挡已处理移动，调用方应跳过自动挡逻辑
+ */
+function processManualDrive(): boolean {
+    if (!CONFIG.manualDrive.enabled) return false;
+    const md = state.manualDrive;
+    if (!md) return false;
+
+    // 划水动画计时衰减
+    if (md.strokeTimer > 0) md.strokeTimer--;
+
+    const touchIds = Object.keys(md.activeTouches);
+    let hasStroke = false;       // 本帧是否有有效划水动作
+    let inputAngle = 0;         // 输入方向（推力方向）
+    let strokeStrength = 0;     // 划水力度（帧间位移）
+
+    // 键盘虚拟触点（id=-1）需要每帧自动递增 curr
+    const kbTouch = md.activeTouches[-1];
+    if (kbTouch) {
+        const kbDx = kbTouch.currX - kbTouch.prevX;
+        const kbDy = kbTouch.currY - kbTouch.prevY;
+        if (kbDx !== 0 || kbDy !== 0) {
+            const norm = Math.hypot(kbDx, kbDy);
+            const step = 20;
+            kbTouch.currX += (kbDx / norm) * step;
+            kbTouch.currY += (kbDy / norm) * step;
+        }
+    }
+
+    // 遍历所有活跃触点，取帧间位移最大的那个作为本帧划水源
+    for (const id of touchIds) {
+        const td = md.activeTouches[id as any];
+        const frameDx = td.currX - td.prevX;
+        const frameDy = td.currY - td.prevY;
+        const frameDist = Math.hypot(frameDx, frameDy);
+
+        if (frameDist >= CONFIG.manualDrive.minSwipeDist) {
+            if (frameDist > strokeStrength) {
+                hasStroke = true;
+                strokeStrength = frameDist;
+
+                let swipeAngle = Math.atan2(frameDy, frameDx);
+                // 键盘虚拟触点（id=-1）不反转方向
+                if (CONFIG.manualDrive.reverseDir && Number(id) >= 0) {
+                    swipeAngle += Math.PI;
+                }
+                while (swipeAngle > Math.PI) swipeAngle -= Math.PI * 2;
+                while (swipeAngle < -Math.PI) swipeAngle += Math.PI * 2;
+                inputAngle = swipeAngle;
+            }
+        }
+
+        // 每帧结束后把 prev 推进到 curr
+        td.prevX = td.currX;
+        td.prevY = td.currY;
+    }
+
+    // ========== 物理模拟 ==========
+
+    const cfg = CONFIG.manualDrive;
+    const debugMul = state.debug.fastMove ? CONFIG.debugSpeedMultiplier : 1;
+
+    // --- 第一步：施加推力（沿输入方向，不是沿身体朝向！） ---
+    if (hasStroke) {
+        let thrust = cfg.thrustBase + strokeStrength * cfg.thrustSwipeScale;
+        thrust = Math.min(thrust, cfg.thrustMax);
+
+        // 推力直接沿输入方向施加
+        player.vx += Math.cos(inputAngle) * thrust * debugMul;
+        player.vy += Math.sin(inputAngle) * thrust * debugMul;
+
+        // 记录输入方向供调试辅助线使用
+        md.lastInputAngle = inputAngle;
+        md.hasInput = true;
+
+        // 划水动画触发
+        if (md.strokeTimer <= 0) {
+            md.strokeCount++;
+            md.strokeTimer = 15;
+        }
+    } else {
+        md.hasInput = false;
+    }
+
+    // --- 第二步：各向异性水阻 ---
+    // 将速度分解为身体朝向的前向分量和侧向分量
+    // 前向阻力小（流线型），侧向阻力大
+    // 这会自然地让速度方向趋向身体朝向
+    const cosA = Math.cos(player.angle);
+    const sinA = Math.sin(player.angle);
+
+    const vForward = player.vx * cosA + player.vy * sinA;
+    const vLateral = -player.vx * sinA + player.vy * cosA;
+
+    const vForwardDamped = vForward * cfg.dragForward;
+    const vLateralDamped = vLateral * cfg.dragLateral;
+
+    player.vx = vForwardDamped * cosA - vLateralDamped * sinA;
+    player.vy = vForwardDamped * sinA + vLateralDamped * cosA;
+
+    // --- 第三步：身体朝向被动跟随速度方向 ---
+    // 水中流线型身体会自然对齐运动方向
+    const speed = Math.hypot(player.vx, player.vy);
+    if (speed > cfg.bodyAlignMinSpeed) {
+        const velAngle = Math.atan2(player.vy, player.vx);
+        let angleDiff = velAngle - player.angle;
+        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+
+        // 身体朝向平滑跟随速度方向
+        player.angle += angleDiff * cfg.bodyAlignRate;
+        player.targetAngle = player.angle;
+    }
+
+    // --- 第四步：限速 ---
+    const maxSpd = cfg.maxSpeed * debugMul;
+    if (speed > maxSpd) {
+        player.vx *= maxSpd / speed;
+        player.vy *= maxSpd / speed;
+    }
+
+    return true;
+}
+
 // --- 剧情 & NPC 逻辑 ---
 
 function updateNPC() {
@@ -528,6 +664,8 @@ export function update() {
         input.speedUp = false;
         player.vx = 0;
         player.vy = 0;
+        // 手动挡：清空脉冲队列，防止松手后突然冲出
+        if (state.manualDrive) state.manualDrive.activeTouches = {};
     }
 
     updateNPC();
@@ -641,36 +779,41 @@ export function update() {
         } else { state.antiStuck.timer = 0; }
     }
 
-    // 1. 转向系统
-    player.targetAngle = input.targetAngle;
-
-    let angleDiff = player.targetAngle - player.angle;
-    while(angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-    while(angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-    
-    player.angle += angleDiff * CONFIG.turnSpeed; 
-
-    // 2. 移动系统
+    // 1. 转向系统 + 2. 移动系统
+    let angleDiff = 0; // 声明在外层，泥沙逻辑需要引用
     if(state.story.stage === 4 || state.story.stage === 5) {
+        // 濒死阶段：强制停止移动，随机抖动
         input.move = 0;
         player.vx = 0;
         player.vy = 0;
         player.x += (Math.random()-0.5) * 1.5;
         player.y += (Math.random()-0.5) * 1.5;
+    } else if (processManualDrive()) {
+        // 手动挡模式：脉冲已在 processManualDrive() 中处理
+        // angleDiff 保持 0，泥沙逻辑不会因转向产生额外扬尘
+    } else {
+        // 自动挡（摇杆）模式
+        player.targetAngle = input.targetAngle;
+
+        angleDiff = player.targetAngle - player.angle;
+        while(angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+        while(angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+        
+        player.angle += angleDiff * CONFIG.turnSpeed; 
+
+        let speed = CONFIG.moveSpeed * 0.3;
+        if(input.speedUp) speed = CONFIG.moveSpeed; 
+        
+        if(state.debug.fastMove) speed *= CONFIG.debugSpeedMultiplier;
+
+        if(input.move > 0) {
+            player.vx += Math.cos(player.targetAngle) * speed * CONFIG.acceleration;
+            player.vy += Math.sin(player.targetAngle) * speed * CONFIG.acceleration;
+        }
+
+        player.vx *= CONFIG.waterDrag;
+        player.vy *= CONFIG.waterDrag;
     }
-
-    let speed = CONFIG.moveSpeed * 0.3;
-    if(input.speedUp) speed = CONFIG.moveSpeed; 
-    
-if(state.debug.fastMove) speed *= CONFIG.debugSpeedMultiplier;
-
-    if(input.move > 0) {
-        player.vx += Math.cos(player.targetAngle) * speed * CONFIG.acceleration;
-        player.vy += Math.sin(player.targetAngle) * speed * CONFIG.acceleration;
-    }
-
-    player.vx *= CONFIG.waterDrag;
-    player.vy *= CONFIG.waterDrag;
 
     let nextX = player.x + player.vx;
     let nextY = player.y + player.vy;
@@ -1188,22 +1331,27 @@ export function updateArena() {
 
 // 竞技场玩家移动更新（复用主游戏逻辑，但无氧气消耗）
 function updateArenaPlayer() {
-    // 转向
-    player.targetAngle = input.targetAngle;
-    let angleDiff = player.targetAngle - player.angle;
-    while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-    while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-    player.angle += angleDiff * CONFIG.turnSpeed;
+    if (processManualDrive()) {
+        // 手动挡模式：脉冲已处理
+    } else {
+        // 自动挡（摇杆）模式
+        // 转向
+        player.targetAngle = input.targetAngle;
+        let angleDiff = player.targetAngle - player.angle;
+        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+        player.angle += angleDiff * CONFIG.turnSpeed;
 
-    // 移动
-    let speed = CONFIG.moveSpeed * 0.3;
-    if (input.speedUp) speed = CONFIG.moveSpeed;
-    if (input.move > 0) {
-        player.vx += Math.cos(player.targetAngle) * speed * CONFIG.acceleration;
-        player.vy += Math.sin(player.targetAngle) * speed * CONFIG.acceleration;
+        // 移动
+        let speed = CONFIG.moveSpeed * 0.3;
+        if (input.speedUp) speed = CONFIG.moveSpeed;
+        if (input.move > 0) {
+            player.vx += Math.cos(player.targetAngle) * speed * CONFIG.acceleration;
+            player.vy += Math.sin(player.targetAngle) * speed * CONFIG.acceleration;
+        }
+        player.vx *= CONFIG.waterDrag;
+        player.vy *= CONFIG.waterDrag;
     }
-    player.vx *= CONFIG.waterDrag;
-    player.vy *= CONFIG.waterDrag;
 
     // 碰撞检测
     const nextX = player.x + player.vx;
@@ -1679,6 +1827,8 @@ export function updateMaze() {
         input.speedUp = false;
         player.vx = 0;
         player.vy = 0;
+        // 手动挡：清空脉冲队列，防止松手后突然冲出
+        if (state.manualDrive) state.manualDrive.activeTouches = {};
     }
 
     // 撤离长按时也冻结玩家
@@ -1687,25 +1837,31 @@ export function updateMaze() {
         input.speedUp = false;
         player.vx = 0;
         player.vy = 0;
+        if (state.manualDrive) state.manualDrive.activeTouches = {};
     }
 
     // --- 玩家移动 ---
-    player.targetAngle = input.targetAngle;
-    let angleDiff = player.targetAngle - player.angle;
-    while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-    while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-    player.angle += angleDiff * CONFIG.turnSpeed;
+    if (processManualDrive()) {
+        // 手动挡模式：脉冲已处理
+    } else {
+        // 自动挡（摇杆）模式
+        player.targetAngle = input.targetAngle;
+        let angleDiff = player.targetAngle - player.angle;
+        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+        player.angle += angleDiff * CONFIG.turnSpeed;
 
-    let speed = (CONFIG.maze.moveSpeed || CONFIG.moveSpeed) * 0.3;
-    if (input.speedUp) speed = CONFIG.maze.moveSpeed || CONFIG.moveSpeed;
-    if (state.debug.fastMove) speed *= CONFIG.debugSpeedMultiplier;
+        let speed = (CONFIG.maze.moveSpeed || CONFIG.moveSpeed) * 0.3;
+        if (input.speedUp) speed = CONFIG.maze.moveSpeed || CONFIG.moveSpeed;
+        if (state.debug.fastMove) speed *= CONFIG.debugSpeedMultiplier;
 
-    if (input.move > 0) {
-        player.vx += Math.cos(player.targetAngle) * speed * CONFIG.acceleration;
-        player.vy += Math.sin(player.targetAngle) * speed * CONFIG.acceleration;
+        if (input.move > 0) {
+            player.vx += Math.cos(player.targetAngle) * speed * CONFIG.acceleration;
+            player.vy += Math.sin(player.targetAngle) * speed * CONFIG.acceleration;
+        }
+        player.vx *= CONFIG.waterDrag;
+        player.vy *= CONFIG.waterDrag;
     }
-    player.vx *= CONFIG.waterDrag;
-    player.vy *= CONFIG.waterDrag;
 
     // 碰撞检测（使用迷宫专属地图）
     const nextX = player.x + player.vx;

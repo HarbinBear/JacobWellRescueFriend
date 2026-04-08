@@ -1286,7 +1286,13 @@ export function drawControls() {
     const isArenaPrep = state.screen === 'fishArena' && state.fishArena && state.fishArena.phase === 'prep';
 
     if (!isArenaPrep) {
-        if(touches.joystickId !== null) {
+        if (CONFIG.manualDrive.enabled) {
+            // 手动挡模式：不显示摇杆，显示搓屏提示
+            if (touches.joystickId === null && !Object.keys(state.manualDrive.activeTouches || {}).length) {
+                ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.textAlign = 'center'; ctx.font = '14px Arial';
+                ctx.fillText('搓屏幕移动（方向与推水相反）', logicW/2, logicH-50);
+            }
+        } else if(touches.joystickId !== null) {
             ctx.beginPath(); ctx.arc(touches.start.x, touches.start.y, 40, 0, Math.PI*2);
             ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = 2; ctx.stroke();
             ctx.beginPath(); ctx.arc(touches.curr.x, touches.curr.y, 20, 0, Math.PI*2);
