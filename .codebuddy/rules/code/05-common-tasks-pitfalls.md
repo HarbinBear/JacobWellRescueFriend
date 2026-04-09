@@ -206,9 +206,17 @@ type: always
 
 如果需要改专项功能，再继续深入：
 
+- 手动挡移动：`src/logic/ManualDrive.ts`
+- 碰撞检测：`src/logic/Collision.ts`
+- 竞技场逻辑：`src/logic/ArenaLogic.ts`
+- 迷宫逻辑：`src/logic/MazeLogic.ts`
 - 绳索：`src/logic/Rope.ts`、`src/render/RenderRope.ts`
 - 敌鱼：`src/logic/FishEnemy.ts`、`src/render/RenderFishEnemy.ts`
-- UI：`src/render/RenderUI.ts`
+- 主线 HUD 与控制：`src/render/RenderUI.ts`
+- 菜单与章节选择：`src/render/RenderMenu.ts`
+- 结局画面：`src/render/RenderEnding.ts`
+- 竞技场 UI：`src/render/RenderArenaUI.ts`
+- 迷宫 UI：`src/render/RenderMazeUI.ts`
 - 光照：`src/render/RenderLight.ts`
 - 粒子：`src/logic/Particle.ts`
 - GM 调参：`src/gm/GMConfig.ts`、`src/gm/GMPanel.ts`、`src/gm/GMRender.ts`

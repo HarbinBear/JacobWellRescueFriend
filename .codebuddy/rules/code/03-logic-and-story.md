@@ -177,56 +177,41 @@ const storyManager = new StoryManager();
 
 ## 三、主逻辑总入口 `src/logic/Logic.ts`
 
-### 3.1 这是项目最重要的运行时文件
+### 3.1 逻辑层已拆分为多个模块
 
-`Logic.ts` 是主线与竞技场更新逻辑的核心总入口，也是当前项目里**最重、最关键、最容易产生耦合**的文件。
+`Logic.ts` 经过拆分后，不再是一个 2000+ 行的巨型文件，而是拆成了以下模块：
 
-它负责：
+- **`Logic.ts`**（约 980 行）：主线逻辑总入口，负责主线重置、主线每帧更新、NPC 更新、区域检测、剧情触发。同时作为逻辑层的统一导出入口，从子模块重新导出所有公共接口。
+- **`ManualDrive.ts`**（约 230 行）：手动挡移动处理 `processManualDrive()`，负责逐触点输入消费、各向异性水阻、身体朝向跟随、限速和动作运行态。
+- **`Collision.ts`**（约 100 行）：碰撞检测 `checkCollision()`、`getNearestWallDist()`、`checkMazeCollision()`。
+- **`ArenaLogic.ts`**（约 250 行）：竞技场初始化 `resetArenaLogic()`、每帧更新 `updateArena()`、玩家移动 `updateArenaPlayer()`、成就反馈。
+- **`MazeLogic.ts`**（约 620 行）：迷宫多次下潜闭环的全部逻辑，包括 `resetMazeLogic()`、`startMazeDive()`、`finishMazeDive()`、`returnToShore()`、`replayMazeLogic()`、`updateMaze()`。
 
-- 游戏开始与重置
-- 主线每帧更新
-- 竞技场每帧更新
-- NPC 更新
-- 碰撞检测
-- 氧气与氮气系统
-- 区域进入检测
-- 相机缩放
-- 过场切换
-- 各章节关键剧情触发
-- 与粒子、绳索、敌鱼、地图等系统协作
+外部调用方（如 `game.ts`、`input.ts`）仍然只从 `Logic.ts` 导入，不需要知道内部拆分细节。
 
 ### 3.2 关键导出接口
 
-接手时应优先认识这些导出函数：
+接手时应优先认识这些导出函数（全部从 `Logic.ts` 统一导出）：
 
-- `resetGameLogic(startStage, startPlay)`
-- `update()`
-- `resetArenaLogic()`
-- `updateArena()`
-- `resetMazeLogic()`
-- `startMazeDive(diveType)`：触发下潜，先进入 `diving_in` 入水动效阶段（约90帧），动效结束后自动切到 `play`
-- `returnToShore()`
-- `replayMazeLogic()`
-- `updateMaze()`：迷宫每帧更新，包含 `shore`（岸上不更新）、`diving_in`（入水动效计时）、`play`（正式游戏）等阶段分支；撤离按钮不区分下潜类型，只要未带人（`!maze.npcRescued`）就可长按上浮
-- `checkMazeCollision(x, y, maze)`
-- `checkCollision(x, y, isPlayer)`
-- `getNearestWallDist(x, y)`
-- `findNearestWall`（从绳索模块转导出）
-
-这几个函数构成了逻辑层的主公共接口。
+- `resetGameLogic(startStage, startPlay)` — 来自 `Logic.ts` 本体
+- `update()` — 来自 `Logic.ts` 本体
+- `resetArenaLogic()` — 来自 `ArenaLogic.ts`
+- `updateArena()` — 来自 `ArenaLogic.ts`
+- `resetMazeLogic()` — 来自 `MazeLogic.ts`
+- `startMazeDive(diveType)` — 来自 `MazeLogic.ts`
+- `returnToShore()` — 来自 `MazeLogic.ts`
+- `replayMazeLogic()` — 来自 `MazeLogic.ts`
+- `updateMaze()` — 来自 `MazeLogic.ts`
+- `checkCollision(x, y, isPlayer)` — 来自 `Collision.ts`
+- `getNearestWallDist(x, y)` — 来自 `Collision.ts`
+- `checkMazeCollision(x, y, maze)` — 来自 `Collision.ts`
+- `findNearestWall` — 从绳索模块转导出
 
 ### 3.3 主要依赖
 
-`Logic.ts` 顶部集中依赖了多个专项模块：
+`Logic.ts` 本体依赖：`config.ts`、`state.ts`、`map.ts`、`StoryManager.ts`、`Particle.ts`、`Rope.ts`、`FishEnemy.ts`、`ManualDrive.ts`、`Collision.ts`。
 
-- `config.ts`
-- `state.ts`
-- `map.ts`
-- `StoryManager.ts`
-- `Particle.ts`
-- `Rope.ts`
-- `FishEnemy.ts`
-
+子模块各自管理自己的依赖，不再全部集中在一个文件里。
 这意味着它不仅是“逻辑文件”，还是当前项目事实上的**玩法编排中心**。
 
 ---
