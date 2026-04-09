@@ -23,6 +23,11 @@ type: always
    - 理解地图、地标、玩家生存系统、绳索、凶猛鱼、NPC。
 4. 最后读 [04-interaction-and-engineering.md](./design/04-interaction-and-engineering.md)
    - 理解输入、UI、渲染、状态管理、主循环、工程约束与扩展建议。
+5. 按需补读专项分卷：
+   - [03b-maze-scene-design.md](./design/03b-maze-scene-design.md)：迷宫场景辨识度专项设计稿
+   - [05-dive-loop-and-production.md](./design/05-dive-loop-and-production.md)：多次下潜闭环的程序/美术/UI 拆解稿
+   - [06-diver-visual-design.md](./design/06-diver-visual-design.md)：潜水员角色表现与手动挡输入可视化设计稿
+   - [07-playdead-methodology-design.md](./design/07-playdead-methodology-design.md)：Playdead 方法论在本项目中的表现落地稿
 
 ## 最短阅读建议
 
@@ -36,9 +41,11 @@ type: always
 - **改剧情、分支、章节节奏**：优先读 `02-story-and-modes.md`
 - **改地图、地标、空间节奏**：优先读 `03-world-and-systems.md`
 - **改氧气、手电、绳索、凶猛鱼**：优先读 `03-world-and-systems.md`
-- **改迷宫场景辨识度、空间母题、区域材质与叙事物件**：优先读 `03-world-and-systems.md` 中的迷宫模式场景辨识度设计稿
+- **改迷宫场景辨识度、空间母题、区域材质与叙事物件**：优先读 `03b-maze-scene-design.md`
 - **改输入、UI、表现、状态切换**：优先读 `04-interaction-and-engineering.md`
-- **改画面统一性、Playdead 风格方法论、相机体感、表现层优先级**：优先读 `04-interaction-and-engineering.md` 中的 Playdead 方法论落地稿
+- **改多次下潜闭环、跨下潜持久化、岸上整理地图、正式救援状态**：优先读 `05-dive-loop-and-production.md`
+- **改潜水员角色绘制、手动挡动作联动、角色表现细调**：优先读 `06-diver-visual-design.md`
+- **改画面统一性、Playdead 风格方法论、相机体感、表现层优先级**：优先读 `07-playdead-methodology-design.md`
 
 ## 设计文档与技术文档分工
 
