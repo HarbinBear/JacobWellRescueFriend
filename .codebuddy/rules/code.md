@@ -38,6 +38,7 @@ type: always
 - **改状态字段、配置参数、输入接入**：优先读 `02-state-and-config.md`
 - **改章节推进、地图初始化、主线逻辑、竞技场逻辑**：优先读 `03-logic-and-story.md`
 - **改 UI、光照、绳索、敌鱼、粒子、渲染表现**：优先读 `04-render-and-special-systems.md`
+- **改 VPL 连续化、自动曝光稳定性、相机弹簧臂、水中摇曳、浅水区阳光系统**：优先读 `04-render-and-special-systems.md` 中的 Playdead 方法论对应技术落地稿
 - **改迷宫场景辨识度、区域主题、洞室标签、岸上认知地图扩展**：优先读 `04-render-and-special-systems.md` 中的迷宫模式场景辨识度扩展落点
 - **改多次下潜闭环、跨下潜持久化、岸上整理地图、正式救援状态**：优先串读 `02-state-and-config.md`、`03-logic-and-story.md` 与 `04-render-and-special-systems.md`
 

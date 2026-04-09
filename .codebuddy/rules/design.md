@@ -38,6 +38,7 @@ type: always
 - **改氧气、手电、绳索、凶猛鱼**：优先读 `03-world-and-systems.md`
 - **改迷宫场景辨识度、空间母题、区域材质与叙事物件**：优先读 `03-world-and-systems.md` 中的迷宫模式场景辨识度设计稿
 - **改输入、UI、表现、状态切换**：优先读 `04-interaction-and-engineering.md`
+- **改画面统一性、Playdead 风格方法论、相机体感、表现层优先级**：优先读 `04-interaction-and-engineering.md` 中的 Playdead 方法论落地稿
 
 ## 设计文档与技术文档分工
 
