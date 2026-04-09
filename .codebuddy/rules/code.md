@@ -21,8 +21,13 @@ type: always
    - 理解全局状态树、配置系统、输入系统，以及这些基础设施如何协作。
 3. 再读 [03-logic-and-story.md](./code/03-logic-and-story.md)
    - 理解地图初始化、剧情管理器、主线更新、竞技场更新、NPC 与碰撞查询。
-4. 最后读 [04-render-and-special-systems.md](./code/04-render-and-special-systems.md)
-   - 理解粒子、绳索、敌鱼、渲染总入口、常见修改落点和扩展时的坑。
+4. 再读 [04-render-subsystems.md](./code/04-render-subsystems.md)
+   - 理解粒子、绳索、敌鱼、渲染总入口、光照架构与数据流。
+5. 最后按需补读专项分卷：
+   - [05-common-tasks-pitfalls.md](./code/05-common-tasks-pitfalls.md)：常见需求定位、扩展陷阱与排障工具链
+   - [06-maze-scene-enhancement.md](./code/06-maze-scene-enhancement.md)：迷宫场景辨识度扩展落点
+   - [07-playdead-methodology.md](./code/07-playdead-methodology.md)：P6/P7/P8/曝光稳定性技术落地稿
+   - [08-code-summary-guidance.md](./code/08-code-summary-guidance.md)：代码层认知摘要与技术文档总索引
 
 ## 最短阅读建议
 
@@ -37,10 +42,11 @@ type: always
 - **改启动流程、模式切换、主循环**：优先读 `01-runtime-overview.md`
 - **改状态字段、配置参数、输入接入**：优先读 `02-state-and-config.md`
 - **改章节推进、地图初始化、主线逻辑、竞技场逻辑**：优先读 `03-logic-and-story.md`
-- **改 UI、光照、绳索、敌鱼、粒子、渲染表现**：优先读 `04-render-and-special-systems.md`
-- **改 VPL 连续化、自动曝光稳定性、相机弹簧臂、水中摇曳、浅水区阳光系统**：优先读 `04-render-and-special-systems.md` 中的 Playdead 方法论对应技术落地稿
-- **改迷宫场景辨识度、区域主题、洞室标签、岸上认知地图扩展**：优先读 `04-render-and-special-systems.md` 中的迷宫模式场景辨识度扩展落点
-- **改多次下潜闭环、跨下潜持久化、岸上整理地图、正式救援状态**：优先串读 `02-state-and-config.md`、`03-logic-and-story.md` 与 `04-render-and-special-systems.md`
+- **改 UI、光照、绳索、敌鱼、粒子、渲染表现**：优先读 `04-render-subsystems.md`
+- **改 VPL 连续化、自动曝光稳定性、相机弹簧臂、水中摇曳、浅水区阳光系统**：优先读 `07-playdead-methodology.md`
+- **改迷宫场景辨识度、区域主题、洞室标签、岸上认知地图扩展**：优先读 `06-maze-scene-enhancement.md`
+- **改多次下潜闭环、跨下潜持久化、岸上整理地图、正式救援状态**：优先串读 `02-state-and-config.md`、`03-logic-and-story.md` 与 `04-render-subsystems.md`
+- **不知道从哪里开始、需要整体导航**：优先读 `08-code-summary-guidance.md`
 
 ## 开发计划
 
