@@ -80,7 +80,18 @@ export const state = {
     },
     camera: {
         zoom: 1,
-        targetZoom: 1
+        targetZoom: 1,
+        // 弹簧臂相机位置
+        x: 0,
+        y: 0,
+        targetX: 0,
+        targetY: 0,
+        vx: 0,
+        vy: 0,
+        // 水中摇曳偏移
+        swayX: 0,
+        swayY: 0,
+        swayTime: 0,
     },
     transition: {
         active: false,
@@ -382,6 +393,17 @@ export function resetState() {
     player.angle = Math.PI/2;
     player.targetAngle = Math.PI/2;
     input.targetAngle = Math.PI/2;
+
+    // 同步归位相机到玩家位置（避免模式切换时相机残留旧坐标）
+    state.camera.x = player.x;
+    state.camera.y = player.y;
+    state.camera.targetX = player.x;
+    state.camera.targetY = player.y;
+    state.camera.vx = 0;
+    state.camera.vy = 0;
+    state.camera.swayX = 0;
+    state.camera.swayY = 0;
+    state.camera.swayTime = 0;
     
     // 随机目标名字
     target.name = CONFIG.targetNames[Math.floor(Math.random() * CONFIG.targetNames.length)];

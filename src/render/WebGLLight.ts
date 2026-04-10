@@ -167,7 +167,7 @@ export function initWebGLLight(): boolean {
         
         // 获取 uniform 位置
         const uniformNames = [
-            'u_resolution', 'u_playerPos', 'u_zoom', 'u_shake',
+            'u_resolution', 'u_playerPos', 'u_cameraPos', 'u_zoom', 'u_shake',
             'u_angle', 'u_fov', 'u_maxDist', 'u_flashlightActive',
             'u_centerFov', 'u_selfGlowRadius', 'u_selfGlowIntensity',
             'u_ambientRadius', 'u_ambientIntensity', 'u_maskAlpha',
@@ -220,6 +220,7 @@ export function initWebGLLight(): boolean {
         if (_maskUniforms['u_vplCount']) gl.uniform1f(_maskUniforms['u_vplCount']!, 0.0);
         if (_maskUniforms['u_zoom']) gl.uniform1f(_maskUniforms['u_zoom']!, 1.0);
         if (_maskUniforms['u_playerPos']) gl.uniform2f(_maskUniforms['u_playerPos']!, 0, 0);
+        if (_maskUniforms['u_cameraPos']) gl.uniform2f(_maskUniforms['u_cameraPos']!, 0, 0);
         if (_maskUniforms['u_shake']) gl.uniform2f(_maskUniforms['u_shake']!, 0, 0);
         if (_maskUniforms['u_hasSilt']) gl.uniform1f(_maskUniforms['u_hasSilt']!, 0.0);
         // 绑定纹理
@@ -420,6 +421,7 @@ function computeExposure(flashlightActive: boolean): number {
 
 function setCommonUniforms(u: Record<string, WebGLUniformLocation | null>, params: {
     playerX: number, playerY: number,
+    cameraX: number, cameraY: number,
     zoom: number, shakeX: number, shakeY: number,
     angle: number, maxDist: number,
     flashlightActive: boolean,
@@ -433,6 +435,7 @@ function setCommonUniforms(u: Record<string, WebGLUniformLocation | null>, param
     
     gl.uniform2f(u['u_resolution']!, logicW, logicH);
     gl.uniform2f(u['u_playerPos']!, params.playerX, params.playerY);
+    gl.uniform2f(u['u_cameraPos']!, params.cameraX, params.cameraY);
     gl.uniform1f(u['u_zoom']!, params.zoom);
     gl.uniform2f(u['u_shake']!, params.shakeX, params.shakeY);
     gl.uniform1f(u['u_angle']!, params.angle);
@@ -498,6 +501,7 @@ function bindTextures(u: Record<string, WebGLUniformLocation | null>) {
 // 渲染光照遮罩层（替代 Canvas 2D lightLayer）
 export function renderLightMask(params: {
     playerX: number, playerY: number,
+    cameraX: number, cameraY: number,
     zoom: number, shakeX: number, shakeY: number,
     angle: number, maxDist: number,
     flashlightActive: boolean,
@@ -538,6 +542,7 @@ export function renderLightMask(params: {
 // 渲染体积光层（需要在主画布上用 screen 模式合成）
 export function renderVolumetricLight(params: {
     playerX: number, playerY: number,
+    cameraX: number, cameraY: number,
     zoom: number, shakeX: number, shakeY: number,
     angle: number, maxDist: number,
     flashlightActive: boolean,

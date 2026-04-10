@@ -6,6 +6,7 @@ import { updateAllFishEnemies, createFishEnemy, findSafeSpawnPosition } from './
 import { processManualDrive } from './ManualDrive';
 import { checkCollision } from './Collision';
 import { triggerSilt } from './Particle';
+import { updateCameraSpringArm, snapCameraToPlayer } from './CameraLogic';
 
 // =============================================
 // 食人鱼纯享版：初始化竞技场
@@ -31,6 +32,9 @@ export function resetArenaLogic() {
     player.targetAngle = -Math.PI / 2;
     input.targetAngle = -Math.PI / 2;
     player.o2 = 100; // 无限氧气（不消耗）
+
+    // 相机归位到竞技场出生点
+    snapCameraToPlayer();
 
     // 初始化竞技场状态
     state.fishArena = {
@@ -136,6 +140,9 @@ export function updateArena() {
 
         // 更新玩家移动和攻击
         updateArenaPlayer();
+
+        // 相机弹簧臂跟随 + 水中摇曳
+        updateCameraSpringArm();
 
         // 更新鱼 AI
         updateAllFishEnemies(1);

@@ -73,6 +73,9 @@ export function draw() {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     
     let zoom = state.camera ? state.camera.zoom : 1;
+    // 相机最终位置 = 弹簧臂位置 + 水中摇曳偏移
+    const camX = (state.camera ? state.camera.x + state.camera.swayX : player.x);
+    const camY = (state.camera ? state.camera.y + state.camera.swayY : player.y);
     // 手电筒激活状态：受玩家手动开关控制，剧情特殊状态可覆盖
     let flashlightActive = state.flashlightOn !== false;
     
@@ -88,10 +91,10 @@ export function draw() {
     ctx.fillRect(0, 0, logicW, logicH);
 
     ctx.save();
-    // 摄像机变换：居中缩放
+    // 摄像机变换：居中缩放（使用相机位置而非玩家位置）
     ctx.translate(logicW/2 + shakeX, logicH/2 + shakeY);
     ctx.scale(zoom, zoom);
-    ctx.translate(-player.x, -player.y);
+    ctx.translate(-camX, -camY);
 
     // 绘制水面背景（明亮天空和浅水渐变）
     let skyGradient = ctx.createLinearGradient(0, -800, 0, 600);
@@ -155,10 +158,10 @@ export function draw() {
     // 绘制墙壁（使用 state.walls 支持不规则布局）
     let viewHalfW = (logicW/2) / zoom + 100;
     let viewHalfH = (logicH/2) / zoom + 100;
-    let viewL = player.x - viewHalfW;
-    let viewR = player.x + viewHalfW;
-    let viewT = player.y - viewHalfH;
-    let viewB = player.y + viewHalfH;
+    let viewL = camX - viewHalfW;
+    let viewR = camX + viewHalfW;
+    let viewT = camY - viewHalfH;
+    let viewB = camY + viewHalfH;
 
     const { tileSize: ts } = CONFIG;
 
@@ -504,6 +507,7 @@ export function draw() {
         // 渲染体积光（screen 模式叠加到主画布）
         renderVolumetricLight({
             playerX: player.x, playerY: player.y,
+            cameraX: camX, cameraY: camY,
             zoom, shakeX, shakeY,
             angle: player.angle, maxDist: vRayDist,
             flashlightActive: playerFlashlightActive,
@@ -520,6 +524,7 @@ export function draw() {
         // 渲染光照遮罩
         renderLightMask({
             playerX: player.x, playerY: player.y,
+            cameraX: camX, cameraY: camY,
             zoom, shakeX, shakeY,
             angle: player.angle, maxDist: rayDist,
             flashlightActive: playerFlashlightActive,
@@ -558,7 +563,7 @@ export function draw() {
             ctx.save();
             ctx.translate(logicW/2 + shakeX, logicH/2 + shakeY);
             ctx.scale(zoom, zoom);
-            ctx.translate(-player.x, -player.y);
+            ctx.translate(-camX, -camY);
             ctx.globalAlpha = visibility * maxAlpha;
             
             // 氧气罐造型：圆柱形罐体
@@ -609,8 +614,8 @@ export function draw() {
         ctx.fillRect(0, 0, logicW, logicH);
         
         // 鱼眼在灰色物体（氧气罐）的屏幕坐标位置
-        let screenX = logicW/2 + (CONFIG.grayThingX - player.x) * zoom + shakeX;
-        let screenY = logicH/2 + (CONFIG.grayThingY - player.y) * zoom + shakeY;
+        let screenX = logicW/2 + (CONFIG.grayThingX - camX) * zoom + shakeX;
+        let screenY = logicH/2 + (CONFIG.grayThingY - camY) * zoom + shakeY;
         
         // 鱼眼大小（占据视野中央）
         let eyeR = logicH * 0.38;
@@ -819,7 +824,7 @@ export function draw() {
     ctx.save();
     ctx.translate(logicW/2 + shakeX, logicH/2 + shakeY);
     ctx.scale(zoom, zoom);
-    ctx.translate(-player.x, -player.y);
+    ctx.translate(-camX, -camY);
     drawDustLitLayer(ctx, viewL, viewR, viewT, viewB, zoom, playerFlashlightActive);
     ctx.restore();
 
@@ -827,7 +832,7 @@ export function draw() {
     ctx.save();
     ctx.translate(logicW/2 + shakeX, logicH/2 + shakeY);
     ctx.scale(zoom, zoom);
-    ctx.translate(-player.x, -player.y);
+    ctx.translate(-camX, -camY);
     for(let p of particles) {
         if(p.type !== 'silt') continue;
         let siltAlpha = p.alpha * Math.max(0, p.life);
@@ -871,8 +876,8 @@ export function draw() {
     // 绘制刀光特效（在 UI 之上，屏幕空间）
     if (state.playerAttack && state.playerAttack.active) {
         const zoom = state.camera ? state.camera.zoom : 1;
-        const playerScreenX = logicW / 2 + shakeX;
-        const playerScreenY = logicH / 2 + shakeY;
+        const playerScreenX = logicW / 2 + (player.x - camX) * zoom + shakeX;
+        const playerScreenY = logicH / 2 + (player.y - camY) * zoom + shakeY;
         const totalSlashDur = CONFIG.attack.slashSwingDuration + CONFIG.attack.slashLingerDuration;
         if (state.playerAttack.timer <= totalSlashDur) {
             drawSlashEffect(
@@ -928,8 +933,8 @@ export function draw() {
     // 手动挡调试辅助线（在所有游戏内容之上、GM面板之下绘制）
     if (CONFIG.manualDrive.enabled && CONFIG.manualDrive.debugDraw &&
         (state.screen === 'play' || state.screen === 'fishArena' || state.screen === 'mazeRescue')) {
-        const cx = CONFIG.screenWidth / 2;
-        const cy = CONFIG.screenHeight / 2;
+        const cx = CONFIG.screenWidth / 2 + (player.x - camX) * zoom;
+        const cy = CONFIG.screenHeight / 2 + (player.y - camY) * zoom;
         const speed = Math.hypot(player.vx, player.vy);
         const md = state.manualDrive;
 

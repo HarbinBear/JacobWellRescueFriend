@@ -7,7 +7,8 @@ precision highp float;
 varying vec2 v_uv;
 
 uniform vec2 u_resolution;
-uniform vec2 u_playerPos;
+uniform vec2 u_playerPos;   // 玩家位置（光源中心）
+uniform vec2 u_cameraPos;   // 相机位置（屏幕中心对应的世界坐标）
 uniform float u_zoom;
 uniform vec2 u_shake;
 uniform float u_angle;
@@ -58,7 +59,7 @@ float angleDiff(float a, float b) {
 vec2 screenToWorld(vec2 uv) {
     vec2 screenPos = vec2(uv.x, 1.0 - uv.y) * u_resolution;
     vec2 centered = screenPos - u_resolution * 0.5 - u_shake;
-    return centered / u_zoom + u_playerPos;
+    return centered / u_zoom + u_cameraPos;
 }
 
 float smoothFade(float t) {

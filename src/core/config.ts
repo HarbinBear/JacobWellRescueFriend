@@ -383,6 +383,21 @@ export const CONFIG = {
         finTurnSkew: 0.28,          // 拐弯时蛙鞋的偏转量
     },
 
+    // ===== 相机系统（弹簧臂 + 水中摇曳）配置 =====
+    camera: {
+        // 弹簧臂跟随参数
+        followStiffness: 0.06,       // 跟随刚度（0~1，越大越紧跟，越小越松弛）
+        followDamping: 0.82,         // 跟随阻尼（0~1，越大速度衰减越快）
+        lookAheadDistance: 35,       // 前瞻距离（像素，相机会稍微偏向玩家前进方向）
+        lookAheadVelocityScale: 8,   // 前瞻速度缩放（速度越快前瞻越远）
+        // 水中摇曳参数
+        swayAmplitude: 1.8,          // 摇曳幅度（像素）
+        swayFrequencyA: 0.37,        // 摇曳频率A（低频主摆动）
+        swayFrequencyB: 0.53,        // 摇曳频率B（高频叠加，与A不成整数比避免重复）
+        // 模式切换
+        resetSnapSpeed: 0.3,         // 模式切换时相机快速归位的速率
+    },
+
     // ===== 玩家攻击（挥氧气瓶）配置 =====
     attack: {
         // 攻击范围

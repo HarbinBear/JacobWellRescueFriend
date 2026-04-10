@@ -165,6 +165,19 @@ export const TABS: GMTab[] = [
         ]
     },
     {
+        name: '相机',
+        items: [
+            { type: 'number', label: '跟随刚度', path: 'camera.followStiffness', min: 0.01, max: 0.3, step: 0.01, precision: 2 },
+            { type: 'number', label: '跟随阻尼', path: 'camera.followDamping', min: 0.5, max: 0.99, step: 0.01, precision: 2 },
+            { type: 'number', label: '前瞻距离', path: 'camera.lookAheadDistance', min: 0, max: 100, step: 5 },
+            { type: 'number', label: '前瞻速度缩放', path: 'camera.lookAheadVelocityScale', min: 0, max: 30, step: 1 },
+            { type: 'number', label: '摇曳幅度', path: 'camera.swayAmplitude', min: 0, max: 8, step: 0.2, precision: 1 },
+            { type: 'number', label: '摇曳频率A', path: 'camera.swayFrequencyA', min: 0.05, max: 1.5, step: 0.05, precision: 2 },
+            { type: 'number', label: '摇曳频率B', path: 'camera.swayFrequencyB', min: 0.05, max: 1.5, step: 0.05, precision: 2 },
+            { type: 'number', label: '归位速度', path: 'camera.resetSnapSpeed', min: 0.05, max: 1, step: 0.05, precision: 2 },
+        ]
+    },
+    {
         name: '后处理',
         items: [
             { type: 'bool', label: '手动曝光开关', path: 'postProcess.enableManualExposure' },

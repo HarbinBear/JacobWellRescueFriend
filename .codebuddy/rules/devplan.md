@@ -15,7 +15,7 @@
 | P4 | 水体渲染（悬浮尘埃） | 🔴 高 | ✅ 已完成 | 空间哈希尘埃 + 双层渲染 + 手电散射 |
 | P5 | 标记系统 | 🔴 高 | ⬜ 未开始 | 轮盘交互，替代旧长按绳索操作 |
 | P6 | 手电筒光照改进（VPL连续化） | 🟡 中 | ⬜ 未开始 | 离散虚拟光源 → 连续反射面 |
-| P7 | 相机系统（弹簧臂+水中摇曳） | 🟡 中 | ⬜ 未开始 | spring arm + 水中晃动 |
+| P7 | 相机系统（弹簧臂+水中摇曳） | 🟡 中 | ✅ 已完成 | spring arm + 水中晃动 |
 | P8 | 浅水区渲染（阳光系统） | 🟡 中 | ⬜ 未开始 | 太阳点光源射线检测 + 水面波纹投影 |
 | P9 | 音频系统 | 🟢 低 | ⬜ 未开始 | 背景音乐 + 动态音效（呼吸/撞墙/划水） |
 | P10 | 生命系统增强 | 🟢 低 | ⬜ 未开始 | 氧气与运动/撞墙关联 + 呼吸气泡表现 |
@@ -168,12 +168,12 @@
 - 两者叠加产生更自然的水下视觉体验
 
 **任务拆分**：
-- [ ] T7.1 在 `config.ts` 中新增相机参数（弹簧刚度、阻尼、摇曳幅度、摇曳频率）
-- [ ] T7.2 在 `state.ts` 中新增相机状态（实际位置、目标位置、摇曳偏移）
-- [ ] T7.3 实现 Spring Arm 跟随逻辑
-- [ ] T7.4 实现水中摇曳（Perlin 噪声或多频正弦叠加）
-- [ ] T7.5 处理模式切换时的相机重置
-- [ ] T7.6 GM 面板新增相机参数
+- [x] T7.1 在 `config.ts` 中新增相机参数（弹簧刚度、阻尼、摇曳幅度、摇曳频率）
+- [x] T7.2 在 `state.ts` 中新增相机状态（实际位置、目标位置、摇曳偏移）
+- [x] T7.3 实现 Spring Arm 跟随逻辑
+- [x] T7.4 实现水中摇曳（多频正弦叠加）
+- [x] T7.5 处理模式切换时的相机重置
+- [x] T7.6 GM 面板新增相机参数
 - [ ] T7.7 与手动挡移动联动测试
 
 ### P8：浅水区渲染——阳光系统 🟡 中优先
@@ -451,11 +451,44 @@ P3（岩石一致性）──→ P5（标记系统，标记位置依赖准确的
 - 学 Playdead 应学“低复杂度高一致性、时间稳定性、效果减法、微动作与轮廓优先”，而不是照搬完整算法栈
 - `P8` 当前应视为新系统，不应早于 `P6` 和曝光稳定性启动
 
+### P7：相机系统——弹簧臂 + 水中摇曳（2026-04-10）
+
+**设计思路**：
+将相机从"硬锁玩家中心"升级为"弹簧臂跟随 + 水中摇曳"，让画面有水下漂浮感，同时不影响操作判断。
+
+**核心机制**：
+1. **弹簧臂跟随**：相机目标 = 玩家位置 + 前瞻偏移（速度越快前瞻越远），实际位置通过弹簧刚度 + 阻尼追踪目标
+2. **前瞻偏移**：速度 > 0.5 时，相机偏向玩家前进方向，最大偏移 `lookAheadDistance`（35px），受 `lookAheadVelocityScale` 缩放
+3. **水中摇曳**：多频正弦叠加（频率A=0.37、频率B=0.53，不成整数比避免重复），幅度 1.8px，只增加微弱漂浮感
+4. **光照分离**：shader 中新增 `u_cameraPos` uniform 用于屏幕坐标→世界坐标恢复，`u_playerPos` 保持不变用于光源位置计算
+
+**修改文件**：
+- `src/core/config.ts`：新增 `camera` 配置组（followStiffness、followDamping、lookAheadDistance、lookAheadVelocityScale、swayAmplitude、swayFrequencyA、swayFrequencyB、resetSnapSpeed）
+- `src/core/state.ts`：`camera` 扩展为完整运行态（x/y/targetX/targetY/vx/vy/swayX/swayY/swayTime + 原有 zoom/targetZoom）
+- `src/logic/CameraLogic.ts`（新建）：`updateCameraSpringArm()` 弹簧臂跟随 + 水中摇曳、`snapCameraToPlayer()` 快速归位
+- `src/logic/Logic.ts`：主线 `update()` 中在 zoom 更新后调用 `updateCameraSpringArm()`；`resetGameLogic()` 初始化完整相机状态
+- `src/logic/ArenaLogic.ts`：竞技场 fight 阶段调用 `updateCameraSpringArm()`
+- `src/logic/MazeLogic.ts`：迷宫 play 阶段调用 `updateCameraSpringArm()`；`resetMazeLogic()` 初始化完整相机状态
+- `src/render/Render.ts`：所有世界层绘制从 `player.x/y` 改为 `camX/camY`（= camera.x + swayX）；视口裁剪、灰色物体、鱼眼闪现、刀光特效、调试辅助线的屏幕坐标计算同步更新
+- `src/render/shaders/maskFrag.glsl`：新增 `u_cameraPos` uniform，`screenToWorld()` 改用 `u_cameraPos`
+- `src/render/shaders/volumetricFrag.glsl`：同上
+- `src/render/WebGLLight.ts`：注册 `u_cameraPos` uniform，`renderLightMask()` 和 `renderVolumetricLight()` 参数新增 `cameraX/cameraY`
+- `src/core/input.ts`：迷宫 NPC 屏幕坐标计算改用相机位置
+- `src/gm/GMConfig.ts`：新增"相机"Tab（8个可调参数）
+
+**默认参数**：`followStiffness=0.06`、`followDamping=0.82`、`lookAheadDistance=35`、`swayAmplitude=1.8`，通过 GM 面板运行时调整
+
+**关键教训（2026-04-10 深夜修复）**：
+- `.glsl` 源文件修改后，必须运行 `node scripts/buildShaders.js` 重新生成 `.glsl.ts` 文件
+- TypeScript 编译时导入的是 `.glsl.ts`（由 `buildShaders.js` 从 `.glsl` 转换而来），不是 `.glsl` 源文件本身
+- 如果只改了 `.glsl` 但没重新生成 `.glsl.ts`，运行时 shader 仍然是旧版本，会导致光照与世界绘制错位
+- 同时修复了所有模式切换路径中相机位置未初始化的问题（`resetState()`、`resetArenaLogic()`、`resetMazeLogic()`、`startMazeDive()` 都需要在设置 `player.x/y` 后同步归位相机）
+
 ## 五、当前迭代状态
 
-**当前迭代**：第一轮迭代进行中（手动挡与角色表现第一版已先定稿）
-**已完成**：P3 岩石一致性、P4 悬浮尘埃、P1 手动挡模式（第一版联调完成）、P2 角色表现（第一版动作联动完成）
-**下一步**：P1/T1.8 真机测试与手感细调、P2/T2.8 朝向验证、P2/T2.9 表现细抠
+**当前迭代**：第四轮迭代进行中（相机系统第一版已完成）
+**已完成**：P3 岩石一致性、P4 悬浮尘埃、P1 手动挡模式（第一版联调完成）、P2 角色表现（第一版动作联动完成）、P7 相机系统（弹簧臂+水中摇曳第一版完成）
+**下一步**：P7/T7.7 真机联动测试、P1/T1.8 真机测试与手感细调、P2/T2.8 朝向验证、P2/T2.9 表现细抠
 
 ---
 
@@ -465,4 +498,5 @@ P3（岩石一致性）──→ P5（标记系统，标记位置依赖准确的
 2. 涉及 GM 面板的改动，新增参数统一在 `GMConfig.ts` 的 `TABS` 中添加
 3. 涉及状态新增的改动，必须同步检查 `resetState()` / `resetGameLogic()` / `resetArenaLogic()` / `resetMazeLogic()`
 4. 光照相关改动需要注意手机端 WebGL 兼容性（`preserveDrawingBuffer: true`、`gl.flush()`）
-5. 不要重新引入之前被撤回的蓝噪声体积光和 2.5D 岩石光照方案 [[memory:wfnip8mk]]
+5. **修改 `.glsl` 源文件后，必须运行 `node scripts/buildShaders.js` 重新生成 `.glsl.ts`**，否则运行时 shader 仍是旧版本
+6. 不要重新引入之前被撤回的蓝噪声体积光和 2.5D 岩石光照方案 [[memory:wfnip8mk]]

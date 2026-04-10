@@ -8,10 +8,13 @@ import { updateAllFishEnemies, createFishEnemy, findSafeSpawnPosition } from './
 import { processManualDrive } from './ManualDrive';
 import { checkCollision, getNearestWallDist, checkMazeCollision } from './Collision';
 
+import { updateCameraSpringArm, snapCameraToPlayer } from './CameraLogic';
+
 // 从拆分模块重新导出，保持外部导入路径不变
 export { resetArenaLogic, updateArena } from './ArenaLogic';
 export { resetMazeLogic, startMazeDive, returnToShore, replayMazeLogic, updateMaze } from './MazeLogic';
 export { checkCollision, getNearestWallDist, checkMazeCollision } from './Collision';
+export { updateCameraSpringArm, snapCameraToPlayer } from './CameraLogic';
 export { findNearestWall };
 
 const storyManager = new StoryManager();
@@ -362,7 +365,14 @@ export function resetGameLogic(startStage, startPlay) {
         state.invisibleWalls = [];
     }
     
-    state.camera = { zoom: 1, targetZoom: 1 };
+    state.camera = {
+        zoom: 1, targetZoom: 1,
+        x: player.x, y: player.y,
+        targetX: player.x, targetY: player.y,
+        vx: 0, vy: 0,
+        swayX: 0, swayY: 0, swayTime: 0,
+    };
+    snapCameraToPlayer();
     state.antiStuck = { timer: 0, lastPos: {x:player.x, y:player.y} };
 
     if (startPlay) {
@@ -488,7 +498,13 @@ export function update() {
     }
 
     // --- 摄像机控制 ---
-    if(!state.camera) state.camera = { zoom: 1, targetZoom: 1 };
+    if(!state.camera) state.camera = {
+        zoom: 1, targetZoom: 1,
+        x: player.x, y: player.y,
+        targetX: player.x, targetY: player.y,
+        vx: 0, vy: 0,
+        swayX: 0, swayY: 0, swayTime: 0,
+    };
     let targetZoom = 1.0;
     if(state.landmarks.tunnelEntry) {
         let dist = Math.hypot(player.x - state.landmarks.tunnelEntry.x, player.y - state.landmarks.tunnelEntry.y);
@@ -499,6 +515,9 @@ export function update() {
     if(state.story.stage === 4) targetZoom = 1.3;
     state.camera.targetZoom = targetZoom;
     state.camera.zoom += (state.camera.targetZoom - state.camera.zoom) * 0.02;
+
+    // --- 弹簧臂相机跟随 + 水中摇曳 ---
+    updateCameraSpringArm();
 
     // --- 防卡墙机制（第 3、5、6 阶段）---
     let inTunnel = false;

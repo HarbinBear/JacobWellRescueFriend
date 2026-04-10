@@ -70,27 +70,37 @@ type: always
 - 但当前平均亮度估算仍偏启发式
 - 更像"按手电状态和少量环境因子修正"，还不是"按场景亮度采样驱动"
 
-### 1.3 `P7` 当前落点：相机仍基本只有缩放
+### 1.3 `P7` 当前落点：弹簧臂 + 水中摇曳已完成 ✅
 
-当前相机相关核心代码在：
+相机系统已从"只有缩放"升级为"弹簧臂跟随 + 水中摇曳 + 前瞻偏移"。核心代码在：
 
 - `src/core/state.ts`
-  - `state.camera.zoom`
-  - `state.camera.targetZoom`
+  - `state.camera`：完整运行态（x/y/targetX/targetY/vx/vy/swayX/swayY/swayTime + zoom/targetZoom）
+- `src/core/config.ts`
+  - `CONFIG.camera`：弹簧刚度、阻尼、前瞻距离、摇曳幅度/频率等 8 个参数
+- `src/logic/CameraLogic.ts`（独立模块，避免循环依赖）
+  - `updateCameraSpringArm()`：弹簧臂跟随 + 水中摇曳
+  - `snapCameraToPlayer()`：快速归位（模式切换/重置时调用）
 - `src/logic/Logic.ts`
-  - 初始化 `state.camera = { zoom: 1, targetZoom: 1 }`
-  - `update()` 内按剧情阶段更新 `targetZoom`
-  - 用插值更新 `zoom`
+  - 主线 `update()` 中在 zoom 更新后调用 `updateCameraSpringArm()`
+- `src/logic/ArenaLogic.ts` / `src/logic/MazeLogic.ts`
+  - 竞技场和迷宫模式同样调用 `updateCameraSpringArm()`
 - `src/render/Render.ts`
-  - 所有世界层绘制都以 `state.camera.zoom` 为缩放入口
+  - 所有世界层绘制以 `camX/camY`（= camera.x + swayX）为屏幕中心
+- `src/render/shaders/maskFrag.glsl` / `volumetricFrag.glsl`
+  - 新增 `u_cameraPos` uniform 用于屏幕→世界坐标恢复
+  - `u_playerPos` 保持不变用于光源位置计算
 - `src/render/WebGLLight.ts`
-  - `u_zoom` uniform 参与世界坐标恢复
+  - `renderLightMask()` 和 `renderVolumetricLight()` 参数新增 `cameraX/cameraY`
+- `src/gm/GMConfig.ts`
+  - 新增"相机"Tab（8 个可调参数）
 
-现状特点：
+关键设计决策：
 
-- 画面缩放已经是统一相机入口
-- 但还没有真实相机位置、速度、弹簧跟随、漂浮偏移等运行态
-- 目前玩家基本仍是"固定在屏幕中心附近"
+- **光照与相机分离**：shader 中 `u_cameraPos` 用于屏幕坐标→世界坐标恢复，`u_playerPos` 用于光源计算，两者独立
+- **独立模块**：`CameraLogic.ts` 避免 Logic↔MazeLogic↔ArenaLogic 的循环依赖
+- **所有模式切换路径都调用 `snapCameraToPlayer()`**：`resetState()`、`resetGameLogic()`、`resetArenaLogic()`、`resetMazeLogic()`、`startMazeDive()` 都在设置 `player.x/y` 后同步归位相机
+- **`.glsl` 修改后必须运行 `node scripts/buildShaders.js`**：TypeScript 导入的是 `.glsl.ts`，不是 `.glsl` 源文件
 
 ### 1.4 `P8` 当前落点：还没有真正的水下阳光系统
 
@@ -254,7 +264,9 @@ type: always
 
 ---
 
-## 五、`P7` 实施稿：相机弹簧臂 + 水中轻微摇曳
+## 五、`P7` 实施稿：相机弹簧臂 + 水中轻微摇曳 ✅ 已完成
+
+> **本节内容已实施完成**，实际实现细节见 `devplan.md` 中 P7 的已完成工作记录。以下保留原始设计建议作为参考。
 
 ### 5.1 推荐总原则
 

@@ -7,6 +7,7 @@ import { triggerSilt, updateParticles, updateSplashes } from './Particle';
 import { updateRopeSystem } from './Rope';
 import { processManualDrive } from './ManualDrive';
 import { checkMazeCollision } from './Collision';
+import { updateCameraSpringArm, snapCameraToPlayer } from './CameraLogic';
 
 // 迷宫模式使用独立的 StoryManager 实例
 const storyManager = new StoryManager();
@@ -69,7 +70,13 @@ export function resetMazeLogic() {
     const mazeData = generateMazeMap();
 
     // 初始化相机
-    state.camera = { zoom: 1, targetZoom: 1 };
+    state.camera = {
+        zoom: 1, targetZoom: 1,
+        x: player.x, y: player.y,
+        targetX: player.x, targetY: player.y,
+        vx: 0, vy: 0,
+        swayX: 0, swayY: 0, swayTime: 0,
+    };
 
     // 初始化空的已探索快照
     const emptyExplored: boolean[][] = [];
@@ -145,6 +152,9 @@ export function resetMazeLogic() {
     player.targetAngle = Math.PI / 2;
     input.targetAngle = Math.PI / 2;
 
+    // 相机归位到迷宫出生点
+    snapCameraToPlayer();
+
     // 切换到迷宫模式
     state.screen = 'mazeRescue';
 }
@@ -183,6 +193,9 @@ export function startMazeDive(diveType: string) {
     state.fishBite = null;
     state.story.redOverlay = 0;
     state.story.shake = 0;
+
+    // 相机归位到下潜出生点
+    snapCameraToPlayer();
 
     // 重置撤离状态
     maze.retreatHolding = false;
@@ -465,6 +478,9 @@ export function updateMaze() {
             maze.playerPath.push({x: player.x, y: player.y});
         }
     }
+
+    // --- 相机弹簧臂跟随 + 水中摇曳 ---
+    updateCameraSpringArm();
 
     // --- 绳索系统 ---
     updateRopeSystem();

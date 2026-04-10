@@ -344,8 +344,10 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                 // 救援绑绳（发现NPC后即可绑绳，不区分下潜类型）
                 if (!maze.npcRescued && state.npc.active && mazeRescueTouchId === null) {
                     const zoom = state.camera ? state.camera.zoom : 1;
-                    const npcScreenX = CONFIG.screenWidth / 2 + (state.npc.x - player.x) * zoom;
-                    const npcScreenY = CONFIG.screenHeight / 2 + (state.npc.y - player.y) * zoom;
+                    const camX = state.camera ? state.camera.x + state.camera.swayX : player.x;
+                    const camY = state.camera ? state.camera.y + state.camera.swayY : player.y;
+                    const npcScreenX = CONFIG.screenWidth / 2 + (state.npc.x - camX) * zoom;
+                    const npcScreenY = CONFIG.screenHeight / 2 + (state.npc.y - camY) * zoom;
                     const screenDist = Math.hypot(t.clientX - npcScreenX, t.clientY - npcScreenY);
                     const worldDist = Math.hypot(player.x - state.npc.x, player.y - state.npc.y);
                     if (screenDist < 60 && worldDist < CONFIG.maze.npcRescueRange) {
