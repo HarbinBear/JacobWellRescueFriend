@@ -7,7 +7,7 @@ import { drawDiver } from './RenderDiver';
 import { drawUI, drawControls, drawSlashEffect } from './RenderUI';
 import { drawRopesWorld, drawRopeButton } from './RenderRope';
 import { drawAllFishEnemies, drawFishBiteEffect } from './RenderFishEnemy';
-import { drawMazeBackgroundDecorations, drawMazeWallShape, getMazeParticleColorByWorld, getMazeThemeColorByCell } from './RenderMazeScene';
+import { drawMazeBackgroundDecorations, drawMazeWallShape, getMazeParticleColorByWorld, getMazeThemeColorByCell, drawMazeShallowSky, drawMazeShallowWaterTint, getMazeShallowMaskAlpha } from './RenderMazeScene';
 import { drawGMButton, drawGMPanel } from '../gm/GMPanel';
 import { updateDustTime, drawDustDarkLayer, drawDustLitLayer } from './DustMotes';
 
@@ -87,7 +87,13 @@ export function draw() {
     }
 
     // 1. 绘制基础世界
-    ctx.fillStyle = '#252a30'; 
+    // 迷宫浅水区时用深蓝底色，避免天空渐变透明处露出灰色
+    const isMazeModeEarly = state.screen === 'mazeRescue' && state.mazeRescue;
+    if (isMazeModeEarly && CONFIG.maze.shallowWater.enabled) {
+        ctx.fillStyle = '#1a2a3a';
+    } else {
+        ctx.fillStyle = '#252a30';
+    }
     ctx.fillRect(0, 0, logicW, logicH);
 
     ctx.save();
@@ -96,66 +102,7 @@ export function draw() {
     ctx.scale(zoom, zoom);
     ctx.translate(-camX, -camY);
 
-    // 绘制水面背景（明亮天空和浅水渐变）
-    let skyGradient = ctx.createLinearGradient(0, -800, 0, 600);
-    skyGradient.addColorStop(0, '#87CEEB');
-    skyGradient.addColorStop(0.5, '#E0F7FA');
-    skyGradient.addColorStop(0.6, '#4DD0E1');
-    skyGradient.addColorStop(1, 'rgba(37, 42, 48, 0)');
-
-    ctx.fillStyle = skyGradient;
-    ctx.fillRect(-2000, -1000, 6000, 1600);
-
-    // 绘制水面线（多层波浪）
-    let time = Date.now() / 1000;
-    
-    // 后层波浪（较暗，较慢）
-    ctx.strokeStyle = 'rgba(100, 200, 255, 0.3)';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(-1000, 5);
-    for(let x=-1000; x<3000; x+=40) {
-        ctx.lineTo(x, 5 + Math.sin(x/150 + time*0.8)*8);
-    }
-    ctx.stroke();
-
-    // 绘制水花（在前后波浪之间）
-    drawSplashes();
-
-    // 前层波浪（明亮，较快）
-    ctx.strokeStyle = 'rgba(200, 240, 255, 0.8)';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(-1000, 5); 
-    for(let x=-1000; x<3000; x+=30) {
-        ctx.lineTo(x, 5 + Math.sin(x/100 + time)*5);
-    }
-    ctx.stroke();
-
-    // 绘制丁达尔光（仅在浅水区可见）
-    if(player.y < 600) {
-        ctx.save();
-        ctx.globalCompositeOperation = 'screen';
-        for(let i=0; i<5; i++) {
-            let rayX = (Math.floor(time * 20) + i * 200) % 2000 - 500;
-            let rayAngle = Math.PI/2 + Math.sin(time * 0.5 + i) * 0.2;
-            
-            let grad = ctx.createLinearGradient(rayX, 0, rayX + Math.cos(rayAngle)*400, Math.sin(rayAngle)*400);
-            grad.addColorStop(0, 'rgba(200, 255, 255, 0.15)');
-            grad.addColorStop(1, 'rgba(200, 255, 255, 0)');
-            
-            ctx.fillStyle = grad;
-            ctx.beginPath();
-            ctx.moveTo(rayX - 20, 0);
-            ctx.lineTo(rayX + 20, 0);
-            ctx.lineTo(rayX + Math.cos(rayAngle)*400 + 40, Math.sin(rayAngle)*400);
-            ctx.lineTo(rayX + Math.cos(rayAngle)*400 - 40, Math.sin(rayAngle)*400);
-            ctx.fill();
-        }
-        ctx.restore();
-    }
-
-    // 绘制墙壁（使用 state.walls 支持不规则布局）
+    // 提前计算视口范围和模式判断（天空渲染需要用到）
     let viewHalfW = (logicW/2) / zoom + 100;
     let viewHalfH = (logicH/2) / zoom + 100;
     let viewL = camX - viewHalfW;
@@ -167,6 +114,73 @@ export function draw() {
 
     // 迷宫模式：使用迷宫专属地图数据渲染
     const isMazeMode = state.screen === 'mazeRescue' && state.mazeRescue;
+
+    let time = Date.now() / 1000;
+
+    if (isMazeMode) {
+        // 迷宫模式：在出口附近绘制天空背景和水面波浪
+        const maze = state.mazeRescue;
+        drawMazeShallowSky(ctx, maze.exitX, maze.exitY, viewL, viewR, viewT, time);
+    } else {
+        // 主线/竞技场模式：原有天空和水面渲染
+        let skyGradient = ctx.createLinearGradient(0, -800, 0, 600);
+        skyGradient.addColorStop(0, '#87CEEB');
+        skyGradient.addColorStop(0.5, '#E0F7FA');
+        skyGradient.addColorStop(0.6, '#4DD0E1');
+        skyGradient.addColorStop(1, 'rgba(37, 42, 48, 0)');
+
+        ctx.fillStyle = skyGradient;
+        ctx.fillRect(-2000, -1000, 6000, 1600);
+
+        // 绘制水面线（多层波浪）
+        // 后层波浪（较暗，较慢）
+        ctx.strokeStyle = 'rgba(100, 200, 255, 0.3)';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(-1000, 5);
+        for(let x=-1000; x<3000; x+=40) {
+            ctx.lineTo(x, 5 + Math.sin(x/150 + time*0.8)*8);
+        }
+        ctx.stroke();
+
+        // 绘制水花（在前后波浪之间）
+        drawSplashes();
+
+        // 前层波浪（明亮，较快）
+        ctx.strokeStyle = 'rgba(200, 240, 255, 0.8)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(-1000, 5); 
+        for(let x=-1000; x<3000; x+=30) {
+            ctx.lineTo(x, 5 + Math.sin(x/100 + time)*5);
+        }
+        ctx.stroke();
+
+        // 绘制丁达尔光（仅在浅水区可见）
+        if(player.y < 600) {
+            ctx.save();
+            ctx.globalCompositeOperation = 'screen';
+            for(let i=0; i<5; i++) {
+                let rayX = (Math.floor(time * 20) + i * 200) % 2000 - 500;
+                let rayAngle = Math.PI/2 + Math.sin(time * 0.5 + i) * 0.2;
+                
+                let grad = ctx.createLinearGradient(rayX, 0, rayX + Math.cos(rayAngle)*400, Math.sin(rayAngle)*400);
+                grad.addColorStop(0, 'rgba(200, 255, 255, 0.15)');
+                grad.addColorStop(1, 'rgba(200, 255, 255, 0)');
+                
+                ctx.fillStyle = grad;
+                ctx.beginPath();
+                ctx.moveTo(rayX - 20, 0);
+                ctx.lineTo(rayX + 20, 0);
+                ctx.lineTo(rayX + Math.cos(rayAngle)*400 + 40, Math.sin(rayAngle)*400);
+                ctx.lineTo(rayX + Math.cos(rayAngle)*400 - 40, Math.sin(rayAngle)*400);
+                ctx.fill();
+            }
+            ctx.restore();
+        }
+    }
+
+    // 绘制墙壁（使用 state.walls 支持不规则布局）
 
     // 迷宫岸上阶段、入水动效和结算阶段：跳过水下场景渲染，只渲染UI
     if (isMazeMode && (state.mazeRescue.phase === 'shore' || state.mazeRescue.phase === 'diving_in' || state.mazeRescue.phase === 'debrief' || state.mazeRescue.phase === 'rescued')) {
@@ -188,6 +202,11 @@ export function draw() {
 
     if (isMazeMode && state.mazeRescue.sceneThemeMap) {
         drawMazeBackgroundDecorations(ctx, renderMap, viewRowMin, viewRowMax, viewColMin, viewColMax, renderTs);
+    }
+
+    // 迷宫模式：浅水区水域格子叠加浅蓝色调
+    if (isMazeMode) {
+        drawMazeShallowWaterTint(ctx, renderMap, viewRowMin, viewRowMax, viewColMin, viewColMax, renderTs, state.mazeRescue.exitY);
     }
 
     // 绘制实心内部填充（无缝，无网格边框）
@@ -445,7 +464,10 @@ export function draw() {
 
     // 2. 光照遮罩计算（WebGL）
     let depthFactor = 0;
-    if (player.y < CONFIG.darknessStartDepth) {
+    if (isMazeMode) {
+        // 迷宫模式：使用浅水区专属环境光计算
+        // maskAlpha 由浅水区函数直接返回
+    } else if (player.y < CONFIG.darknessStartDepth) {
         depthFactor = player.y / CONFIG.darknessStartDepth;
     } else {
         depthFactor = 1.0;
@@ -454,7 +476,9 @@ export function draw() {
     let baseAmbient = CONFIG.ambientLightSurface * (1 - depthFactor);
     if (baseAmbient < CONFIG.ambientLightDeep) baseAmbient = CONFIG.ambientLightDeep;
     let currentAmbient = baseAmbient;
-    let maskAlpha = Math.max(0, 1 - currentAmbient);
+    let maskAlpha = isMazeMode
+        ? getMazeShallowMaskAlpha(player.y, state.mazeRescue.exitY)
+        : Math.max(0, 1 - currentAmbient);
 
     let rayDist = CONFIG.lightRange;
 

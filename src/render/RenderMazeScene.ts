@@ -282,3 +282,175 @@ export function getMazeThemeLegendItems(sceneThemeKeys: string[] | null | undefi
         .filter(Boolean);
 }
 
+// ============ 迷宫浅水区渲染 ============
+
+import { CONFIG } from '../core/config';
+
+/**
+ * 计算迷宫模式下某个世界Y坐标的浅水区因子（0=深处洞穴，1=出口水面）
+ * @param worldY 世界Y坐标
+ * @param exitY 出口Y坐标
+ * @returns 0~1 的浅水因子
+ */
+export function getMazeShallowFactor(worldY: number, exitY: number): number {
+    const sw = CONFIG.maze.shallowWater;
+    if (!sw || !sw.enabled) return 0;
+    const surfaceY = exitY + sw.waterSurfaceY;
+    const deepY = surfaceY + sw.depth;
+    if (worldY <= surfaceY) return 1;
+    if (worldY >= deepY) return 0;
+    return 1 - (worldY - surfaceY) / (deepY - surfaceY);
+}
+
+/**
+ * 绘制迷宫浅水区天空背景和水面波浪
+ * 在世界坐标系中绘制（ctx已经做过相机变换）
+ */
+export function drawMazeShallowSky(
+    ctx: CanvasRenderingContext2D,
+    exitX: number,
+    exitY: number,
+    viewL: number,
+    viewR: number,
+    viewT: number,
+    time: number
+) {
+    const sw = CONFIG.maze.shallowWater;
+    if (!sw || !sw.enabled) return;
+
+    const surfaceY = exitY + sw.waterSurfaceY;
+    const skyTop = surfaceY - sw.skyHeight;
+
+    // 只在视口能看到天空/水面时才绘制
+    if (viewT > surfaceY + 200) return;
+
+    // 天空渐变背景（从明亮天蓝过渡到浅水区色调，延伸到水面以下避免灰色间隙）
+    const extendBelow = 500; // 天空渐变延伸到水面以下的距离
+    const totalHeight = sw.skyHeight + extendBelow;
+    const skyGrad = ctx.createLinearGradient(0, skyTop, 0, surfaceY + extendBelow);
+    skyGrad.addColorStop(0, sw.skyColorTop);
+    skyGrad.addColorStop(0.35, sw.skyColorMid);
+    // 水面附近用浅水区色调
+    const surfaceRatio = sw.skyHeight / totalHeight;
+    skyGrad.addColorStop(surfaceRatio * 0.9, sw.skyColorWater);
+    // 水面以下逐渐变透明，颜色用浅水区色调而非灰色
+    skyGrad.addColorStop(surfaceRatio, `rgba(${sw.tintR}, ${sw.tintG}, ${sw.tintB}, 0.5)`);
+    skyGrad.addColorStop(1, `rgba(${sw.tintR}, ${sw.tintG}, ${sw.tintB}, 0)`);
+    ctx.fillStyle = skyGrad;
+    ctx.fillRect(viewL - 100, skyTop, (viewR - viewL) + 200, totalHeight);
+
+    // 水面波浪
+    if (sw.waveEnabled) {
+        // 后层波浪（较暗，较慢）
+        ctx.strokeStyle = 'rgba(100, 200, 255, 0.3)';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        const waveStart = Math.floor(viewL / 40) * 40 - 40;
+        const waveEnd = Math.ceil(viewR / 40) * 40 + 40;
+        ctx.moveTo(waveStart, surfaceY + 5);
+        for (let x = waveStart; x < waveEnd; x += 40) {
+            ctx.lineTo(x, surfaceY + 5 + Math.sin(x / 150 + time * 0.8) * 8);
+        }
+        ctx.stroke();
+
+        // 前层波浪（明亮，较快）
+        ctx.strokeStyle = 'rgba(200, 240, 255, 0.8)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(waveStart, surfaceY + 5);
+        for (let x = waveStart; x < waveEnd; x += 30) {
+            ctx.lineTo(x, surfaceY + 5 + Math.sin(x / 100 + time) * 5);
+        }
+        ctx.stroke();
+    }
+
+    // 丁达尔光柱（浅水区可见）
+    if (sw.tyndallEnabled) {
+        ctx.save();
+        ctx.globalCompositeOperation = 'screen';
+        for (let i = 0; i < sw.tyndallCount; i++) {
+            // 光柱分布在出口附近
+            const rayX = exitX + (i - sw.tyndallCount / 2) * 200 + Math.sin(time * 0.3 + i * 1.5) * 80;
+            const rayAngle = Math.PI / 2 + Math.sin(time * 0.5 + i) * 0.2;
+
+            const grad = ctx.createLinearGradient(
+                rayX, surfaceY,
+                rayX + Math.cos(rayAngle) * 400, surfaceY + Math.sin(rayAngle) * 400
+            );
+            grad.addColorStop(0, `rgba(200, 255, 255, ${sw.tyndallAlpha})`);
+            grad.addColorStop(1, 'rgba(200, 255, 255, 0)');
+
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.moveTo(rayX - 20, surfaceY);
+            ctx.lineTo(rayX + 20, surfaceY);
+            ctx.lineTo(rayX + Math.cos(rayAngle) * 400 + 40, surfaceY + Math.sin(rayAngle) * 400);
+            ctx.lineTo(rayX + Math.cos(rayAngle) * 400 - 40, surfaceY + Math.sin(rayAngle) * 400);
+            ctx.fill();
+        }
+        ctx.restore();
+    }
+}
+
+/**
+ * 绘制迷宫浅水区水域的浅蓝色叠加
+ * 用一个大的垂直渐变覆盖整个浅水区，避免逐格子绘制产生色带和方块边缘
+ */
+export function drawMazeShallowWaterTint(
+    ctx: CanvasRenderingContext2D,
+    renderMap: any[][],
+    viewRowMin: number,
+    viewRowMax: number,
+    viewColMin: number,
+    viewColMax: number,
+    renderTs: number,
+    exitY: number
+) {
+    const sw = CONFIG.maze.shallowWater;
+    if (!sw || !sw.enabled || !sw.bgTintEnabled) return;
+
+    const surfaceY = exitY + sw.waterSurfaceY;
+    const deepY = surfaceY + sw.depth;
+
+    // 只在视口包含浅水区时才绘制
+    const viewTopWorld = viewRowMin * renderTs;
+    if (viewTopWorld > deepY) return;
+
+    // 用一个大的垂直渐变覆盖整个浅水区范围
+    // 从水面处最浓（tintAlpha）到深处完全透明，自然过渡无色带
+    const drawTop = Math.max(viewRowMin * renderTs, surfaceY);
+    const drawBottom = Math.min((viewRowMax + 1) * renderTs, deepY);
+    if (drawBottom <= drawTop) return;
+
+    const drawLeft = viewColMin * renderTs;
+    const drawRight = (viewColMax + 1) * renderTs;
+
+    const tintGrad = ctx.createLinearGradient(0, surfaceY, 0, deepY);
+    tintGrad.addColorStop(0, `rgba(${sw.tintR}, ${sw.tintG}, ${sw.tintB}, ${sw.tintAlpha})`);
+    tintGrad.addColorStop(1, `rgba(${sw.tintR}, ${sw.tintG}, ${sw.tintB}, 0)`);
+    ctx.fillStyle = tintGrad;
+    ctx.fillRect(drawLeft, drawTop, drawRight - drawLeft, drawBottom - drawTop);
+}
+
+/**
+ * 计算迷宫模式下的环境光（浅水区更亮）
+ * 返回 maskAlpha（0=全亮，1=全暗）
+ */
+export function getMazeShallowMaskAlpha(playerY: number, exitY: number): number {
+    const sw = CONFIG.maze.shallowWater;
+    if (!sw || !sw.enabled) {
+        // 不启用浅水区时，使用默认深洞逻辑
+        return Math.max(0, 1 - CONFIG.ambientLightDeep);
+    }
+
+    const factor = getMazeShallowFactor(playerY, exitY);
+    if (factor <= 0) {
+        // 深处：使用默认深洞环境光
+        return Math.max(0, 1 - CONFIG.ambientLightDeep);
+    }
+
+    // 浅水区：环境光从 ambientMin 渐变到 ambientMax
+    const ambient = sw.ambientMin + (sw.ambientMax - sw.ambientMin) * factor;
+    return Math.max(0, 1 - ambient);
+}
+

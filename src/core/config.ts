@@ -247,6 +247,28 @@ export const CONFIG = {
         sceneTransitionWidth: 100,
         stalactiteClusterChance: 0.3,
 
+        // === 浅水区渲染配置 ===
+        shallowWater: {
+            enabled: true,              // 浅水区渲染总开关
+            depth: 1800,                // 浅水区深度范围（从出口往下多少像素算浅水区）
+            skyHeight: 800,             // 天空背景高度（出口上方多少像素绘制天空）
+            ambientMax: 0.95,           // 浅水区最大环境光（出口处）
+            ambientMin: 0.0,            // 浅水区最小环境光（深处过渡到洞穴暗度）
+            waterSurfaceY: 0,           // 水面Y坐标偏移（相对于出口Y，0=出口处就是水面）
+            tintR: 60,                  // 浅水区水体色调R（0~255）
+            tintG: 180,                 // 浅水区水体色调G
+            tintB: 220,                 // 浅水区水体色调B
+            tintAlpha: 0.35,            // 浅水区水体色调叠加强度
+            skyColorTop: '#87CEEB',     // 天空顶部颜色
+            skyColorMid: '#E0F7FA',     // 天空中部颜色
+            skyColorWater: '#4DD0E1',   // 水面附近颜色
+            waveEnabled: true,          // 是否绘制水面波浪
+            tyndallEnabled: true,       // 是否绘制丁达尔光柱
+            tyndallCount: 5,            // 丁达尔光柱数量
+            tyndallAlpha: 0.15,         // 丁达尔光柱透明度
+            bgTintEnabled: true,        // 是否对浅水区水域格子叠加浅蓝色
+        },
+
         // === 多次下潜闭环配置 ===
         retreatHoldDuration: 1.0,   // 探路撤离长按秒数
         retreatBtnRadius: 36,       // 撤离按钮半径

@@ -1,3 +1,7 @@
+---
+# Please note: Do not modify the header of this document. If modified, CodeBuddy (Internal Edition) will apply the default logic settings.
+type: always
+---
 # 雅各布井开发计划
 
 > **本文档由 AI 自行维护**，记录所有待开发需求、优先级、任务拆分与完成状态。
@@ -499,4 +503,3 @@ P3（岩石一致性）──→ P5（标记系统，标记位置依赖准确的
 3. 涉及状态新增的改动，必须同步检查 `resetState()` / `resetGameLogic()` / `resetArenaLogic()` / `resetMazeLogic()`
 4. 光照相关改动需要注意手机端 WebGL 兼容性（`preserveDrawingBuffer: true`、`gl.flush()`）
 5. **修改 `.glsl` 源文件后，必须运行 `node scripts/buildShaders.js` 重新生成 `.glsl.ts`**，否则运行时 shader 仍是旧版本
-6. 不要重新引入之前被撤回的蓝噪声体积光和 2.5D 岩石光照方案 [[memory:wfnip8mk]]
