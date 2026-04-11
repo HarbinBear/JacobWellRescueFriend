@@ -321,103 +321,6 @@ export function drawMazeShallowSky(
 }
 
 /**
- * 绘制浅水区岩石的阳光反光和环境反射光
- * 在世界坐标系中绘制（ctx已经做过相机变换）
- * 应在墙体绘制之后、光照遮罩之前调用
- */
-export function drawMazeShallowRockReflections(
-    ctx: CanvasRenderingContext2D,
-    walls: any[],
-    exitY: number,
-    viewL: number,
-    viewR: number,
-    viewT: number,
-    viewB: number,
-    time: number
-) {
-    const sw = CONFIG.maze.shallowWater;
-    if (!sw || !sw.enabled || !sw.rockReflectEnabled) return;
-
-    const surfaceY = exitY + sw.waterSurfaceY;
-    const deepY = surfaceY + sw.depth;
-
-    // 只在视口包含浅水区时才绘制
-    if (viewT > deepY || viewB < surfaceY) return;
-
-    const reflectIntensity = sw.rockReflectIntensity || 0.45;
-    const reflectSize = sw.rockReflectSize || 0.35;
-    const ambientBoost = sw.rockAmbientBoost || 0.18;
-    const reflectColor = sw.rockReflectColor || [220, 240, 255];
-    const ambientColor = sw.rockAmbientColor || [100, 160, 200];
-    const sunAngle = sw.sunlightAngle || 0.25;
-
-    ctx.save();
-
-    for (const w of walls) {
-        // 视口裁剪
-        if (w.x < viewL - w.r || w.x > viewR + w.r || w.y < viewT - w.r || w.y > viewB + w.r) continue;
-
-        // 只对浅水区内的岩石生效
-        if (w.y < surfaceY || w.y > deepY) continue;
-
-        // 浅水因子：越靠近水面越强
-        // 用和环境光遮罩完全一致的衰减曲线，确保岩石亮度和环境光同步变化
-        const linearFactor = 1 - (w.y - surfaceY) / (deepY - surfaceY);
-        const shallowFactor = Math.pow(linearFactor, 0.3);
-        if (shallowFactor <= 0.02) continue;
-
-        // 额外乘以环境光遮罩的反值，让岩石反光和遮罩层完全同步
-        // 当环境光遮罩很暗时（maskAlpha接近1），岩石反光也应该几乎看不见
-        // getMazeShallowMaskAlpha 返回 maskAlpha（0=全亮，1=全暗）
-        const maskAlpha = getMazeShallowMaskAlpha(w.y, exitY);
-        const visibilityFactor = Math.max(0, 1 - maskAlpha);
-        if (visibilityFactor <= 0.02) continue;
-
-        const rr = reflectColor[0], rg = reflectColor[1], rb = reflectColor[2];
-        const ar = ambientColor[0], ag = ambientColor[1], ab = ambientColor[2];
-
-        // 1. 环境反射光（整个岩石表面的柔和亮化）
-        const ambAlpha = ambientBoost * visibilityFactor;
-        if (ambAlpha > 0.01) {
-            const ambGrad = ctx.createRadialGradient(w.x, w.y, w.r * 0.2, w.x, w.y, w.r * 1.1);
-            ambGrad.addColorStop(0, `rgba(${ar}, ${ag}, ${ab}, ${ambAlpha * 0.8})`);
-            ambGrad.addColorStop(0.6, `rgba(${ar}, ${ag}, ${ab}, ${ambAlpha * 0.4})`);
-            ambGrad.addColorStop(1, `rgba(${ar}, ${ag}, ${ab}, 0)`);
-            ctx.fillStyle = ambGrad;
-            ctx.beginPath();
-            ctx.arc(w.x, w.y, w.r * 1.1, 0, Math.PI * 2);
-            ctx.fill();
-        }
-
-        // 2. 阳光直射高光（岩石顶部偏向阳光方向的亮点）
-        const hlAlpha = reflectIntensity * visibilityFactor;
-        if (hlAlpha > 0.02) {
-            // 高光位置：岩石顶部偏向阳光入射方向
-            const hlOffsetX = -Math.sin(sunAngle) * w.r * 0.3;
-            const hlOffsetY = -w.r * 0.35;
-            const hlX = w.x + hlOffsetX;
-            const hlY = w.y + hlOffsetY;
-            const hlR = w.r * reflectSize;
-
-            // 高光有轻微闪烁（模拟水面波纹折射）
-            const flicker = 0.85 + Math.sin(time * 2.3 + w.x * 0.01 + w.y * 0.013) * 0.15;
-            const finalAlpha = hlAlpha * flicker;
-
-            const hlGrad = ctx.createRadialGradient(hlX, hlY, 0, hlX, hlY, hlR);
-            hlGrad.addColorStop(0, `rgba(${rr}, ${rg}, ${rb}, ${finalAlpha})`);
-            hlGrad.addColorStop(0.4, `rgba(${rr}, ${rg}, ${rb}, ${finalAlpha * 0.5})`);
-            hlGrad.addColorStop(1, `rgba(${rr}, ${rg}, ${rb}, 0)`);
-            ctx.fillStyle = hlGrad;
-            ctx.beginPath();
-            ctx.arc(hlX, hlY, hlR, 0, Math.PI * 2);
-            ctx.fill();
-        }
-    }
-
-    ctx.restore();
-}
-
-/**
  * 绘制迷宫浅水区水面焦散效果（水面波纹投影到水底的光斑）
  * 在世界坐标系中绘制，应在水域色调叠加之后调用
  */
@@ -529,27 +432,72 @@ export function drawMazeShallowWaterTint(
 }
 
 /**
- * 计算迷宫模式下的环境光（浅水区更亮）
+ * 计算迷宫模式下的全局环境光遮罩
  * 返回 maskAlpha（0=全亮，1=全暗）
+ *
+ * 从水面到深处用一条完全连续的曲线过渡，没有任何分段拼接或突变。
+ *
+ * 曲线设计：
+ *   factor = 1（水面）→ 0（浅水区底部）
+ *   用 pow(1 - factor, maskCurveExp) 把 factor 映射成 darkProgress（0=水面，1=最暗）
+ *   maskCurveExp > 1 时：前段（水面附近）变暗慢，后段快速变暗
+ *   maskCurveExp < 1 时：前段快速变暗，后段慢
+ *   maskCurveExp = 1 时：线性
+ *
+ * 可调参数（CONFIG.maze.shallowWater）：
+ *   ambientMax    - 水面处的环境光亮度（默认 0.95）
+ *   ambientMin    - 深处的环境光亮度（默认 0.01，等于 ambientLightDeep）
+ *   maskCurveExp  - 衰减曲线指数（默认 2.5，>1=前亮后暗快）
+ *   maskMidPoint  - 中点位置（0~1，在浅水区多深处亮度降到一半，默认 0.3）
  */
 export function getMazeShallowMaskAlpha(playerY: number, exitY: number): number {
     const sw = CONFIG.maze.shallowWater;
     if (!sw || !sw.enabled) {
-        // 不启用浅水区时，使用默认深洞逻辑
         return Math.max(0, 1 - CONFIG.ambientLightDeep);
     }
 
-    const factor = getMazeShallowFactor(playerY, exitY);
-    if (factor <= 0) {
-        // 深处：使用默认深洞环境光
-        return Math.max(0, 1 - CONFIG.ambientLightDeep);
+    const surfaceY = exitY + sw.waterSurfaceY;
+    const deepY = surfaceY + sw.depth;
+    const ambientMax = sw.ambientMax;
+    const ambientMin = sw.ambientMin;
+    const curveExp = sw.maskCurveExp || 2.5;
+    const midPoint = sw.maskMidPoint || 0.3;
+
+    // 水面以上：全亮
+    if (playerY <= surfaceY) {
+        return Math.max(0, 1 - ambientMax);
     }
 
-    // 浅水区：用幂函数加速光线下降，让浅水区很快变暗
-    // factor=1 时在水面，factor=0 时在深处
-    // 用 pow(factor, 0.3) 让光线在浅处更快下降
-    const adjustedFactor = Math.pow(factor, 0.3);
-    const ambient = sw.ambientMin + (sw.ambientMax - sw.ambientMin) * adjustedFactor;
-    return Math.max(0, 1 - ambient);
+    // 浅水区以下：全暗（等于深洞暗度）
+    if (playerY >= deepY) {
+        return Math.max(0, 1 - ambientMin);
+    }
+
+    // 浅水区内：连续曲线过渡
+    // t = 0（水面）→ 1（浅水区底部）
+    const t = (playerY - surfaceY) / (deepY - surfaceY);
+
+    // 用 midPoint 调整曲线形状：
+    // 当 t = midPoint 时，ambient 应该恰好在 (ambientMax + ambientMin) / 2
+    // 通过调整指数来实现：pow(midPoint, exp) = 0.5 → exp = ln(0.5) / ln(midPoint)
+    // 但为了简单可控，直接用 curveExp 作为主控参数，midPoint 作为辅助偏移
+    //
+    // 最终曲线：darkProgress = pow(t, curveExp * (1 / (-ln2 / ln(midPoint))))
+    // 简化为：先用 midPoint 计算等效指数，再和 curveExp 叠加
+    //
+    // 更直观的方案：用 curveExp 直接控制，midPoint 通过重映射 t 来实现
+    // 重映射：让 t 在 midPoint 处对应 darkProgress=0.5
+    // adjustedExp = log(0.5) / log(midPoint) * curveExp
+    const adjustedExp = midPoint > 0.01 && midPoint < 0.99
+        ? (-0.693147 / Math.log(midPoint)) * curveExp
+        : curveExp;
+
+    // darkProgress: 0（水面，全亮）→ 1（深处，全暗）
+    const darkProgress = Math.pow(t, adjustedExp);
+
+    // ambient 从 ambientMax 线性插值到 ambientMin
+    const ambient = ambientMax + (ambientMin - ambientMax) * darkProgress;
+
+    return Math.max(0, Math.min(1, 1 - ambient));
 }
 

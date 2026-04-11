@@ -202,6 +202,9 @@ export const TABS: GMTab[] = [
             { type: 'number', label: '浅水区深度', path: 'maze.shallowWater.depth', min: 500, max: 4000, step: 100 },
             { type: 'number', label: '天空高度', path: 'maze.shallowWater.skyHeight', min: 200, max: 2000, step: 100 },
             { type: 'number', label: '最大环境光', path: 'maze.shallowWater.ambientMax', min: 0.3, max: 1, step: 0.05, precision: 2 },
+            { type: 'number', label: '最小环境光', path: 'maze.shallowWater.ambientMin', min: 0, max: 0.3, step: 0.01, precision: 2 },
+            { type: 'number', label: '遮罩曲线指数', path: 'maze.shallowWater.maskCurveExp', min: 0.3, max: 5, step: 0.1, precision: 1 },
+            { type: 'number', label: '遮罩中点位置', path: 'maze.shallowWater.maskMidPoint', min: 0.05, max: 0.8, step: 0.05, precision: 2 },
             { type: 'number', label: '水体色调透明度', path: 'maze.shallowWater.tintAlpha', min: 0, max: 0.8, step: 0.05, precision: 2 },
             { type: 'bool', label: '阳光平行光', path: 'maze.shallowWater.sunlightEnabled' },
             { type: 'number', label: '阳光角度', path: 'maze.shallowWater.sunlightAngle', min: -0.8, max: 0.8, step: 0.05, precision: 2 },
@@ -212,10 +215,6 @@ export const TABS: GMTab[] = [
             { type: 'number', label: '光柱间距', path: 'maze.shallowWater.sunlightSpacing', min: 60, max: 400, step: 20 },
             { type: 'number', label: '光柱摇曳速度', path: 'maze.shallowWater.sunlightSwaySpeed', min: 0.1, max: 1.5, step: 0.1, precision: 1 },
             { type: 'number', label: '光柱摇曳幅度', path: 'maze.shallowWater.sunlightSwayAmount', min: 5, max: 80, step: 5 },
-            { type: 'bool', label: '岩石反光', path: 'maze.shallowWater.rockReflectEnabled' },
-            { type: 'number', label: '反光强度', path: 'maze.shallowWater.rockReflectIntensity', min: 0.05, max: 1, step: 0.05, precision: 2 },
-            { type: 'number', label: '反光大小', path: 'maze.shallowWater.rockReflectSize', min: 0.1, max: 0.8, step: 0.05, precision: 2 },
-            { type: 'number', label: '环境反射增强', path: 'maze.shallowWater.rockAmbientBoost', min: 0, max: 0.5, step: 0.02, precision: 2 },
         ]
     },
 ];

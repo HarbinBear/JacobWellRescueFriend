@@ -7,7 +7,7 @@ import { drawDiver } from './RenderDiver';
 import { drawUI, drawControls, drawSlashEffect } from './RenderUI';
 import { drawRopesWorld, drawRopeButton } from './RenderRope';
 import { drawAllFishEnemies, drawFishBiteEffect } from './RenderFishEnemy';
-import { drawMazeWallShape, getMazeParticleColorByWorld, getMazeThemeColorByCell, drawMazeShallowSky, drawMazeShallowWaterTint, drawMazeShallowCaustics, drawMazeShallowRockReflections, getMazeShallowMaskAlpha } from './RenderMazeScene';
+import { drawMazeWallShape, getMazeParticleColorByWorld, getMazeThemeColorByCell, drawMazeShallowSky, drawMazeShallowWaterTint, drawMazeShallowCaustics, getMazeShallowMaskAlpha } from './RenderMazeScene';
 import { drawGMButton, drawGMPanel } from '../gm/GMPanel';
 import { updateDustTime, drawDustDarkLayer, drawDustLitLayer } from './DustMotes';
 
@@ -238,9 +238,6 @@ export function draw() {
 
     // 迷宫模式：绘制出口标记
     if (isMazeMode) {
-        // 浅水区岩石阳光反光和环境反射光（在墙体绘制之后）
-        drawMazeShallowRockReflections(ctx, renderWalls, state.mazeRescue.exitY, viewL, viewR, viewT, viewB, time);
-
         const maze = state.mazeRescue;
         const exitX = maze.exitX;
         const exitY = maze.exitY;

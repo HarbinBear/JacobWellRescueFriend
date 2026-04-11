@@ -256,8 +256,10 @@ export const CONFIG = {
             enabled: true,              // 浅水区渲染总开关
             depth: 2000,                // 浅水区深度范围（从水面往下多少像素算浅水区）
             skyHeight: 400,             // 天空背景高度（水面上方多少像素绘制天空）
-            ambientMax: 0.95,           // 浅水区最大环境光（水面处）
-            ambientMin: 0.0,            // 浅水区最小环境光（深处过渡到洞穴暗度）
+            ambientMax: 0.95,           // 浅水区最大环境光（水面处，0=全暗，1=全亮）
+            ambientMin: 0.01,           // 浅水区最小环境光（深处，等于 ambientLightDeep）
+            maskCurveExp: 2.2,          // 环境光遮罩衰减曲线指数（>1=前段亮后段快速变暗，<1=前段快暗后段慢）
+            maskMidPoint: 0.05,          // 环境光遮罩中点位置（0~1，在浅水区多深处亮度降到一半）
             waterSurfaceY: 60,          // 水面Y坐标偏移（相对于出口Y，对齐洞口顶部=玩家可达水面）
             tintR: 60,                  // 浅水区水体色调R（0~255）
             tintG: 180,                 // 浅水区水体色调G
@@ -285,14 +287,6 @@ export const CONFIG = {
             sunlightSwayAmount: 30,     // 光柱摇曳幅度（像素）
             sunlightFadeStart: 0.3,     // 光柱从水面多深开始衰减（占总长比例）
             sunlightColor: [200, 240, 255], // 光柱颜色 RGB
-
-            // === 岩石阳光反光 ===
-            rockReflectEnabled: true,   // 是否启用岩石阳光反光
-            rockReflectIntensity: 0.45, // 岩石反光强度
-            rockReflectSize: 0.35,      // 反光高光大小（占岩石半径比例）
-            rockAmbientBoost: 0.18,     // 浅水区岩石环境反射光增强
-            rockReflectColor: [220, 240, 255], // 反光颜色 RGB
-            rockAmbientColor: [100, 160, 200], // 环境反射光颜色 RGB
         },
 
         // === 多次下潜闭环配置 ===
