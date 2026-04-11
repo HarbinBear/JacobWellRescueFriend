@@ -7,7 +7,7 @@ import { drawDiver } from './RenderDiver';
 import { drawUI, drawControls, drawSlashEffect } from './RenderUI';
 import { drawRopesWorld, drawRopeButton } from './RenderRope';
 import { drawAllFishEnemies, drawFishBiteEffect } from './RenderFishEnemy';
-import { drawMazeBackgroundDecorations, drawMazeWallShape, getMazeParticleColorByWorld, getMazeThemeColorByCell, drawMazeShallowSky, drawMazeShallowWaterTint, getMazeShallowMaskAlpha } from './RenderMazeScene';
+import { drawMazeBackgroundDecorations, drawMazeWallShape, getMazeParticleColorByWorld, getMazeThemeColorByCell, drawMazeShallowSky, drawMazeShallowWaterTint, drawMazeShallowCaustics, drawMazeShallowRockReflections, getMazeShallowMaskAlpha } from './RenderMazeScene';
 import { drawGMButton, drawGMPanel } from '../gm/GMPanel';
 import { updateDustTime, drawDustDarkLayer, drawDustLitLayer } from './DustMotes';
 
@@ -207,6 +207,8 @@ export function draw() {
     // 迷宫模式：浅水区水域格子叠加浅蓝色调
     if (isMazeMode) {
         drawMazeShallowWaterTint(ctx, renderMap, viewRowMin, viewRowMax, viewColMin, viewColMax, renderTs, state.mazeRescue.exitY);
+        // 浅水区水面焦散效果（波纹光斑）
+        drawMazeShallowCaustics(ctx, state.mazeRescue.exitX, state.mazeRescue.exitY, viewL, viewR, viewT, viewB, time);
     }
 
     // 绘制实心内部填充（无缝，无网格边框）
@@ -240,6 +242,9 @@ export function draw() {
 
     // 迷宫模式：绘制出口标记
     if (isMazeMode) {
+        // 浅水区岩石阳光反光和环境反射光（在墙体绘制之后）
+        drawMazeShallowRockReflections(ctx, renderWalls, state.mazeRescue.exitY, viewL, viewR, viewT, viewB, time);
+
         const maze = state.mazeRescue;
         const exitX = maze.exitX;
         const exitY = maze.exitY;
