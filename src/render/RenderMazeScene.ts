@@ -132,29 +132,74 @@ export function drawMazeShallowSky(
     if (viewT > deepY + 200) return;
 
     // === 天空 + 水下连续渐变（不透明，不露底色） ===
-    // 从天空顶部一直延伸到浅水区底部，全程不透明，颜色自然过渡
+    // 用密集色停消除色带，全程平滑插值
     const totalHeight = sw.skyHeight + sw.depth;
     const skyGrad = ctx.createLinearGradient(0, skyTop, 0, skyTop + totalHeight);
-    // 天空部分：明亮天蓝
-    skyGrad.addColorStop(0, sw.skyColorTop);
-    skyGrad.addColorStop(0.2, sw.skyColorMid);
-    // 水面附近：浅水色调
     const surfaceRatio = sw.skyHeight / totalHeight;
-    skyGrad.addColorStop(surfaceRatio * 0.85, sw.skyColorWater);
-    // 水面处：开始过渡到水下色调
-    const waterColorStr = `rgb(${sw.tintR}, ${sw.tintG}, ${sw.tintB})`;
-    skyGrad.addColorStop(surfaceRatio, waterColorStr);
-    // 水下光线快速下降：浅水区前15%就开始明显变暗
-    const deepColor = sw.skyColorDeep || '#1a3a5a';
-    const quickDarkRatio = surfaceRatio + (1 - surfaceRatio) * 0.15;
-    skyGrad.addColorStop(quickDarkRatio, deepColor);
-    // 浅水区前35%处已经很暗
-    const darkRatio = surfaceRatio + (1 - surfaceRatio) * 0.35;
-    skyGrad.addColorStop(darkRatio, '#0c1a28');
-    // 浅水区50%处完全进入深洞暗色，后半段平稳不变
-    const fullDarkRatio = surfaceRatio + (1 - surfaceRatio) * 0.5;
-    skyGrad.addColorStop(fullDarkRatio, '#080e15');
-    skyGrad.addColorStop(1, '#080e15');
+
+    // 定义关键颜色节点的 RGB 值
+    // 天空顶部 '#87CEEB' -> rgb(135, 206, 235)
+    const skyTopR = 135, skyTopG = 206, skyTopB = 235;
+    // 天空中部 '#E0F7FA' -> rgb(224, 247, 250)
+    const skyMidR = 224, skyMidG = 247, skyMidB = 250;
+    // 水面附近 '#4DD0E1' -> rgb(77, 208, 225)
+    const skyWaterR = 77, skyWaterG = 208, skyWaterB = 225;
+    // 水面色调
+    const wR = sw.tintR, wG = sw.tintG, wB = sw.tintB;
+    // 深蓝 '#1a3a5a' -> rgb(26, 58, 90)
+    const dR = 26, dG = 58, dB = 90;
+    // 最暗 '#080e15' -> rgb(8, 14, 21)
+    const kR = 8, kG = 14, kB = 21;
+
+    // 用 20 个均匀色停覆盖全程，彻底消除色带
+    const totalStops = 20;
+    for (let i = 0; i <= totalStops; i++) {
+        const globalT = i / totalStops; // 0 ~ 1，覆盖从天空顶到浅水区底
+        let r: number, g: number, b: number;
+
+        if (globalT <= surfaceRatio) {
+            // 天空部分：天空顶 -> 天空中 -> 水面色
+            const skyT = globalT / surfaceRatio; // 0~1 在天空范围内
+            if (skyT < 0.35) {
+                // 天空顶 -> 天空中
+                const lt = skyT / 0.35;
+                r = Math.round(skyTopR + (skyMidR - skyTopR) * lt);
+                g = Math.round(skyTopG + (skyMidG - skyTopG) * lt);
+                b = Math.round(skyTopB + (skyMidB - skyTopB) * lt);
+            } else if (skyT < 0.75) {
+                // 天空中 -> 水面色
+                const lt = (skyT - 0.35) / 0.4;
+                r = Math.round(skyMidR + (skyWaterR - skyMidR) * lt);
+                g = Math.round(skyMidG + (skyWaterG - skyMidG) * lt);
+                b = Math.round(skyMidB + (skyWaterB - skyMidB) * lt);
+            } else {
+                // 水面色 -> 水体色调
+                const lt = (skyT - 0.75) / 0.25;
+                r = Math.round(skyWaterR + (wR - skyWaterR) * lt);
+                g = Math.round(skyWaterG + (wG - skyWaterG) * lt);
+                b = Math.round(skyWaterB + (wB - skyWaterB) * lt);
+            }
+        } else {
+            // 水下部分：水体色调 -> 深蓝 -> 最暗
+            const underwaterT = (globalT - surfaceRatio) / (1 - surfaceRatio); // 0~1 在水下范围内
+            // 用幂函数让前段变化快、后段平稳
+            const darkT = Math.pow(underwaterT, 0.5);
+            if (darkT < 0.35) {
+                // 水色 -> 深蓝
+                const lt = darkT / 0.35;
+                r = Math.round(wR + (dR - wR) * lt);
+                g = Math.round(wG + (dG - wG) * lt);
+                b = Math.round(wB + (dB - wB) * lt);
+            } else {
+                // 深蓝 -> 最暗
+                const lt = (darkT - 0.35) / 0.65;
+                r = Math.round(dR + (kR - dR) * lt);
+                g = Math.round(dG + (kG - dG) * lt);
+                b = Math.round(dB + (kB - dB) * lt);
+            }
+        }
+        skyGrad.addColorStop(Math.min(globalT, 1), `rgb(${r}, ${g}, ${b})`);
+    }
     ctx.fillStyle = skyGrad;
     ctx.fillRect(viewL - 100, skyTop, (viewR - viewL) + 200, totalHeight);
 
@@ -316,14 +361,23 @@ export function drawMazeShallowRockReflections(
         if (w.y < surfaceY || w.y > deepY) continue;
 
         // 浅水因子：越靠近水面越强
-        const shallowFactor = 1 - (w.y - surfaceY) / (deepY - surfaceY);
+        // 用和环境光遮罩完全一致的衰减曲线，确保岩石亮度和环境光同步变化
+        const linearFactor = 1 - (w.y - surfaceY) / (deepY - surfaceY);
+        const shallowFactor = Math.pow(linearFactor, 0.3);
         if (shallowFactor <= 0.02) continue;
+
+        // 额外乘以环境光遮罩的反值，让岩石反光和遮罩层完全同步
+        // 当环境光遮罩很暗时（maskAlpha接近1），岩石反光也应该几乎看不见
+        // getMazeShallowMaskAlpha 返回 maskAlpha（0=全亮，1=全暗）
+        const maskAlpha = getMazeShallowMaskAlpha(w.y, exitY);
+        const visibilityFactor = Math.max(0, 1 - maskAlpha);
+        if (visibilityFactor <= 0.02) continue;
 
         const rr = reflectColor[0], rg = reflectColor[1], rb = reflectColor[2];
         const ar = ambientColor[0], ag = ambientColor[1], ab = ambientColor[2];
 
         // 1. 环境反射光（整个岩石表面的柔和亮化）
-        const ambAlpha = ambientBoost * shallowFactor;
+        const ambAlpha = ambientBoost * visibilityFactor;
         if (ambAlpha > 0.01) {
             const ambGrad = ctx.createRadialGradient(w.x, w.y, w.r * 0.2, w.x, w.y, w.r * 1.1);
             ambGrad.addColorStop(0, `rgba(${ar}, ${ag}, ${ab}, ${ambAlpha * 0.8})`);
@@ -336,7 +390,7 @@ export function drawMazeShallowRockReflections(
         }
 
         // 2. 阳光直射高光（岩石顶部偏向阳光方向的亮点）
-        const hlAlpha = reflectIntensity * shallowFactor;
+        const hlAlpha = reflectIntensity * visibilityFactor;
         if (hlAlpha > 0.02) {
             // 高光位置：岩石顶部偏向阳光入射方向
             const hlOffsetX = -Math.sin(sunAngle) * w.r * 0.3;
