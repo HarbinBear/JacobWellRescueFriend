@@ -28,15 +28,12 @@ function updateNPC() {
     let targetY = player.y;
     let speed = 2.8;
     
-if(state.debug.fastMove) speed *= CONFIG.debugSpeedMultiplier;
-    
     if(state.npc.state === 'to_dead_end') {
         // 第二关NPC救人后，独自游向假烟囱(394,2700)死路
         let deadEnd = state.landmarks.deadEndDeep;
         targetX = deadEnd.x;
         targetY = deadEnd.y;
         speed = 3.5;
-if(state.debug.fastMove) speed *= CONFIG.debugSpeedMultiplier;
         
         let dx = targetX - state.npc.x;
         let dy = targetY - state.npc.y;
@@ -60,7 +57,6 @@ if(state.debug.fastMove) speed *= CONFIG.debugSpeedMultiplier;
         targetX = player.x;
         targetY = player.y;
         speed = 4.5;
-        if(state.debug.fastMove) speed *= CONFIG.debugSpeedMultiplier;
         
         let dx = targetX - state.npc.x;
         let dy = targetY - state.npc.y;
@@ -89,7 +85,6 @@ if(state.debug.fastMove) speed *= CONFIG.debugSpeedMultiplier;
         targetX = player.x;
         targetY = player.y;
         speed = 3.5;
-        if(state.debug.fastMove) speed *= CONFIG.debugSpeedMultiplier;
     }
     else if(state.npc.state === 'follow') {
         if(!state.npc.offsetTimer) {
@@ -114,7 +109,6 @@ if(state.debug.fastMove) speed *= CONFIG.debugSpeedMultiplier;
         if(distToTarget > 100) speed = 3.5;
         else if(distToTarget < 20) speed = 0.5;
         else speed = 2.0;
-        if(state.debug.fastMove) speed *= CONFIG.debugSpeedMultiplier;
         
     } else if (state.npc.state === 'enter_tunnel') {
         if(!state.npc.pathIndex) state.npc.pathIndex = 0;
@@ -133,7 +127,6 @@ if(state.debug.fastMove) speed *= CONFIG.debugSpeedMultiplier;
             targetY = state.landmarks.tunnelEnd.y;
         }
         speed = 3.5;
-if(state.debug.fastMove) speed *= CONFIG.debugSpeedMultiplier;
 
         let dx = targetX - state.npc.x;
         let dy = targetY - state.npc.y;
@@ -187,7 +180,6 @@ if(state.debug.fastMove) speed *= CONFIG.debugSpeedMultiplier;
         targetX = player.x;
         targetY = player.y;
         speed = 3.5;
-        if(state.debug.fastMove) speed *= CONFIG.debugSpeedMultiplier;
     }
     
     let dx = targetX - state.npc.x;
@@ -632,8 +624,6 @@ export function update() {
 
         let speed = CONFIG.moveSpeed * 0.3;
         if(input.speedUp) speed = CONFIG.moveSpeed; 
-        
-        if(state.debug.fastMove) speed *= CONFIG.debugSpeedMultiplier;
 
         if(input.move > 0) {
             player.vx += Math.cos(player.targetAngle) * speed * CONFIG.acceleration;
@@ -895,20 +885,6 @@ export function update() {
     // 无限氧气开关
     if (CONFIG.infiniteO2) player.o2 = 100;
 
-    let depthM = Math.floor(player.y / CONFIG.tileSize);
-    let depthFactor = Math.max(0, (depthM - 5) / 20);
-    
-    player.n2 += depthFactor * 0.005; 
-    
-    if(depthM < 4 && player.n2 > 0) {
-        player.n2 -= 0.03; 
-        if(player.n2 < 0) player.n2 = 0;
-    }
-
-    if(player.vy < -CONFIG.safeAscentSpeed && depthM > 8) {
-        player.n2 += 0.5; 
-    }
-
     // 更新探索地图
     let exploreRadius = Math.ceil(CONFIG.lightRange / CONFIG.tileSize);
     let pr = Math.floor(player.y / CONFIG.tileSize);
@@ -993,11 +969,6 @@ export function update() {
 
     updateParticles();
 
-    // 更新凶猛鱼敌人（仅在游戏进行中且没有被咬死亡过场时）
-    if (!state.fishBite || !state.fishBite.active || state.fishBite.phase !== 'dead') {
-        updateAllFishEnemies(1);
-    } else {
-        // 死亡过场期间只更新被咬状态，不更新鱼的 AI
-        updateAllFishEnemies(1);
-    }
+    // 更新凶猛鱼敌人
+    updateAllFishEnemies(1);
 }

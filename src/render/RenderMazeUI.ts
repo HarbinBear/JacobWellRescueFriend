@@ -1,7 +1,6 @@
 import { CONFIG } from '../core/config';
 import { state, player } from '../core/state';
 import { ctx, logicW, logicH } from './Canvas';
-import { drawDiver, drawLungs } from './RenderDiver';
 import { getMazeSceneThemeConfigByIndex, getMazeMainThemeConfig } from '../world/mazeScene';
 import { getMazeThemeLegendItems } from './RenderMazeScene';
 

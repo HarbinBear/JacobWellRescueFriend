@@ -20,7 +20,6 @@ export function processManualDrive(): boolean {
     if (!md) return false;
 
     const cfg = CONFIG.manualDrive;
-    const debugMul = state.debug.fastMove ? CONFIG.debugSpeedMultiplier : 1;
 
     const moveScalar = (current: number, target: number, rise: number, fall: number) => {
         if (target > current) return Math.min(target, current + rise);
@@ -105,8 +104,8 @@ export function processManualDrive(): boolean {
         const effectiveProgress = effectiveDistNow / effectiveDistance;
         const progressStrength = 0.35 + effectiveProgress * cfg.thrustDistanceScale;
         const speedStrength = frameDist * cfg.thrustSpeedScale;
-        const thrustPower = Math.min(cfg.thrustMax, (cfg.thrustBase + progressStrength + speedStrength) * debugMul);
-        const turnPower = Math.min(cfg.turnMax, (cfg.turnBase + frameDist * cfg.turnSpeedScale) * debugMul);
+        const thrustPower = Math.min(cfg.thrustMax, cfg.thrustBase + progressStrength + speedStrength);
+        const turnPower = Math.min(cfg.turnMax, cfg.turnBase + frameDist * cfg.turnSpeedScale);
 
         const cosA = Math.cos(player.angle);
         const sinA = Math.sin(player.angle);
@@ -202,7 +201,7 @@ export function processManualDrive(): boolean {
     }
 
     // 限速
-    const maxSpd = cfg.maxSpeed * debugMul;
+    const maxSpd = cfg.maxSpeed;
     if (speed > maxSpd) {
         player.vx *= maxSpd / speed;
         player.vy *= maxSpd / speed;

@@ -18,11 +18,9 @@ const storyManager = new StoryManager();
 export function resetMazeLogic() {
     // 重置基础状态（不调用 resetState，避免污染主线地图）
     player.o2 = 100;
-    player.n2 = 0;
     player.silt = 0;
     player.vx = 0;
     player.vy = 0;
-    player.hasTarget = false;
     particles.length = 0;
     state.splashes = [];
     state.fishEnemies = [];
@@ -176,7 +174,6 @@ export function startMazeDive(diveType: string) {
 
     // 重置玩家状态
     player.o2 = 100;
-    player.n2 = 0;
     player.silt = 0;
     player.vx = 0;
     player.vy = 0;
@@ -436,7 +433,6 @@ export function updateMaze() {
 
         let speed = (CONFIG.maze.moveSpeed || CONFIG.moveSpeed) * 0.3;
         if (input.speedUp) speed = CONFIG.maze.moveSpeed || CONFIG.moveSpeed;
-        if (state.debug.fastMove) speed *= CONFIG.debugSpeedMultiplier;
 
         if (input.move > 0) {
             player.vx += Math.cos(player.targetAngle) * speed * CONFIG.acceleration;

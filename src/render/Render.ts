@@ -1,5 +1,5 @@
 import { CONFIG } from '../core/config';
-import { state, player, target, particles, touches } from '../core/state';
+import { state, player, particles, touches } from '../core/state';
 import { canvas, ctx, dpr, logicW, logicH } from './Canvas';
 import { computeSiltAttenuation, isLineOfSight, getLightPolygon } from './RenderLight';
 import { initWebGLLight, isWebGLAvailable, uploadPolyData, uploadSiltData, uploadVPLData, renderLightMask, renderVolumetricLight, getGLCanvas } from './WebGLLight';
@@ -14,26 +14,11 @@ import { updateDustTime, drawDustDarkLayer, drawDustLitLayer } from './DustMotes
 // 向后兼容，重新导出 canvas 和 ctx
 export { canvas, ctx };
 
-// 资源缓存
-const wallPatternCanvas = wx.createCanvas(); // 岩石纹理
-
 // WebGL 光照标志
 let _useWebGL = false;
 
 // --- 预生成岩石纹理 ---
 export function initTextures() {
-    wallPatternCanvas.width = 100;
-    wallPatternCanvas.height = 100;
-    const pCtx = wallPatternCanvas.getContext('2d');
-    pCtx.fillStyle = '#222'; 
-    pCtx.fillRect(0,0,100,100);
-    for(let i=0; i<300; i++) {
-        pCtx.fillStyle = Math.random() > 0.5 ? '#555' : '#333';
-        pCtx.beginPath();
-        pCtx.arc(Math.random()*100, Math.random()*100, Math.random()*3, 0, Math.PI*2);
-        pCtx.fill();
-    }
-    
     // 初始化 WebGL 光照
     _useWebGL = initWebGLLight();
     if (_useWebGL) {
@@ -325,30 +310,6 @@ export function draw() {
             ctx.font = t.font || '12px Consolas';
             ctx.fillText(t.text, t.x, t.y);
         }
-    }
-
-    // 绘制目标
-    if(target.found || player.hasTarget) {
-        ctx.fillStyle = '#0ff';
-        ctx.beginPath(); ctx.arc(target.x, target.y, 8, 0, Math.PI*2); ctx.fill();
-        
-        ctx.fillStyle = '#fff';
-        ctx.font = '12px Consolas';
-        ctx.textAlign = 'center';
-        ctx.fillText(target.name, target.x, target.y - 15);
-
-        if(player.hasTarget) {
-            ctx.strokeStyle = '#666'; ctx.lineWidth = 2;
-            ctx.beginPath(); ctx.moveTo(player.x, player.y); ctx.lineTo(target.x, target.y); ctx.stroke();
-        }
-    } else {
-        ctx.fillStyle = 'rgba(0, 255, 255, 0.2)';
-        ctx.beginPath(); ctx.arc(target.x, target.y, 6, 0, Math.PI*2); ctx.fill();
-        
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-        ctx.font = '10px Consolas';
-        ctx.textAlign = 'center';
-        ctx.fillText(target.name, target.x, target.y - 12);
     }
 
     // 绘制粒子（泥沙在光照层之后单独绘制）

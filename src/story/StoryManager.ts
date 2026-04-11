@@ -206,7 +206,6 @@ export class StoryManager {
                     player.x = entrance ? entrance.x : CONFIG.tileSize * (CONFIG.cols / 2);
                     player.y = entrance ? entrance.y : 80;
                     player.o2 = 100;
-                    player.n2 = 0;
                     
                     // 重置NPC为救援队友
                     state.npc.active = true;

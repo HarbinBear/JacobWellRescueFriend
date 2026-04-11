@@ -1,5 +1,5 @@
 import { CONFIG } from '../core/config';
-import { state, target } from '../core/state';
+import { state } from '../core/state';
 import { CAVE_MAP_DATA } from './mapData';
 import { createMazeSceneData } from './mazeScene';
 

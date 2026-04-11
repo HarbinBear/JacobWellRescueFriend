@@ -24,7 +24,6 @@ export const CONFIG = {
     lightRange: 650,      // 手电筒距离 (竖屏视野长，稍微增加距离)
     fov: 65,              // 视野角度 (竖屏稍微增加视野)
     moveSpeed: 14,         // 移动速度
-    safeAscentSpeed: 2.5, // 安全上浮速度阈值
     siltFactor: 1.0,      // 扬尘产生倍率
     rayCount: 360,        // 射线数量（越高光锥边缘越平滑）
     siltLife: 1,         // 扬尘生命周期
@@ -87,7 +86,6 @@ export const CONFIG = {
     ropeDriftSpeed: 0.8,           // 水流缓慢漂动速度
     ropeSegmentLength: 12,         // 绳子渲染分段长度（越小越平滑）
     ropeAvoidPadding: 12,          // 绳子绕岩石的额外间距
-    ropePathMaxIters: 12,          // 旧绕障最大迭代次数（已弃用，改用A*）
     ropeAStarMaxIters: 3000,       // A*寻路最大迭代次数
     ropeColor: 'rgba(230, 220, 170, 0.9)',   // 铺线中绳子颜色
     ropeTightColor: 'rgba(230, 220, 170, 1.0)', // 拉紧绳子颜色
@@ -100,8 +98,6 @@ export const CONFIG = {
     ropeTightenLerp: 0.12,         // 收紧绳子的插值系数
     ropeReelRadius: 8,             // 玩家身上线轮指示器半径
     ropeReelColor: 'rgba(200, 190, 140, 0.7)', // 线轮指示器颜色
-    // 目标名字库
-    targetNames: ["伟仔", "毛丁", "树茂", "熊", "亮子", "潘子"],
 
     // ===== 第三关关键点位配置 =====
     // 第一二洞室连接处（row20, col63）

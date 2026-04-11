@@ -135,7 +135,7 @@ type: always
 - [ ] T5.3 在 `input.ts` 中实现轮盘触摸交互（按住弹出、滑动选择、松手确认）
 - [ ] T5.4 实现上下文检测逻辑（判断附近是岩石/绳索/铺设中）
 - [ ] T5.5 实现标记放置逻辑（找最近岩石表面/绳索点）
-- [ ] T5.6 重构绳索操作入口（从长按改为轮盘触发）
+- [ ] 重构绳索操作入口（从长按改为轮盘触发）
 - [ ] T5.7 实现标记渲染（⭕ / ❌ 在岩石表面或绳索上的绘制）
 - [ ] T5.8 实现轮盘 UI 渲染
 - [ ] T5.9 标记数据跨下潜持久化
@@ -536,10 +536,45 @@ P3（岩石一致性）──→ P5（标记系统，标记位置依赖准确的
 - `tintR/G/B/Alpha`：水体色调
 - `waveEnabled` / `tyndallEnabled`：波浪和丁达尔开关
 
+### 废弃代码清理（2026-04-12）
+
+**背景**：系统性盘点项目中的废弃代码、空转逻辑和冗余代码，一次性清理 11 项。
+
+**清理内容**：
+
+1. **`CONFIG.ropePathMaxIters`**：注释已标注"已弃用，改用A*"，全项目无代码读取，直接删除
+2. **`wallPatternCanvas`（岩石纹理 Canvas）**：`Render.ts` 中创建了 100×100 岩石纹理 canvas 但从未被任何绘制代码使用，直接删除
+3. **`RenderMenu.ts` 的 `drawDiverSilhouette` 导入**：只有 import 无调用，删除
+4. **`RenderUI.ts` 的 `drawDiver`、`drawDiverSilhouette` 导入**：只有 import 无调用，删除（`drawLungs` 保留）
+5. **`RenderMazeUI.ts` 的 `drawDiver`、`drawLungs` 导入**：只有 import 无调用，删除
+6. **`target` 对象及相关渲染代码**：早期原型"寻找目标"功能残留，`target.found` 和 `player.hasTarget` 从未被设为 true，已被剧情系统完全替代。删除 `target` 导出、`targetNames` 配置、`Render.ts` 和 `RenderUI.ts` 中的 target 渲染代码、`map.ts` 中的 target 导入
+7. **`player.n2`（氮气系统）**：氮气值被计算和累积但从未被读取产生实际效果（不影响移动/视觉/死亡/UI），整个系统"只写不读"。删除 `player.n2` 字段及 `Logic.ts`、`MazeLogic.ts`、`StoryManager.ts` 中所有写入
+8. **`state.debug.fastMove`（调试快速移动）**：硬编码为 `true` 且 `debugSpeedMultiplier` 默认为 1，10+ 处引用实际无效果。删除 `state.debug` 对象及 `Logic.ts`、`ManualDrive.ts`、`MazeLogic.ts` 中所有引用
+9. **`CONFIG.safeAscentSpeed` + 快速上浮氮气惩罚**：随氮气系统一起删除
+10. **4 份重复的圆角矩形函数**：`Render.ts`、`RenderUI.ts`、`RenderMenu.ts`、`RenderEnding.ts` 各有一份 `roundRectPath`/`rrect`。**本次未处理**，属于重构性质改动，后续有需要再统一提取
+11. **敌鱼更新冗余 if/else 分支**：`Logic.ts` 中 if/else 两个分支都调用 `updateAllFishEnemies(1)`，合并为单行调用
+
+**修改文件**：
+- `src/core/config.ts`：删除 `ropePathMaxIters`、`safeAscentSpeed`、`targetNames`
+- `src/core/state.ts`：删除 `state.debug`、`player.n2`、`player.hasTarget`、`target` 导出，清理 `resetState()` 中相关重置
+- `src/logic/Logic.ts`：删除所有 `debug.fastMove` 引用（8处）、`n2` 氮气逻辑、`safeAscentSpeed` 引用、冗余 if/else 分支
+- `src/logic/ManualDrive.ts`：删除 `debugMul` 变量及所有引用（3处）
+- `src/logic/MazeLogic.ts`：删除 `player.n2`、`player.hasTarget`、`debug.fastMove` 引用
+- `src/story/StoryManager.ts`：删除 `player.n2 = 0`
+- `src/render/Render.ts`：删除 `target` 导入、`wallPatternCanvas` 创建和填充、target 渲染代码
+- `src/render/RenderUI.ts`：删除 `target` 导入、`drawDiver`/`drawDiverSilhouette` 导入、小地图中 target 渲染
+- `src/render/RenderMenu.ts`：删除 `drawDiverSilhouette` 导入
+- `src/render/RenderMazeUI.ts`：删除 `drawDiver`/`drawLungs` 导入
+- `src/world/map.ts`：删除 `target` 导入
+
+**验证**：`npm run typecheck` 通过，无 TypeScript 报错。
+
+---
+
 ## 五、当前迭代状态
 
-**当前迭代**：第四轮迭代进行中（相机系统第一版已完成，浅水区渲染第一版已完成，环境光遮罩连续化已完成）
-**已完成**：P3 岩石一致性、P4 悬浮尘埃、P1 手动挡模式（第一版联调完成）、P2 角色表现（第一版动作联动完成）、P7 相机系统（弹簧臂+水中摇曳第一版完成）、P8 浅水区渲染（天空连续化+阳光平行光+焦散+环境光遮罩连续化第一版完成）
+**当前迭代**：第四轮迭代进行中（相机系统第一版已完成，浅水区渲染第一版已完成，环境光遮罩连续化已完成，废弃代码清理已完成）
+**已完成**：P3 岩石一致性、P4 悬浮尘埃、P1 手动挡模式（第一版联调完成）、P2 角色表现（第一版动作联动完成）、P7 相机系统（弹簧臂+水中摇曳第一版完成）、P8 浅水区渲染（天空连续化+阳光平行光+焦散+环境光遮罩连续化第一版完成）、废弃代码清理（11项盘点清理完成）
 **下一步**：P8/T8.7 阳光与 shader 层深度融合、P8/T8.8 真机测试与参数细调、P7/T7.7 真机联动测试、P1/T1.8 真机测试与手感细调、P2/T2.8 朝向验证、P2/T2.9 表现细抠
 
 ---

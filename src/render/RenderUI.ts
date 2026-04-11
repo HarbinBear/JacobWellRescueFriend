@@ -1,7 +1,7 @@
 import { CONFIG } from '../core/config';
-import { state, player, target, touches } from '../core/state';
+import { state, player, touches } from '../core/state';
 import { ctx, canvas, logicW, logicH } from './Canvas';
-import { drawDiver, drawLungs, drawDiverSilhouette } from './RenderDiver';
+import { drawLungs } from './RenderDiver';
 import { createFishEnemy } from '../logic/FishEnemy';
 import { triggerPlayerAttack } from '../logic/FishEnemy';
 import { drawMenu } from './RenderMenu';
@@ -86,11 +86,6 @@ export function drawUI(){
             }
             ctx.fillStyle='#0f0';
             ctx.beginPath(); ctx.arc(mapX+(player.x/CONFIG.tileSize)*scaleX, mapY+(player.y/CONFIG.tileSize)*scaleY, 2, 0, Math.PI*2); ctx.fill();
-            let tr=Math.floor(target.y/CONFIG.tileSize), tc=Math.floor(target.x/CONFIG.tileSize);
-            if(target.found||(state.explored[tr]&&state.explored[tr][tc])) {
-                ctx.fillStyle='#f0f';
-                ctx.beginPath(); ctx.arc(mapX+(target.x/CONFIG.tileSize)*scaleX, mapY+(target.y/CONFIG.tileSize)*scaleY, 2, 0, Math.PI*2); ctx.fill();
-            }
         }
 
         // 实时位置信息

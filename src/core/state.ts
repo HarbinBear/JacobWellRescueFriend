@@ -63,9 +63,6 @@ export const state = {
     },
     endingTimer: 0, // 结局动画计时器
     currentZone: null, // 当前所在区域
-    debug: {
-        fastMove: true
-    },
     npc: {
         active: false,
         x: 0, y: 0,
@@ -282,13 +279,9 @@ export const player = {
     targetAngle: Math.PI/2,
     vx: 0, vy: 0,
     o2: 100,
-    n2: 0,
     silt: 0,
-    hasTarget: false,
     animTime: 0 // 动画时间（用于脚蹼动画）
 };
-
-export const target = { x: 0, y: 0, found: false, name: '' };
 
 export const particles = []; // 扬尘与气泡
 
@@ -317,13 +310,9 @@ export function resetState() {
     }
     
     player.o2 = 100; 
-    player.n2 = 0; 
     player.silt = 0;
     player.vx = 0; 
     player.vy = 0;
-    player.hasTarget = false;
-    
-    target.found = false;
     particles.length = 0;
     state.splashes = [];
     state.fishEnemies = [];
@@ -404,9 +393,6 @@ export function resetState() {
     state.camera.swayX = 0;
     state.camera.swayY = 0;
     state.camera.swayTime = 0;
-    
-    // 随机目标名字
-    target.name = CONFIG.targetNames[Math.floor(Math.random() * CONFIG.targetNames.length)];
 
     // 添加环境文本
     state.texts.push({

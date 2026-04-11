@@ -1,7 +1,6 @@
 import { CONFIG } from '../core/config';
 import { state } from '../core/state';
 import { ctx, logicW, logicH } from './Canvas';
-import { drawDiverSilhouette } from './RenderDiver';
 
 // 兼容微信小游戏的圆角矩形（手动绘制，避免roundRect兼容性问题）
 function rrect(c, x, y, w, h, r) {
