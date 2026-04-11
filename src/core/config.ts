@@ -6,14 +6,18 @@ export const CONFIG = {
     screenHeight: systemInfo.windowHeight,
     
     // 调试
-    debug: true,              // 调试模式：显示小地图和实时坐标
+    debug: false,              // 调试模式：显示小地图和实时坐标
     debugSpeedMultiplier: 1,  // 调试模式下的移动速度系数
     bShowNpcFlashLight: false,
     infiniteO2: false,        // 无限氧气（所有模式生效）
 
-    // ===== 食人鱼纯享版开关 =====
-    // true：主界面显示纯享版入口，正式关卡置灰不可进入
-    fishArenaMode: true,
+    // ===== 主菜单解锁配置 =====
+    menuUnlock: {
+        startGame: true,       // 开始游戏是否解锁
+        chapterSelect: true,   // 章节选择是否解锁
+        fishArena: true,       // 食人鱼竞技场是否解锁
+        mazeMode: true,        // 迷宫纯享版是否解锁
+    },
 
     // 游戏参数
     ambient: 0.01,        // 环境光亮度
@@ -205,7 +209,7 @@ export const CONFIG = {
         lungeChargeGlowDuration: 20, // 眼睛发光持续帧数（蓄力阶段）
     },
 
-    // ===== 迷宫引导绳模式配置 =====
+    // ===== 迷宫纯享版模式配置 =====
     maze: {
         // 地图参数
         // 注意：迷宫用随机游走+元胞自动机生成洞穴，通道宽度约3~5格

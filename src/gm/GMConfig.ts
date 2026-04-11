@@ -74,7 +74,10 @@ export const TABS: GMTab[] = [
             { type: 'bool', label: 'debug(调试模式)', path: 'debug' },
             { type: 'number', label: 'debugSpeedMultiplier(速度倍率)', path: 'debugSpeedMultiplier', min: 0.1, max: 10, step: 0.5, precision: 1 },
             { type: 'bool', label: 'bShowNpcFlashLight(NPC手电)', path: 'bShowNpcFlashLight' },
-            { type: 'bool', label: 'fishArenaMode(纯享版模式)', path: 'fishArenaMode' },
+            { type: 'bool', label: '开始游戏(解锁)', path: 'menuUnlock.startGame' },
+            { type: 'bool', label: '章节选择(解锁)', path: 'menuUnlock.chapterSelect' },
+            { type: 'bool', label: '食人鱼竞技场(解锁)', path: 'menuUnlock.fishArena' },
+            { type: 'bool', label: '迷宫纯享版(解锁)', path: 'menuUnlock.mazeMode' },
             { type: 'bool', label: 'infiniteO2(无限氧气)', path: 'infiniteO2' },
         ]
     },

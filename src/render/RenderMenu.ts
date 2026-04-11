@@ -495,11 +495,12 @@ export function drawMenu() {
     ctx.lineTo(logicW / 2 + 80, logicH * 0.43);
     ctx.stroke();
 
-    const isArenaMode = CONFIG.fishArenaMode;
+    const unlock = CONFIG.menuUnlock;
 
-    // 开始游戏按钮（arenaMode 时置灰）
+    // ---- 按钮1：开始游戏 ----
     let btnY = logicH * 0.50;
-    let btnPulse = isArenaMode ? 0.4 : (0.85 + Math.sin(time * 2.5) * 0.15);
+    let startLocked = !unlock.startGame;
+    let btnPulse = startLocked ? 0.4 : (0.85 + Math.sin(time * 2.5) * 0.15);
     let btnW = 180, btnH = 50;
     let btnX = logicW / 2 - btnW / 2;
     let btnTop = btnY - btnH / 2;
@@ -507,7 +508,7 @@ export function drawMenu() {
     ctx.save();
     ctx.globalAlpha = btnPulse;
     let btnGrad = ctx.createLinearGradient(btnX, btnTop, btnX, btnTop + btnH);
-    if (isArenaMode) {
+    if (startLocked) {
         btnGrad.addColorStop(0, 'rgba(60,60,80,0.4)');
         btnGrad.addColorStop(1, 'rgba(30,30,50,0.4)');
     } else {
@@ -518,111 +519,124 @@ export function drawMenu() {
     ctx.beginPath();
     rrect(ctx, btnX, btnTop, btnW, btnH, 25);
     ctx.fill();
-    ctx.strokeStyle = isArenaMode ? `rgba(80,80,100,0.5)` : `rgba(0,220,255,${btnPulse * 0.8})`;
+    ctx.strokeStyle = startLocked ? `rgba(80,80,100,0.5)` : `rgba(0,220,255,${btnPulse * 0.8})`;
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     rrect(ctx, btnX, btnTop, btnW, btnH, 25);
     ctx.stroke();
     ctx.restore();
 
-    ctx.fillStyle = isArenaMode ? 'rgba(100,100,120,0.6)' : `rgba(0,240,255,${btnPulse})`;
+    ctx.fillStyle = startLocked ? 'rgba(100,100,120,0.6)' : `rgba(0,240,255,${btnPulse})`;
     ctx.font = 'bold 22px Arial';
-    ctx.fillText(isArenaMode ? "🔒  开始游戏" : "▶  开始游戏", logicW / 2, btnY);
+    ctx.fillText(startLocked ? "🔒  开始游戏" : "▶  开始游戏", logicW / 2, btnY);
 
-    // 食人鱼纯享版按钮（风格化，危险感）
-    let arenaBtnY = logicH * 0.62;
+    // ---- 按钮2：章节选择 ----
+    let chBtnY = logicH * 0.62;
+    let chBtnW = 180, chBtnH = 50;
+    let chBtnX = logicW / 2 - chBtnW / 2;
+    let chBtnTop = chBtnY - chBtnH / 2;
+    let chLocked = !unlock.chapterSelect;
+
+    ctx.save();
+    ctx.globalAlpha = chLocked ? 0.3 : 0.75;
+    let chGrad = ctx.createLinearGradient(chBtnX, chBtnTop, chBtnX, chBtnTop + chBtnH);
+    chGrad.addColorStop(0, chLocked ? 'rgba(40,40,60,0.4)' : 'rgba(0,80,120,0.4)');
+    chGrad.addColorStop(1, chLocked ? 'rgba(20,20,40,0.4)' : 'rgba(0,40,80,0.4)');
+    ctx.fillStyle = chGrad;
+    ctx.beginPath();
+    rrect(ctx, chBtnX, chBtnTop, chBtnW, chBtnH, 25);
+    ctx.fill();
+    ctx.strokeStyle = chLocked ? 'rgba(60,60,80,0.4)' : 'rgba(0,180,220,0.5)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    rrect(ctx, chBtnX, chBtnTop, chBtnW, chBtnH, 25);
+    ctx.stroke();
+    ctx.restore();
+
+    ctx.fillStyle = chLocked ? 'rgba(80,80,100,0.5)' : 'rgba(100,210,240,0.9)';
+    ctx.font = 'bold 18px Arial';
+    ctx.fillText(chLocked ? "🔒  章节选择" : "📖  章节选择", logicW / 2, chBtnY);
+
+    // ---- 按钮3：食人鱼竞技场（风格化，危险感）----
+    let arenaBtnY = logicH * 0.74;
     let arenaBtnW = 200, arenaBtnH = 50;
     let arenaBtnX = logicW / 2 - arenaBtnW / 2;
     let arenaBtnTop = arenaBtnY - arenaBtnH / 2;
-    let arenaPulse = 0.9 + Math.sin(time * 3.5) * 0.1;
+    let arenaLocked = !unlock.fishArena;
+    let arenaPulse = arenaLocked ? 0.4 : (0.9 + Math.sin(time * 3.5) * 0.1);
     let arenaGlow = Math.abs(Math.sin(time * 2.0));
 
-    // 危险感光晕
-    ctx.save();
-    ctx.globalCompositeOperation = 'screen';
-    let arenaHalo = ctx.createRadialGradient(logicW / 2, arenaBtnY, 0, logicW / 2, arenaBtnY, 120);
-    arenaHalo.addColorStop(0, `rgba(255,60,0,${arenaGlow * 0.15})`);
-    arenaHalo.addColorStop(1, 'rgba(255,60,0,0)');
-    ctx.fillStyle = arenaHalo;
-    ctx.fillRect(logicW / 2 - 120, arenaBtnY - 60, 240, 120);
-    ctx.restore();
+    if (!arenaLocked) {
+        // 危险感光晕
+        ctx.save();
+        ctx.globalCompositeOperation = 'screen';
+        let arenaHalo = ctx.createRadialGradient(logicW / 2, arenaBtnY, 0, logicW / 2, arenaBtnY, 120);
+        arenaHalo.addColorStop(0, `rgba(255,60,0,${arenaGlow * 0.15})`);
+        arenaHalo.addColorStop(1, 'rgba(255,60,0,0)');
+        ctx.fillStyle = arenaHalo;
+        ctx.fillRect(logicW / 2 - 120, arenaBtnY - 60, 240, 120);
+        ctx.restore();
+    }
 
     ctx.save();
     ctx.globalAlpha = arenaPulse;
     let arenaGrad = ctx.createLinearGradient(arenaBtnX, arenaBtnTop, arenaBtnX, arenaBtnTop + arenaBtnH);
-    arenaGrad.addColorStop(0, 'rgba(180,30,0,0.6)');
-    arenaGrad.addColorStop(0.5, 'rgba(220,60,0,0.5)');
-    arenaGrad.addColorStop(1, 'rgba(120,10,0,0.6)');
+    if (arenaLocked) {
+        arenaGrad.addColorStop(0, 'rgba(60,60,80,0.4)');
+        arenaGrad.addColorStop(1, 'rgba(30,30,50,0.4)');
+    } else {
+        arenaGrad.addColorStop(0, 'rgba(180,30,0,0.6)');
+        arenaGrad.addColorStop(0.5, 'rgba(220,60,0,0.5)');
+        arenaGrad.addColorStop(1, 'rgba(120,10,0,0.6)');
+    }
     ctx.fillStyle = arenaGrad;
     ctx.beginPath();
     rrect(ctx, arenaBtnX, arenaBtnTop, arenaBtnW, arenaBtnH, 25);
     ctx.fill();
-    // 边框：血红色流光
-    ctx.strokeStyle = `rgba(255,80,20,${arenaPulse * 0.9})`;
+    ctx.strokeStyle = arenaLocked ? 'rgba(80,80,100,0.5)' : `rgba(255,80,20,${arenaPulse * 0.9})`;
     ctx.lineWidth = 2;
     ctx.beginPath();
     rrect(ctx, arenaBtnX, arenaBtnTop, arenaBtnW, arenaBtnH, 25);
     ctx.stroke();
     ctx.restore();
 
-    // 按钮文字（带鱼牙图标感）
-    ctx.fillStyle = `rgba(255,200,150,${arenaPulse})`;
+    ctx.fillStyle = arenaLocked ? 'rgba(100,100,120,0.6)' : `rgba(255,200,150,${arenaPulse})`;
     ctx.font = 'bold 18px Arial';
-    ctx.fillText("🦈  食人鱼纯享版", logicW / 2, arenaBtnY);
+    ctx.fillText(arenaLocked ? "🔒  食人鱼竞技场" : "🦈  食人鱼竞技场", logicW / 2, arenaBtnY);
 
-    // 迷宫引导绳按钮（探索感，绿色调）
-    let mazeBtnY = logicH * 0.74;
+    // ---- 按钮4：迷宫纯享版（探索感，绿色调）----
+    let mazeBtnY = logicH * 0.86;
     let mazeBtnW = 200, mazeBtnH = 50;
     let mazeBtnX = logicW / 2 - mazeBtnW / 2;
     let mazeBtnTop = mazeBtnY - mazeBtnH / 2;
-    let mazePulse = 0.85 + Math.sin(time * 2.0 + 1.0) * 0.15;
+    let mazeLocked = !unlock.mazeMode;
+    let mazePulse = mazeLocked ? 0.4 : (0.85 + Math.sin(time * 2.0 + 1.0) * 0.15);
 
     ctx.save();
     ctx.globalAlpha = mazePulse;
     let mazeGrad = ctx.createLinearGradient(mazeBtnX, mazeBtnTop, mazeBtnX, mazeBtnTop + mazeBtnH);
-    mazeGrad.addColorStop(0, 'rgba(0,120,80,0.55)');
-    mazeGrad.addColorStop(0.5, 'rgba(0,160,100,0.45)');
-    mazeGrad.addColorStop(1, 'rgba(0,80,50,0.55)');
+    if (mazeLocked) {
+        mazeGrad.addColorStop(0, 'rgba(60,60,80,0.4)');
+        mazeGrad.addColorStop(1, 'rgba(30,30,50,0.4)');
+    } else {
+        mazeGrad.addColorStop(0, 'rgba(0,120,80,0.55)');
+        mazeGrad.addColorStop(0.5, 'rgba(0,160,100,0.45)');
+        mazeGrad.addColorStop(1, 'rgba(0,80,50,0.55)');
+    }
     ctx.fillStyle = mazeGrad;
     ctx.beginPath();
     rrect(ctx, mazeBtnX, mazeBtnTop, mazeBtnW, mazeBtnH, 25);
     ctx.fill();
-    ctx.strokeStyle = `rgba(0,220,140,${mazePulse * 0.9})`;
+    ctx.strokeStyle = mazeLocked ? 'rgba(80,80,100,0.5)' : `rgba(0,220,140,${mazePulse * 0.9})`;
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     rrect(ctx, mazeBtnX, mazeBtnTop, mazeBtnW, mazeBtnH, 25);
     ctx.stroke();
     ctx.restore();
 
-    ctx.fillStyle = `rgba(100,255,180,${mazePulse})`;
+    ctx.fillStyle = mazeLocked ? 'rgba(100,100,120,0.6)' : `rgba(100,255,180,${mazePulse})`;
     ctx.font = 'bold 18px Arial';
-    ctx.fillText("🧵  迷宫引导绳", logicW / 2, mazeBtnY);
-
-    // 章节选择按钮（arenaMode 时置灰）
-    let chBtnY = logicH * 0.86;
-    let chBtnW = 160, chBtnH = 44;
-    let chBtnX = logicW / 2 - chBtnW / 2;
-    let chBtnTop = chBtnY - chBtnH / 2;
-
-    ctx.save();
-    ctx.globalAlpha = isArenaMode ? 0.3 : 0.75;
-    let chGrad = ctx.createLinearGradient(chBtnX, chBtnTop, chBtnX, chBtnTop + chBtnH);
-    chGrad.addColorStop(0, isArenaMode ? 'rgba(40,40,60,0.4)' : 'rgba(0,80,120,0.4)');
-    chGrad.addColorStop(1, isArenaMode ? 'rgba(20,20,40,0.4)' : 'rgba(0,40,80,0.4)');
-    ctx.fillStyle = chGrad;
-    ctx.beginPath();
-    rrect(ctx, chBtnX, chBtnTop, chBtnW, chBtnH, 22);
-    ctx.fill();
-    ctx.strokeStyle = isArenaMode ? 'rgba(60,60,80,0.4)' : 'rgba(0,180,220,0.5)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    rrect(ctx, chBtnX, chBtnTop, chBtnW, chBtnH, 22);
-    ctx.stroke();
-    ctx.restore();
-
-    ctx.fillStyle = isArenaMode ? 'rgba(80,80,100,0.5)' : 'rgba(100,210,240,0.9)';
-    ctx.font = '18px Arial';
-    ctx.fillText(isArenaMode ? "🔒  章节选择" : "📖  章节选择", logicW / 2, chBtnY);
+    ctx.fillText(mazeLocked ? "🔒  迷宫纯享版" : "🧵  迷宫纯享版", logicW / 2, mazeBtnY);
 
     // 版本号
     ctx.fillStyle = 'rgba(80,120,140,0.8)';
@@ -838,18 +852,18 @@ function drawChapterCard(
         ctx.fillText(descLines[i], textX, textY + 60 + i * 18);
     }
 
-    // 开始按钮（fishArenaMode 时置灰）
+    // 开始按钮（未解锁时置灰）
     let btnW2 = Math.min(120, textW - 10);
     let btnH2 = 34;
     let btnX2 = textX;
     let btnY2 = y + h - btnH2 - 14;
-    const isArenaMode2 = CONFIG.fishArenaMode;
-    let btnPulse = isArenaMode2 ? 0.35 : (0.85 + Math.sin(Date.now() / 400 + chapter) * 0.15);
+    const chapterLocked = !CONFIG.menuUnlock.chapterSelect;
+    let btnPulse = chapterLocked ? 0.35 : (0.85 + Math.sin(Date.now() / 400 + chapter) * 0.15);
 
     ctx.save();
     ctx.globalAlpha = btnPulse;
     let btnGrad2 = ctx.createLinearGradient(btnX2, btnY2, btnX2, btnY2 + btnH2);
-    if (isArenaMode2) {
+    if (chapterLocked) {
         btnGrad2.addColorStop(0, 'rgba(50,50,70,0.5)');
         btnGrad2.addColorStop(1, 'rgba(30,30,50,0.5)');
     } else {
@@ -860,21 +874,21 @@ function drawChapterCard(
     ctx.beginPath();
     rrect(ctx, btnX2, btnY2, btnW2, btnH2, 17);
     ctx.fill();
-    ctx.strokeStyle = isArenaMode2 ? `rgba(70,70,90,0.5)` : `rgba(0,220,255,${btnPulse * 0.9})`;
+    ctx.strokeStyle = chapterLocked ? `rgba(70,70,90,0.5)` : `rgba(0,220,255,${btnPulse * 0.9})`;
     ctx.lineWidth = 1.2;
     ctx.beginPath();
     rrect(ctx, btnX2, btnY2, btnW2, btnH2, 17);
     ctx.stroke();
     ctx.restore();
 
-    ctx.fillStyle = isArenaMode2 ? 'rgba(80,80,100,0.5)' : `rgba(0,240,255,${btnPulse})`;
+    ctx.fillStyle = chapterLocked ? 'rgba(80,80,100,0.5)' : `rgba(0,240,255,${btnPulse})`;
     ctx.font = 'bold 14px Arial';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    ctx.fillText(isArenaMode2 ? "🔒  进入章节" : "▶  进入章节", btnX2 + 14, btnY2 + btnH2 / 2);
+    ctx.fillText(chapterLocked ? "🔒  进入章节" : "▶  进入章节", btnX2 + 14, btnY2 + btnH2 / 2);
 
-    // fishArenaMode 时在卡片上叠加半透明遮罩
-    if (isArenaMode2) {
+    // 未解锁时在卡片上叠加半透明遮罩
+    if (chapterLocked) {
         ctx.save();
         ctx.globalAlpha = 0.45;
         ctx.fillStyle = 'rgba(0,0,0,0.6)';

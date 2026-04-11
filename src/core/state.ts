@@ -175,7 +175,7 @@ export const state = {
         comboKills: number;     // 连杀计数
         comboTimer: number;     // 连杀计时（帧，归零则重置连杀）
     },
-    // 迷宫引导绳模式状态（多次下潜闭环）
+    // 迷宫纯享版模式状态（多次下潜闭环）
     mazeRescue: null as null | {
         // === 阶段控制 ===
         phase: string;          // 'shore'（岸上）| 'play'（水下游戏中）| 'surfacing'（上浮中）| 'debrief'（返岸结算）| 'rescued'（救援成功）

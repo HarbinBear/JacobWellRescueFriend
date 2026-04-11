@@ -635,14 +635,14 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                 // 判断手指没有明显移动（防止滑动误触）
                 const moved = Math.hypot(tx - menuTouchStartX, ty - menuTouchStartY) > 10;
                 if(!moved) {
-                    // 检测"开始游戏"按鈕（fishArenaMode 开启时置灰）
+                    // 检测"开始游戏"按钮
                     let btnY = ch * 0.50;
                     let btnW = 180, btnH = 50;
                     let btnX = cw / 2 - btnW / 2;
                     if(tx >= btnX && tx <= btnX + btnW && ty >= btnY - btnH / 2 && ty <= btnY + btnH / 2) {
-                        if (CONFIG.fishArenaMode) {
-                            // 置灰状态，提示拿不出手
-                            state.alertMsg = '这个游戏还拿不出手，先玩食人鱼纯享版吧！';
+                        if (!CONFIG.menuUnlock.startGame) {
+                            // 置灰状态，提示未解锁
+                            state.alertMsg = '这个游戏还拿不出手，先玩其他模式吧！';
                             state.alertColor = 'rgba(255,100,50,0.95)';
                             if (state.msgTimer) clearTimeout(state.msgTimer);
                             state.msgTimer = setTimeout(() => { state.alertMsg = ''; }, 2500);
@@ -658,29 +658,13 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                         }
                         return;
                     }
-                    // 检测"食人鱼纯享版"按鈕
-                    let arenaBtnY = ch * 0.62;
-                    let arenaBtnW = 200, arenaBtnH = 50;
-                    let arenaBtnX = cw / 2 - arenaBtnW / 2;
-                    if(tx >= arenaBtnX && tx <= arenaBtnX + arenaBtnW && ty >= arenaBtnY - arenaBtnH / 2 && ty <= arenaBtnY + arenaBtnH / 2) {
-                        if (onArena) onArena();
-                        return;
-                    }
-                    // 检测"迷宫引导绳"按鈕
-                    let mazeBtnY = ch * 0.74;
-                    let mazeBtnW = 200, mazeBtnH = 50;
-                    let mazeBtnX = cw / 2 - mazeBtnW / 2;
-                    if(tx >= mazeBtnX && tx <= mazeBtnX + mazeBtnW && ty >= mazeBtnY - mazeBtnH / 2 && ty <= mazeBtnY + mazeBtnH / 2) {
-                        if (onMaze) onMaze();
-                        return;
-                    }
-                    // 检测"章节选择"按鈕（fishArenaMode 开启时置灰）
-                    let chBtnY = ch * 0.86;
-                    let chBtnW = 160, chBtnH = 44;
+                    // 检测"章节选择"按钮
+                    let chBtnY = ch * 0.62;
+                    let chBtnW = 180, chBtnH = 50;
                     let chBtnX = cw / 2 - chBtnW / 2;
                     if(tx >= chBtnX && tx <= chBtnX + chBtnW && ty >= chBtnY - chBtnH / 2 && ty <= chBtnY + chBtnH / 2) {
-                        if (CONFIG.fishArenaMode) {
-                            state.alertMsg = '这个游戏还拿不出手，先玩食人鱼纯享版吧！';
+                        if (!CONFIG.menuUnlock.chapterSelect) {
+                            state.alertMsg = '这个游戏还拿不出手，先玩其他模式吧！';
                             state.alertColor = 'rgba(255,100,50,0.95)';
                             if (state.msgTimer) clearTimeout(state.msgTimer);
                             state.msgTimer = setTimeout(() => { state.alertMsg = ''; }, 2500);
@@ -690,7 +674,36 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                         state.chapterScrollY = 0;
                         return;
                     }
-                }
+                    // 检测"食人鱼竞技场"按钮
+                    let arenaBtnY = ch * 0.74;
+                    let arenaBtnW = 200, arenaBtnH = 50;
+                    let arenaBtnX = cw / 2 - arenaBtnW / 2;
+                    if(tx >= arenaBtnX && tx <= arenaBtnX + arenaBtnW && ty >= arenaBtnY - arenaBtnH / 2 && ty <= arenaBtnY + arenaBtnH / 2) {
+                        if (!CONFIG.menuUnlock.fishArena) {
+                            state.alertMsg = '食人鱼竞技场尚未解锁！';
+                            state.alertColor = 'rgba(255,100,50,0.95)';
+                            if (state.msgTimer) clearTimeout(state.msgTimer);
+                            state.msgTimer = setTimeout(() => { state.alertMsg = ''; }, 2500);
+                            return;
+                        }
+                        if (onArena) onArena();
+                        return;
+                    }
+                    // 检测"迷宫纯享版"按钮
+                    let mazeBtnY = ch * 0.86;
+                    let mazeBtnW = 200, mazeBtnH = 50;
+                    let mazeBtnX = cw / 2 - mazeBtnW / 2;
+                    if(tx >= mazeBtnX && tx <= mazeBtnX + mazeBtnW && ty >= mazeBtnY - mazeBtnH / 2 && ty <= mazeBtnY + mazeBtnH / 2) {
+                        if (!CONFIG.menuUnlock.mazeMode) {
+                            state.alertMsg = '迷宫纯享版尚未解锁！';
+                            state.alertColor = 'rgba(255,100,50,0.95)';
+                            if (state.msgTimer) clearTimeout(state.msgTimer);
+                            state.msgTimer = setTimeout(() => { state.alertMsg = ''; }, 2500);
+                            return;
+                        }
+                        if (onMaze) onMaze();
+                        return;
+                    }                }
                 return;
             }
             if(state.menuScreen === 'chapter') {
@@ -708,9 +721,9 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                         for(let i = 0; i < bounds.length; i++) {
                             const b = bounds[i];
                             if(tx >= b.cardX && tx <= b.cardX + b.cardW && ty >= b.cardY && ty <= b.cardY + b.cardH) {
-                                // fishArenaMode 开启时章节置灰，点击提示
-                                if (CONFIG.fishArenaMode) {
-                                    state.alertMsg = '这个游戏还拿不出手，先玩食人鱼纯享版吧！';
+                                // 章节未解锁时置灰，点击提示
+                                if (!CONFIG.menuUnlock.chapterSelect) {
+                                    state.alertMsg = '章节选择尚未解锁！';
                                     state.alertColor = 'rgba(255,100,50,0.95)';
                                     if (state.msgTimer) clearTimeout(state.msgTimer);
                                     state.msgTimer = setTimeout(() => { state.alertMsg = ''; }, 2500);
