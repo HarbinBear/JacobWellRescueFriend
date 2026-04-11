@@ -7,7 +7,7 @@ import { drawDiver } from './RenderDiver';
 import { drawUI, drawControls, drawSlashEffect } from './RenderUI';
 import { drawRopesWorld, drawRopeButton } from './RenderRope';
 import { drawAllFishEnemies, drawFishBiteEffect } from './RenderFishEnemy';
-import { drawMazeBackgroundDecorations, drawMazeWallShape, getMazeParticleColorByWorld, getMazeThemeColorByCell, drawMazeShallowSky, drawMazeShallowWaterTint, drawMazeShallowCaustics, drawMazeShallowRockReflections, getMazeShallowMaskAlpha } from './RenderMazeScene';
+import { drawMazeWallShape, getMazeParticleColorByWorld, getMazeThemeColorByCell, drawMazeShallowSky, drawMazeShallowWaterTint, drawMazeShallowCaustics, drawMazeShallowRockReflections, getMazeShallowMaskAlpha } from './RenderMazeScene';
 import { drawGMButton, drawGMPanel } from '../gm/GMPanel';
 import { updateDustTime, drawDustDarkLayer, drawDustLitLayer } from './DustMotes';
 
@@ -87,10 +87,10 @@ export function draw() {
     }
 
     // 1. 绘制基础世界
-    // 迷宫浅水区时用深蓝底色，避免天空渐变透明处露出灰色
+    // 迷宫浅水区时用深洞暗色底色，避免天空渐变透明处露出灰色
     const isMazeModeEarly = state.screen === 'mazeRescue' && state.mazeRescue;
     if (isMazeModeEarly && CONFIG.maze.shallowWater.enabled) {
-        ctx.fillStyle = '#1a2a3a';
+        ctx.fillStyle = '#080e15';
     } else {
         ctx.fillStyle = '#252a30';
     }
@@ -199,10 +199,6 @@ export function draw() {
     let viewRowMax = Math.min(renderRows - 1, Math.floor(viewB / renderTs) + 1);
     let viewColMin = Math.max(0, Math.floor(viewL / renderTs) - 1);
     let viewColMax = Math.min(renderCols - 1, Math.floor(viewR / renderTs) + 1);
-
-    if (isMazeMode && state.mazeRescue.sceneThemeMap) {
-        drawMazeBackgroundDecorations(ctx, renderMap, viewRowMin, viewRowMax, viewColMin, viewColMax, renderTs);
-    }
 
     // 迷宫模式：浅水区水域格子叠加浅蓝色调
     if (isMazeMode) {
