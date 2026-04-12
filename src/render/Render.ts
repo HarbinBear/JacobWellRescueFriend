@@ -6,7 +6,7 @@ import { initWebGLLight, isWebGLAvailable, uploadPolyData, uploadSiltData, uploa
 import { drawDiver } from './RenderDiver';
 import { drawUI, drawControls, drawSlashEffect } from './RenderUI';
 import { drawRopesWorld, drawRopeButton } from './RenderRope';
-import { drawMarkersWorld } from './RenderMarker';
+import { drawMarkersWorld, drawMarkerPreview } from './RenderMarker';
 import { drawWheelButton, drawWheel } from './RenderWheel';
 import { drawAllFishEnemies, drawFishBiteEffect } from './RenderFishEnemy';
 import { drawMazeWallShape, getMazeParticleColorByWorld, getMazeThemeColorByCell, drawMazeShallowSky, drawMazeShallowWaterTint, drawMazeShallowCaustics, getMazeShallowMaskAlpha } from './RenderMazeScene';
@@ -360,6 +360,20 @@ export function draw() {
 
     // --- 绘制标记（世界空间，在绳索之后）---
     drawMarkersWorld(ctx);
+
+    // --- 绘制标记预览（轮盘高亮时在场景中显示半透明预览）---
+    if (state.wheel && state.wheel.open && state.wheel.previewAction && state.wheel.nearbyInfo) {
+        const pa = state.wheel.previewAction;
+        const info = state.wheel.nearbyInfo;
+        if (pa === 'markDanger' || pa === 'markUnknown' || pa === 'markSafe') {
+            const mType = pa === 'markDanger' ? 'danger' : pa === 'markUnknown' ? 'unknown' : 'safe';
+            if (info.context === 'ropeMid' || info.context === 'ropeMarkedMid') {
+                drawMarkerPreview(ctx, mType, null, info.ropeIndex, info.ropeT);
+            } else if (info.wall) {
+                drawMarkerPreview(ctx, mType, info.wall);
+            }
+        }
+    }
 
     // --- 绘制凶猛鱼敌人（在角色之前）---
     drawAllFishEnemies(ctx);

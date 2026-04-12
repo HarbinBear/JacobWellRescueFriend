@@ -465,6 +465,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                     const dist = Math.hypot(dx, dy);
                     if (dist < CONFIG.marker.wheelInnerRadius) {
                         state.wheel.highlightIndex = -1; // 在死区内，无高亮
+                        state.wheel.previewAction = null;
                     } else {
                         // 计算角度，匹配扇区
                         let angle = Math.atan2(dy, dx);
@@ -496,6 +497,12 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                             }
                         }
                         state.wheel.highlightIndex = found;
+                        // 同步更新预览操作类型
+                        if (found >= 0 && sectors[found]) {
+                            state.wheel.previewAction = sectors[found].action;
+                        } else {
+                            state.wheel.previewAction = null;
+                        }
                     }
                     input.move = 0;
                     input.speedUp = false;
@@ -852,6 +859,7 @@ function handleTouchEnd(changedTouches) {
             state.wheel.highlightIndex = -1;
             state.wheel.expandProgress = 0;
             state.wheel.touchId = null;
+            state.wheel.previewAction = null;
         }
         if(state.rope && state.rope.hold && t.identifier === state.rope.hold.touchId) {
             state.rope.hold.active = false;

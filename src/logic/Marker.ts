@@ -262,53 +262,76 @@ export function detectWheelContext(): NearbyInfo {
 export function buildWheelSectors(ctx: WheelContext, hasExistingMarker: boolean): WheelSector[] {
     const sectors: WheelSector[] = [];
 
-    // 根据上下文决定顶部操作
+    // 根据上下文决定扇区内容
+    // 规则：铺绳中只有结束铺绳；拆绳/拆标记场景只有拆；其余场景按标准布局
     switch (ctx) {
-        case 'emptyWall':
-            sectors.push({ action: 'startRope', label: '铺绳', startAngle: 0, endAngle: 0 });
-            sectors.push({ action: 'markDanger', label: '危险', startAngle: 0, endAngle: 0 });
-            sectors.push({ action: 'markSafe', label: '安全', startAngle: 0, endAngle: 0 });
-            sectors.push({ action: 'markUnknown', label: '未定', startAngle: 0, endAngle: 0 });
+        case 'ropingWall':
+            // 铺绳中靠近岩石：只有结束铺绳，占满360°
+            sectors.push({ action: 'endRope', label: '结束铺绳', startAngle: 0, endAngle: 0 });
             break;
         case 'ropeEndWall':
+            // 靠近绳索端点：只有拆绳，占满360°
             sectors.push({ action: 'removeRope', label: '拆绳', startAngle: 0, endAngle: 0 });
-            sectors.push({ action: 'markDanger', label: '危险', startAngle: 0, endAngle: 0 });
-            sectors.push({ action: 'markSafe', label: '安全', startAngle: 0, endAngle: 0 });
-            sectors.push({ action: 'markUnknown', label: '未定', startAngle: 0, endAngle: 0 });
-            break;
-        case 'ropingWall':
-            sectors.push({ action: 'endRope', label: '结束铺绳', startAngle: 0, endAngle: 0 });
-            sectors.push({ action: 'markDanger', label: '危险', startAngle: 0, endAngle: 0 });
-            sectors.push({ action: 'markSafe', label: '安全', startAngle: 0, endAngle: 0 });
-            sectors.push({ action: 'markUnknown', label: '未定', startAngle: 0, endAngle: 0 });
             break;
         case 'markedWall':
+            // 靠近已有标记的岩石：只有拆标记，占满360°
+            sectors.push({ action: 'removeMarker', label: '拆标记', startAngle: 0, endAngle: 0 });
+            break;
+        case 'ropeMarkedMid':
+            // 靠近绳索中段已有标记：只有拆标记，占满360°
+            sectors.push({ action: 'removeMarker', label: '拆标记', startAngle: 0, endAngle: 0 });
+            break;
+        case 'emptyWall':
+            // 靠近空岩石：上=铺绳，左=红叉，右=绿圈，下=黄问号
             sectors.push({ action: 'startRope', label: '铺绳', startAngle: 0, endAngle: 0 });
             sectors.push({ action: 'markDanger', label: '危险', startAngle: 0, endAngle: 0 });
             sectors.push({ action: 'markSafe', label: '安全', startAngle: 0, endAngle: 0 });
-            sectors.push({ action: 'removeMarker', label: '拆标记', startAngle: 0, endAngle: 0 });
+            sectors.push({ action: 'markUnknown', label: '未定', startAngle: 0, endAngle: 0 });
             break;
         case 'ropeMid':
+            // 靠近绳索中段：左上=红叉，右上=绿圈，下=黄问号
             sectors.push({ action: 'markDanger', label: '危险', startAngle: 0, endAngle: 0 });
             sectors.push({ action: 'markSafe', label: '安全', startAngle: 0, endAngle: 0 });
             sectors.push({ action: 'markUnknown', label: '未定', startAngle: 0, endAngle: 0 });
-            break;
-        case 'ropeMarkedMid':
-            sectors.push({ action: 'markDanger', label: '危险', startAngle: 0, endAngle: 0 });
-            sectors.push({ action: 'markSafe', label: '安全', startAngle: 0, endAngle: 0 });
-            sectors.push({ action: 'removeMarker', label: '拆标记', startAngle: 0, endAngle: 0 });
             break;
         default:
             return [];
     }
 
-    // 均匀分配角度（从顶部开始，顺时针）
+    // 分配角度
     const count = sectors.length;
-    const gap = (Math.PI * 2) / count;
-    const startOffset = -Math.PI / 2; // 从正上方开始
-    for (let i = 0; i < count; i++) {
-        sectors[i].startAngle = startOffset + i * gap;
-        sectors[i].endAngle = startOffset + (i + 1) * gap;
+    if (count === 1) {
+        // 单个选项占满360°
+        sectors[0].startAngle = -Math.PI;
+        sectors[0].endAngle = Math.PI;
+    } else if (count === 3) {
+        // 3个按钮：左上=红叉(-150°~-30°)，右上=绿圈(-30°~90°不对，重新算)
+        // 左上(-150° ~ -30°)、右上(-30° ~ 90°)、下(90° ~ 210°)
+        // 用弧度：左上 = -5π/6 ~ -π/6，右上 = -π/6 ~ π/2，下 = π/2 ~ 7π/6
+        const third = Math.PI * 2 / 3;
+        // 从正上方偏左开始：-150°, -30°, 90°
+        sectors[0].startAngle = -Math.PI * 5 / 6;  // 红叉（左上）
+        sectors[0].endAngle = -Math.PI / 6;
+        sectors[1].startAngle = -Math.PI / 6;       // 绿圈（右上）
+        sectors[1].endAngle = Math.PI / 2;
+        sectors[2].startAngle = Math.PI / 2;         // 黄问号（下）
+        sectors[2].endAngle = Math.PI * 7 / 6;
+    } else if (count === 4) {
+        // 4个按钮：上=铺绳，左=红叉，下=黄问号，右=绿圈
+        // 上(-45°~45°)，右(45°~135°)，下(135°~225°)，左(225°~315°即-135°~-45°)
+        const quarter = Math.PI / 2;
+        // 上：铺绳
+        sectors[0].startAngle = -Math.PI / 4;
+        sectors[0].endAngle = Math.PI / 4;
+        // 左：红叉（从-135°到-45°）
+        sectors[1].startAngle = -Math.PI * 3 / 4;
+        sectors[1].endAngle = -Math.PI / 4;
+        // 右：绿圈（从45°到135°）
+        sectors[2].startAngle = Math.PI / 4;
+        sectors[2].endAngle = Math.PI * 3 / 4;
+        // 下：黄问号（从135°到225°即-135°）
+        sectors[3].startAngle = Math.PI * 3 / 4;
+        sectors[3].endAngle = Math.PI * 5 / 4;
     }
 
     return sectors;

@@ -1,5 +1,5 @@
 import { CONFIG } from '../core/config';
-import { state } from '../core/state';
+import { state, player } from '../core/state';
 import { getMarkers, Marker } from '../logic/Marker';
 import { pathLength, samplePolyline } from '../logic/Pathfinding';
 
@@ -18,6 +18,73 @@ export function drawMarkersWorld(ctx: CanvasRenderingContext2D) {
             drawRopeMarker(ctx, m, time);
         }
     }
+}
+
+// ============ 绘制预览标记（轮盘高亮时在场景中显示半透明预览） ============
+
+export function drawMarkerPreview(ctx: CanvasRenderingContext2D, markerType: string, wall: any, ropeIndex?: number, ropeT?: number) {
+    if (!markerType || (markerType !== 'danger' && markerType !== 'unknown' && markerType !== 'safe')) return;
+
+    ctx.save();
+    ctx.globalAlpha = 0.5; // 半透明预览
+
+    const cfg = CONFIG.marker;
+
+    if (wall) {
+        // 岩石预览
+        const angle = Math.atan2(state.markers ? 0 : 0, 0) || Math.atan2(
+            (typeof player !== 'undefined' ? player.y : 0) - wall.y,
+            (typeof player !== 'undefined' ? player.x : 0) - wall.x
+        );
+        const surfaceX = wall.x + Math.cos(angle) * wall.r;
+        const surfaceY = wall.y + Math.sin(angle) * wall.r;
+
+        ctx.translate(surfaceX, surfaceY);
+        ctx.rotate(angle);
+
+        const colors = getMarkerColors(markerType);
+        ctx.fillStyle = colors.stake;
+        ctx.fillRect(0, -1.5, cfg.wallStakeLength, 3);
+
+        const signX = cfg.wallStakeLength;
+        ctx.fillStyle = colors.bg;
+        ctx.beginPath();
+        roundRect(ctx, signX, -cfg.wallSignHeight / 2, cfg.wallSignWidth, cfg.wallSignHeight, 2);
+        ctx.fill();
+        ctx.strokeStyle = colors.border;
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+
+        drawMarkerSymbol(ctx, markerType, signX + cfg.wallSignWidth / 2, 0);
+    } else if (ropeIndex !== undefined && ropeT !== undefined && state.rope && state.rope.ropes[ropeIndex]) {
+        // 绳索预览
+        const rope = state.rope.ropes[ropeIndex];
+        if (rope.path && rope.path.length >= 2) {
+            const totalLen = pathLength(rope.path);
+            if (totalLen >= 1) {
+                const d = ropeT * totalLen;
+                const pt = samplePolyline(rope.path, d);
+                ctx.translate(pt.x, pt.y);
+
+                const colors = getMarkerColors(markerType);
+                ctx.fillStyle = colors.stake;
+                ctx.fillRect(-1, 0, 2, cfg.ropeTagStrapLength);
+
+                const tagY = cfg.ropeTagStrapLength;
+                ctx.fillStyle = colors.bg;
+                ctx.beginPath();
+                roundRect(ctx, -cfg.ropeTagWidth / 2, tagY, cfg.ropeTagWidth, cfg.ropeTagHeight, 1.5);
+                ctx.fill();
+                ctx.strokeStyle = colors.border;
+                ctx.lineWidth = 1;
+                ctx.stroke();
+
+                drawMarkerSymbol(ctx, markerType, 0, tagY + cfg.ropeTagHeight / 2);
+            }
+        }
+    }
+
+    ctx.restore();
 }
 
 // ============ 岩石标记（插牌式） ============
@@ -174,19 +241,19 @@ function drawMarkerSymbol(ctx: CanvasRenderingContext2D, type: string, x: number
         case 'danger': {
             // 白色 ×
             ctx.strokeStyle = '#fff';
-            ctx.lineWidth = 1.5;
+            ctx.lineWidth = 2;
             ctx.beginPath();
-            ctx.moveTo(-2.5, -2.5);
-            ctx.lineTo(2.5, 2.5);
-            ctx.moveTo(2.5, -2.5);
-            ctx.lineTo(-2.5, 2.5);
+            ctx.moveTo(-4, -4);
+            ctx.lineTo(4, 4);
+            ctx.moveTo(4, -4);
+            ctx.lineTo(-4, 4);
             ctx.stroke();
             break;
         }
         case 'unknown': {
             // 白色 ?
             ctx.fillStyle = '#fff';
-            ctx.font = 'bold 7px Arial';
+            ctx.font = 'bold 10px Arial';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.fillText('?', 0, 0);
@@ -195,9 +262,9 @@ function drawMarkerSymbol(ctx: CanvasRenderingContext2D, type: string, x: number
         case 'safe': {
             // 白色 ○
             ctx.strokeStyle = '#fff';
-            ctx.lineWidth = 1.2;
+            ctx.lineWidth = 1.8;
             ctx.beginPath();
-            ctx.arc(0, 0, 2.5, 0, Math.PI * 2);
+            ctx.arc(0, 0, 4, 0, Math.PI * 2);
             ctx.stroke();
             break;
         }

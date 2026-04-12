@@ -257,6 +257,7 @@ export const state = {
         centerY: 0,              // 轮盘中心屏幕Y
         stillTimer: 0,           // 静止计时器
         nearbyInfo: null as any, // 当前附近可交互对象信息
+        previewAction: null as string | null, // 当前预览的操作类型（用于场景中预览标记）
     },
     rope: {
         ropes: [],
@@ -375,6 +376,7 @@ export function resetState() {
         centerY: 0,
         stillTimer: 0,
         nearbyInfo: null,
+        previewAction: null,
     };
     state.rope = {
         ropes: [],

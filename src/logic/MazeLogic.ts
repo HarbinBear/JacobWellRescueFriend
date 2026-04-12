@@ -273,6 +273,7 @@ export function startMazeDive(diveType: string) {
         state.wheel.touchId = null;
         state.wheel.stillTimer = 0;
         state.wheel.nearbyInfo = null;
+        state.wheel.previewAction = null;
     }
 }
 

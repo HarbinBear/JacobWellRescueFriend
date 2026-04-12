@@ -84,7 +84,8 @@ export function drawWheel() {
     ctx.translate(btnX, btnY);
     ctx.scale(scale, scale);
 
-    const gapAngle = 0.07; // 扇区间隔（弧度）
+    // 单选项时不画间隔
+    const gapAngle = sectors.length === 1 ? 0 : 0.07;
 
     for (let i = 0; i < sectors.length; i++) {
         const s = sectors[i];
@@ -94,8 +95,14 @@ export function drawWheel() {
 
         // 扇区背景
         ctx.beginPath();
-        ctx.arc(0, 0, outerR, sStart, sEnd);
-        ctx.arc(0, 0, innerR, sEnd, sStart, true);
+        if (sectors.length === 1) {
+            // 单选项：画完整圆环
+            ctx.arc(0, 0, outerR, 0, Math.PI * 2);
+            ctx.arc(0, 0, innerR, Math.PI * 2, 0, true);
+        } else {
+            ctx.arc(0, 0, outerR, sStart, sEnd);
+            ctx.arc(0, 0, innerR, sEnd, sStart, true);
+        }
         ctx.closePath();
         ctx.fillStyle = isHighlight ? 'rgba(60, 100, 140, 0.9)' : 'rgba(40, 60, 80, 0.7)';
         ctx.fill();
@@ -103,11 +110,19 @@ export function drawWheel() {
         ctx.lineWidth = 1;
         ctx.stroke();
 
-        // 扇区图标和文字
-        const midAngle = (sStart + sEnd) / 2;
-        const iconR = (outerR + innerR) / 2 + 4;
-        const iconX = Math.cos(midAngle) * iconR;
-        const iconY = Math.sin(midAngle) * iconR;
+        // 扇区图标和文字位置
+        let iconX: number, iconY: number;
+        if (sectors.length === 1) {
+            // 单选项：图标在正上方
+            const iconR = (outerR + innerR) / 2;
+            iconX = 0;
+            iconY = -iconR;
+        } else {
+            const midAngle = (sStart + sEnd) / 2;
+            const iconR = (outerR + innerR) / 2 + 2;
+            iconX = Math.cos(midAngle) * iconR;
+            iconY = Math.sin(midAngle) * iconR;
+        }
 
         ctx.save();
         ctx.translate(iconX, iconY);
@@ -116,14 +131,17 @@ export function drawWheel() {
         drawSectorIcon(s.action, isHighlight);
 
         // 文字标签
-        const labelR = (outerR + innerR) / 2 - 10;
-        const labelX = Math.cos(midAngle) * labelR - iconX;
-        const labelY = Math.sin(midAngle) * labelR - iconY;
+        let labelOffsetY: number;
+        if (sectors.length === 1) {
+            labelOffsetY = 16;
+        } else {
+            labelOffsetY = 14;
+        }
         ctx.fillStyle = isHighlight ? 'rgba(255,255,255,0.95)' : 'rgba(200,220,240,0.8)';
-        ctx.font = '9px Arial';
+        ctx.font = '11px Arial';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(s.label, labelX, labelY);
+        ctx.fillText(s.label, 0, labelOffsetY);
 
         ctx.restore();
     }

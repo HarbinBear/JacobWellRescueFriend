@@ -102,21 +102,21 @@ export const CONFIG = {
     // ===== 标记系统配置 =====
     marker: {
         // 交互按钮（轮盘触发器）
-        btnRadius: 32,              // 交互按钮半径
+        btnRadius: 36,              // 交互按钮半径
         btnXRatio: 0.82,            // 按钮X位置比例（与旧绳索按钮相同位置）
         btnYRatio: 0.75,            // 按钮Y位置比例
         // 轮盘
-        wheelOuterRadius: 80,       // 轮盘外径
-        wheelInnerRadius: 20,       // 轮盘内径（死区，松手取消）
+        wheelOuterRadius: 100,      // 轮盘外径
+        wheelInnerRadius: 24,       // 轮盘内径（死区，松手取消）
         wheelExpandDuration: 150,   // 轮盘展开动画时长（ms）
         wheelCollapseDuration: 100, // 轮盘收起动画时长（ms）
         // 标记尺寸
-        wallSignWidth: 12,          // 岩石标记牌面宽度
-        wallSignHeight: 10,         // 岩石标记牌面高度
-        wallStakeLength: 8,         // 岩石标记短杆长度
-        ropeTagWidth: 10,           // 绳索标记标签宽度
-        ropeTagHeight: 8,           // 绳索标记标签高度
-        ropeTagStrapLength: 4,      // 绳索标记绑带长度
+        wallSignWidth: 18,          // 岩石标记牌面宽度
+        wallSignHeight: 14,         // 岩石标记牌面高度
+        wallStakeLength: 10,        // 岩石标记短杆长度
+        ropeTagWidth: 14,           // 绳索标记标签宽度
+        ropeTagHeight: 11,          // 绳索标记标签高度
+        ropeTagStrapLength: 5,      // 绳索标记绑带长度
         // 标记动画
         placeAnimDuration: 20,      // 放置动画帧数
         removeAnimDuration: 15,     // 拆除动画帧数
