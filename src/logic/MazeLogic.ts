@@ -91,6 +91,7 @@ export function resetMazeLogic() {
         phase: 'shore',
         diveType: 'scout',
         resultTimer: 0,
+        surfacingReason: '',
         startTime: 0,
         finishTime: 0,
         npcRescued: false,
@@ -169,6 +170,7 @@ export function startMazeDive(diveType: string) {
     maze.diveType = diveType;
     maze.phase = 'diving_in';
     maze.divingInTimer = 0;
+    maze.surfacingReason = '';
     maze.startTime = Date.now();
     maze.finishTime = 0;
     maze.resultTimer = 0;
@@ -404,7 +406,7 @@ export function updateMaze() {
         player.animTime += 0.1;
         // 上浮完成后进入结算
         if (maze.resultTimer >= CONFIG.maze.surfacingDuration) {
-            finishMazeDive(maze.npcRescued ? 'rescued' : 'retreat');
+            finishMazeDive(maze.surfacingReason || 'retreat');
         }
         updateParticles();
         updateSplashes();
@@ -574,6 +576,7 @@ export function updateMaze() {
         if (elapsed >= CONFIG.maze.retreatHoldDuration) {
             maze.retreatHolding = false;
             maze.phase = 'surfacing';
+            maze.surfacingReason = 'retreat';
             maze.resultTimer = 0;
             storyManager.showText('安全上浮中...', '#aef', 2000);
         }
@@ -607,6 +610,7 @@ export function updateMaze() {
         player.o2 = 0;
         storyManager.showText('氧气不足，紧急上浮...', '#f80', 2500);
         maze.phase = 'surfacing';
+        maze.surfacingReason = 'o2';
         maze.resultTimer = 0;
     }
 

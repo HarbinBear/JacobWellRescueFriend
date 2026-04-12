@@ -220,6 +220,10 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
             if (state.screen === 'mazeRescue' && state.mazeRescue && state.mazeRescue.phase === 'diving_in') {
                 return;
             }
+            // 迷宫模式：上浮动画阶段不响应操作
+            if (state.screen === 'mazeRescue' && state.mazeRescue && state.mazeRescue.phase === 'surfacing') {
+                return;
+            }
             // 迷宫模式：游戏进行中允许正常操作
             if (state.screen === 'mazeRescue' && state.mazeRescue && state.mazeRescue.phase === 'play') {
                 // 继续往下处理摇杆和救援按钮

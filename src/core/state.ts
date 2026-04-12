@@ -178,6 +178,7 @@ export const state = {
         phase: string;          // 'shore'（岸上）| 'play'（水下游戏中）| 'surfacing'（上浮中）| 'debrief'（返岸结算）| 'rescued'（救援成功）
         diveType: string;       // 'scout'（侦察）| 'rescue'（正式救援）
         resultTimer: number;    // 结算页计时（帧）
+        surfacingReason: string; // 上浮原因：'retreat'（主动撤离）| 'o2'（氧气耗尽）| 'rescued'（救援成功）
         startTime: number;      // 本次下潜开始时间戳（ms）
         finishTime: number;     // 完成时间戳（ms，0表示未完成）
 
