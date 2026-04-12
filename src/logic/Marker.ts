@@ -299,39 +299,39 @@ export function buildWheelSectors(ctx: WheelContext, hasExistingMarker: boolean)
     }
 
     // 分配角度
+    // Canvas坐标系：atan2 中 0°=右, -π/2=上, π/2=下, ±π=左
     const count = sectors.length;
     if (count === 1) {
         // 单个选项占满360°
         sectors[0].startAngle = -Math.PI;
         sectors[0].endAngle = Math.PI;
     } else if (count === 3) {
-        // 3个按钮：左上=红叉(-150°~-30°)，右上=绿圈(-30°~90°不对，重新算)
-        // 左上(-150° ~ -30°)、右上(-30° ~ 90°)、下(90° ~ 210°)
-        // 用弧度：左上 = -5π/6 ~ -π/6，右上 = -π/6 ~ π/2，下 = π/2 ~ 7π/6
-        const third = Math.PI * 2 / 3;
-        // 从正上方偏左开始：-150°, -30°, 90°
-        sectors[0].startAngle = -Math.PI * 5 / 6;  // 红叉（左上）
-        sectors[0].endAngle = -Math.PI / 6;
-        sectors[1].startAngle = -Math.PI / 6;       // 绿圈（右上）
-        sectors[1].endAngle = Math.PI / 2;
-        sectors[2].startAngle = Math.PI / 2;         // 黄问号（下）
-        sectors[2].endAngle = Math.PI * 7 / 6;
+        // 3个按钮：[0]=红叉（左上），[1]=绿圈（右上），[2]=黄问号（下）
+        // 均分120°，从正上方(-π/2)开始
+        // 右上（绿圈）：-π/2 ~ π/6
+        // 下（黄问号）：π/6 ~ 5π/6
+        // 左上（红叉）：5π/6 ~ 3π/2（即-π/2，绕一圈回来）
+        sectors[0].startAngle = Math.PI * 5 / 6;   // 红叉（左上）
+        sectors[0].endAngle = Math.PI * 3 / 2;     // = -π/2 + 2π
+        sectors[1].startAngle = -Math.PI / 2;       // 绿圈（右上）
+        sectors[1].endAngle = Math.PI / 6;
+        sectors[2].startAngle = Math.PI / 6;         // 黄问号（下）
+        sectors[2].endAngle = Math.PI * 5 / 6;
     } else if (count === 4) {
-        // 4个按钮：上=铺绳，左=红叉，下=黄问号，右=绿圈
-        // 上(-45°~45°)，右(45°~135°)，下(135°~225°)，左(225°~315°即-135°~-45°)
-        const quarter = Math.PI / 2;
-        // 上：铺绳
-        sectors[0].startAngle = -Math.PI / 4;
-        sectors[0].endAngle = Math.PI / 4;
-        // 左：红叉（从-135°到-45°）
-        sectors[1].startAngle = -Math.PI * 3 / 4;
-        sectors[1].endAngle = -Math.PI / 4;
-        // 右：绿圈（从45°到135°）
-        sectors[2].startAngle = Math.PI / 4;
-        sectors[2].endAngle = Math.PI * 3 / 4;
-        // 下：黄问号（从135°到225°即-135°）
-        sectors[3].startAngle = Math.PI * 3 / 4;
-        sectors[3].endAngle = Math.PI * 5 / 4;
+        // 4个按钮：[0]=铺绳（上），[1]=红叉（左），[2]=绿圈（右），[3]=黄问号（下）
+        // 均分90°，从正上方(-π/2)开始
+        // 上（铺绳）：-3π/4 ~ -π/4
+        // 右（绿圈）：-π/4 ~ π/4
+        // 下（黄问号）：π/4 ~ 3π/4
+        // 左（红叉）：3π/4 ~ 5π/4（即-3π/4 + 2π）
+        sectors[0].startAngle = -Math.PI * 3 / 4;  // 铺绳（上）
+        sectors[0].endAngle = -Math.PI / 4;
+        sectors[1].startAngle = Math.PI * 3 / 4;   // 红叉（左）
+        sectors[1].endAngle = Math.PI * 5 / 4;
+        sectors[2].startAngle = -Math.PI / 4;       // 绿圈（右）
+        sectors[2].endAngle = Math.PI / 4;
+        sectors[3].startAngle = Math.PI / 4;         // 黄问号（下）
+        sectors[3].endAngle = Math.PI * 3 / 4;
     }
 
     return sectors;
