@@ -3,11 +3,11 @@ import { state, player, particles, input } from '../core/state';
 import { generateMazeMap } from '../world/map';
 import { getMazeMainThemeConfig, getMazeSceneThemeKeyByIndex } from '../world/mazeScene';
 import { StoryManager } from '../story/StoryManager';
-import { triggerSilt, updateParticles, updateSplashes } from './Particle';
+import { triggerSilt, updateParticles, updateSplashes, emitBreathBubbles } from './Particle';
 import { updateRopeSystem } from './Rope';
 import { processManualDrive } from './ManualDrive';
 import { checkMazeCollision } from './Collision';
-import { updateCameraSpringArm, snapCameraToPlayer } from './CameraLogic';
+import { updateCameraSpringArm, snapCameraToPlayer, updateCameraAdaptiveZoom } from './CameraLogic';
 import { updateMarkers, updateWheelButtonVisibility } from './Marker';
 
 // 迷宫模式使用独立的 StoryManager 实例
@@ -495,6 +495,9 @@ export function updateMaze() {
     // --- 相机弹簧臂跟随 + 水中摇曳 ---
     updateCameraSpringArm();
 
+    // --- 自适应相机远近（空旷拉远，狭窄拉近）---
+    updateCameraAdaptiveZoom();
+
     // --- 绳索系统 ---
     updateRopeSystem();
 
@@ -652,6 +655,9 @@ export function updateMaze() {
             }
         }
     }
+
+    // --- 呼吸气泡 ---
+    emitBreathBubbles(player.x, player.y, player.angle, player.o2);
 
     // --- 更新粒子 ---
     updateParticles();

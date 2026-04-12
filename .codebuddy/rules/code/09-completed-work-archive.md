@@ -154,3 +154,70 @@
 - `src/render/RenderMazeUI.ts`：游戏中 HUD 重写（深度+氧气面板、撤离按钮、小地图条件渲染）、结算页面完整重写
 - `src/logic/Marker.ts`：`updateWheelButtonVisibility()` 去掉 `stillTimer` 延迟，改为无移动输入时立即显示
 - `src/core/input.ts`：结算页按钮点击区域同步更新、小地图折叠按钮加调试模式判断
+
+---
+
+## P2 角色表现增强：Roll 滚动 + 蛙鞋重写 + 手电位置 + 呼吸气泡（2026-04-13）
+
+**四项改动**：
+
+1. **Roll 方向身体左右微微滚动（2D 模拟 3D）**：
+   - 根据转向偏差、转向输入、踢水不对称计算 `rollFactor`（-1~1）
+   - 躯干纵向压缩 `rollBodyScaleY`（侧倾时身体变窄）
+   - 高光条随 roll 偏移（模拟光照侧面变化）
+   - 阴影侧叠加（滚动时一侧变暗）
+   - 气瓶随 roll 偏移
+   - 头部位置随 roll 微调
+   - 近侧腿后绘制、远侧腿先绘制（正确遮挡关系）
+
+2. **腿部和脚蹼造型重写**：
+   - 腿部改为大腿→小腿的二段式曲线（`quadraticCurveTo`），不再是直线段
+   - 蛙鞋改为宽扁叶片形态（贝塞尔曲线轮廓），有弹性弯曲
+   - 蛙鞋中线加强结构感
+   - roll 影响腿部粗细和长度（透视效果）
+
+3. **手电筒发光位置修正**：
+   - 发光点从身体中心移到头部前方偏上（x=21.5, y=-2.5）
+   - 新增外圈微光（更大半径、更低透明度）
+   - 位置随 roll 微调
+
+4. **呼吸气泡系统**：
+   - 新增 `emitBreathBubbles()` 函数，从面镜前方（嘴部位置）生成气泡
+   - 气泡频率与氧气相关：氧气越低呼吸越急促，气泡越频繁
+   - 每次呼出 2~4 个大小不一的气泡
+   - 主线 `update()` 和迷宫 `updateMaze()` 中均调用
+
+**修改文件**：
+- `src/render/RenderDiver.ts`：完整重写 `drawLegAndFin()`、`drawDiver()` 中添加 roll 计算和表现、手电发光位置修正、新增 `getDiverBubbleOrigin()` 导出
+- `src/logic/Particle.ts`：新增 `emitBreathBubbles()`、`resetBreathTimer()` 导出
+- `src/logic/Logic.ts`：import 并调用 `emitBreathBubbles()`
+- `src/logic/MazeLogic.ts`：import 并调用 `emitBreathBubbles()`
+
+---
+
+## P7 相机自适应远近系统（2026-04-13）
+
+**核心机制**：向玩家周围 8 个方向发射射线，统计平均可达距离。距离远（空旷）→ zoom 变小（拉远），距离近（狭窄）→ zoom 变大（拉近）。
+
+**实现细节**：
+- 新增 `updateCameraAdaptiveZoom()` 函数，支持主线/竞技场/迷宫三种模式
+- 自动识别当前模式使用的地图数据（`state.map` 或 `state.mazeRescue.mazeMap`）
+- 8 方向射线探测，步长为半个格子
+- 平均距离通过线性映射转为目标 zoom，再用平滑过渡追踪
+- 所有参数可通过 GM 面板"相机"Tab 实时调整
+
+**新增配置参数**（`CONFIG.camera`）：
+- `adaptiveZoomEnabled`：总开关
+- `adaptiveZoomNear`：狭窄区域 zoom 值（默认 1.35）
+- `adaptiveZoomFar`：空旷区域 zoom 值（默认 0.85）
+- `adaptiveZoomSpeed`：过渡速度（默认 0.015）
+- `adaptiveZoomProbeRange`：探测距离（默认 600px）
+- `adaptiveZoomNearDist`：狭窄阈值（默认 100px）
+- `adaptiveZoomFarDist`：空旷阈值（默认 450px）
+
+**修改文件**：
+- `src/logic/CameraLogic.ts`：新增 `updateCameraAdaptiveZoom()` 导出
+- `src/core/config.ts`：`camera` 配置新增 7 个自适应远近参数
+- `src/logic/Logic.ts`：import 并调用 `updateCameraAdaptiveZoom()`，同步 re-export
+- `src/logic/MazeLogic.ts`：import 并调用 `updateCameraAdaptiveZoom()`
+- `src/gm/GMConfig.ts`：相机 Tab 新增 8 个可调参数条目

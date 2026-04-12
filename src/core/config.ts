@@ -457,7 +457,7 @@ export const CONFIG = {
         finTurnSkew: 0.28,          // 拐弯时蛙鞋的偏转量
     },
 
-    // ===== 相机系统（弹簧臂 + 水中摇曳）配置 =====
+    // ===== 相机系统（弹簧臂 + 水中摇曳 + 自适应远近）配置 =====
     camera: {
         // 弹簧臂跟随参数
         followStiffness: 0.06,       // 跟随刚度（0~1，越大越紧跟，越小越松弛）
@@ -470,6 +470,14 @@ export const CONFIG = {
         swayFrequencyB: 0.53,        // 摇曳频率B（高频叠加，与A不成整数比避免重复）
         // 模式切换
         resetSnapSpeed: 0.3,         // 模式切换时相机快速归位的速率
+        // 自适应远近（空旷拉远，狭窄拉近）
+        adaptiveZoomEnabled: true,   // 是否启用自适应远近
+        adaptiveZoomNear: 1.35,      // 狭窄区域的 zoom 值（拉近）
+        adaptiveZoomFar: 0.85,       // 空旷区域的 zoom 值（拉远）
+        adaptiveZoomSpeed: 0.015,    // zoom 过渡速度（越小越平滑）
+        adaptiveZoomProbeRange: 600, // 空间探测射线最大距离（像素）
+        adaptiveZoomNearDist: 100,   // 平均可达距离低于此值视为狭窄（像素）
+        adaptiveZoomFarDist: 450,    // 平均可达距离高于此值视为空旷（像素）
     },
 
     // ===== 玩家攻击（挥氧气瓶）配置 =====

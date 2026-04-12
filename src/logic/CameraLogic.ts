@@ -64,3 +64,91 @@ export function snapCameraToPlayer() {
     cam.swayY = 0;
     cam.swayTime = 0;
 }
+
+/**
+ * 自适应相机远近系统：
+ * - 空旷区域 → 相机拉远（zoom 变小），看到更多环境
+ * - 狭窄拥挤区域 → 相机拉近（zoom 变大），增强压迫感
+ *
+ * 原理：向玩家周围 8 个方向发射射线，统计平均可达距离。
+ * 距离越远说明越空旷，距离越近说明越狭窄。
+ */
+export function updateCameraAdaptiveZoom() {
+    const cam = state.camera;
+    const cfg = CONFIG.camera;
+
+    // 如果没有启用自适应 zoom，直接返回
+    if (!cfg.adaptiveZoomEnabled) return;
+
+    // 判断当前模式使用哪套地图数据
+    const isMaze = state.screen === 'mazeRescue' && state.mazeRescue && state.mazeRescue.phase === 'play';
+    const isMainline = state.screen === 'play';
+    const isArena = state.screen === 'fishArena';
+
+    if (!isMaze && !isMainline && !isArena) return;
+
+    // 获取地图数据和 tileSize
+    let map: any;
+    let tileSize: number;
+    if (isMaze) {
+        map = state.mazeRescue.mazeMap;
+        tileSize = state.mazeRescue.mazeTileSize || CONFIG.maze.tileSize;
+    } else {
+        map = state.map;
+        tileSize = CONFIG.tileSize;
+    }
+    if (!map) return;
+
+    // 向 8 个方向发射射线，统计平均可达距离
+    const maxProbe = cfg.adaptiveZoomProbeRange;
+    const step = tileSize * 0.5; // 每步半个格子
+    const dirs = [
+        [1, 0], [-1, 0], [0, 1], [0, -1],
+        [0.707, 0.707], [-0.707, 0.707], [0.707, -0.707], [-0.707, -0.707]
+    ];
+
+    let totalDist = 0;
+    for (const [dx, dy] of dirs) {
+        let dist = 0;
+        for (let d = step; d <= maxProbe; d += step) {
+            const px = player.x + dx * d;
+            const py = player.y + dy * d;
+            const r = Math.floor(py / tileSize);
+            const c = Math.floor(px / tileSize);
+            if (!map[r] || !map[r][c]) {
+                // 超出地图边界视为墙
+                if (r < 0 || c < 0 || (map.length > 0 && r >= map.length)) break;
+                // 空格子，继续
+                dist = d;
+                continue;
+            }
+            const cell = map[r][c];
+            if (cell === 0 || cell === false) {
+                dist = d;
+                continue;
+            }
+            // 碰到墙体
+            if (typeof cell === 'object') {
+                const wallDist = Math.hypot(px - cell.x, py - cell.y) - cell.r;
+                if (wallDist < 0) break;
+                dist = d;
+            } else {
+                break;
+            }
+        }
+        totalDist += dist;
+    }
+
+    const avgDist = totalDist / dirs.length;
+
+    // 将平均距离映射到 zoom 值
+    // avgDist 小（狭窄）→ zoom 大（拉近）
+    // avgDist 大（空旷）→ zoom 小（拉远）
+    const t = Math.min(1, Math.max(0, (avgDist - cfg.adaptiveZoomNearDist) / (cfg.adaptiveZoomFarDist - cfg.adaptiveZoomNearDist)));
+    // t=0 → 狭窄 → zoomNear, t=1 → 空旷 → zoomFar
+    const targetAdaptiveZoom = cfg.adaptiveZoomNear + (cfg.adaptiveZoomFar - cfg.adaptiveZoomNear) * t;
+
+    // 平滑过渡
+    cam.targetZoom += (targetAdaptiveZoom - cam.targetZoom) * cfg.adaptiveZoomSpeed;
+    cam.zoom += (cam.targetZoom - cam.zoom) * cfg.adaptiveZoomSpeed;
+}

@@ -2,20 +2,20 @@ import { CONFIG } from '../core/config';
 import { state, player, particles, input, resetState } from '../core/state';
 import { generateMap } from '../world/map';
 import { StoryManager } from '../story/StoryManager';
-import { Particle, createSplash, updateSplashes, triggerSilt, updateParticles } from './Particle';
+import { Particle, createSplash, updateSplashes, triggerSilt, updateParticles, emitBreathBubbles } from './Particle';
 import { updateRopeSystem, findNearestWall } from './Rope';
 import { updateAllFishEnemies, createFishEnemy, findSafeSpawnPosition } from './FishEnemy';
 import { processManualDrive } from './ManualDrive';
 import { checkCollision, getNearestWallDist, checkMazeCollision } from './Collision';
 
-import { updateCameraSpringArm, snapCameraToPlayer } from './CameraLogic';
+import { updateCameraSpringArm, snapCameraToPlayer, updateCameraAdaptiveZoom } from './CameraLogic';
 import { updateMarkers, updateWheelButtonVisibility } from './Marker';
 
 // 从拆分模块重新导出，保持外部导入路径不变
 export { resetArenaLogic, updateArena } from './ArenaLogic';
 export { resetMazeLogic, startMazeDive, returnToShore, replayMazeLogic, updateMaze } from './MazeLogic';
 export { checkCollision, getNearestWallDist, checkMazeCollision } from './Collision';
-export { updateCameraSpringArm, snapCameraToPlayer } from './CameraLogic';
+export { updateCameraSpringArm, snapCameraToPlayer, updateCameraAdaptiveZoom } from './CameraLogic';
 export { findNearestWall };
 
 const storyManager = new StoryManager();
@@ -509,6 +509,9 @@ export function update() {
     state.camera.targetZoom = targetZoom;
     state.camera.zoom += (state.camera.targetZoom - state.camera.zoom) * 0.02;
 
+    // --- 自适应相机远近（空旷拉远，狭窄拉近）---
+    updateCameraAdaptiveZoom();
+
     // --- 弹簧臂相机跟随 + 水中摇曳 ---
     updateCameraSpringArm();
 
@@ -978,6 +981,9 @@ export function update() {
             fish.angle += diff * 0.1;
         }
     }
+
+    // 呼吸气泡
+    emitBreathBubbles(player.x, player.y, player.angle, player.o2);
 
     updateParticles();
 
