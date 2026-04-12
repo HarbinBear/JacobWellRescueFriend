@@ -636,13 +636,13 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
             return;
         }
 
-        // 迷宫模式：游戏进行中的小地图折叠按钮点击
-        if (state.screen === 'mazeRescue' && state.mazeRescue && state.mazeRescue.phase === 'play') {
+        // 迷宫模式：游戏进行中的小地图折叠按钮点击（仅调试模式）
+        if (CONFIG.debug && state.screen === 'mazeRescue' && state.mazeRescue && state.mazeRescue.phase === 'play') {
             const touch = res.changedTouches[0];
             const tx = touch.clientX;
             const ty = touch.clientY;
             const mapX = CONFIG.maze.minimapX;
-            const mapY = CONFIG.maze.minimapY;
+            const mapY = CONFIG.maze.minimapY + 130; // 与渲染层 yOffset 保持一致
             const toggleBtnSize = 28;
             // 检测折叠/展开按钮区域
             if (tx >= mapX && tx <= mapX + toggleBtnSize && ty >= mapY && ty <= mapY + toggleBtnSize) {
@@ -663,11 +663,11 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
 
             // 救援成功结算页
             if (state.mazeRescue.phase === 'rescued') {
-                // "下一局"按钮
-                const nextBtnX = cw * 0.25;
-                const nextBtnY = ch * 0.85;
-                const nextBtnW = cw * 0.50;
-                const nextBtnH = 52;
+                // "下一局"按钮（底部居中）
+                const nextBtnW = cw * 0.55;
+                const nextBtnH = 44;
+                const nextBtnX = (cw - nextBtnW) / 2;
+                const nextBtnY = ch - 50;
                 if (tx >= nextBtnX && tx <= nextBtnX + nextBtnW &&
                     ty >= nextBtnY - nextBtnH / 2 && ty <= nextBtnY + nextBtnH / 2) {
                     if (onMaze) onMaze();
@@ -681,11 +681,11 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
             }
 
             // 探路结算页（debrief）
-            // "回到岸上"按钮
-            const shoreBtnX = cw * 0.25;
-            const shoreBtnY = ch * 0.85;
-            const shoreBtnW = cw * 0.50;
-            const shoreBtnH = 52;
+            // "回到岸上"按钮（底部居中）
+            const shoreBtnW = cw * 0.55;
+            const shoreBtnH = 44;
+            const shoreBtnX = (cw - shoreBtnW) / 2;
+            const shoreBtnY = ch - 50;
             if (tx >= shoreBtnX && tx <= shoreBtnX + shoreBtnW &&
                 ty >= shoreBtnY - shoreBtnH / 2 && ty <= shoreBtnY + shoreBtnH / 2) {
                 if (onReturnToShore) onReturnToShore();

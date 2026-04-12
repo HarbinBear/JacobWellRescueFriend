@@ -67,44 +67,89 @@ export function drawMazeHUD() {
 
     // === 游戏中 HUD ===
 
-    // 氧气条（顶部右侧）
-    const o2BarW = 120;
-    const o2BarH = 12;
-    const o2BarX = cw - o2BarW - 16;
-    const o2BarY = 16;
+    // --- 深度 + 氧气一体化面板（左上角，简约胶囊风格） ---
     const o2Ratio = Math.max(0, player.o2 / 100);
-
-    ctx.globalAlpha = 0.85;
-    ctx.fillStyle = 'rgba(0,0,0,0.5)';
-    ctx.beginPath();
-    rrect(ctx, o2BarX - 2, o2BarY - 2, o2BarW + 4, o2BarH + 4, 6);
-    ctx.fill();
-    const o2Color = o2Ratio > 0.5 ? `rgba(80,200,255,0.9)` :
-                    o2Ratio > 0.25 ? `rgba(255,200,80,0.9)` : `rgba(255,80,80,0.9)`;
-    ctx.fillStyle = o2Color;
-    ctx.beginPath();
-    rrect(ctx, o2BarX, o2BarY, o2BarW * o2Ratio, o2BarH, 4);
-    ctx.fill();
-    ctx.globalAlpha = 0.9;
-    ctx.fillStyle = '#aef';
-    ctx.font = '11px Arial';
-    ctx.textAlign = 'right';
-    ctx.fillText(`O₂ ${Math.ceil(player.o2)}%`, o2BarX - 6, o2BarY + o2BarH - 1);
-
-    // 深度显示
     const depth = Math.max(0, Math.floor(player.y / maze.mazeTileSize));
-    ctx.globalAlpha = 0.85;
-    ctx.fillStyle = 'rgba(150,220,255,0.9)';
-    ctx.font = 'bold 14px Arial';
-    ctx.textAlign = 'right';
-    ctx.fillText(`深度 ${depth}m`, cw - 16, o2BarY + o2BarH + 18);
 
-    // 下潜类型标签（左上角，小地图按钮右侧）
-    ctx.globalAlpha = 0.8;
-    ctx.fillStyle = maze.diveType === 'rescue' ? 'rgba(255,100,50,0.9)' : 'rgba(100,200,255,0.9)';
+    // 面板参数
+    const panelW = 56;
+    const panelH = 110;
+    const panelX = 10;
+    const panelY = 12;
+    const panelR = 16;
+
+    // 面板背景（半透明深色胶囊）
+    ctx.globalAlpha = 0.7;
+    ctx.fillStyle = 'rgba(8,20,35,0.85)';
+    ctx.beginPath();
+    rrect(ctx, panelX, panelY, panelW, panelH, panelR);
+    ctx.fill();
+    // 面板边框
+    ctx.strokeStyle = 'rgba(80,160,220,0.25)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    rrect(ctx, panelX, panelY, panelW, panelH, panelR);
+    ctx.stroke();
+
+    // 深度数字（大号）
+    ctx.globalAlpha = 0.95;
+    ctx.fillStyle = 'rgba(160,220,255,0.95)';
+    ctx.font = 'bold 22px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText(`${depth}`, panelX + panelW / 2, panelY + 30);
+    // 深度单位
+    ctx.fillStyle = 'rgba(120,180,220,0.6)';
+    ctx.font = '10px Arial';
+    ctx.fillText('m', panelX + panelW / 2, panelY + 42);
+
+    // 分割线
+    ctx.strokeStyle = 'rgba(80,160,220,0.2)';
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(panelX + 10, panelY + 50);
+    ctx.lineTo(panelX + panelW - 10, panelY + 50);
+    ctx.stroke();
+
+    // 氧气环形指示器
+    const o2CenterX = panelX + panelW / 2;
+    const o2CenterY = panelY + 76;
+    const o2Radius = 18;
+    const o2LineW = 3;
+    // 氧气颜色
+    const o2Color = o2Ratio > 0.5 ? 'rgba(80,200,255,0.9)' :
+                    o2Ratio > 0.25 ? 'rgba(255,200,80,0.9)' : 'rgba(255,80,80,0.9)';
+    // 背景环
+    ctx.globalAlpha = 0.3;
+    ctx.strokeStyle = 'rgba(60,100,140,0.4)';
+    ctx.lineWidth = o2LineW;
+    ctx.beginPath();
+    ctx.arc(o2CenterX, o2CenterY, o2Radius, 0, Math.PI * 2);
+    ctx.stroke();
+    // 氧气进度环（从顶部顺时针）
+    ctx.globalAlpha = 0.9;
+    ctx.strokeStyle = o2Color;
+    ctx.lineWidth = o2LineW;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.arc(o2CenterX, o2CenterY, o2Radius, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * o2Ratio);
+    ctx.stroke();
+    ctx.lineCap = 'butt';
+    // 氧气百分比数字
+    ctx.globalAlpha = 0.9;
+    ctx.fillStyle = o2Color;
     ctx.font = 'bold 12px Arial';
-    ctx.textAlign = 'left';
-ctx.fillText(maze.diveType === 'rescue' ? '[救援]' : '[侦察]', 46, 24);
+    ctx.textAlign = 'center';
+    ctx.fillText(`${Math.ceil(player.o2)}`, o2CenterX, o2CenterY + 4);
+    // 低氧闪烁警告
+    if (o2Ratio <= 0.25) {
+        const blink = Math.sin(time * 6) > 0 ? 0.8 : 0.3;
+        ctx.globalAlpha = blink;
+        ctx.strokeStyle = 'rgba(255,60,60,0.6)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(o2CenterX, o2CenterY, o2Radius + 4, 0, Math.PI * 2);
+        ctx.stroke();
+    }
 
     // NPC 救援提示（靠近NPC时显示，发现后即可绑绳）
     if (!maze.npcRescued && state.npc.active) {
@@ -159,50 +204,81 @@ ctx.fillText(maze.diveType === 'rescue' ? '[救援]' : '[侦察]', 46, 24);
         }
     }
 
-    // 撤离按钮（未带人时可用，左下角）
+    // 撤离按钮（未带人时可用，左下角，简约上箭头风格）
     if (!maze.npcRescued) {
         const retreatBtnX = cw * CONFIG.maze.retreatBtnXRatio;
         const retreatBtnY = ch * CONFIG.maze.retreatBtnYRatio;
         const retreatR = CONFIG.maze.retreatBtnRadius;
-        ctx.globalAlpha = 0.8;
-        ctx.fillStyle = 'rgba(0,60,80,0.7)';
+
+        // 长按进度
+        let retreatProgress = 0;
+        if (maze.retreatHolding) {
+            const elapsed = (Date.now() - maze.retreatHoldStart) / 1000;
+            retreatProgress = Math.min(1, elapsed / CONFIG.maze.retreatHoldDuration);
+        }
+
+        // 按钮底色（磨砂玻璃感）
+        ctx.globalAlpha = 0.65;
+        ctx.fillStyle = retreatProgress > 0 ? 'rgba(40,120,100,0.8)' : 'rgba(15,35,50,0.75)';
         ctx.beginPath();
         ctx.arc(retreatBtnX, retreatBtnY, retreatR, 0, Math.PI * 2);
         ctx.fill();
-        ctx.strokeStyle = 'rgba(100,200,255,0.8)';
-        ctx.lineWidth = 2;
+
+        // 外圈（静态细线）
+        ctx.globalAlpha = 0.5;
+        ctx.strokeStyle = 'rgba(100,200,220,0.35)';
+        ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.arc(retreatBtnX, retreatBtnY, retreatR, 0, Math.PI * 2);
         ctx.stroke();
-        if (maze.retreatHolding) {
-            const elapsed = (Date.now() - maze.retreatHoldStart) / 1000;
-            const progress = Math.min(1, elapsed / CONFIG.maze.retreatHoldDuration);
-            ctx.strokeStyle = 'rgba(100,255,200,0.9)';
-            ctx.lineWidth = 4;
+
+        // 长按进度环
+        if (retreatProgress > 0) {
+            ctx.globalAlpha = 0.9;
+            ctx.strokeStyle = 'rgba(80,255,200,0.85)';
+            ctx.lineWidth = 3;
+            ctx.lineCap = 'round';
             ctx.beginPath();
-            ctx.arc(retreatBtnX, retreatBtnY, retreatR + 4, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress);
+            ctx.arc(retreatBtnX, retreatBtnY, retreatR - 2, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * retreatProgress);
             ctx.stroke();
+            ctx.lineCap = 'butt';
         }
-        ctx.globalAlpha = 0.9;
-        ctx.fillStyle = 'rgba(150,220,255,0.95)';
-        ctx.font = '11px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText('↑', retreatBtnX, retreatBtnY + 1);
+
+        // 上箭头图标（简洁三角 + 短线）
+        ctx.globalAlpha = retreatProgress > 0 ? 0.95 : 0.75;
+        ctx.fillStyle = retreatProgress > 0 ? 'rgba(150,255,220,0.95)' : 'rgba(150,210,230,0.85)';
+        ctx.beginPath();
+        ctx.moveTo(retreatBtnX, retreatBtnY - 12);
+        ctx.lineTo(retreatBtnX - 6, retreatBtnY - 5);
+        ctx.lineTo(retreatBtnX + 6, retreatBtnY - 5);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = ctx.fillStyle;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(retreatBtnX, retreatBtnY - 4);
+        ctx.lineTo(retreatBtnX, retreatBtnY + 4);
+        ctx.stroke();
+        // "撤离"文字
+        ctx.fillStyle = retreatProgress > 0 ? 'rgba(150,255,220,0.95)' : 'rgba(150,210,230,0.75)';
         ctx.font = '9px Arial';
-        ctx.fillText('撤离', retreatBtnX, retreatBtnY + 14);
+        ctx.textAlign = 'center';
+        ctx.fillText('撤离', retreatBtnX, retreatBtnY + 16);
     }
 
-    // 小地图（左上角，可折叠）
-    drawMazeMinimap(maze, cw, ch, time);
+    // 小地图（仅调试模式显示，左上角面板下方，可折叠）
+    if (CONFIG.debug) {
+        drawMazeMinimap(maze, cw, ch, time, 130);
+    }
 
     ctx.restore();
 }
 
 // 迷宫小地图绘制
-function drawMazeMinimap(maze: any, cw: number, ch: number, time: number) {
+function drawMazeMinimap(maze: any, cw: number, ch: number, time: number, yOffset: number = 0) {
     const mapSize = CONFIG.maze.minimapSize;
     const mapX = CONFIG.maze.minimapX;
-    const mapY = CONFIG.maze.minimapY;
+    const mapY = CONFIG.maze.minimapY + yOffset;
     const toggleBtnSize = 28;
 
     // 折叠/展开按钮（左上角小图标）
@@ -1161,199 +1237,256 @@ function drawMazeDebrief(maze: any, cw: number, ch: number, time: number) {
     const isRescueSuccess = maze.phase === 'rescued';
     const showAlpha = Math.min(1, maze.resultTimer / 30);
 
-    ctx.globalAlpha = showAlpha * 0.9;
-    ctx.fillStyle = isRescueSuccess ? 'rgba(0,30,20,0.92)' : 'rgba(10,20,40,0.92)';
+    // 背景（深色渐变）
+    ctx.globalAlpha = showAlpha;
+    const bgGrad = ctx.createLinearGradient(0, 0, 0, ch);
+    if (isRescueSuccess) {
+        bgGrad.addColorStop(0, 'rgba(0,25,20,0.96)');
+        bgGrad.addColorStop(1, 'rgba(0,15,10,0.98)');
+    } else {
+        bgGrad.addColorStop(0, 'rgba(8,18,35,0.96)');
+        bgGrad.addColorStop(1, 'rgba(4,10,20,0.98)');
+    }
+    ctx.fillStyle = bgGrad;
     ctx.fillRect(0, 0, cw, ch);
 
     ctx.globalAlpha = showAlpha;
     ctx.textAlign = 'center';
 
-    // 标题
-    const titleY = ch * 0.08;
-    if (isRescueSuccess) {
-        ctx.fillStyle = '#0f8';
-        ctx.font = 'bold 28px Arial';
-        ctx.fillText('🎉 救援成功！', cw / 2, titleY);
-    } else {
-        const lastDive = maze.diveHistory.length > 0 ? maze.diveHistory[maze.diveHistory.length - 1] : null;
-        const reason = lastDive ? lastDive.returnReason : 'retreat';
-        ctx.fillStyle = reason === 'o2' ? '#f80' : '#aef';
-        ctx.font = 'bold 24px Arial';
-ctx.fillText(reason === 'o2' ? '氧气不足，紧急返回' : '安全返回岸上', cw / 2, titleY);
-    }
-
-    // 分割线
-    ctx.strokeStyle = isRescueSuccess ? 'rgba(0,255,150,0.4)' : 'rgba(100,180,255,0.4)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(cw * 0.15, titleY + 16);
-    ctx.lineTo(cw * 0.85, titleY + 16);
-    ctx.stroke();
-
-    // 本次下潜成果
+    // === 标题区域 ===
+    const titleY = ch * 0.04 + 16;
     const lastDive = maze.diveHistory.length > 0 ? maze.diveHistory[maze.diveHistory.length - 1] : null;
-    if (lastDive) {
-        const statsY = titleY + 40;
-        ctx.font = 'bold 16px Arial';
-        ctx.fillStyle = 'rgba(200,230,255,0.95)';
-        ctx.fillText('📋 本次下潜成果', cw / 2, statsY);
-
-        ctx.font = '14px Arial';
-        ctx.fillStyle = 'rgba(180,220,255,0.9)';
-        let sy = statsY + 30;
-        const minutes = Math.floor(lastDive.duration / 60);
-        const seconds = lastDive.duration % 60;
-        ctx.fillText(`用时：${minutes}分${seconds < 10 ? '0' + seconds : seconds}秒`, cw / 2, sy);
-        sy += 24;
-        ctx.fillText(`最深到达：${lastDive.maxDepth}m`, cw / 2, sy);
-        sy += 24;
-        ctx.fillText(`新探索区域：${lastDive.newExploredCount} 格`, cw / 2, sy);
-        sy += 24;
-        ctx.fillText(`新铺绳索：${lastDive.ropePlaced} 段`, cw / 2, sy);
-
-        if (maze.npcFound) {
-            sy += 30;
-            ctx.fillStyle = '#ff0';
-            ctx.font = 'bold 14px Arial';
-            ctx.fillText('⭐ 已发现被困者位置！', cw / 2, sy);
-        }
-
-        // 场景辨识度：本次新发现的区域主题
-        if (maze.thisNewThemes && maze.thisNewThemes.length > 0) {
-            sy += 30;
-            ctx.fillStyle = 'rgba(200,230,255,0.95)';
-            ctx.font = 'bold 14px Arial';
-            ctx.fillText('🌊 新发现区域类型：', cw / 2, sy);
-            sy += 22;
-            ctx.font = '13px Arial';
-            for (const tKey of maze.thisNewThemes) {
-                const tCfg = getMazeMainThemeConfig(tKey);
-                if (tCfg) {
-                    ctx.fillStyle = tCfg.mapColor;
-                    ctx.fillText(`● ${tCfg.name}`, cw / 2, sy);
-                    sy += 20;
-                }
-            }
-        }
+    if (isRescueSuccess) {
+        ctx.fillStyle = 'rgba(80,255,180,0.95)';
+        ctx.font = 'bold 22px Arial';
+        ctx.fillText('救援成功', cw / 2, titleY);
+    } else {
+        const reason = lastDive ? lastDive.returnReason : 'retreat';
+        ctx.fillStyle = reason === 'o2' ? 'rgba(255,180,80,0.95)' : 'rgba(160,210,255,0.95)';
+        ctx.font = 'bold 20px Arial';
+        ctx.fillText(reason === 'o2' ? '氧气不足' : '安全返回', cw / 2, titleY);
     }
 
-    // 全览地图（带轨迹）
-    const mapSize = Math.min(cw * 0.75, ch * 0.3);
-    const mapX = (cw - mapSize) / 2;
-    const mapY = ch * 0.42;
+    // === 轨迹复盘地图（占据页面主体，尽量大） ===
+    const mapPadding = 16;
+    const mapTopY = titleY + 20;
+    // 统计区域高度预估
+    const statsAreaH = lastDive ? 100 : 20;
+    const btnAreaH = 70;
+    const mapAvailH = ch - mapTopY - statsAreaH - btnAreaH - mapPadding * 2;
+    const mapAvailW = cw - mapPadding * 2;
+
     const cols = maze.mazeCols;
     const rows = maze.mazeRows;
-    const cellW = mapSize / cols;
-    const mapH = mapSize * (rows / cols);
+    const mapRatio = cols / rows;
+    const areaRatio = mapAvailW / mapAvailH;
+    let mapW: number, mapH: number;
+    if (mapRatio > areaRatio) {
+        mapW = mapAvailW;
+        mapH = mapW / mapRatio;
+    } else {
+        mapH = mapAvailH;
+        mapW = mapH * mapRatio;
+    }
+    const mapX = (cw - mapW) / 2;
+    const mapY = mapTopY + (mapAvailH - mapH) / 2;
+    const cellW = mapW / cols;
+    const cellH = mapH / rows;
 
-    ctx.globalAlpha = showAlpha * 0.9;
-    ctx.fillStyle = 'rgba(0,0,0,0.8)';
+    // 地图背景
+    ctx.globalAlpha = showAlpha * 0.95;
+    ctx.fillStyle = 'rgba(5,12,25,0.9)';
     ctx.beginPath();
-    rrect(ctx, mapX, mapY, mapSize, mapH, 4);
+    rrect(ctx, mapX - 4, mapY - 4, mapW + 8, mapH + 8, 8);
     ctx.fill();
+    // 地图边框
+    ctx.strokeStyle = isRescueSuccess ? 'rgba(60,200,140,0.25)' : 'rgba(60,120,180,0.25)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    rrect(ctx, mapX - 4, mapY - 4, mapW + 8, mapH + 8, 8);
+    ctx.stroke();
 
     // 绘制已探索地图
+    ctx.globalAlpha = showAlpha * 0.9;
     for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
             if (!maze.mazeExplored[r] || !maze.mazeExplored[r][c]) continue;
             const cell = maze.mazeMap[r][c];
             const px = mapX + c * cellW;
-            const py = mapY + r * (mapH / rows);
+            const py = mapY + r * cellH;
             if (cell === 0) {
                 const isNew = maze.thisExploredBefore && maze.thisExploredBefore[r] && !maze.thisExploredBefore[r][c];
-                ctx.fillStyle = isNew ? 'rgba(100,200,255,0.8)' : 'rgba(50,80,100,0.6)';
+                ctx.fillStyle = isNew ? 'rgba(80,190,255,0.85)' : 'rgba(35,65,90,0.65)';
             } else {
-                ctx.fillStyle = 'rgba(30,40,50,0.9)';
+                ctx.fillStyle = 'rgba(20,30,40,0.85)';
             }
-            ctx.fillRect(px, py, Math.max(1, cellW), Math.max(1, mapH / rows));
+            ctx.fillRect(px, py, Math.max(1, cellW), Math.max(1, cellH));
         }
     }
 
-    // 绘制轨迹
-    if (maze.playerPath && maze.playerPath.length > 0) {
-        const pathLen = maze.playerPath.length;
-        const animDuration = 90;
-        const animProgress = Math.min(1, Math.max(0, (maze.resultTimer - 30) / animDuration));
-        const drawCount = Math.floor(pathLen * animProgress);
-        ctx.strokeStyle = 'rgba(255,200,50,0.8)';
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        for (let i = 0; i < drawCount; i++) {
-            const pt = maze.playerPath[i];
-            const px = mapX + (pt.x / maze.mazeTileSize) * cellW;
-            const py = mapY + (pt.y / maze.mazeTileSize) * (mapH / rows);
-            if (i === 0) ctx.moveTo(px, py);
-            else ctx.lineTo(px, py);
-        }
-        ctx.stroke();
-    }
-
-    // 绳索
+    // 绘制绳索
     if (state.rope && state.rope.ropes && state.rope.ropes.length > 0) {
-        ctx.globalAlpha = showAlpha * 0.6;
-        ctx.strokeStyle = 'rgba(255,150,50,0.8)';
-        ctx.lineWidth = 1;
+        ctx.globalAlpha = showAlpha * 0.65;
+        ctx.strokeStyle = 'rgba(255,180,80,0.75)';
+        ctx.lineWidth = Math.max(1, cellW * 0.8);
         for (const rope of state.rope.ropes) {
             if (!rope.path || rope.path.length < 2) continue;
             ctx.beginPath();
             const startPt = rope.path[0];
             ctx.moveTo(mapX + (startPt.x / maze.mazeTileSize) * cellW,
-                       mapY + (startPt.y / maze.mazeTileSize) * (mapH / rows));
+                       mapY + (startPt.y / maze.mazeTileSize) * cellH);
             for (let i = 1; i < rope.path.length; i++) {
                 const pt = rope.path[i];
                 ctx.lineTo(mapX + (pt.x / maze.mazeTileSize) * cellW,
-                           mapY + (pt.y / maze.mazeTileSize) * (mapH / rows));
+                           mapY + (pt.y / maze.mazeTileSize) * cellH);
             }
             ctx.stroke();
         }
     }
 
-    // 按钮
+    // 绘制轨迹（动画展开）
+    if (maze.playerPath && maze.playerPath.length > 0) {
+        const pathLen = maze.playerPath.length;
+        const animDuration = 90;
+        const animProgress = Math.min(1, Math.max(0, (maze.resultTimer - 30) / animDuration));
+        const drawCount = Math.floor(pathLen * animProgress);
+        ctx.globalAlpha = showAlpha * 0.85;
+        ctx.strokeStyle = 'rgba(255,220,80,0.8)';
+        ctx.lineWidth = Math.max(1.5, cellW * 1.2);
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.beginPath();
+        for (let i = 0; i < drawCount; i++) {
+            const pt = maze.playerPath[i];
+            const px = mapX + (pt.x / maze.mazeTileSize) * cellW;
+            const py = mapY + (pt.y / maze.mazeTileSize) * cellH;
+            if (i === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+        ctx.lineCap = 'butt';
+        ctx.lineJoin = 'miter';
+
+        // 轨迹终点标记（当前位置闪烁点）
+        if (drawCount > 0) {
+            const lastPt = maze.playerPath[drawCount - 1];
+            const lpx = mapX + (lastPt.x / maze.mazeTileSize) * cellW;
+            const lpy = mapY + (lastPt.y / maze.mazeTileSize) * cellH;
+            const pulse = 0.5 + Math.sin(time * 4) * 0.5;
+            ctx.globalAlpha = showAlpha * pulse;
+            ctx.fillStyle = '#fff';
+            ctx.beginPath();
+            ctx.arc(lpx, lpy, Math.max(2, cellW * 2), 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
+
+    // 出口标记
+    const exitMX = mapX + (maze.exitX / maze.mazeTileSize) * cellW;
+    const exitMY = mapY + (maze.exitY / maze.mazeTileSize) * cellH;
+    ctx.globalAlpha = showAlpha * 0.85;
+    ctx.fillStyle = '#4CAF50';
+    ctx.beginPath();
+    ctx.arc(exitMX, exitMY, Math.max(3, cellW * 2), 0, Math.PI * 2);
+    ctx.fill();
+
+    // NPC 标记
+    if (maze.npcFound) {
+        const npcMX = mapX + (maze.npcInitX / maze.mazeTileSize) * cellW;
+        const npcMY = mapY + (maze.npcInitY / maze.mazeTileSize) * cellH;
+        ctx.fillStyle = isRescueSuccess ? '#0f8' : '#f44';
+        ctx.beginPath();
+        ctx.arc(npcMX, npcMY, Math.max(3, cellW * 2), 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // === 统计数据区域（地图下方，紧凑横排） ===
+    if (lastDive) {
+        const statsY = mapY + mapH + 16;
+        ctx.globalAlpha = showAlpha * 0.9;
+        ctx.textAlign = 'center';
+
+        // 统计数据横排（4列）
+        const statItems = [];
+        const minutes = Math.floor(lastDive.duration / 60);
+        const seconds = lastDive.duration % 60;
+        statItems.push({ label: '用时', value: `${minutes}:${seconds < 10 ? '0' + seconds : seconds}` });
+        statItems.push({ label: '深度', value: `${lastDive.maxDepth}m` });
+        statItems.push({ label: '探索', value: `+${lastDive.newExploredCount}` });
+        statItems.push({ label: '绳索', value: `+${lastDive.ropePlaced}` });
+
+        const statW = cw / statItems.length;
+        for (let i = 0; i < statItems.length; i++) {
+            const sx = statW * i + statW / 2;
+            // 数值
+            ctx.fillStyle = isRescueSuccess ? 'rgba(120,255,200,0.95)' : 'rgba(160,210,255,0.95)';
+            ctx.font = 'bold 18px Arial';
+            ctx.fillText(statItems[i].value, sx, statsY + 4);
+            // 标签
+            ctx.fillStyle = 'rgba(120,160,200,0.5)';
+            ctx.font = '10px Arial';
+            ctx.fillText(statItems[i].label, sx, statsY + 18);
+        }
+
+        // 特殊提示（发现NPC / 新主题）
+        let tipY = statsY + 36;
+        if (maze.npcFound && lastDive.returnReason !== 'rescued') {
+            ctx.fillStyle = 'rgba(255,220,80,0.85)';
+            ctx.font = 'bold 12px Arial';
+            ctx.fillText('已发现被困者位置', cw / 2, tipY);
+            tipY += 18;
+        }
+        if (maze.thisNewThemes && maze.thisNewThemes.length > 0) {
+            ctx.font = '11px Arial';
+            const themeNames = maze.thisNewThemes.map((tKey: string) => {
+                const tCfg = getMazeMainThemeConfig(tKey);
+                return tCfg ? tCfg.name : tKey;
+            }).join('、');
+            ctx.fillStyle = 'rgba(160,200,240,0.7)';
+            ctx.fillText(`新发现：${themeNames}`, cw / 2, tipY);
+        }
+    }
+
+    // === 底部按钮 ===
     if (maze.resultTimer >= 60) {
         const btnAlpha = Math.min(1, (maze.resultTimer - 60) / 20);
         ctx.globalAlpha = showAlpha * btnAlpha;
 
-        const btnY = ch * 0.85;
-        const btnH = 52;
+        const btnY = ch - 50;
+        const btnW = cw * 0.55;
+        const btnH = 44;
+        const btnX = (cw - btnW) / 2;
 
         if (isRescueSuccess) {
-            const nextBtnX = cw * 0.25;
-            const nextBtnW = cw * 0.50;
-            ctx.fillStyle = 'rgba(0,80,60,0.8)';
+            // 渐变按钮
+            const btnGrad = ctx.createLinearGradient(btnX, btnY - btnH / 2, btnX + btnW, btnY - btnH / 2);
+            btnGrad.addColorStop(0, 'rgba(20,100,80,0.85)');
+            btnGrad.addColorStop(1, 'rgba(30,130,100,0.85)');
+            ctx.fillStyle = btnGrad;
             ctx.beginPath();
-            rrect(ctx, nextBtnX, btnY - btnH / 2, nextBtnW, btnH, 26);
+            rrect(ctx, btnX, btnY - btnH / 2, btnW, btnH, 22);
             ctx.fill();
-            ctx.strokeStyle = 'rgba(0,200,120,0.7)';
-            ctx.lineWidth = 1.5;
-            ctx.beginPath();
-            rrect(ctx, nextBtnX, btnY - btnH / 2, nextBtnW, btnH, 26);
-            ctx.stroke();
-            ctx.fillStyle = 'rgba(100,255,180,0.95)';
-            ctx.font = 'bold 16px Arial';
-            ctx.fillText('▶ 下一局', cw / 2, btnY + 5);
-        } else {
-            const shoreBtnX = cw * 0.25;
-            const shoreBtnW = cw * 0.50;
-            ctx.fillStyle = 'rgba(21,101,192,0.8)';
-            ctx.beginPath();
-            rrect(ctx, shoreBtnX, btnY - btnH / 2, shoreBtnW, btnH, 26);
-            ctx.fill();
-            ctx.strokeStyle = 'rgba(100,180,255,0.7)';
-            ctx.lineWidth = 1.5;
-            ctx.beginPath();
-            rrect(ctx, shoreBtnX, btnY - btnH / 2, shoreBtnW, btnH, 26);
-            ctx.stroke();
-            ctx.fillStyle = 'rgba(200,230,255,0.95)';
-            ctx.font = 'bold 16px Arial';
-ctx.fillText('回到岸上', cw / 2, btnY + 5);
-        }
+            ctx.fillStyle = 'rgba(120,255,200,0.95)';
+            ctx.font = 'bold 15px Arial';
+            ctx.fillText('下一局', cw / 2, btnY + 5);
 
-        if (isRescueSuccess) {
-            const tapAlpha = 0.5 + Math.sin(time * 2.5) * 0.5;
+            // 返回主菜单提示
+            const tapAlpha = 0.4 + Math.sin(time * 2.5) * 0.3;
             ctx.globalAlpha = showAlpha * btnAlpha * tapAlpha;
-            ctx.fillStyle = 'rgba(150,180,200,0.8)';
-            ctx.font = '13px Arial';
-            ctx.fillText('点击其他区域返回主菜单', cw / 2, ch * 0.96);
+            ctx.fillStyle = 'rgba(120,160,180,0.6)';
+            ctx.font = '11px Arial';
+            ctx.fillText('点击其他区域返回主菜单', cw / 2, ch - 14);
+        } else {
+            const btnGrad = ctx.createLinearGradient(btnX, btnY - btnH / 2, btnX + btnW, btnY - btnH / 2);
+            btnGrad.addColorStop(0, 'rgba(20,70,140,0.85)');
+            btnGrad.addColorStop(1, 'rgba(30,90,170,0.85)');
+            ctx.fillStyle = btnGrad;
+            ctx.beginPath();
+            rrect(ctx, btnX, btnY - btnH / 2, btnW, btnH, 22);
+            ctx.fill();
+            ctx.fillStyle = 'rgba(180,220,255,0.95)';
+            ctx.font = 'bold 15px Arial';
+            ctx.fillText('回到岸上', cw / 2, btnY + 5);
         }
     }
 }

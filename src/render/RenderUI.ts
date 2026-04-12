@@ -1,7 +1,6 @@
 import { CONFIG } from '../core/config';
 import { state, player, touches } from '../core/state';
 import { ctx, canvas, logicW, logicH } from './Canvas';
-import { drawLungs } from './RenderDiver';
 import { createFishEnemy } from '../logic/FishEnemy';
 import { triggerPlayerAttack } from '../logic/FishEnemy';
 import { drawMenu } from './RenderMenu';
@@ -47,25 +46,6 @@ function rrect(c, x, y, w, h, r) {
 }
 
 export function drawUI(){
-    ctx.fillStyle = 'rgba(0, 10, 15, 0.8)';
-    ctx.fillRect(10, 10, 160, 200); 
-    ctx.strokeStyle = '#445';
-    ctx.strokeRect(10, 10, 160, 200);
-    ctx.fillStyle = '#0ff';
-    ctx.font = 'bold 14px Arial';
-    ctx.textAlign = 'left';
-    ctx.fillText('潜水电脑', 20, 30);
-    ctx.font = '12px Arial';
-    ctx.fillText('深度: ' + Math.floor(player.y / CONFIG.tileSize) + 'm', 20, 50);
-
-    if(!state.story.flags.tankDamaged) {
-        ctx.fillStyle = '#8cf'; ctx.font = '12px Arial'; ctx.fillText('O2', 20, 70);
-        ctx.fillStyle = '#222'; ctx.fillRect(50, 60, 100, 10);
-        ctx.fillStyle = '#0f0'; ctx.fillRect(50, 60, Math.max(0, player.o2), 10);
-    } else {
-        ctx.fillStyle = '#f00'; ctx.font = 'bold 12px Arial'; ctx.fillText('氧气瓶已损毁', 20, 70);
-        drawLungs(ctx, logicW/2, logicH/2 + 100, player.o2);
-    }
 
     // 小地图 & 调试信息（仅调试模式）
     if(CONFIG.debug) {
