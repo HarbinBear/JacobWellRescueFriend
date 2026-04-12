@@ -243,6 +243,21 @@ export const state = {
         thisRopeCountBefore: number;    // 本次下潜开始时的绳索数量
         thisMaxDepth: number;           // 本次下潜最深到达
     },
+    // 标记系统
+    markers: [] as any[],
+    // 轮盘交互状态
+    wheel: {
+        btnVisible: false,       // 交互按钮是否可见
+        open: false,             // 轮盘是否打开
+        sectors: [] as any[],    // 当前扇区列表
+        highlightIndex: -1,      // 当前高亮扇区索引（-1=无）
+        expandProgress: 0,       // 展开动画进度（0~1）
+        touchId: null as number | null, // 轮盘触点ID
+        centerX: 0,              // 轮盘中心屏幕X
+        centerY: 0,              // 轮盘中心屏幕Y
+        stillTimer: 0,           // 静止计时器
+        nearbyInfo: null as any, // 当前附近可交互对象信息
+    },
     rope: {
         ropes: [],
         active: false,
@@ -346,6 +361,21 @@ export function resetState() {
         turnVisual: 0,
     };
 
+    // 重置标记系统
+    state.markers = [];
+    // 重置轮盘状态
+    state.wheel = {
+        btnVisible: false,
+        open: false,
+        sectors: [],
+        highlightIndex: -1,
+        expandProgress: 0,
+        touchId: null,
+        centerX: 0,
+        centerY: 0,
+        stillTimer: 0,
+        nearbyInfo: null,
+    };
     state.rope = {
         ropes: [],
         active: false,

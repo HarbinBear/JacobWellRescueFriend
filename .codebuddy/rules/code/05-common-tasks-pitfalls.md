@@ -66,6 +66,17 @@ type: always
 - `src/render/RenderRope.ts`
 - `src/core/config.ts`
 
+### 1.5b 改标记系统（放置/拆除/轮盘交互）
+
+优先检查：
+
+- `src/logic/Marker.ts`（上下文检测、标记放置/拆除、轮盘状态管理）
+- `src/render/RenderMarker.ts`（世界空间标记绘制）
+- `src/render/RenderWheel.ts`（轮盘 UI 绘制）
+- `src/core/input.ts`（轮盘触摸交互）
+- `src/core/config.ts` 中的 `marker` 配置
+- `src/gm/GMConfig.ts` 中的
+
 ### 1.6 改凶猛鱼行为或攻击判定
 
 优先检查：
@@ -211,6 +222,7 @@ type: always
 - 竞技场逻辑：`src/logic/ArenaLogic.ts`
 - 迷宫逻辑：`src/logic/MazeLogic.ts`
 - 绳索：`src/logic/Rope.ts`、`src/render/RenderRope.ts`
+- 标记系统：`src/logic/Marker.ts`、`src/render/RenderMarker.ts`、`src/render/RenderWheel.ts`
 - 敌鱼：`src/logic/FishEnemy.ts`、`src/render/RenderFishEnemy.ts`
 - 主线 HUD 与控制：`src/render/RenderUI.ts`
 - 菜单与章节选择：`src/render/RenderMenu.ts`

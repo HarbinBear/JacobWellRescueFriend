@@ -217,6 +217,23 @@ export const TABS: GMTab[] = [
             { type: 'number', label: '光柱摇曳幅度', path: 'maze.shallowWater.sunlightSwayAmount', min: 5, max: 80, step: 5 },
         ]
     },
+    {
+        name: '标记',
+        items: [
+            { type: 'number', label: '按钮半径', path: 'marker.btnRadius', min: 20, max: 50, step: 2 },
+            { type: 'number', label: '轮盘外径', path: 'marker.wheelOuterRadius', min: 50, max: 120, step: 5 },
+            { type: 'number', label: '轮盘内径', path: 'marker.wheelInnerRadius', min: 10, max: 40, step: 2 },
+            { type: 'number', label: '岩石牌面宽', path: 'marker.wallSignWidth', min: 6, max: 20, step: 1 },
+            { type: 'number', label: '岩石牌面高', path: 'marker.wallSignHeight', min: 4, max: 16, step: 1 },
+            { type: 'number', label: '岩石短杆长', path: 'marker.wallStakeLength', min: 4, max: 16, step: 1 },
+            { type: 'number', label: '绳索标签宽', path: 'marker.ropeTagWidth', min: 4, max: 16, step: 1 },
+            { type: 'number', label: '绳索标签高', path: 'marker.ropeTagHeight', min: 4, max: 14, step: 1 },
+            { type: 'number', label: '放置动画帧', path: 'marker.placeAnimDuration', min: 5, max: 40, step: 1 },
+            { type: 'number', label: '拆除动画帧', path: 'marker.removeAnimDuration', min: 5, max: 30, step: 1 },
+            { type: 'number', label: '绳索标记摆速', path: 'marker.ropeTagSwaySpeed', min: 0.5, max: 3, step: 0.1, precision: 1 },
+            { type: 'number', label: '绳索标记摆幅', path: 'marker.ropeTagSwayAmplitude', min: 0.05, max: 0.4, step: 0.01, precision: 2 },
+        ]
+    },
 ];
 
 // ============ 面板布局常量 ============

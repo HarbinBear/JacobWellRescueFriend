@@ -6,6 +6,8 @@ import { initWebGLLight, isWebGLAvailable, uploadPolyData, uploadSiltData, uploa
 import { drawDiver } from './RenderDiver';
 import { drawUI, drawControls, drawSlashEffect } from './RenderUI';
 import { drawRopesWorld, drawRopeButton } from './RenderRope';
+import { drawMarkersWorld } from './RenderMarker';
+import { drawWheelButton, drawWheel } from './RenderWheel';
 import { drawAllFishEnemies, drawFishBiteEffect } from './RenderFishEnemy';
 import { drawMazeWallShape, getMazeParticleColorByWorld, getMazeThemeColorByCell, drawMazeShallowSky, drawMazeShallowWaterTint, drawMazeShallowCaustics, getMazeShallowMaskAlpha } from './RenderMazeScene';
 import { drawGMButton, drawGMPanel } from '../gm/GMPanel';
@@ -355,6 +357,9 @@ export function draw() {
 
     // --- 绘制绳索（世界空间，在角色之前）---
     drawRopesWorld();
+
+    // --- 绘制标记（世界空间，在绳索之后）---
+    drawMarkersWorld(ctx);
 
     // --- 绘制凶猛鱼敌人（在角色之前）---
     drawAllFishEnemies(ctx);
@@ -854,7 +859,8 @@ export function draw() {
     // 3. 绘制 UI
     drawUI();
     drawControls();
-    drawRopeButton();
+    drawWheelButton();
+    drawWheel();
 
     // 绘制刀光特效（在 UI 之上，屏幕空间）
     if (state.playerAttack && state.playerAttack.active) {

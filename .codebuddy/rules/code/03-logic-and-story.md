@@ -185,7 +185,8 @@ const storyManager = new StoryManager();
 - **`ManualDrive.ts`**（约 230 行）：手动挡移动处理 `processManualDrive()`，负责逐触点输入消费、各向异性水阻、身体朝向跟随、限速和动作运行态。
 - **`Collision.ts`**（约 100 行）：碰撞检测 `checkCollision()`、`getNearestWallDist()`、`checkMazeCollision()`。
 - **`ArenaLogic.ts`**（约 250 行）：竞技场初始化 `resetArenaLogic()`、每帧更新 `updateArena()`、玩家移动 `updateArenaPlayer()`、成就反馈。
-- **`MazeLogic.ts`**（约 620 行）：迷宫多次下潜闭环的全部逻辑，包括 `resetMazeLogic()`、`startMazeDive()`、`finishMazeDive()`、`returnToShore()`、`replayMazeLogic()`、`updateMaze()`。
+- **`MazeLogic.ts`**（约 650 行）：迷宫多次下潜闭环的全部逻辑，包括 `resetMazeLogic()`、`startMazeDive()`、`finishMazeDive()`、`returnToShore()`、`replayMazeLogic()`、`updateMaze()`。
+- **`Marker.ts`**（约 300 行）：标记系统核心逻辑，包括标记放置/拆除、上下文检测、轮盘扇区生成、轮盘按钮可见性更新、操作执行。
 
 外部调用方（如 `game.ts`、`input.ts`）仍然只从 `Logic.ts` 导入，不需要知道内部拆分细节。
 
@@ -206,10 +207,13 @@ const storyManager = new StoryManager();
 - `getNearestWallDist(x, y)` — 来自 `Collision.ts`
 - `checkMazeCollision(x, y, maze)` — 来自 `Collision.ts`
 - `findNearestWall` — 从绳索模块转导出
+- `updateMarkers()` — 来自 `Marker.ts`
+- `updateWheelButtonVisibility()` — 来自 `Marker.ts`
+- `executeWheelAction()` — 来自 `Marker.ts`
 
 ### 3.3 主要依赖
 
-`Logic.ts` 本体依赖：`config.ts`、`state.ts`、`map.ts`、`StoryManager.ts`、`Particle.ts`、`Rope.ts`、`FishEnemy.ts`、`ManualDrive.ts`、`Collision.ts`。
+`Logic.ts` 本体依赖：`config.ts`、`state.ts`、`map.ts`、`StoryManager.ts`、`Particle.ts`、`Rope.ts`、`FishEnemy.ts`、`ManualDrive.ts`、`Collision.ts`、`Marker.ts`。
 
 子模块各自管理自己的依赖，不再全部集中在一个文件里。
 这意味着它不仅是“逻辑文件”，还是当前项目事实上的**玩法编排中心**。

@@ -9,6 +9,7 @@ import { processManualDrive } from './ManualDrive';
 import { checkCollision, getNearestWallDist, checkMazeCollision } from './Collision';
 
 import { updateCameraSpringArm, snapCameraToPlayer } from './CameraLogic';
+import { updateMarkers, updateWheelButtonVisibility } from './Marker';
 
 // 从拆分模块重新导出，保持外部导入路径不变
 export { resetArenaLogic, updateArena } from './ArenaLogic';
@@ -656,6 +657,17 @@ export function update() {
     }
 
     updateRopeSystem();
+
+    // 标记系统更新
+    updateMarkers();
+    updateWheelButtonVisibility();
+
+    // 轮盘展开动画
+    if (state.wheel && state.wheel.open) {
+        if (state.wheel.expandProgress < 1) {
+            state.wheel.expandProgress = Math.min(1, state.wheel.expandProgress + 1 / (CONFIG.marker.wheelExpandDuration / 1000 * 60));
+        }
+    }
 
     // 第二关：小潘发现走错路检测（玩家到达第一二洞室连接处）
     if(state.story.stage === 3 && state.npc.active && !state.story.flags.npcWrongWay) {

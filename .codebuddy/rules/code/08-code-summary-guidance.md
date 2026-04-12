@@ -107,6 +107,7 @@ gameLoop
 如果需要改专项功能，再继续深入：
 
 - **绳索系统**：`src/logic/Rope.ts`、`src/render/RenderRope.ts`
+- **标记系统**：`src/logic/Marker.ts`、`src/render/RenderMarker.ts`、`src/render/RenderWheel.ts`
 - **敌鱼系统**：`src/logic/FishEnemy.ts`、`src/render/RenderFishEnemy.ts`
 - **UI 系统**：`src/render/RenderUI.ts`
 - **光照系统**：`src/render/RenderLight.ts`、`src/render/WebGLLight.ts`
@@ -214,6 +215,16 @@ gameLoop
 - `src/logic/Rope.ts`
 - `src/render/RenderRope.ts`
 - `src/core/config.ts`
+
+### 4.5b 改标记系统
+
+优先检查：
+- `src/logic/Marker.ts`（上下文检测、标记放置/拆除、轮盘状态管理）
+- `src/render/RenderMarker.ts`（世界空间标记绘制）
+- `src/render/RenderWheel.ts`（轮盘 UI 绘制）
+- `src/core/input.ts`（轮盘触摸交互）
+- `src/core/config.ts` 中的 `marker` 配置
+- `src/gm/GMConfig.ts` 中的
 
 ### 4.6 改凶猛鱼行为或攻击判定
 

@@ -3,6 +3,7 @@ import { state, input, touches, player } from './state';
 import { createFishEnemy, triggerPlayerAttack, findSafeSpawnPosition } from '../logic/FishEnemy';
 import { DEBUG_FISH_BTN, ATTACK_BTN, FLASHLIGHT_BTN } from '../render/RenderUI';
 import { isGMOpen, handleGMTouchStart, handleGMTouchMove, handleGMTouchEnd } from '../gm/GMPanel';
+import { buildWheelSectors, executeWheelAction } from '../logic/Marker';
 
 // 章节页滑动状态
 let chapterTouchStartY = 0;
@@ -274,20 +275,30 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
             } // else 结束
         }
 
-        if(state.rope && state.rope.ui && state.rope.ui.visible) {
-            const btnX = CONFIG.screenWidth * CONFIG.ropeButtonXRatio;
-            const btnY = CONFIG.screenHeight * CONFIG.ropeButtonYRatio;
+        // 轮盘交互按钮检测（替代旧绳索按钮）
+        if (state.wheel && state.wheel.btnVisible && !state.wheel.open) {
+            const btnX = CONFIG.screenWidth * CONFIG.marker.btnXRatio;
+            const btnY = CONFIG.screenHeight * CONFIG.marker.btnYRatio;
             for (let t of res.touches) {
                 const dx = t.clientX - btnX;
                 const dy = t.clientY - btnY;
-                if (Math.hypot(dx, dy) <= CONFIG.ropeButtonRadius) {
-                    state.rope.hold.active = true;
-                    state.rope.hold.type = state.rope.ui.type;
-                    state.rope.hold.timer = 0;
-                    state.rope.hold.touchId = t.identifier;
-                    state.rope.hold.anchor = state.rope.ui.anchor;
-                    input.move = 0;
-                    input.speedUp = false;
+                if (Math.hypot(dx, dy) <= CONFIG.marker.btnRadius) {
+                    // 打开轮盘
+                    const nearbyInfo = state.wheel.nearbyInfo;
+                    if (nearbyInfo) {
+                        const sectors = buildWheelSectors(nearbyInfo.context, !!nearbyInfo.existingMarker);
+                        state.wheel.open = true;
+                        state.wheel.sectors = sectors;
+                        state.wheel.highlightIndex = -1;
+                        state.wheel.expandProgress = 0;
+                        state.wheel.touchId = t.identifier;
+                        state.wheel.centerX = btnX;
+                        state.wheel.centerY = btnY;
+                        input.move = 0;
+                        input.speedUp = false;
+                        // 手动挡：冻结输入
+                        if (state.manualDrive) state.manualDrive.activeTouches = {};
+                    }
                     return;
                 }
             }
@@ -445,6 +456,54 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
             state.chapterScrollY = newScroll;
             return;
         }
+        // 轮盘打开时：滑动更新高亮扇区
+        if (state.wheel && state.wheel.open && state.wheel.touchId !== null) {
+            for (let t of res.touches) {
+                if (t.identifier === state.wheel.touchId) {
+                    const dx = t.clientX - state.wheel.centerX;
+                    const dy = t.clientY - state.wheel.centerY;
+                    const dist = Math.hypot(dx, dy);
+                    if (dist < CONFIG.marker.wheelInnerRadius) {
+                        state.wheel.highlightIndex = -1; // 在死区内，无高亮
+                    } else {
+                        // 计算角度，匹配扇区
+                        let angle = Math.atan2(dy, dx);
+                        const sectors = state.wheel.sectors;
+                        let found = -1;
+                        for (let i = 0; i < sectors.length; i++) {
+                            let start = sectors[i].startAngle;
+                            let end = sectors[i].endAngle;
+                            // 规范化角度到 [-PI, PI]
+                            let a = angle;
+                            while (a < start) a += Math.PI * 2;
+                            while (a > end) a -= Math.PI * 2;
+                            if (a >= start && a <= end) {
+                                found = i;
+                                break;
+                            }
+                        }
+                        // 备用：用最近扇区中心角
+                        if (found < 0) {
+                            let minDiff = Infinity;
+                            for (let i = 0; i < sectors.length; i++) {
+                                const mid = (sectors[i].startAngle + sectors[i].endAngle) / 2;
+                                let diff = Math.abs(angle - mid);
+                                if (diff > Math.PI) diff = Math.PI * 2 - diff;
+                                if (diff < minDiff) {
+                                    minDiff = diff;
+                                    found = i;
+                                }
+                            }
+                        }
+                        state.wheel.highlightIndex = found;
+                    }
+                    input.move = 0;
+                    input.speedUp = false;
+                    return;
+                }
+            }
+        }
+
         if (state.rope && state.rope.hold && state.rope.hold.active) {
             for (let t of res.touches) {
                 if (t.identifier === state.rope.hold.touchId) {
@@ -781,6 +840,18 @@ function handleTouchEnd(changedTouches) {
         // 攻击按钮触点释放
         if(t.identifier === attackTouchId) {
             attackTouchId = null;
+        }
+        // 轮盘松手：执行选中操作或取消
+        if (state.wheel && state.wheel.open && t.identifier === state.wheel.touchId) {
+            if (state.wheel.highlightIndex >= 0 && state.wheel.sectors[state.wheel.highlightIndex]) {
+                executeWheelAction(state.wheel.sectors[state.wheel.highlightIndex].action);
+            }
+            // 关闭轮盘
+            state.wheel.open = false;
+            state.wheel.sectors = [];
+            state.wheel.highlightIndex = -1;
+            state.wheel.expandProgress = 0;
+            state.wheel.touchId = null;
         }
         if(state.rope && state.rope.hold && t.identifier === state.rope.hold.touchId) {
             state.rope.hold.active = false;

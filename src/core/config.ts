@@ -99,6 +99,42 @@ export const CONFIG = {
     ropeReelRadius: 8,             // 玩家身上线轮指示器半径
     ropeReelColor: 'rgba(200, 190, 140, 0.7)', // 线轮指示器颜色
 
+    // ===== 标记系统配置 =====
+    marker: {
+        // 交互按钮（轮盘触发器）
+        btnRadius: 32,              // 交互按钮半径
+        btnXRatio: 0.82,            // 按钮X位置比例（与旧绳索按钮相同位置）
+        btnYRatio: 0.75,            // 按钮Y位置比例
+        // 轮盘
+        wheelOuterRadius: 80,       // 轮盘外径
+        wheelInnerRadius: 20,       // 轮盘内径（死区，松手取消）
+        wheelExpandDuration: 150,   // 轮盘展开动画时长（ms）
+        wheelCollapseDuration: 100, // 轮盘收起动画时长（ms）
+        // 标记尺寸
+        wallSignWidth: 12,          // 岩石标记牌面宽度
+        wallSignHeight: 10,         // 岩石标记牌面高度
+        wallStakeLength: 8,         // 岩石标记短杆长度
+        ropeTagWidth: 10,           // 绳索标记标签宽度
+        ropeTagHeight: 8,           // 绳索标记标签高度
+        ropeTagStrapLength: 4,      // 绳索标记绑带长度
+        // 标记动画
+        placeAnimDuration: 20,      // 放置动画帧数
+        removeAnimDuration: 15,     // 拆除动画帧数
+        // 标记颜色
+        dangerColor: 'rgba(180, 40, 40, 0.9)',      // 红叉牌面底色
+        dangerBorder: 'rgba(255, 80, 80, 0.6)',      // 红叉边框
+        dangerStake: 'rgba(150, 50, 50, 0.8)',       // 红叉短杆
+        unknownColor: 'rgba(180, 150, 40, 0.9)',     // 黄问号牌面底色
+        unknownBorder: 'rgba(255, 220, 80, 0.6)',    // 黄问号边框
+        unknownStake: 'rgba(150, 130, 50, 0.8)',     // 黄问号短杆
+        safeColor: 'rgba(40, 150, 80, 0.9)',         // 绿圈牌面底色
+        safeBorder: 'rgba(80, 255, 150, 0.6)',       // 绿圈边框
+        safeStake: 'rgba(50, 130, 80, 0.8)',         // 绿圈短杆
+        // 标记摆动
+        ropeTagSwaySpeed: 1.5,      // 绳索标记摆动速度
+        ropeTagSwayAmplitude: 0.15, // 绳索标记摆动幅度（弧度）
+    },
+
     // ===== 第三关关键点位配置 =====
     // 第一二洞室连接处（row20, col63）
     chamber12JunctionX: 718,

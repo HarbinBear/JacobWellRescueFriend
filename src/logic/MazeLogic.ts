@@ -8,6 +8,7 @@ import { updateRopeSystem } from './Rope';
 import { processManualDrive } from './ManualDrive';
 import { checkMazeCollision } from './Collision';
 import { updateCameraSpringArm, snapCameraToPlayer } from './CameraLogic';
+import { updateMarkers, updateWheelButtonVisibility } from './Marker';
 
 // 迷宫模式使用独立的 StoryManager 实例
 const storyManager = new StoryManager();
@@ -260,6 +261,19 @@ export function startMazeDive(diveType: string) {
         };
         state.rope.stillTimer = 0;
     }
+
+    // 标记系统保留已有标记（跨下潜持久化）
+    // 轮盘状态重置
+    if (state.wheel) {
+        state.wheel.open = false;
+        state.wheel.btnVisible = false;
+        state.wheel.sectors = [];
+        state.wheel.highlightIndex = -1;
+        state.wheel.expandProgress = 0;
+        state.wheel.touchId = null;
+        state.wheel.stillTimer = 0;
+        state.wheel.nearbyInfo = null;
+    }
 }
 
 // =============================================
@@ -480,6 +494,17 @@ export function updateMaze() {
 
     // --- 绳索系统 ---
     updateRopeSystem();
+
+    // --- 标记系统 ---
+    updateMarkers();
+    updateWheelButtonVisibility();
+
+    // --- 轮盘展开动画 ---
+    if (state.wheel && state.wheel.open) {
+        if (state.wheel.expandProgress < 1) {
+            state.wheel.expandProgress = Math.min(1, state.wheel.expandProgress + 1 / (CONFIG.marker.wheelExpandDuration / 1000 * 60));
+        }
+    }
 
     // --- NPC 更新 ---
     if (state.npc.active) {
