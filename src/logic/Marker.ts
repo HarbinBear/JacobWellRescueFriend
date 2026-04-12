@@ -351,14 +351,18 @@ export function updateWheelButtonVisibility() {
         return;
     }
 
-    // 检测是否没有移动输入（不需要等待静止时间，立即响应）
-    const hasNoMoveInput = input.move === 0;
-    // 手动挡模式下检查是否有活跃触点
-    const hasManualInput = CONFIG.manualDrive.enabled && state.manualDrive &&
-        Object.keys(state.manualDrive.activeTouches).length > 0;
+    // 检测静止
+    const speedThreshold = CONFIG.ropeStillSpeedThreshold || 1.5;
+    const isStill = input.move === 0 && Math.hypot(player.vx, player.vy) < speedThreshold;
 
     const nearbyInfo = detectWheelContext();
-    if (nearbyInfo.context !== 'none' && hasNoMoveInput && !hasManualInput) {
+    if (nearbyInfo.context !== 'none' && isStill) {
+        state.wheel.stillTimer += 1 / 60;
+    } else {
+        state.wheel.stillTimer = 0;
+    }
+
+    if (nearbyInfo.context !== 'none' && state.wheel.stillTimer >= CONFIG.ropeStillTimeToShow) {
         state.wheel.btnVisible = true;
         state.wheel.nearbyInfo = nearbyInfo;
     } else {

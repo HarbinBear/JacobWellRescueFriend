@@ -92,8 +92,6 @@ function drawArm(
     renderCtx.stroke();
 }
 
-// ===== 重写腿部和脚蹼 =====
-// 蛙鞋造型：大腿→小腿→脚踝→宽扁蛙鞋（椭圆形末端，有弹性弯曲）
 function drawLegAndFin(
     renderCtx: CanvasRenderingContext2D,
     hipX: number,
@@ -105,7 +103,6 @@ function drawLegAndFin(
     turnStrength: number,
     swimCycle: number,
     bodyYaw: number,
-    rollFactor: number,
     colors: DiverColors,
 ) {
     const cfg = CONFIG.diver;
@@ -115,72 +112,46 @@ function drawLegAndFin(
     const turnOffset = turnEase * cfg.turnLegOffset;
     const bodyWave = (kickEase * 2 - 1) * cfg.kickBodyWave;
 
-    // roll 影响：滚动时近侧腿缩短、远侧腿伸长（透视效果）
-    const rollScale = 1 + side * rollFactor * 0.15;
+    const thighDrive = -cfg.kickRecoverLength + kickEase * (cfg.kickDriveLength + cfg.kickRecoverLength);
+    const finDrive = cfg.finRecoverLength - kickEase * (cfg.finDriveLength + cfg.finRecoverLength);
 
-    // 大腿：从髋部到膝盖
-    const thighLen = 10 * rollScale;
-    const thighAngle = (-0.15 + kickEase * 0.35 - turnOffset * 0.04 + idleLift * 0.3 + bodyWave * 0.06) * side;
-    const kneeX = hipX - thighLen * Math.cos(thighAngle * 0.3);
-    const kneeY = hipY + side * (3.5 * rollScale + idleLift * 1.8 + turnOffset * 0.5 + bodyWave * 0.15);
+    const kneeX = hipX + thighDrive - turnOffset - bodyWave * 0.22;
+    const kneeY = hipY + side * (idleLift * 2.1 + turnOffset * 0.58 + bodyWave * 0.18 + bodyYaw * 0.45);
+    const ankleX = kneeX + finDrive - bodyWave * 0.4;
+    const ankleY = kneeY + side * (idleLift * 1.35 + turnOffset * 0.24 + bodyWave * 0.3);
 
-    // 小腿：从膝盖到脚踝
-    const shinLen = 9 * rollScale;
-    const shinBend = kickEase * 0.45 + idleLift * 0.2 + bodyWave * 0.08;
-    const ankleX = kneeX - shinLen * (0.85 + shinBend * 0.15);
-    const ankleY = kneeY + side * (shinBend * 2.5 + idleLift * 1.0 + turnOffset * 0.2);
-
-    // 绘制腿部（大腿+小腿连续线段）
     renderCtx.strokeStyle = colors.suit;
     renderCtx.lineCap = 'round';
     renderCtx.lineJoin = 'round';
-    renderCtx.lineWidth = 5.0 * rollScale;
+    renderCtx.lineWidth = 5.2;
     renderCtx.beginPath();
     renderCtx.moveTo(hipX, hipY);
-    renderCtx.quadraticCurveTo(kneeX + 1, kneeY, ankleX, ankleY);
+    renderCtx.lineTo(kneeX, kneeY);
+    renderCtx.lineTo(ankleX, ankleY);
     renderCtx.stroke();
 
-    // ===== 蛙鞋 =====
-    // 蛙鞋是宽扁的椭圆形叶片，有弹性弯曲
-    const finLen = 15 * rollScale;
-    const finWidth = (cfg.finSpreadBase + kickEase * cfg.finSpreadStroke + Math.abs(swimCycle) * cfg.finSpreadSwim) * rollScale;
-    // 蛙鞋弯曲角度：踢水时弯曲更大
-    const finBend = (kickEase * 0.4 + idleLift * 0.15 + turnEase * cfg.finTurnSkew * 0.5) * side;
-    // 蛙鞋尖端位置
-    const finTipX = ankleX - finLen;
-    const finTipY = ankleY + finBend * finLen * 0.3;
+    const finLen = 13.5 + kickEase * 1.6;
+    const finSpread = cfg.finSpreadBase + kickEase * cfg.finSpreadStroke + Math.abs(swimCycle) * cfg.finSpreadSwim;
+    const finAngle = side * (0.08 + idleLift * 0.12 + turnEase * cfg.finTurnSkew + bodyWave * 0.035);
 
-    // 蛙鞋形状：宽扁叶片（用贝塞尔曲线画出自然的蛙鞋轮廓）
-    const halfW = finWidth * 2.2;
+    const tipX = ankleX + finDrive - finLen;
+    const tipY = ankleY + side * finAngle * finLen * 0.42;
+    const baseUpX = ankleX + 1.1;
+    const baseUpY = ankleY - finSpread * 0.42;
+    const baseDownX = ankleX + 1.1;
+    const baseDownY = ankleY + finSpread * 0.42;
+    const splitX = ankleX + finDrive * 0.45 - finLen * 0.72;
+    const splitY = ankleY + side * finAngle * finLen * 0.26;
+
     renderCtx.fillStyle = colors.fin;
     renderCtx.beginPath();
-    // 从脚踝顶部开始
-    renderCtx.moveTo(ankleX + 1, ankleY - halfW * 0.35);
-    // 上边缘弧线到蛙鞋尖端
-    renderCtx.bezierCurveTo(
-        ankleX - finLen * 0.35, ankleY - halfW * 0.55 + finBend * finLen * 0.1,
-        finTipX + finLen * 0.2, finTipY - halfW * 0.3,
-        finTipX, finTipY
-    );
-    // 下边缘弧线回到脚踝
-    renderCtx.bezierCurveTo(
-        finTipX + finLen * 0.2, finTipY + halfW * 0.3,
-        ankleX - finLen * 0.35, ankleY + halfW * 0.55 + finBend * finLen * 0.1,
-        ankleX + 1, ankleY + halfW * 0.35
-    );
+    renderCtx.moveTo(baseUpX, baseUpY);
+    renderCtx.lineTo(tipX, tipY);
+    renderCtx.lineTo(splitX, splitY + 1.6);
+    renderCtx.lineTo(baseDownX, baseDownY);
+    renderCtx.lineTo(splitX, splitY - 1.6);
     renderCtx.closePath();
     renderCtx.fill();
-
-    // 蛙鞋中线（加强结构感）
-    renderCtx.strokeStyle = 'rgba(0,0,0,0.2)';
-    renderCtx.lineWidth = 1.0;
-    renderCtx.beginPath();
-    renderCtx.moveTo(ankleX, ankleY);
-    renderCtx.quadraticCurveTo(
-        ankleX - finLen * 0.5, ankleY + finBend * finLen * 0.15,
-        finTipX + 2, finTipY
-    );
-    renderCtx.stroke();
 }
 
 export function drawDiver(
@@ -228,32 +199,17 @@ export function drawDiver(
     const forwardVisual = clamp(motion.forwardVisual ?? 0, 0, 1);
     const turnVisual = clamp(motion.turnVisual ?? 0, -1, 1);
 
-    // ===== Roll 计算（2D 模拟 3D 身体左右滚动）=====
-    // turnAmount: 速度方向与身体朝向的偏差，用于驱动 roll
     let turnAmount = 0;
     if (speed > 0.18) {
         const velAngle = Math.atan2(vy, vx);
         turnAmount = clamp(normalizeAngle(velAngle - angle) / (Math.PI * 0.5), -1, 1);
     }
 
-    // rollFactor: 综合 roll 量（-1 ~ 1），正值=向右滚，负值=向左滚
-    // 来源：转向偏差 + 转向输入 + 踢水不对称 + 待机微摆
+    const driftX = Math.sin(time * cfg.idleDriftSpeed) * 1.2 * idleBlend + Math.sin(time * (cfg.idleDriftSpeed * 1.8)) * 0.12;
+    const driftY = Math.cos(time * (cfg.idleDriftSpeed * 0.82)) * 0.8 * idleBlend;
     const leftKickWave = easeStroke(leftKickProgress) * leftKickStrength;
     const rightKickWave = easeStroke(rightKickProgress) * rightKickStrength;
     const kickWave = leftKickWave - rightKickWave;
-    const rollFactor = clamp(
-        turnAmount * 0.55 + turnVisual * 0.35 + kickWave * 0.15
-        + Math.sin(time * (cfg.idleDriftSpeed * 0.7)) * 0.06 * idleBlend,
-        -1, 1
-    );
-
-    // roll 表现参数
-    const rollBodyScaleY = 1 - Math.abs(rollFactor) * 0.18;  // 躯干纵向压缩（模拟侧倾）
-    const rollHighlightShift = rollFactor * 3.5;               // 高光偏移（模拟光照侧面变化）
-    const rollTankShift = rollFactor * 1.8;                    // 气瓶偏移
-
-    const driftX = Math.sin(time * cfg.idleDriftSpeed) * 1.2 * idleBlend + Math.sin(time * (cfg.idleDriftSpeed * 1.8)) * 0.12;
-    const driftY = Math.cos(time * (cfg.idleDriftSpeed * 0.82)) * 0.8 * idleBlend;
     const bodyRoll = turnAmount * 0.12 + turnVisual * 0.08 + kickWave * 0.035 + Math.sin(time * (cfg.idleDriftSpeed * 0.95)) * 0.02 * idleBlend;
     const bodyYaw = turnAmount * 1.2 + turnVisual * 0.65 + kickWave * 0.28;
     const torsoCompress = 1 - forwardVisual * 0.035;
@@ -274,20 +230,11 @@ export function drawDiver(
     renderCtx.translate(x + driftX, y + driftY);
     renderCtx.rotate(angle + bodyRoll);
 
-    // ===== 绘制腿部（在躯干之下）=====
-    // roll 时近侧腿画在前面（后绘制），远侧腿画在后面（先绘制）
-    const leftFirst = rollFactor >= 0; // 向右滚时左腿在远侧先画
-    if (leftFirst) {
-        drawLegAndFin(renderCtx, -8.2, -4.2, -1, leftKickProgress, leftKickStrength, leftTurnProgress, leftTurnStrength, swimCycle * idleBlend, bodyYaw, rollFactor, c);
-        drawLegAndFin(renderCtx, -8.2, 4.2, 1, rightKickProgress, rightKickStrength, rightTurnProgress, rightTurnStrength, -swimCycle * idleBlend, bodyYaw, rollFactor, c);
-    } else {
-        drawLegAndFin(renderCtx, -8.2, 4.2, 1, rightKickProgress, rightKickStrength, rightTurnProgress, rightTurnStrength, -swimCycle * idleBlend, bodyYaw, rollFactor, c);
-        drawLegAndFin(renderCtx, -8.2, -4.2, -1, leftKickProgress, leftKickStrength, leftTurnProgress, leftTurnStrength, swimCycle * idleBlend, bodyYaw, rollFactor, c);
-    }
+    drawLegAndFin(renderCtx, -8.2, -4.2, -1, leftKickProgress, leftKickStrength, leftTurnProgress, leftTurnStrength, swimCycle * idleBlend, bodyYaw, c);
+    drawLegAndFin(renderCtx, -8.2, 4.2, 1, rightKickProgress, rightKickStrength, rightTurnProgress, rightTurnStrength, -swimCycle * idleBlend, bodyYaw, c);
 
-    // ===== 躯干（带 roll 压缩）=====
     renderCtx.save();
-    renderCtx.scale(torsoCompress, rollBodyScaleY);
+    renderCtx.scale(torsoCompress, 1);
 
     const bodyGradient = renderCtx.createLinearGradient(10, 0, -16, 0);
     bodyGradient.addColorStop(0, c.body);
@@ -302,26 +249,14 @@ export function drawDiver(
     renderCtx.closePath();
     renderCtx.fill();
 
-    // 高光条（随 roll 偏移，模拟 3D 光照变化）
     renderCtx.fillStyle = 'rgba(255,255,255,0.08)';
     renderCtx.beginPath();
-    renderCtx.ellipse(2.5, -2.8 + rollHighlightShift + bodyYaw * 0.15, 9.5, 2.2, -0.18, 0, Math.PI * 2);
+    renderCtx.ellipse(2.5, -2.8 + bodyYaw * 0.15, 9.5, 2.6, -0.18, 0, Math.PI * 2);
     renderCtx.fill();
 
-    // roll 阴影侧（滚动时一侧变暗）
-    if (Math.abs(rollFactor) > 0.1) {
-        const shadowSide = rollFactor > 0 ? -1 : 1;
-        const shadowAlpha = Math.abs(rollFactor) * 0.12;
-        renderCtx.fillStyle = `rgba(0,0,0,${shadowAlpha})`;
-        renderCtx.beginPath();
-        renderCtx.ellipse(0, shadowSide * 5, 12, 4, 0, 0, Math.PI * 2);
-        renderCtx.fill();
-    }
-
-    // 气瓶（随 roll 偏移）
     if (hasTank) {
         renderCtx.save();
-        renderCtx.translate(-0.8, bodyYaw * 0.5 + rollTankShift);
+        renderCtx.translate(-0.8, bodyYaw * 0.5);
         const tankGradient = renderCtx.createLinearGradient(8, 0, -10, 0);
         tankGradient.addColorStop(0, '#eef5f8');
         tankGradient.addColorStop(0.28, c.tank);
@@ -346,43 +281,17 @@ export function drawDiver(
         renderCtx.restore();
     }
 
-    renderCtx.restore(); // 恢复 torsoCompress/rollBodyScaleY
+    renderCtx.restore();
 
-    // ===== 手臂 =====
     drawArm(renderCtx, 4.3, -6.2, leftArmUpper, leftArmLower, c);
     drawArm(renderCtx, 4.3, 6.2, rightArmUpper, rightArmLower, c);
 
-    // ===== 头部 =====
     renderCtx.fillStyle = c.suit;
     renderCtx.beginPath();
-    renderCtx.arc(15.8, rollHighlightShift * 0.3, 6.5, 0, Math.PI * 2);
-    renderCtx.fill();
-
-    // ===== 手电筒发光点（头部前方偏上）=====
-    // 手电筒安装在面镜右上方，发光位置在头部前端
-    renderCtx.fillStyle = 'rgba(255,250,200,0.35)';
-    renderCtx.beginPath();
-    renderCtx.arc(21.5, -2.5 + rollHighlightShift * 0.2, 2.8, 0, Math.PI * 2);
-    renderCtx.fill();
-    // 手电筒外圈微光
-    renderCtx.fillStyle = 'rgba(255,250,200,0.1)';
-    renderCtx.beginPath();
-    renderCtx.arc(21.5, -2.5 + rollHighlightShift * 0.2, 5.5, 0, Math.PI * 2);
+    renderCtx.arc(15.8, 0, 6.5, 0, Math.PI * 2);
     renderCtx.fill();
 
     renderCtx.restore();
-}
-
-/**
- * 获取潜水员呼吸气泡的世界坐标生成点
- * 气泡从面镜前方（嘴部位置）冒出
- */
-export function getDiverBubbleOrigin(x: number, y: number, angle: number): { bx: number; by: number } {
-    // 面镜前方偏上位置（头部前端附近）
-    const headDist = 18;
-    const bx = x + Math.cos(angle) * headDist - Math.sin(angle) * 2;
-    const by = y + Math.sin(angle) * headDist + Math.cos(angle) * 2;
-    return { bx, by };
 }
 
 export function drawLungs(renderCtx: CanvasRenderingContext2D, x: number, y: number, o2: number) {

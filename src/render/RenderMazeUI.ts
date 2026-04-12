@@ -67,14 +67,14 @@ export function drawMazeHUD() {
 
     // === 游戏中 HUD ===
 
-    // --- 深度 + 氧气一体化面板（左上角，简约胶囊风格） ---
+    // --- 深度 + 氧气一体化面板（右上角，简约胶囊风格） ---
     const o2Ratio = Math.max(0, player.o2 / 100);
     const depth = Math.max(0, Math.floor(player.y / maze.mazeTileSize));
 
     // 面板参数
     const panelW = 56;
     const panelH = 110;
-    const panelX = 10;
+    const panelX = cw - panelW - 10;
     const panelY = 12;
     const panelR = 16;
 
@@ -248,37 +248,32 @@ export function drawMazeHUD() {
         ctx.globalAlpha = retreatProgress > 0 ? 0.95 : 0.75;
         ctx.fillStyle = retreatProgress > 0 ? 'rgba(150,255,220,0.95)' : 'rgba(150,210,230,0.85)';
         ctx.beginPath();
-        ctx.moveTo(retreatBtnX, retreatBtnY - 12);
-        ctx.lineTo(retreatBtnX - 6, retreatBtnY - 5);
-        ctx.lineTo(retreatBtnX + 6, retreatBtnY - 5);
+        ctx.moveTo(retreatBtnX, retreatBtnY - 10);
+        ctx.lineTo(retreatBtnX - 7, retreatBtnY - 2);
+        ctx.lineTo(retreatBtnX + 7, retreatBtnY - 2);
         ctx.closePath();
         ctx.fill();
         ctx.strokeStyle = ctx.fillStyle;
         ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.moveTo(retreatBtnX, retreatBtnY - 4);
-        ctx.lineTo(retreatBtnX, retreatBtnY + 4);
+        ctx.moveTo(retreatBtnX, retreatBtnY - 1);
+        ctx.lineTo(retreatBtnX, retreatBtnY + 10);
         ctx.stroke();
-        // "撤离"文字
-        ctx.fillStyle = retreatProgress > 0 ? 'rgba(150,255,220,0.95)' : 'rgba(150,210,230,0.75)';
-        ctx.font = '9px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText('撤离', retreatBtnX, retreatBtnY + 16);
     }
 
-    // 小地图（仅调试模式显示，左上角面板下方，可折叠）
+    // 小地图（仅调试模式显示，左上角，可折叠）
     if (CONFIG.debug) {
-        drawMazeMinimap(maze, cw, ch, time, 130);
+        drawMazeMinimap(maze, cw, ch, time);
     }
 
     ctx.restore();
 }
 
 // 迷宫小地图绘制
-function drawMazeMinimap(maze: any, cw: number, ch: number, time: number, yOffset: number = 0) {
+function drawMazeMinimap(maze: any, cw: number, ch: number, time: number) {
     const mapSize = CONFIG.maze.minimapSize;
     const mapX = CONFIG.maze.minimapX;
-    const mapY = CONFIG.maze.minimapY + yOffset;
+    const mapY = CONFIG.maze.minimapY;
     const toggleBtnSize = 28;
 
     // 折叠/展开按钮（左上角小图标）

@@ -128,50 +128,6 @@ GameGlobal.addBubble = function(x: number, y: number) {
     particles.push(new Particle(x + (Math.random()-0.5)*10, y + (Math.random()-0.5)*10, 'bubble'));
 };
 
-// 呼吸气泡计时器
-let _breathTimer = 0;
-
-/**
- * 生成呼吸气泡（从潜水员嘴部位置冒出）
- * 应每帧调用，内部自行控制生成频率
- */
-export function emitBreathBubbles(x: number, y: number, angle: number, o2: number) {
-    // 气泡频率与氧气消耗相关：氧气越低，呼吸越急促，气泡越频繁
-    const baseInterval = 90; // 基础间隔帧数（约1.5秒一组）
-    const urgencyFactor = o2 < 30 ? 0.4 : o2 < 60 ? 0.7 : 1.0;
-    const interval = baseInterval * urgencyFactor;
-
-    _breathTimer++;
-    if (_breathTimer < interval) return;
-    _breathTimer = 0;
-
-    // 气泡从面镜前方（嘴部位置）冒出
-    const headDist = 18;
-    const bx = x + Math.cos(angle) * headDist - Math.sin(angle) * 2;
-    const by = y + Math.sin(angle) * headDist + Math.cos(angle) * 2;
-
-    // 每次呼出 2~4 个气泡，大小不一
-    const count = 2 + Math.floor(Math.random() * 3);
-    for (let i = 0; i < count; i++) {
-        const p = new Particle(
-            bx + (Math.random() - 0.5) * 6,
-            by + (Math.random() - 0.5) * 6,
-            'bubble'
-        );
-        // 气泡向上飘（世界坐标 y 减小 = 向上）
-        p.vy = -1.5 - Math.random() * 1.5;
-        p.vx = (Math.random() - 0.5) * 0.8;
-        p.size = 1.5 + Math.random() * 2.5;
-        p.life = 0.6 + Math.random() * 0.4;
-        p.alpha = 0.5 + Math.random() * 0.2;
-        particles.push(p);
-    }
-}
-
-export function resetBreathTimer() {
-    _breathTimer = 0;
-}
-
 export function updateParticles() {
     // 不再自动生成水中悬浮气泡
     for(let i=particles.length-1; i>=0; i--) {

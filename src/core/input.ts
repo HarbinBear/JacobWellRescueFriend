@@ -642,7 +642,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
             const tx = touch.clientX;
             const ty = touch.clientY;
             const mapX = CONFIG.maze.minimapX;
-            const mapY = CONFIG.maze.minimapY + 130; // 与渲染层 yOffset 保持一致
+            const mapY = CONFIG.maze.minimapY;
             const toggleBtnSize = 28;
             // 检测折叠/展开按钮区域
             if (tx >= mapX && tx <= mapX + toggleBtnSize && ty >= mapY && ty <= mapY + toggleBtnSize) {
