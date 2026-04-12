@@ -245,12 +245,15 @@ export const BTN_RADIUS = 18;       // GM按钮半径
 export const BTN_X = logicW / 2;    // 按钮X（屏幕顶部中央）
 export const BTN_Y = 18;             // 按钮Y
 
-export const PANEL_X = 10;
-export const PANEL_Y = 42;
+// 面板默认位置（运行时可通过拖动改变）
+export const PANEL_DEFAULT_X = 10;
+export const PANEL_DEFAULT_Y = 42;
 export const PANEL_W = logicW - 20;
 export const PANEL_H = logicH * 0.65;
 
+export const DRAG_BAR_H = 22;       // 顶部拖动条高度
 export const TAB_H = 32;            // tab页签高度
+export const TAB_FIXED_W = 60;      // 每个tab固定宽度（可滑动）
 export const ITEM_H = 38;           // 每个条目高度
 export const ITEM_PAD = 6;          // 条目内边距
 export const LABEL_W_RATIO = 0.48;  // 标签占宽度比例

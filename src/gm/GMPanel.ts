@@ -6,9 +6,11 @@ import { CONFIG } from '../core/config';
 import {
     TABS, GMNumberItem,
     BTN_RADIUS, BTN_X, BTN_Y,
-    PANEL_X, PANEL_Y, PANEL_W, PANEL_H,
-    TAB_H, ITEM_H, ITEM_PAD, LABEL_W_RATIO, INPUT_H,
+    PANEL_DEFAULT_X, PANEL_DEFAULT_Y, PANEL_W, PANEL_H,
+    DRAG_BAR_H, TAB_H, TAB_FIXED_W,
+    ITEM_H, ITEM_PAD, LABEL_W_RATIO, INPUT_H,
 } from './GMConfig';
+import { logicW, logicH } from '../render/Canvas';
 
 // 重新导出绘制函数，保持外部引用不变
 export { drawGMButton, drawGMPanel } from './GMRender';
@@ -23,6 +25,21 @@ let _editingValue = '';      // 编辑中的文本值
 let _scrollTouchStartY = 0;  // 滚动触摸起始Y
 let _scrollStartY = 0;       // 滚动起始偏移
 
+// 面板位置（可拖动）
+let _panelX = PANEL_DEFAULT_X;
+let _panelY = PANEL_DEFAULT_Y;
+
+// 拖动状态
+let _dragging = false;
+let _dragOffsetX = 0;
+let _dragOffsetY = 0;
+
+// Tab 滑动状态
+let _tabScrollX = 0;
+let _tabScrolling = false;
+let _tabScrollTouchStartX = 0;
+let _tabScrollStartX = 0;
+
 // ============ 状态访问接口（供 GMRender 使用） ============
 
 export function getGMState() {
@@ -32,6 +49,9 @@ export function getGMState() {
         scrollY: _scrollY,
         editingItem: _editingItem,
         editingValue: _editingValue,
+        panelX: _panelX,
+        panelY: _panelY,
+        tabScrollX: _tabScrollX,
     };
 }
 
@@ -85,14 +105,32 @@ export function handleGMTouchStart(tx: number, ty: number): boolean {
     if (!_open) return false;
 
     // 检测是否在面板区域内
-    if (tx < PANEL_X || tx > PANEL_X + PANEL_W || ty < PANEL_Y || ty > PANEL_Y + PANEL_H) {
+    if (tx < _panelX || tx > _panelX + PANEL_W || ty < _panelY || ty > _panelY + PANEL_H) {
         return false;
     }
 
-    // 检测tab点击
-    if (ty >= PANEL_Y && ty <= PANEL_Y + TAB_H) {
-        const tabW = PANEL_W / TABS.length;
-        const tabIdx = Math.floor((tx - PANEL_X) / tabW);
+    // 检测拖动条点击（面板顶部边框区域）
+    if (ty >= _panelY && ty <= _panelY + DRAG_BAR_H) {
+        _dragging = true;
+        _dragOffsetX = tx - _panelX;
+        _dragOffsetY = ty - _panelY;
+        return true;
+    }
+
+    // 检测tab点击（拖动条下方）
+    const tabY = _panelY + DRAG_BAR_H;
+    if (ty >= tabY && ty <= tabY + TAB_H) {
+        // 计算总 tab 宽度，判断是否需要滑动
+        const totalTabW = TABS.length * TAB_FIXED_W;
+        if (totalTabW > PANEL_W) {
+            // 可滑动模式：记录起始位置用于判断是点击还是滑动
+            _tabScrolling = true;
+            _tabScrollTouchStartX = tx;
+            _tabScrollStartX = _tabScrollX;
+        }
+        // 计算点击了哪个 tab
+        const relX = tx - _panelX + _tabScrollX;
+        const tabIdx = Math.floor(relX / TAB_FIXED_W);
         if (tabIdx >= 0 && tabIdx < TABS.length) {
             _activeTab = tabIdx;
             _scrollY = 0;
@@ -103,8 +141,8 @@ export function handleGMTouchStart(tx: number, ty: number): boolean {
     }
 
     // 检测条目点击
-    const contentY = PANEL_Y + TAB_H + 2;
-    const contentH = PANEL_H - TAB_H - 4;
+    const contentY = _panelY + DRAG_BAR_H + TAB_H + 2;
+    const contentH = PANEL_H - DRAG_BAR_H - TAB_H - 4;
     if (ty >= contentY && ty <= contentY + contentH) {
         const tab = TABS[_activeTab];
         if (!tab) return true;
@@ -119,7 +157,7 @@ export function handleGMTouchStart(tx: number, ty: number): boolean {
         if (itemIdx >= 0 && itemIdx < tab.items.length) {
             const item = tab.items[itemIdx];
             const labelW = PANEL_W * LABEL_W_RATIO;
-            const valueX = PANEL_X + labelW + 4;
+            const valueX = _panelX + labelW + 4;
             const valueW = PANEL_W - labelW - 12;
 
             if (item.type === 'number') {
@@ -189,12 +227,33 @@ export function handleGMTouchStart(tx: number, ty: number): boolean {
 export function handleGMTouchMove(tx: number, ty: number): boolean {
     if (!_open) return false;
 
-    // 面板区域内的滑动 -> 滚动
-    if (tx >= PANEL_X && tx <= PANEL_X + PANEL_W && ty >= PANEL_Y && ty <= PANEL_Y + PANEL_H) {
+    // 拖动面板
+    if (_dragging) {
+        let newX = tx - _dragOffsetX;
+        let newY = ty - _dragOffsetY;
+        // 限制面板不超出屏幕
+        newX = Math.max(0, Math.min(logicW - PANEL_W, newX));
+        newY = Math.max(0, Math.min(logicH - PANEL_H, newY));
+        _panelX = newX;
+        _panelY = newY;
+        return true;
+    }
+
+    // Tab 滑动
+    if (_tabScrolling) {
+        const dx = _tabScrollTouchStartX - tx;
+        const totalTabW = TABS.length * TAB_FIXED_W;
+        const maxScroll = Math.max(0, totalTabW - PANEL_W);
+        _tabScrollX = Math.max(0, Math.min(maxScroll, _tabScrollStartX + dx));
+        return true;
+    }
+
+    // 面板区域内的滑动 -> 内容滚动
+    if (tx >= _panelX && tx <= _panelX + PANEL_W && ty >= _panelY && ty <= _panelY + PANEL_H) {
         const dy = _scrollTouchStartY - ty;
         const tab = TABS[_activeTab];
         if (tab) {
-            const contentH = PANEL_H - TAB_H - 4;
+            const contentH = PANEL_H - DRAG_BAR_H - TAB_H - 4;
             const totalH = tab.items.length * ITEM_H;
             const maxScroll = Math.max(0, totalH - contentH);
             _scrollY = Math.max(0, Math.min(maxScroll, _scrollStartY + dy));
@@ -208,8 +267,20 @@ export function handleGMTouchMove(tx: number, ty: number): boolean {
 export function handleGMTouchEnd(tx: number, ty: number): boolean {
     if (!_open) return false;
 
+    // 结束拖动
+    if (_dragging) {
+        _dragging = false;
+        return true;
+    }
+
+    // 结束 Tab 滑动
+    if (_tabScrolling) {
+        _tabScrolling = false;
+        return true;
+    }
+
     // 面板区域内的触摸结束
-    if (tx >= PANEL_X && tx <= PANEL_X + PANEL_W && ty >= PANEL_Y && ty <= PANEL_Y + PANEL_H) {
+    if (tx >= _panelX && tx <= _panelX + PANEL_W && ty >= _panelY && ty <= _panelY + PANEL_H) {
         return true;
     }
 

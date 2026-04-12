@@ -3,6 +3,20 @@ import { state } from '../core/state';
 import { ctx } from './Canvas';
 import { WheelSector } from '../logic/Marker';
 
+// ============ 自适应按钮位置计算 ============
+// 确保按钮+轮盘不超出屏幕边界
+
+export function getWheelBtnPos(): { x: number; y: number } {
+    const outerR = CONFIG.marker.wheelOuterRadius;
+    const margin = outerR + 12; // 轮盘外径 + 安全边距
+    const rawX = CONFIG.screenWidth * CONFIG.marker.btnXRatio;
+    const rawY = CONFIG.screenHeight * CONFIG.marker.btnYRatio;
+    // 限制按钮位置，使轮盘展开后不超出屏幕
+    const x = Math.max(margin, Math.min(CONFIG.screenWidth - margin, rawX));
+    const y = Math.max(margin, Math.min(CONFIG.screenHeight - margin, rawY));
+    return { x, y };
+}
+
 // ============ 绘制轮盘交互按钮（替代旧绳索按钮） ============
 
 export function drawWheelButton() {
@@ -12,8 +26,7 @@ export function drawWheelButton() {
     // 轮盘打开时不画按钮
     if (state.wheel.open) return;
 
-    const btnX = CONFIG.screenWidth * CONFIG.marker.btnXRatio;
-    const btnY = CONFIG.screenHeight * CONFIG.marker.btnYRatio;
+    const { x: btnX, y: btnY } = getWheelBtnPos();
     const radius = CONFIG.marker.btnRadius;
     const time = Date.now() / 1000;
 
@@ -69,8 +82,7 @@ export function drawWheel() {
     const sectors = wheel.sectors as WheelSector[];
     if (!sectors || sectors.length === 0) return;
 
-    const btnX = CONFIG.screenWidth * CONFIG.marker.btnXRatio;
-    const btnY = CONFIG.screenHeight * CONFIG.marker.btnYRatio;
+    const { x: btnX, y: btnY } = getWheelBtnPos();
     const outerR = CONFIG.marker.wheelOuterRadius;
     const innerR = CONFIG.marker.wheelInnerRadius;
 

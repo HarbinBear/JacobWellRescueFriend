@@ -4,6 +4,7 @@ import { createFishEnemy, triggerPlayerAttack, findSafeSpawnPosition } from '../
 import { DEBUG_FISH_BTN, ATTACK_BTN, FLASHLIGHT_BTN } from '../render/RenderUI';
 import { isGMOpen, handleGMTouchStart, handleGMTouchMove, handleGMTouchEnd } from '../gm/GMPanel';
 import { buildWheelSectors, executeWheelAction } from '../logic/Marker';
+import { getWheelBtnPos } from '../render/RenderWheel';
 
 // 章节页滑动状态
 let chapterTouchStartY = 0;
@@ -281,8 +282,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
 
         // 轮盘交互按钮检测（替代旧绳索按钮）
         if (state.wheel && state.wheel.btnVisible && !state.wheel.open) {
-            const btnX = CONFIG.screenWidth * CONFIG.marker.btnXRatio;
-            const btnY = CONFIG.screenHeight * CONFIG.marker.btnYRatio;
+            const { x: btnX, y: btnY } = getWheelBtnPos();
             for (let t of res.touches) {
                 const dx = t.clientX - btnX;
                 const dy = t.clientY - btnY;
