@@ -28,6 +28,7 @@ type: always
    - [06-maze-scene-enhancement.md](./code/06-maze-scene-enhancement.md)：迷宫场景辨识度扩展落点
    - [07-playdead-methodology.md](./code/07-playdead-methodology.md)：P6/P7/P8/曝光稳定性技术落地稿
    - [08-code-summary-guidance.md](./code/08-code-summary-guidance.md)：代码层认知摘要与技术文档总索引
+   - [09-completed-work-archive.md](./code/09-completed-work-archive.md)：已完成工作归档（设计思路、迭代历程、修改文件清单）
 
 ## 最短阅读建议
 
@@ -46,6 +47,7 @@ type: always
 - **改 VPL 连续化、自动曝光稳定性、相机弹簧臂、水中摇曳、浅水区阳光系统**：优先读 `07-playdead-methodology.md`
 - **改迷宫场景辨识度、区域主题、洞室标签、岸上认知地图扩展**：优先读 `06-maze-scene-enhancement.md`
 - **改多次下潜闭环、跨下潜持久化、岸上整理地图、正式救援状态**：优先串读 `02-state-and-config.md`、`03-logic-and-story.md` 与 `04-render-subsystems.md`
+- **改地形序列化、存档恢复、好友分享地图**：优先读 `devplan.md` 中 P11 设计方案
 - **不知道从哪里开始、需要整体导航**：优先读 `08-code-summary-guidance.md`
 
 ## 开发计划
