@@ -8,14 +8,14 @@ import { updateAllFishEnemies, createFishEnemy, findSafeSpawnPosition } from './
 import { processManualDrive } from './ManualDrive';
 import { checkCollision, getNearestWallDist, checkMazeCollision } from './Collision';
 
-import { updateCameraSpringArm, snapCameraToPlayer } from './CameraLogic';
+import { updateCameraSpringArm, snapCameraToPlayer, getAdaptiveZoom } from './CameraLogic';
 import { updateMarkers, updateWheelButtonVisibility } from './Marker';
 
 // 从拆分模块重新导出，保持外部导入路径不变
 export { resetArenaLogic, updateArena } from './ArenaLogic';
 export { resetMazeLogic, startMazeDive, returnToShore, replayMazeLogic, updateMaze } from './MazeLogic';
 export { checkCollision, getNearestWallDist, checkMazeCollision } from './Collision';
-export { updateCameraSpringArm, snapCameraToPlayer } from './CameraLogic';
+export { updateCameraSpringArm, snapCameraToPlayer, getAdaptiveZoom, resetAdaptiveZoom, getOpenness } from './CameraLogic';
 export { findNearestWall };
 
 const storyManager = new StoryManager();
@@ -498,15 +498,18 @@ export function update() {
         vx: 0, vy: 0,
         swayX: 0, swayY: 0, swayTime: 0,
     };
-    let targetZoom = 1.0;
+    // 计算剧情驱动的基础zoom
+    let storyZoom = 1.0;
     if(state.landmarks.tunnelEntry) {
         let dist = Math.hypot(player.x - state.landmarks.tunnelEntry.x, player.y - state.landmarks.tunnelEntry.y);
         if(dist < 200 || player.y > state.landmarks.tunnelEntry.y) {
-            targetZoom = 1.5;
+            storyZoom = 1.5;
         }
     }
-    if(state.story.stage === 4) targetZoom = 1.3;
-    state.camera.targetZoom = targetZoom;
+    if(state.story.stage === 4) storyZoom = 1.3;
+    // 自适应缩放与剧情zoom叠加：取两者中更大的（更近的）
+    const azZoom = getAdaptiveZoom();
+    state.camera.targetZoom = Math.max(storyZoom, azZoom);
     state.camera.zoom += (state.camera.targetZoom - state.camera.zoom) * 0.02;
 
     // --- 弹簧臂相机跟随 + 水中摇曳 ---

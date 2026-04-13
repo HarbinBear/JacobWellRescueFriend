@@ -178,6 +178,16 @@ export const TABS: GMTab[] = [
             { type: 'number', label: '摇曳频率A', path: 'camera.swayFrequencyA', min: 0.05, max: 1.5, step: 0.05, precision: 2 },
             { type: 'number', label: '摇曳频率B', path: 'camera.swayFrequencyB', min: 0.05, max: 1.5, step: 0.05, precision: 2 },
             { type: 'number', label: '归位速度', path: 'camera.resetSnapSpeed', min: 0.05, max: 1, step: 0.05, precision: 2 },
+            { type: 'bool', label: '自适应缩放', path: 'camera.adaptiveZoom' },
+            { type: 'number', label: '射线数量', path: 'camera.azRayCount', min: 4, max: 24, step: 2 },
+            { type: 'number', label: '射线最大距离', path: 'camera.azMaxRayDist', min: 200, max: 1200, step: 50 },
+            { type: 'number', label: '射线步长', path: 'camera.azRayStep', min: 4, max: 20, step: 2 },
+            { type: 'number', label: '狭窄阈值', path: 'camera.azNarrowDist', min: 40, max: 300, step: 10 },
+            { type: 'number', label: '空旷阈值', path: 'camera.azWideDist', min: 150, max: 800, step: 25 },
+            { type: 'number', label: '狭窄zoom', path: 'camera.azZoomNarrow', min: 1.0, max: 2.0, step: 0.05, precision: 2 },
+            { type: 'number', label: '空旷zoom', path: 'camera.azZoomWide', min: 0.5, max: 1.2, step: 0.05, precision: 2 },
+            { type: 'number', label: '缩放过渡速度', path: 'camera.azSmoothSpeed', min: 0.005, max: 0.1, step: 0.005, precision: 3 },
+            { type: 'number', label: '检测间隔帧', path: 'camera.azUpdateInterval', min: 1, max: 10, step: 1 },
         ]
     },
     {

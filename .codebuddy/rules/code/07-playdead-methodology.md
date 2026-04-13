@@ -70,21 +70,25 @@ type: always
 - 但当前平均亮度估算仍偏启发式
 - 更像"按手电状态和少量环境因子修正"，还不是"按场景亮度采样驱动"
 
-### 1.3 `P7` 当前落点：弹簧臂 + 水中摇曳已完成 ✅
+### 1.3 `P7` 当前落点：弹簧臂 + 水中摇曳 + 远近自适应缩放 全部完成 ✅
 
-相机系统已从"只有缩放"升级为"弹簧臂跟随 + 水中摇曳 + 前瞻偏移"。核心代码在：
+相机系统已从"只有缩放"升级为"弹簧臂跟随 + 水中摇曳 + 前瞻偏移 + 远近自适应缩放"。核心代码在：
 
 - `src/core/state.ts`
   - `state.camera`：完整运行态（x/y/targetX/targetY/vx/vy/swayX/swayY/swayTime + zoom/targetZoom）
 - `src/core/config.ts`
-  - `CONFIG.camera`：弹簧刚度、阻尼、前瞻距离、摇曳幅度/频率等 8 个参数
+  - `CONFIG.camera`：弹簧刚度、阻尼、前瞻距离、摇曳幅度/频率等 8 个基础参数 + 远近自适应缩放 10 个参数（`adaptiveZoom`、`azRayCount`、`azMaxRayDist`、`azRayStep`、`azNarrowDist`、`azWideDist`、`azZoomNarrow`、`azZoomWide`、`azSmoothSpeed`、`azUpdateInterval`）
 - `src/logic/CameraLogic.ts`（独立模块，避免循环依赖）
-  - `updateCameraSpringArm()`：弹簧臂跟随 + 水中摇曳
-  - `snapCameraToPlayer()`：快速归位（模式切换/重置时调用）
+  - `updateCameraSpringArm()`：弹簧臂跟随 + 水中摇曳 + 自适应缩放更新
+  - `snapCameraToPlayer()`：快速归位（模式切换/重置时调用，同时重置自适应缩放状态）
+  - `updateAdaptiveZoom()`：多方向射线空间检测 + 开阔度计算 + smoothstep 映射 + 平滑过渡
+  - `resetAdaptiveZoom()`：重置自适应缩放运行态
+  - `getAdaptiveZoom()`：获取当前自适应缩放 zoom 值
+  - `getOpenness()`：获取当前空间开阔度（供调试）
 - `src/logic/Logic.ts`
-  - 主线 `update()` 中在 zoom 更新后调用 `updateCameraSpringArm()`
+  - 主线 `update()` 中自适应缩放与剧情 zoom 取较大值（更近的），确保狭窄通道剧情不被拉远
 - `src/logic/ArenaLogic.ts` / `src/logic/MazeLogic.ts`
-  - 竞技场和迷宫模式同样调用 `updateCameraSpringArm()`
+  - 竞技场和迷宫模式直接使用自适应缩放驱动 zoom
 - `src/render/Render.ts`
   - 所有世界层绘制以 `camX/camY`（= camera.x + swayX）为屏幕中心
 - `src/render/shaders/maskFrag.glsl` / `volumetricFrag.glsl`
@@ -93,7 +97,7 @@ type: always
 - `src/render/WebGLLight.ts`
   - `renderLightMask()` 和 `renderVolumetricLight()` 参数新增 `cameraX/cameraY`
 - `src/gm/GMConfig.ts`
-  - 新增"相机"Tab（8 个可调参数）
+  - "相机"Tab 扩展到 18 个可调参数（含远近自适应缩放全部参数）
 
 关键设计决策：
 
@@ -101,6 +105,9 @@ type: always
 - **独立模块**：`CameraLogic.ts` 避免 Logic↔MazeLogic↔ArenaLogic 的循环依赖
 - **所有模式切换路径都调用 `snapCameraToPlayer()`**：`resetState()`、`resetGameLogic()`、`resetArenaLogic()`、`resetMazeLogic()`、`startMazeDive()` 都在设置 `player.x/y` 后同步归位相机
 - **`.glsl` 修改后必须运行 `node scripts/buildShaders.js`**：TypeScript 导入的是 `.glsl.ts`，不是 `.glsl` 源文件
+- **自适应缩放降频更新**：射线检测每 `azUpdateInterval` 帧执行一次（默认 3 帧），降低性能开销
+- **开阔度 trim 平均**：去掉最大最小各 10% 的射线距离再取平均，减少极端值（如正对长走廊）的影响
+- **主线剧情 zoom 优先**：主线模式中自适应 zoom 与剧情 zoom 取 `Math.max`，确保狭窄通道的剧情拉近不被自适应拉远覆盖
 
 ### 1.4 `P8` 当前落点：浅水区阳光系统第一版已完成 ✅（Canvas 2D 层）
 

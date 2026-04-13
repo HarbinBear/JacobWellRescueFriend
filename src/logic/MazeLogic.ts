@@ -7,7 +7,7 @@ import { triggerSilt, updateParticles, updateSplashes } from './Particle';
 import { updateRopeSystem } from './Rope';
 import { processManualDrive } from './ManualDrive';
 import { checkMazeCollision } from './Collision';
-import { updateCameraSpringArm, snapCameraToPlayer } from './CameraLogic';
+import { updateCameraSpringArm, snapCameraToPlayer, getAdaptiveZoom } from './CameraLogic';
 import { updateMarkers, updateWheelButtonVisibility } from './Marker';
 
 // 迷宫模式使用独立的 StoryManager 实例
@@ -492,8 +492,12 @@ export function updateMaze() {
         }
     }
 
-    // --- 相机弹簧臂跟随 + 水中摇曳 ---
+    // --- 相机弹簧臂跟随 + 水中摇曳 + 自适应缩放 ---
     updateCameraSpringArm();
+    // 迷宫模式zoom：自适应缩放直接驱动
+    const azZoom = getAdaptiveZoom();
+    state.camera.targetZoom = azZoom;
+    state.camera.zoom += (state.camera.targetZoom - state.camera.zoom) * 0.02;
 
     // --- 绳索系统 ---
     updateRopeSystem();

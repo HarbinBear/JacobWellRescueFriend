@@ -6,7 +6,7 @@ import { updateAllFishEnemies, createFishEnemy, findSafeSpawnPosition } from './
 import { processManualDrive } from './ManualDrive';
 import { checkCollision } from './Collision';
 import { triggerSilt } from './Particle';
-import { updateCameraSpringArm, snapCameraToPlayer } from './CameraLogic';
+import { updateCameraSpringArm, snapCameraToPlayer, getAdaptiveZoom } from './CameraLogic';
 
 // =============================================
 // 食人鱼纯享版：初始化竞技场
@@ -141,8 +141,11 @@ export function updateArena() {
         // 更新玩家移动和攻击
         updateArenaPlayer();
 
-        // 相机弹簧臂跟随 + 水中摇曳
+        // 相机弹簧臂跟随 + 水中摇曳 + 自适应缩放
         updateCameraSpringArm();
+        const azZoom = getAdaptiveZoom();
+        state.camera.targetZoom = azZoom;
+        state.camera.zoom += (state.camera.targetZoom - state.camera.zoom) * 0.02;
 
         // 更新鱼 AI
         updateAllFishEnemies(1);

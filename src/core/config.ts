@@ -470,6 +470,18 @@ export const CONFIG = {
         swayFrequencyB: 0.53,        // 摇曳频率B（高频叠加，与A不成整数比避免重复）
         // 模式切换
         resetSnapSpeed: 0.3,         // 模式切换时相机快速归位的速率
+
+        // 远近自适应缩放
+        adaptiveZoom: true,              // 是否启用远近自适应缩放
+        azRayCount: 12,                  // 空间检测射线数量（均匀分布360°）
+        azMaxRayDist: 800,               // 单条射线最大检测距离（像素）
+        azRayStep: 15,                    // 射线步进步长（像素，越小越精确但越耗性能）
+        azNarrowDist: 50,               // 平均距离低于此值视为狭窄（像素）
+        azWideDist: 800,                 // 平均距离高于此值视为空旷（像素）
+        azZoomNarrow: 1.6,              // 狭窄区域目标zoom（拉近）
+        azZoomWide: 0.85,                // 空旷区域目标zoom（拉远）
+        azSmoothSpeed: 0.015,            // zoom平滑过渡速度（越小越慢）
+        azUpdateInterval: 3,             // 每隔多少帧更新一次射线检测（降低性能开销）
     },
 
     // ===== 玩家攻击（挥氧气瓶）配置 =====

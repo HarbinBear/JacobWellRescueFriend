@@ -154,3 +154,40 @@
 - `src/render/RenderMazeUI.ts`：游戏中 HUD 重写（深度+氧气面板、撤离按钮、小地图条件渲染）、结算页面完整重写
 - `src/logic/Marker.ts`：`updateWheelButtonVisibility()` 去掉 `stillTimer` 延迟，改为无移动输入时立即显示
 - `src/core/input.ts`：结算页按钮点击区域同步更新、小地图折叠按钮加调试模式判断
+
+---
+
+## P7 远近自适应缩放（2026-04-13）
+
+**核心机制**：多方向射线空间检测 + 开阔度计算 + smoothstep 映射 + 平滑过渡。
+
+**设计方案**：
+- 从玩家位置向周围发射 12 条均匀分布 360° 的射线，检测每个方向到最近墙体的距离
+- 去掉最大最小各 10% 的射线距离后取 trim 平均，减少极端值影响
+- 平均距离通过线性映射转为 0~1 的开阔度指标（`azNarrowDist` ~ `azWideDist`）
+- 开阔度通过 smoothstep 曲线映射到目标 zoom（`azZoomNarrow` ~ `azZoomWide`）
+- 目标 zoom 通过低速线性插值平滑过渡，避免突然跳变
+- 射线检测每 3 帧执行一次（可配置），降低性能开销
+- 主线模式中自适应 zoom 与剧情 zoom 取 `Math.max`，确保剧情拉近不被覆盖
+- 竞技场和迷宫模式直接使用自适应 zoom 驱动
+- 支持主线/竞技场（`state.map`）和迷宫模式（`mazeRescue.mazeMap`）两套地图数据
+
+**新增参数**（`CONFIG.camera`）：
+- `adaptiveZoom`：总开关
+- `azRayCount`：射线数量（默认 12）
+- `azMaxRayDist`：最大检测距离（默认 600px）
+- `azRayStep`：步进步长（默认 8px）
+- `azNarrowDist`：狭窄阈值（默认 120px）
+- `azWideDist`：空旷阈值（默认 350px）
+- `azZoomNarrow`：狭窄 zoom（默认 1.35）
+- `azZoomWide`：空旷 zoom（默认 0.85）
+- `azSmoothSpeed`：过渡速度（默认 0.015）
+- `azUpdateInterval`：检测间隔帧（默认 3）
+
+**修改文件**：
+- `src/core/config.ts`：`CONFIG.camera` 新增 10 个远近自适应缩放参数
+- `src/logic/CameraLogic.ts`：新增 `castSpaceRays()`、`computeOpenness()`、`opennessToZoom()`、`updateAdaptiveZoom()`、`resetAdaptiveZoom()`、`getAdaptiveZoom()`、`getOpenness()`；`updateCameraSpringArm()` 末尾调用自适应缩放更新；`snapCameraToPlayer()` 同步重置自适应缩放状态
+- `src/logic/Logic.ts`：主线 zoom 逻辑改为剧情 zoom 与自适应 zoom 取 `Math.max`；新增导出 `getAdaptiveZoom`、`resetAdaptiveZoom`、`getOpenness`
+- `src/logic/MazeLogic.ts`：迷宫模式集成自适应缩放驱动 zoom
+- `src/logic/ArenaLogic.ts`：竞技场模式集成自适应缩放驱动 zoom
+- `src/gm/GMConfig.ts`：相机 Tab 从 8 个参数扩展到 18 个参数
