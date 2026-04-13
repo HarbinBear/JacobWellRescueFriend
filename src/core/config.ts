@@ -419,9 +419,9 @@ export const CONFIG = {
         thrustMax: 5.2,              // 单帧推进强度上限
 
         // --- 转向参数 ---
-        turnBase: 0.58,              // 整段有效行程内的基础转向强度
-        turnSpeedScale: 0.03,        // 输入速度到额外转向强度的映射系数
-        turnMax: 2,                  // 单帧转向强度上限（弧度系数）
+        turnBase: 1.2,               // 整段有效行程内的基础转向强度
+        turnSpeedScale: 0.05,        // 输入速度到额外转向强度的映射系数
+        turnMax: 3.5,                // 单帧转向强度上限（弧度系数）
         backwardTurnScale: 1.15,     // 后向输入折算为转向输入的权重
 
         // --- 速度与阻力参数 ---
@@ -436,8 +436,8 @@ export const CONFIG = {
         kickStrengthDecay: 0.05,     // 踢水力度衰减速度
 
         // --- 身体朝向跟随参数 ---
-        bodyAlignRate: 0.12,         // 身体朝向跟随速度方向的速率（0~1，越大越快对齐）
-        bodyAlignMinSpeed: 0.3,      // 速度低于此值时身体不跟随（避免静止时抖动）
+        bodyAlignRate: 0.06,         // 身体朝向跟随速度方向的速率（0~1，越大越快对齐）
+        bodyAlignMinSpeed: 0.5,      // 速度低于此值时身体不跟随（避免静止时抖动）
 
         // --- 调试辅助线 ---
         debugDraw: false,           // 是否绘制辅助线（速度向量、身体朝向、输入方向、推力方向）

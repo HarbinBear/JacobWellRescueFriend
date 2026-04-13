@@ -189,18 +189,8 @@ export function processManualDrive(): boolean {
     player.vx = vForwardDamped * cosA - vLateralDamped * sinA;
     player.vy = vForwardDamped * sinA + vLateralDamped * cosA;
 
-    // 身体朝向被动跟随速度方向
-    let speed = Math.hypot(player.vx, player.vy);
-    if (speed > cfg.bodyAlignMinSpeed) {
-        const velAngle = Math.atan2(player.vy, player.vx);
-        let angleDiff = velAngle - player.angle;
-        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-        player.angle += angleDiff * cfg.bodyAlignRate;
-        player.targetAngle = player.angle;
-    }
-
     // 限速
+    let speed = Math.hypot(player.vx, player.vy);
     const maxSpd = cfg.maxSpeed;
     if (speed > maxSpd) {
         player.vx *= maxSpd / speed;
