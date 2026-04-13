@@ -56,11 +56,7 @@ export function drawMazeHUD() {
         ctx.globalAlpha = progress * 0.6;
         ctx.fillStyle = 'rgba(200,230,255,1)';
         ctx.fillRect(0, 0, cw, ch);
-        ctx.globalAlpha = 1;
-        ctx.fillStyle = '#aef';
-        ctx.font = 'bold 18px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText('上浮中...', cw / 2, ch / 2);
+        // 文字提示由 storyManager 统一显示，不在此重复
         ctx.restore();
         return;
     }
