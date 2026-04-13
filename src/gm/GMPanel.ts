@@ -4,13 +4,15 @@
 
 import { CONFIG } from '../core/config';
 import {
-    TABS, GMNumberItem,
+    TABS, GMNumberItem, GMActionItem,
     BTN_RADIUS, BTN_X, BTN_Y,
     PANEL_DEFAULT_X, PANEL_DEFAULT_Y, PANEL_W, PANEL_H,
     DRAG_BAR_H, TAB_H, TAB_FIXED_W,
     ITEM_H, ITEM_PAD, LABEL_W_RATIO, INPUT_H,
 } from './GMConfig';
 import { logicW, logicH } from '../render/Canvas';
+import { state, player } from '../core/state';
+import { createFishEnemy, findMazeFishSpawnPosition, findSafeSpawnPosition } from '../logic/FishEnemy';
 
 // 重新导出绘制函数，保持外部引用不变
 export { drawGMButton, drawGMPanel } from './GMRender';
@@ -216,6 +218,10 @@ export function handleGMTouchStart(tx: number, ty: number): boolean {
                 const currentVal = !!getConfigValue(item.path);
                 setConfigValue(item.path, !currentVal);
                 return true;
+            } else if (item.type === 'action') {
+                // 执行 action 操作
+                _executeAction((item as GMActionItem).actionId);
+                return true;
             }
         }
         return true;
@@ -338,4 +344,57 @@ function _applyEditingValue(item: GMNumberItem): void {
     }
     _editingItem = null;
     _editingValue = '';
+}
+
+// ============ Action 操作处理 ============
+
+function _executeAction(actionId: string): void {
+    switch (actionId) {
+        case 'spawnMazeFish': {
+            // 在迷宫模式下生成一条食人鱼
+            if (state.screen === 'mazeRescue' && state.mazeRescue) {
+                const pos = findMazeFishSpawnPosition();
+                state.fishEnemies.push(createFishEnemy(pos.x, pos.y));
+                console.log(`[GM] 生成食人鱼 @ (${pos.x.toFixed(0)}, ${pos.y.toFixed(0)})，当前共 ${state.fishEnemies.length} 条`);
+            } else if (state.screen === 'fishArena' || state.screen === 'play') {
+                // 主线/竞技场模式：在玩家附近生成
+                const pos = findSafeSpawnPosition(player.x, player.y);
+                state.fishEnemies.push(createFishEnemy(pos.x, pos.y));
+                console.log(`[GM] 生成食人鱼 @ (${pos.x.toFixed(0)}, ${pos.y.toFixed(0)})，当前共 ${state.fishEnemies.length} 条`);
+            } else {
+                console.log('[GM] 当前不在游戏中，无法生成食人鱼');
+            }
+            break;
+        }
+        case 'killAllFish': {
+            // 杀死所有食人鱼（触发死亡动画）
+            if (state.fishEnemies && state.fishEnemies.length > 0) {
+                let count = 0;
+                for (const fish of state.fishEnemies) {
+                    if (fish.state !== 'dying' && !fish.dead) {
+                        fish.state = 'dying' as any;
+                        fish.dyingTimer = 0;
+                        fish.dyingAlpha = 1;
+                        fish.dyingRoll = 0;
+                        fish.vx = 0;
+                        fish.vy = 0;
+                        count++;
+                    }
+                }
+                console.log(`[GM] 杀死 ${count} 条食人鱼`);
+            } else {
+                console.log('[GM] 当前没有食人鱼');
+            }
+            break;
+        }
+        case 'removeAllFish': {
+            // 直接清除所有食人鱼（不播放动画）
+            const count = state.fishEnemies ? state.fishEnemies.length : 0;
+            state.fishEnemies = [];
+            console.log(`[GM] 清除 ${count} 条食人鱼`);
+            break;
+        }
+        default:
+            console.log(`[GM] 未知操作: ${actionId}`);
+    }
 }

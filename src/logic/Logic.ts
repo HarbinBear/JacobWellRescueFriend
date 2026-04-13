@@ -4,7 +4,7 @@ import { generateMap } from '../world/map';
 import { StoryManager } from '../story/StoryManager';
 import { Particle, createSplash, updateSplashes, triggerSilt, updateParticles } from './Particle';
 import { updateRopeSystem, findNearestWall } from './Rope';
-import { updateAllFishEnemies, createFishEnemy, findSafeSpawnPosition } from './FishEnemy';
+import { updateAllFishEnemies, createFishEnemy, findSafeSpawnPosition, findMazeFishSpawnPosition } from './FishEnemy';
 import { processManualDrive } from './ManualDrive';
 import { checkCollision, getNearestWallDist, checkMazeCollision } from './Collision';
 

@@ -222,6 +222,26 @@ export function drawGMPanel(ctx: CanvasRenderingContext2D): void {
                 ctx.lineTo(checkX + 19, checkY + 6);
                 ctx.stroke();
             }
+        } else if (item.type === 'action') {
+            // 操作按钮
+            const btnX = valueX;
+            const btnW = valueW;
+            const btnH = INPUT_H;
+            const btnY2 = iy + (ITEM_H - btnH) / 2;
+            ctx.fillStyle = 'rgba(255, 136, 0, 0.25)';
+            ctx.beginPath();
+            _rrect(ctx, btnX, btnY2, btnW, btnH, 4);
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(255, 136, 0, 0.6)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            _rrect(ctx, btnX, btnY2, btnW, btnH, 4);
+            ctx.stroke();
+            ctx.fillStyle = '#fff';
+            ctx.font = '11px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('执行', btnX + btnW / 2, btnY2 + btnH / 2);
         }
     }
 

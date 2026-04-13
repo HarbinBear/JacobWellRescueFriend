@@ -19,7 +19,13 @@ export interface GMBoolItem {
     path: string;
 }
 
-export type GMItem = GMNumberItem | GMBoolItem;
+export interface GMActionItem {
+    type: 'action';
+    label: string;
+    actionId: string;    // 操作标识符，由 GMPanel 中的回调处理
+}
+
+export type GMItem = GMNumberItem | GMBoolItem | GMActionItem;
 
 export interface GMTab {
     name: string;
@@ -242,6 +248,17 @@ export const TABS: GMTab[] = [
             { type: 'number', label: '拆除动画帧', path: 'marker.removeAnimDuration', min: 5, max: 30, step: 1 },
             { type: 'number', label: '绳索标记摆速', path: 'marker.ropeTagSwaySpeed', min: 0.5, max: 3, step: 0.1, precision: 1 },
             { type: 'number', label: '绳索标记摆幅', path: 'marker.ropeTagSwayAmplitude', min: 0.05, max: 0.4, step: 0.01, precision: 2 },
+        ]
+    },
+    {
+        name: '迷宫鱼',
+        items: [
+            { type: 'bool', label: '启用食人鱼', path: 'maze.fishEnabled' },
+            { type: 'number', label: '最少数量', path: 'maze.fishCountMin', min: 0, max: 10, step: 1 },
+            { type: 'number', label: '最多数量', path: 'maze.fishCountMax', min: 1, max: 10, step: 1 },
+            { type: 'action', label: '🐟 生成一条食人鱼', actionId: 'spawnMazeFish' },
+            { type: 'action', label: '💀 杀死所有食人鱼', actionId: 'killAllFish' },
+            { type: 'action', label: '🧹 清除所有食人鱼', actionId: 'removeAllFish' },
         ]
     },
 ];

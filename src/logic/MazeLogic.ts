@@ -9,6 +9,7 @@ import { processManualDrive } from './ManualDrive';
 import { checkMazeCollision } from './Collision';
 import { updateCameraSpringArm, snapCameraToPlayer, getAdaptiveZoom } from './CameraLogic';
 import { updateMarkers, updateWheelButtonVisibility } from './Marker';
+import { createFishEnemy, findMazeFishSpawnPosition, updateAllFishEnemies } from './FishEnemy';
 
 // 迷宫模式使用独立的 StoryManager 实例
 const storyManager = new StoryManager();
@@ -204,6 +205,16 @@ export function startMazeDive(diveType: string) {
     state.fishBite = null;
     state.story.redOverlay = 0;
     state.story.shake = 0;
+
+    // 生成迷宫食人鱼
+    state.fishEnemies = [];
+    if (CONFIG.maze.fishEnabled) {
+        const count = CONFIG.maze.fishCountMin + Math.floor(Math.random() * (CONFIG.maze.fishCountMax - CONFIG.maze.fishCountMin + 1));
+        for (let i = 0; i < count; i++) {
+            const pos = findMazeFishSpawnPosition();
+            state.fishEnemies.push(createFishEnemy(pos.x, pos.y));
+        }
+    }
 
     // 相机归位到下潜出生点
     snapCameraToPlayer();
@@ -671,4 +682,12 @@ export function updateMaze() {
     // --- 更新粒子 ---
     updateParticles();
     updateSplashes();
+
+    // --- 更新凶猛鱼 ---
+    updateAllFishEnemies(1);
+
+    // --- 检测被咬死亡（凶猛鱼咬住后强制上浮） ---
+    if (state.fishBite && state.fishBite.active && state.fishBite.phase === 'dead') {
+        // updateFishBiteState 内部会处理迷宫模式的死亡逻辑（设置 surfacing）
+    }
 }

@@ -2,9 +2,20 @@ import { CONFIG } from '../core/config';
 import { state, player } from '../core/state';
 
 // =============================================
+// 判断当前是否处于迷宫模式
+// =============================================
+function isMazeMode(): boolean {
+    return state.screen === 'mazeRescue' && !!state.mazeRescue;
+}
+
+// =============================================
 // 内联碰撞检测（避免与 Logic.ts 循环导入）
+// 自动适配主线地图和迷宫地图
 // =============================================
 function checkCollisionLocal(x: number, y: number): boolean {
+    if (isMazeMode()) {
+        return checkCollisionMazeLocal(x, y);
+    }
     const { tileSize, playerRadius } = CONFIG;
     const r = Math.floor(y / tileSize);
     const c = Math.floor(x / tileSize);
@@ -19,6 +30,40 @@ function checkCollisionLocal(x: number, y: number): boolean {
                 const cx = rc * tileSize + tileSize / 2;
                 const cy = ry * tileSize + tileSize / 2;
                 if (Math.abs(x - cx) < tileSize / 2 + playerRadius && Math.abs(y - cy) < tileSize / 2 + playerRadius) return true;
+            }
+        }
+    }
+    return false;
+}
+
+// =============================================
+// 迷宫模式碰撞检测（读取 mazeRescue 地图数据）
+// =============================================
+function checkCollisionMazeLocal(x: number, y: number): boolean {
+    const maze = state.mazeRescue;
+    if (!maze) return false;
+    const ts = maze.mazeTileSize;
+    const pr = CONFIG.maze.playerRadius || CONFIG.playerRadius;
+    const r = Math.floor(y / ts);
+    const c = Math.floor(x / ts);
+    for (let ry = r - 1; ry <= r + 1; ry++) {
+        for (let rc = c - 1; rc <= c + 1; rc++) {
+            if (!maze.mazeMap[ry]) continue;
+            const cell = maze.mazeMap[ry][rc];
+            if (!cell) continue;
+            if (typeof cell === 'object') {
+                const w = cell as any;
+                if (Math.hypot(x - w.x, y - w.y) < w.r + pr) return true;
+                // 检查额外装饰圆
+                if (w.extras) {
+                    for (const ex of w.extras) {
+                        if (Math.hypot(x - ex.x, y - ex.y) < ex.r + pr) return true;
+                    }
+                }
+            } else if (cell === 2) {
+                const cx = rc * ts + ts / 2;
+                const cy = ry * ts + ts / 2;
+                if (Math.abs(x - cx) < ts / 2 + pr && Math.abs(y - cy) < ts / 2 + pr) return true;
             }
         }
     }
@@ -154,13 +199,45 @@ export function findSafeSpawnPosition(centerX: number, centerY: number): { x: nu
         const dist = minDist + Math.random() * (maxDist - minDist);
         const x = centerX + Math.cos(angle) * dist;
         const y = centerY + Math.sin(angle) * dist;
-        // 必须在水中（y > 60）且不碰墙
-        if (y > 60 && !checkCollisionLocal(x, y)) {
+        // 迷宫模式不需要 y > 60 的限制
+        const yOk = isMazeMode() ? true : y > 60;
+        if (yOk && !checkCollisionLocal(x, y)) {
             return { x, y };
         }
     }
     // 兜底：直接在玩家正右方 300px
     return { x: centerX + 300, y: centerY };
+}
+
+// =============================================
+// 迷宫模式专用：在地图深处随机找一个安全出生点
+// =============================================
+export function findMazeFishSpawnPosition(): { x: number; y: number } {
+    const maze = state.mazeRescue;
+    if (!maze) return { x: 0, y: 0 };
+    const ts = maze.mazeTileSize;
+    const wallThick = CONFIG.maze.wallThickness || 5;
+    // 在地图中下部区域随机找位置（避开顶部出口附近）
+    const minRow = Math.floor(maze.mazeRows * 0.3);
+    const maxRow = maze.mazeRows - wallThick - 1;
+    const minCol = wallThick + 1;
+    const maxCol = maze.mazeCols - wallThick - 1;
+    for (let attempt = 0; attempt < 50; attempt++) {
+        const r = minRow + Math.floor(Math.random() * (maxRow - minRow));
+        const c = minCol + Math.floor(Math.random() * (maxCol - minCol));
+        // 必须是通道格（值为 0 或 falsy）
+        if (maze.mazeMap[r] && !maze.mazeMap[r][c]) {
+            const x = c * ts + ts / 2;
+            const y = r * ts + ts / 2;
+            // 离玩家出生点足够远
+            const distToSpawn = Math.hypot(x - maze.exitX, y - (wallThick + 1) * ts);
+            if (distToSpawn > ts * 8) {
+                return { x, y };
+            }
+        }
+    }
+    // 兜底：NPC 附近
+    return { x: maze.npcInitX + 200, y: maze.npcInitY };
 }
 
 // =============================================
@@ -178,8 +255,12 @@ function lerpAngle(current: number, target: number, factor: number): number {
 // =============================================
 function isFlashlightHittingFish(fish: FishEnemy): boolean {
     const cfg = CFG();
-    // 手电筒在深水才开启
-    if (player.y <= 600) return false;
+    // 迷宫模式和竞技场模式手电始终可用；主线模式在深水才开启
+    const alwaysOn = state.screen === 'mazeRescue' || state.screen === 'fishArena';
+    if (!alwaysOn && player.y <= 600) return false;
+
+    // 手电筒未开启时无效
+    if (!state.flashlightOn) return false;
 
     // 第三关手电筒固定灭时无效
     if (state.story.flags.flashlightFixedOff) return false;
@@ -666,9 +747,17 @@ function applyMovement(fish: FishEnemy) {
         fish.vy *= -0.5;
     }
 
-    // 防止游出地图边界
-    fish.x = Math.max(0, Math.min(CONFIG.cols * CONFIG.tileSize, fish.x));
-    fish.y = Math.max(60, Math.min(CONFIG.rows * CONFIG.tileSize, fish.y));
+    // 防止游出地图边界（适配迷宫模式）
+    if (isMazeMode()) {
+        const maze = state.mazeRescue!;
+        const maxX = maze.mazeCols * maze.mazeTileSize;
+        const maxY = maze.mazeRows * maze.mazeTileSize;
+        fish.x = Math.max(0, Math.min(maxX, fish.x));
+        fish.y = Math.max(0, Math.min(maxY, fish.y));
+    } else {
+        fish.x = Math.max(0, Math.min(CONFIG.cols * CONFIG.tileSize, fish.x));
+        fish.y = Math.max(60, Math.min(CONFIG.rows * CONFIG.tileSize, fish.y));
+    }
 }
 
 // =============================================
@@ -720,13 +809,24 @@ export function updateFishBiteState() {
         // 死亡阶段：红屏加深，然后进入 lose 画面
         state.story.redOverlay = Math.min(1, 0.6 + state.fishBite.timer / cfg.deathFadeDuration * 0.4);
         if (state.fishBite.timer >= cfg.deathFadeDuration) {
-            // 进入失败画面
-            state.screen = 'lose';
-            state.alertMsg = '被凶猛鱼撕碎了...';
-            state.alertColor = '#f00';
-            state.fishBite.active = false;
-            state.story.redOverlay = 0;
-            state.story.shake = 0;
+            if (isMazeMode()) {
+                // 迷宫模式：被鱼咬死视为氧气耗尽，强制上浮返回岸上
+                state.fishBite.active = false;
+                state.story.redOverlay = 0;
+                state.story.shake = 0;
+                const maze = state.mazeRescue!;
+                maze.phase = 'surfacing';
+                maze.surfacingReason = 'fishkill';
+                maze.resultTimer = 0;
+            } else {
+                // 主线/竞技场：进入失败画面
+                state.screen = 'lose';
+                state.alertMsg = '被凶猛鱼撕碎了...';
+                state.alertColor = '#f00';
+                state.fishBite.active = false;
+                state.story.redOverlay = 0;
+                state.story.shake = 0;
+            }
         }
     }
 }

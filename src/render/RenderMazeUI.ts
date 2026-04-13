@@ -846,7 +846,8 @@ function drawMazeShore(maze: any, cw: number, ch: number, time: number) {
             ctx.font = '12px Arial';
             const reasonText = lastDive.returnReason === 'retreat' ? '主动撤离' :
                               lastDive.returnReason === 'o2' ? '氧气不足' :
-                              lastDive.returnReason === 'rescued' ? '救援成功' : '返回';
+                              lastDive.returnReason === 'rescued' ? '救援成功' :
+                              lastDive.returnReason === 'fishkill' ? '被食人鱼袭击' : '返回';
             ctx.fillText(`上次：${reasonText} | 深度${lastDive.maxDepth}m | 新探索${lastDive.newExploredCount}格`, infoX, infoY);
             infoY += 18;
             ctx.fillText(`      绳索+${lastDive.ropePlaced} | 用时${Math.floor(lastDive.duration / 60)}分${lastDive.duration % 60}秒`, infoX, infoY);
@@ -1403,9 +1404,11 @@ function drawMazeDebrief(maze: any, cw: number, ch: number, time: number) {
         ctx.fillText('救援成功', cw / 2, titleY);
     } else {
         const reason = lastDive ? lastDive.returnReason : 'retreat';
-        ctx.fillStyle = reason === 'o2' ? 'rgba(255,180,80,0.95)' : 'rgba(160,210,255,0.95)';
+        ctx.fillStyle = reason === 'o2' ? 'rgba(255,180,80,0.95)' :
+                        reason === 'fishkill' ? 'rgba(255,100,100,0.95)' : 'rgba(160,210,255,0.95)';
         ctx.font = 'bold 20px Arial';
-        ctx.fillText(reason === 'o2' ? '氧气不足' : '安全返回', cw / 2, titleY);
+        ctx.fillText(reason === 'o2' ? '氧气不足' :
+                     reason === 'fishkill' ? '被食人鱼袭击' : '安全返回', cw / 2, titleY);
     }
 
     // === 轨迹复盘地图（充足padding，布局宽松） ===

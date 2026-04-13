@@ -324,6 +324,11 @@ export const CONFIG = {
             sunlightColor: [200, 240, 255], // 光柱颜色 RGB
         },
 
+        // === 迷宫食人鱼配置 ===
+        fishEnabled: true,          // 是否在迷宫中生成食人鱼
+        fishCountMin: 1,            // 每局最少食人鱼数量
+        fishCountMax: 3,            // 每局最多食人鱼数量
+
         // === 多次下潜闭环配置 ===
         retreatHoldDuration: 1.0,   // 探路撤离长按秒数
         retreatBtnRadius: 36,       // 撤离按钮半径
