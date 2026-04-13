@@ -1,6 +1,9 @@
 const systemInfo = wx.getSystemInfoSync();
 
 export const CONFIG = {
+    // 版本信息
+    version: 'v1.0.9',
+
     // 画布设置 (竖屏适配)
     screenWidth: systemInfo.windowWidth,
     screenHeight: systemInfo.windowHeight,
@@ -270,7 +273,7 @@ export const CONFIG = {
         // 小地图
         minimapSize: 160,           // 小地图尺寸（像素）
         minimapX: 10,               // 小地图左上角X
-        minimapY: 10,               // 小地图左上角Y
+        minimapY: 60,               // 小地图左上角Y（下移避开深度氧气HUD）
 
         // 深度显示
         depthUnit: 40,              // 每格对应多少像素（用于计算深度m）

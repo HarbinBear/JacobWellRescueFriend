@@ -198,6 +198,16 @@ export const state = {
         shoreMapOpen: boolean;      // 岸上全屏地图是否打开
         shoreScrollY: number;       // 岸上页面滚动偏移
         divingInTimer: number;      // 入水动效计时（帧）
+        _hudEntryTimer: number;     // HUD入场动效计时（帧）
+        _hudDetailOpen: number;     // HUD详情展开进度（0~1，0=收起，1=展开）
+        _hudDetailHolding: boolean; // HUD详情是否正在按住
+        _retreatDetailOpen: number; // 撤离按钮详情展开进度（0~1）
+        _retreatDetailHolding: boolean; // 撤离按钮详情是否正在按住（非长按撤离）
+        _shoreRecordOpen: boolean;  // 岸上探索记录是否展开
+        _shoreRecordAnim: number;   // 岸上探索记录展开动画进度（0~1）
+        _driveToggleOpen: number;   // 手动/自动挡详情展开进度（0~1）
+        _driveToggleHolding: boolean; // 手动/自动挡详情是否正在按住
+        _driveSwitchTip: number;    // 手动/自动挡切换tip倒计时（帧）
 
         // === 迷宫专属地图数据（跨下潜保留） ===
         mazeMap: any[][];

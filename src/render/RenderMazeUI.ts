@@ -67,88 +67,185 @@ export function drawMazeHUD() {
 
     // === 游戏中 HUD ===
 
-    // --- 深度 + 氧气一体化面板（右上角，简约胶囊风格） ---
+    // --- 左上角：深度 + 圆形氧气环 + 按住展开详情 + 手动挡开关 ---
     const o2Ratio = Math.max(0, player.o2 / 100);
     const depth = Math.max(0, Math.floor(player.y / maze.mazeTileSize));
 
-    // 面板参数
-    const panelW = 56;
-    const panelH = 110;
-    const panelX = cw - panelW - 10;
-    const panelY = 12;
-    const panelR = 16;
+    // 入场动效：前 40 帧从左侧滑入 + 淡入
+    if (!maze._hudEntryTimer) maze._hudEntryTimer = 0;
+    if (maze._hudEntryTimer < 40) maze._hudEntryTimer++;
+    const hudEntry = Math.min(1, maze._hudEntryTimer / 40);
+    const hudEase = 1 - Math.pow(1 - hudEntry, 3);
+    const hudSlideX = -50 * (1 - hudEase);
+    const hudAlpha = hudEase;
 
-    // 面板背景（半透明深色胶囊）
-    ctx.globalAlpha = 0.7;
-    ctx.fillStyle = 'rgba(8,20,35,0.85)';
+    // HUD详情展开动画（平滑过渡）
+    const hudDetailSpeed = 0.08;
+    if (maze._hudDetailHolding) {
+        maze._hudDetailOpen = Math.min(1, (maze._hudDetailOpen || 0) + hudDetailSpeed);
+    } else {
+        maze._hudDetailOpen = Math.max(0, (maze._hudDetailOpen || 0) - hudDetailSpeed);
+    }
+    const detailOpen = maze._hudDetailOpen || 0;
+    const detailEase = detailOpen * detailOpen * (3 - 2 * detailOpen); // smoothstep
+
+    // 圆形氧气环参数（加padding，远离屏幕边缘）
+    const ringCX = 46 + hudSlideX;
+    const ringCY = 48;
+    const ringR = 22;
+    const ringW = 3.5;
+
+    // 氧气颜色
+    const o2Color = o2Ratio > 0.5 ? 'rgba(80,210,255,0.9)' :
+                    o2Ratio > 0.25 ? 'rgba(255,200,80,0.9)' : 'rgba(255,80,80,0.9)';
+    const o2ColorDim = o2Ratio > 0.5 ? 'rgba(80,210,255,0.15)' :
+                       o2Ratio > 0.25 ? 'rgba(255,200,80,0.15)' : 'rgba(255,80,80,0.15)';
+
+    // 展开时的详情面板背景（从圆环右侧展开）
+    if (detailEase > 0.01) {
+        const panelW = 110 * detailEase;
+        const panelH = 70 * detailEase;
+        const panelX = ringCX + ringR + 8;
+        const panelY = ringCY - panelH / 2;
+        ctx.globalAlpha = hudAlpha * 0.85 * detailEase;
+        ctx.fillStyle = 'rgba(8,20,35,0.88)';
+        ctx.beginPath();
+        rrect(ctx, panelX, panelY, panelW, panelH, 10 * detailEase);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(80,160,220,0.2)';
+        ctx.lineWidth = 0.5;
+        ctx.beginPath();
+        rrect(ctx, panelX, panelY, panelW, panelH, 10 * detailEase);
+        ctx.stroke();
+
+        // 详情内容
+        if (detailEase > 0.5) {
+            const contentAlpha = (detailEase - 0.5) * 2;
+            ctx.globalAlpha = hudAlpha * 0.9 * contentAlpha;
+            ctx.textAlign = 'left';
+            // 氧气标签+数值
+            ctx.fillStyle = o2Color;
+            ctx.font = 'bold 11px Arial';
+            ctx.fillText('O₂', panelX + 8, panelY + 18);
+            ctx.fillStyle = 'rgba(220,240,255,0.9)';
+            ctx.font = '11px Arial';
+            ctx.fillText(`${Math.ceil(player.o2)}%`, panelX + 30, panelY + 18);
+            // 深度标签+数值
+            ctx.fillStyle = 'rgba(140,190,220,0.7)';
+            ctx.font = 'bold 11px Arial';
+            ctx.fillText('深度', panelX + 8, panelY + 36);
+            ctx.fillStyle = 'rgba(220,240,255,0.9)';
+            ctx.font = '11px Arial';
+            ctx.fillText(`${depth}m`, panelX + 38, panelY + 36);
+            // 手动/自动挡状态
+            const isManual = CONFIG.manualDrive.enabled;
+            ctx.fillStyle = 'rgba(140,190,220,0.7)';
+            ctx.font = 'bold 11px Arial';
+            ctx.fillText('操控', panelX + 8, panelY + 54);
+            ctx.fillStyle = isManual ? 'rgba(80,255,200,0.9)' : 'rgba(200,200,220,0.9)';
+            ctx.font = '11px Arial';
+            ctx.fillText(isManual ? '手动' : '自动', panelX + 38, panelY + 54);
+        }
+    }
+
+    // 背景环（暗色轨道）
+    ctx.globalAlpha = hudAlpha * 0.4;
+    ctx.strokeStyle = o2ColorDim;
+    ctx.lineWidth = ringW;
     ctx.beginPath();
-    rrect(ctx, panelX, panelY, panelW, panelH, panelR);
+    ctx.arc(ringCX, ringCY, ringR, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // 氧气进度环（从顶部顺时针）
+    ctx.globalAlpha = hudAlpha * 0.9;
+    ctx.strokeStyle = o2Color;
+    ctx.lineWidth = ringW;
+    ctx.lineCap = 'round';
+    const o2StartAngle = -Math.PI / 2;
+    const o2EndAngle = o2StartAngle + Math.PI * 2 * o2Ratio;
+    if (o2Ratio > 0.005) {
+        ctx.beginPath();
+        ctx.arc(ringCX, ringCY, ringR, o2StartAngle, o2EndAngle);
+        ctx.stroke();
+    }
+    ctx.lineCap = 'butt';
+
+    // 低氧脉冲光晕
+    if (o2Ratio <= 0.25) {
+        const pulse = 0.3 + 0.2 * Math.sin(time * 5);
+        ctx.globalAlpha = hudAlpha * pulse;
+        ctx.strokeStyle = 'rgba(255,60,60,0.4)';
+        ctx.lineWidth = 8;
+        ctx.beginPath();
+        ctx.arc(ringCX, ringCY, ringR + 2, o2StartAngle, o2EndAngle);
+        ctx.stroke();
+        ctx.lineWidth = ringW;
+    }
+
+    // 圆环中心：深度数字
+    ctx.globalAlpha = hudAlpha * 0.95;
+    ctx.shadowColor = 'rgba(0,0,0,0.5)';
+    ctx.shadowBlur = 4;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = 'rgba(220,240,255,0.95)';
+    ctx.font = 'bold 18px Arial';
+    ctx.fillText(`${depth}`, ringCX, ringCY - 2);
+    ctx.fillStyle = 'rgba(140,190,220,0.55)';
+    ctx.font = '9px Arial';
+    ctx.fillText('m', ringCX, ringCY + 12);
+    ctx.shadowBlur = 0;
+    ctx.textBaseline = 'alphabetic';
+
+    // --- 手动/自动挡开关（圆环下方，加大间距） ---
+    const driveToggleY = ringCY + ringR + 28;
+    const driveToggleX = ringCX;
+    const isManualDrive = CONFIG.manualDrive.enabled;
+
+    // 开关圆形按钮（加大，手动挡橙红色，自动挡绿色）
+    const driveR = 14;
+    ctx.globalAlpha = hudAlpha * 0.8;
+    ctx.fillStyle = isManualDrive ? 'rgba(240,120,50,0.75)' : 'rgba(60,200,120,0.65)';
+    ctx.beginPath();
+    ctx.arc(driveToggleX, driveToggleY, driveR, 0, Math.PI * 2);
     ctx.fill();
-    // 面板边框
-    ctx.strokeStyle = 'rgba(80,160,220,0.25)';
+    // 外圈细线
+    ctx.globalAlpha = hudAlpha * 0.5;
+    ctx.strokeStyle = isManualDrive ? 'rgba(255,160,80,0.5)' : 'rgba(80,220,140,0.4)';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    rrect(ctx, panelX, panelY, panelW, panelH, panelR);
+    ctx.arc(driveToggleX, driveToggleY, driveR, 0, Math.PI * 2);
     ctx.stroke();
-
-    // 深度数字（大号）
-    ctx.globalAlpha = 0.95;
-    ctx.fillStyle = 'rgba(160,220,255,0.95)';
-    ctx.font = 'bold 22px Arial';
-    ctx.textAlign = 'center';
-    ctx.fillText(`${depth}`, panelX + panelW / 2, panelY + 30);
-    // 深度单位
-    ctx.fillStyle = 'rgba(120,180,220,0.6)';
-    ctx.font = '10px Arial';
-    ctx.fillText('m', panelX + panelW / 2, panelY + 42);
-
-    // 分割线
-    ctx.strokeStyle = 'rgba(80,160,220,0.2)';
-    ctx.lineWidth = 0.5;
-    ctx.beginPath();
-    ctx.moveTo(panelX + 10, panelY + 50);
-    ctx.lineTo(panelX + panelW - 10, panelY + 50);
-    ctx.stroke();
-
-    // 氧气环形指示器
-    const o2CenterX = panelX + panelW / 2;
-    const o2CenterY = panelY + 76;
-    const o2Radius = 18;
-    const o2LineW = 3;
-    // 氧气颜色
-    const o2Color = o2Ratio > 0.5 ? 'rgba(80,200,255,0.9)' :
-                    o2Ratio > 0.25 ? 'rgba(255,200,80,0.9)' : 'rgba(255,80,80,0.9)';
-    // 背景环
-    ctx.globalAlpha = 0.3;
-    ctx.strokeStyle = 'rgba(60,100,140,0.4)';
-    ctx.lineWidth = o2LineW;
-    ctx.beginPath();
-    ctx.arc(o2CenterX, o2CenterY, o2Radius, 0, Math.PI * 2);
-    ctx.stroke();
-    // 氧气进度环（从顶部顺时针）
-    ctx.globalAlpha = 0.9;
-    ctx.strokeStyle = o2Color;
-    ctx.lineWidth = o2LineW;
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.arc(o2CenterX, o2CenterY, o2Radius, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * o2Ratio);
-    ctx.stroke();
-    ctx.lineCap = 'butt';
-    // 氧气百分比数字
-    ctx.globalAlpha = 0.9;
-    ctx.fillStyle = o2Color;
+    // 图标（M=手动，A=自动）
+    ctx.globalAlpha = hudAlpha * 0.95;
+    ctx.fillStyle = 'rgba(255,255,255,0.95)';
     ctx.font = 'bold 12px Arial';
     ctx.textAlign = 'center';
-    ctx.fillText(`${Math.ceil(player.o2)}`, o2CenterX, o2CenterY + 4);
-    // 低氧闪烁警告
-    if (o2Ratio <= 0.25) {
-        const blink = Math.sin(time * 6) > 0 ? 0.8 : 0.3;
-        ctx.globalAlpha = blink;
-        ctx.strokeStyle = 'rgba(255,60,60,0.6)';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.arc(o2CenterX, o2CenterY, o2Radius + 4, 0, Math.PI * 2);
-        ctx.stroke();
+    ctx.textBaseline = 'middle';
+    ctx.fillText(isManualDrive ? 'M' : 'A', driveToggleX, driveToggleY);
+    ctx.textBaseline = 'alphabetic';
+
+    // 手动/自动挡切换tip提示（切换时短暂显示）
+    if (maze._driveSwitchTip && maze._driveSwitchTip > 0) {
+        maze._driveSwitchTip = Math.max(0, maze._driveSwitchTip - 1);
+        const tipAlpha = Math.min(1, maze._driveSwitchTip / 30);
+        if (tipAlpha > 0.01) {
+            ctx.globalAlpha = hudAlpha * 0.9 * tipAlpha;
+            ctx.fillStyle = 'rgba(8,20,35,0.85)';
+            const tipText = isManualDrive ? '已切换到手动挡' : '已切换到自动挡';
+            const tipW = 120;
+            const tipH = 28;
+            const tipX = driveToggleX + driveR + 8;
+            const tipY = driveToggleY - tipH / 2;
+            ctx.beginPath();
+            rrect(ctx, tipX, tipY, tipW, tipH, 10);
+            ctx.fill();
+            ctx.globalAlpha = hudAlpha * tipAlpha;
+            ctx.fillStyle = isManualDrive ? 'rgba(240,160,80,0.95)' : 'rgba(80,220,140,0.95)';
+            ctx.font = 'bold 11px Arial';
+            ctx.textAlign = 'left';
+            ctx.fillText(tipText, tipX + 10, tipY + tipH / 2 + 4);
+        }
     }
 
     // NPC 救援提示（靠近NPC时显示，发现后即可绑绳）
@@ -204,7 +301,7 @@ export function drawMazeHUD() {
         }
     }
 
-    // 撤离按钮（未带人时可用，左下角，简约上箭头风格）
+    // 撤离按钮（未带人时可用，左下角，按住展开说明）
     if (!maze.npcRescued) {
         const retreatBtnX = cw * CONFIG.maze.retreatBtnXRatio;
         const retreatBtnY = ch * CONFIG.maze.retreatBtnYRatio;
@@ -215,6 +312,36 @@ export function drawMazeHUD() {
         if (maze.retreatHolding) {
             const elapsed = (Date.now() - maze.retreatHoldStart) / 1000;
             retreatProgress = Math.min(1, elapsed / CONFIG.maze.retreatHoldDuration);
+        }
+
+        // 撤离详情展开动画（长按时展开说明文字）
+        if (maze.retreatHolding && retreatProgress > 0) {
+            maze._retreatDetailOpen = Math.min(1, (maze._retreatDetailOpen || 0) + 0.06);
+        } else if (!maze.retreatHolding) {
+            maze._retreatDetailOpen = Math.max(0, (maze._retreatDetailOpen || 0) - 0.1);
+        }
+        const retDetailEase = (maze._retreatDetailOpen || 0);
+        const retDE = retDetailEase * retDetailEase * (3 - 2 * retDetailEase);
+
+        // 展开的说明面板（按钮上方）
+        if (retDE > 0.01) {
+            const rpW = 80 * retDE;
+            const rpH = 28 * retDE;
+            const rpX = retreatBtnX - rpW / 2;
+            const rpY = retreatBtnY - retreatR - 10 - rpH;
+            ctx.globalAlpha = 0.85 * retDE;
+            ctx.fillStyle = 'rgba(8,20,35,0.88)';
+            ctx.beginPath();
+            rrect(ctx, rpX, rpY, rpW, rpH, 8 * retDE);
+            ctx.fill();
+            if (retDE > 0.4) {
+                const cA = Math.min(1, (retDE - 0.4) / 0.6);
+                ctx.globalAlpha = 0.9 * cA;
+                ctx.fillStyle = 'rgba(150,255,220,0.9)';
+                ctx.font = 'bold 12px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('撤离上浮', retreatBtnX, rpY + rpH / 2 + 4);
+            }
         }
 
         // 按钮底色（磨砂玻璃感）
@@ -244,7 +371,7 @@ export function drawMazeHUD() {
             ctx.lineCap = 'butt';
         }
 
-        // 上箭头图标（简洁三角 + 短线）
+        // 上箭头图标
         ctx.globalAlpha = retreatProgress > 0 ? 0.95 : 0.75;
         ctx.fillStyle = retreatProgress > 0 ? 'rgba(150,255,220,0.95)' : 'rgba(150,210,230,0.85)';
         ctx.beginPath();
@@ -598,7 +725,7 @@ function drawMazeShore(maze: any, cw: number, ch: number, time: number) {
     ctx.fillText('岸上营地', cw / 2, ch * 0.06 + 20);
     ctx.shadowBlur = 0;
 
-    // 返回按钮（左上角）
+    // 返回按钮（左上角，文字居中在框内）
     ctx.globalAlpha = 0.8;
     ctx.fillStyle = 'rgba(0,0,0,0.4)';
     ctx.beginPath();
@@ -607,115 +734,138 @@ function drawMazeShore(maze: any, cw: number, ch: number, time: number) {
     ctx.fillStyle = '#fff';
     ctx.font = '14px Arial';
     ctx.textAlign = 'center';
-    ctx.fillText('← 返回', 40, 28);
+    ctx.textBaseline = 'middle';
+    ctx.fillText('← 返回', 40, 24);
+    ctx.textBaseline = 'alphabetic';
 
-    // 信息卡片背景（下半部分，不被地图遮挡）
+    // 信息卡片（可折叠，带动效过渡）
     const cardX = cw * 0.06;
-    const cardY = ch * 0.56;
     const cardW = cw * 0.88;
-    const cardH = ch * 0.40;
-    ctx.globalAlpha = 0.85;
-    ctx.fillStyle = 'rgba(255,255,255,0.92)';
-    ctx.beginPath();
-    rrect(ctx, cardX, cardY, cardW, cardH, 12);
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(76,175,80,0.6)';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    rrect(ctx, cardX, cardY, cardW, cardH, 12);
-    ctx.stroke();
+    const isRecordOpen = maze._shoreRecordOpen;
+    const cardCollapsedH = 48;
+    const cardExpandedH = ch * 0.42;
 
-    // 信息内容
-    ctx.globalAlpha = 1;
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#333';
-    ctx.font = 'bold 14px Arial';
-    const infoX = cardX + 16;
-    let infoY = cardY + 24;
-    ctx.fillText('探索记录', infoX, infoY);
+    // 折叠/展开动效（平滑过渡）
+    if (!maze._shoreRecordAnim) maze._shoreRecordAnim = 0;
+    const targetAnim = isRecordOpen ? 1 : 0;
+    maze._shoreRecordAnim += (targetAnim - maze._shoreRecordAnim) * 0.12;
+    if (Math.abs(maze._shoreRecordAnim - targetAnim) < 0.01) maze._shoreRecordAnim = targetAnim;
+    const animT = maze._shoreRecordAnim;
+    const animEase = animT * animT * (3 - 2 * animT); // smoothstep
+    const cardH = cardCollapsedH + (cardExpandedH - cardCollapsedH) * animEase;
+    const cardY = ch - cardH - 16;
 
-    // 认知地图图标按钮（卡片右上角）
-    const mapIconX = cardX + cardW - 44;
-    const mapIconY = cardY + 8;
-    const mapIconSize = 36;
-    ctx.globalAlpha = 0.9;
-    ctx.fillStyle = 'rgba(76,175,80,0.15)';
+    // 卡片背景（半透明磨砂感）
+    ctx.globalAlpha = 0.88;
+    ctx.fillStyle = 'rgba(255,255,255,0.93)';
     ctx.beginPath();
-    rrect(ctx, mapIconX, mapIconY, mapIconSize, mapIconSize, 8);
+    rrect(ctx, cardX, cardY, cardW, cardH, 14);
     ctx.fill();
     ctx.strokeStyle = 'rgba(76,175,80,0.5)';
     ctx.lineWidth = 1;
     ctx.beginPath();
+    rrect(ctx, cardX, cardY, cardW, cardH, 14);
+    ctx.stroke();
+
+    // 标题栏（始终显示，点击切换折叠）
+    ctx.globalAlpha = 1;
+    const infoX = cardX + 16;
+    const titleCenterY = cardY + cardCollapsedH / 2;
+
+    // 左侧：探索记录标题 + 折叠箭头
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#333';
+    ctx.font = 'bold 14px Arial';
+    // 箭头旋转动效（▶ 旋转到 ▼）
+    const arrowChar = animEase > 0.5 ? '▼' : '▶';
+    ctx.fillStyle = '#999';
+    ctx.font = '12px Arial';
+    ctx.fillText(arrowChar, infoX, titleCenterY);
+    ctx.fillStyle = '#333';
+    ctx.font = 'bold 14px Arial';
+    ctx.fillText('探索记录', infoX + 18, titleCenterY);
+    ctx.textBaseline = 'alphabetic';
+
+    // 右侧：认知地图图标按钮（独立位置，不和标题重合）
+    const mapIconSize = 34;
+    const mapIconX = cardX + cardW - mapIconSize - 12;
+    const mapIconY = cardY + (cardCollapsedH - mapIconSize) / 2;
+    ctx.globalAlpha = 0.9;
+    ctx.fillStyle = 'rgba(76,175,80,0.12)';
+    ctx.beginPath();
+    rrect(ctx, mapIconX, mapIconY, mapIconSize, mapIconSize, 8);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(76,175,80,0.45)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
     rrect(ctx, mapIconX, mapIconY, mapIconSize, mapIconSize, 8);
     ctx.stroke();
-    ctx.fillStyle = '#4CAF50';
-    ctx.font = '18px Arial';
-    ctx.textAlign = 'center';
-    // 用绘制方式画地图图标（避免emoji兼容问题）
+    // 地图图标
     ctx.strokeStyle = '#4CAF50';
     ctx.lineWidth = 1.5;
-    // 折叠地图轮廓
     const mIcx = mapIconX + mapIconSize / 2;
     const mIcy = mapIconY + mapIconSize / 2;
     ctx.beginPath();
-    ctx.moveTo(mIcx - 8, mIcy - 8);
-    ctx.lineTo(mIcx - 2, mIcy - 5);
-    ctx.lineTo(mIcx + 4, mIcy - 8);
-    ctx.lineTo(mIcx + 8, mIcy - 5);
-    ctx.lineTo(mIcx + 8, mIcy + 8);
-    ctx.lineTo(mIcx + 2, mIcy + 5);
-    ctx.lineTo(mIcx - 4, mIcy + 8);
-    ctx.lineTo(mIcx - 8, mIcy + 5);
+    ctx.moveTo(mIcx - 7, mIcy - 7);
+    ctx.lineTo(mIcx - 2, mIcy - 4);
+    ctx.lineTo(mIcx + 3, mIcy - 7);
+    ctx.lineTo(mIcx + 7, mIcy - 4);
+    ctx.lineTo(mIcx + 7, mIcy + 7);
+    ctx.lineTo(mIcx + 2, mIcy + 4);
+    ctx.lineTo(mIcx - 3, mIcy + 7);
+    ctx.lineTo(mIcx - 7, mIcy + 4);
     ctx.closePath();
     ctx.stroke();
-    // 地图上的路线标记
     ctx.beginPath();
-    ctx.moveTo(mIcx - 4, mIcy - 2);
+    ctx.moveTo(mIcx - 3, mIcy - 1);
     ctx.lineTo(mIcx, mIcy + 2);
-    ctx.lineTo(mIcx + 4, mIcy - 1);
+    ctx.lineTo(mIcx + 3, mIcy);
     ctx.stroke();
-    // 小圆点标记
     ctx.fillStyle = '#F44336';
     ctx.beginPath();
-    ctx.arc(mIcx + 4, mIcy - 1, 2, 0, Math.PI * 2);
+    ctx.arc(mIcx + 3, mIcy, 1.5, 0, Math.PI * 2);
     ctx.fill();
 
-    // 统计数据
-    ctx.textAlign = 'left';
-    ctx.font = '13px Arial';
-    ctx.fillStyle = '#555';
-    infoY += 28;
-    ctx.fillText(`下潜次数：${maze.diveCount}`, infoX, infoY);
-    ctx.fillText(`铺设绳索：${maze.totalRopePlaced} 段`, infoX + cardW * 0.5, infoY);
-    infoY += 22;
-    const maxDepthM = Math.floor(maze.maxDepthReached / maze.mazeTileSize);
-    ctx.fillText(`最深到达：${maxDepthM}m`, infoX, infoY);
-    ctx.fillText(`被困者：${maze.npcFound ? '[已发现]' : '[未发现]'}`, infoX + cardW * 0.5, infoY);
+    // 展开时显示详情内容（带淡入动效）
+    if (animEase > 0.3) {
+        const contentAlpha = Math.min(1, (animEase - 0.3) / 0.5);
+        ctx.globalAlpha = contentAlpha;
+        ctx.textAlign = 'left';
+        ctx.font = '13px Arial';
+        ctx.fillStyle = '#555';
+        let infoY = cardY + cardCollapsedH + 8;
+        ctx.fillText(`下潜次数：${maze.diveCount}`, infoX, infoY);
+        ctx.fillText(`铺设绳索：${maze.totalRopePlaced} 段`, infoX + cardW * 0.5, infoY);
+        infoY += 22;
+        const maxDepthM = Math.floor(maze.maxDepthReached / maze.mazeTileSize);
+        ctx.fillText(`最深到达：${maxDepthM}m`, infoX, infoY);
+        ctx.fillText(`被困者：${maze.npcFound ? '[已发现]' : '[未发现]'}`, infoX + cardW * 0.5, infoY);
 
-    // 上次下潜摘要
-    if (maze.diveHistory.length > 0) {
-        const lastDive = maze.diveHistory[maze.diveHistory.length - 1];
-        infoY += 28;
-        ctx.fillStyle = '#777';
+        // 上次下潜摘要
+        if (maze.diveHistory.length > 0) {
+            const lastDive = maze.diveHistory[maze.diveHistory.length - 1];
+            infoY += 28;
+            ctx.fillStyle = '#777';
+            ctx.font = '12px Arial';
+            const reasonText = lastDive.returnReason === 'retreat' ? '主动撤离' :
+                              lastDive.returnReason === 'o2' ? '氧气不足' :
+                              lastDive.returnReason === 'rescued' ? '救援成功' : '返回';
+            ctx.fillText(`上次：${reasonText} | 深度${lastDive.maxDepth}m | 新探索${lastDive.newExploredCount}格`, infoX, infoY);
+            infoY += 18;
+            ctx.fillText(`      绳索+${lastDive.ropePlaced} | 用时${Math.floor(lastDive.duration / 60)}分${lastDive.duration % 60}秒`, infoX, infoY);
+        }
+
+        // 下潜提示
+        ctx.globalAlpha = 0.6;
+        ctx.fillStyle = '#888';
         ctx.font = '12px Arial';
-        const reasonText = lastDive.returnReason === 'retreat' ? '主动撤离' :
-                          lastDive.returnReason === 'o2' ? '氧气不足' :
-                          lastDive.returnReason === 'rescued' ? '救援成功' : '返回';
-        ctx.fillText(`上次：${reasonText} | 深度${lastDive.maxDepth}m | 新探索${lastDive.newExploredCount}格`, infoX, infoY);
-        infoY += 18;
-        ctx.fillText(`      绳索+${lastDive.ropePlaced} | 用时${Math.floor(lastDive.duration / 60)}分${lastDive.duration % 60}秒`, infoX, infoY);
-    }
-
-    // 下潜提示（卡片底部）
-    infoY = cardY + cardH - 20;
-    ctx.globalAlpha = 0.6;
-    ctx.fillStyle = '#888';
-    ctx.font = '12px Arial';
-    ctx.textAlign = 'center';
-    if (maze.npcFound) {
-        ctx.fillText('已发现被困者，下潜后可靠近长按绑绳救援', cw / 2, infoY);
-    } else {
-        ctx.fillText('点击水面入口开始下潜探索', cw / 2, infoY);
+        ctx.textAlign = 'center';
+        if (maze.npcFound) {
+            ctx.fillText('已发现被困者，下潜后可靠近长按绑绳救援', cw / 2, cardY + cardH - 14);
+        } else {
+            ctx.fillText('点击水面入口开始下潜探索', cw / 2, cardY + cardH - 14);
+        }
     }
 
     ctx.globalAlpha = 1;
@@ -1248,8 +1398,8 @@ function drawMazeDebrief(maze: any, cw: number, ch: number, time: number) {
     ctx.globalAlpha = showAlpha;
     ctx.textAlign = 'center';
 
-    // === 标题区域 ===
-    const titleY = ch * 0.04 + 16;
+    // === 标题区域（充足顶部padding） ===
+    const titleY = ch * 0.08 + 24;
     const lastDive = maze.diveHistory.length > 0 ? maze.diveHistory[maze.diveHistory.length - 1] : null;
     if (isRescueSuccess) {
         ctx.fillStyle = 'rgba(80,255,180,0.95)';
@@ -1262,14 +1412,14 @@ function drawMazeDebrief(maze: any, cw: number, ch: number, time: number) {
         ctx.fillText(reason === 'o2' ? '氧气不足' : '安全返回', cw / 2, titleY);
     }
 
-    // === 轨迹复盘地图（占据页面主体，尽量大） ===
-    const mapPadding = 16;
-    const mapTopY = titleY + 20;
+    // === 轨迹复盘地图（充足padding，布局宽松） ===
+    const mapPadding = 28;
+    const mapTopY = titleY + 40;
     // 统计区域高度预估
-    const statsAreaH = lastDive ? 100 : 20;
-    const btnAreaH = 70;
+    const statsAreaH = lastDive ? 130 : 40;
+    const btnAreaH = 90;
     const mapAvailH = ch - mapTopY - statsAreaH - btnAreaH - mapPadding * 2;
-    const mapAvailW = cw - mapPadding * 2;
+    const mapAvailW = cw - mapPadding * 6;
 
     const cols = maze.mazeCols;
     const rows = maze.mazeRows;
@@ -1288,17 +1438,18 @@ function drawMazeDebrief(maze: any, cw: number, ch: number, time: number) {
     const cellW = mapW / cols;
     const cellH = mapH / rows;
 
-    // 地图背景
+    // 地图背景（增大内边距）
+    const mapInnerPad = 10;
     ctx.globalAlpha = showAlpha * 0.95;
     ctx.fillStyle = 'rgba(5,12,25,0.9)';
     ctx.beginPath();
-    rrect(ctx, mapX - 4, mapY - 4, mapW + 8, mapH + 8, 8);
+    rrect(ctx, mapX - mapInnerPad, mapY - mapInnerPad, mapW + mapInnerPad * 2, mapH + mapInnerPad * 2, 10);
     ctx.fill();
     // 地图边框
     ctx.strokeStyle = isRescueSuccess ? 'rgba(60,200,140,0.25)' : 'rgba(60,120,180,0.25)';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    rrect(ctx, mapX - 4, mapY - 4, mapW + 8, mapH + 8, 8);
+    rrect(ctx, mapX - mapInnerPad, mapY - mapInnerPad, mapW + mapInnerPad * 2, mapH + mapInnerPad * 2, 10);
     ctx.stroke();
 
     // 绘制已探索地图
@@ -1397,7 +1548,7 @@ function drawMazeDebrief(maze: any, cw: number, ch: number, time: number) {
 
     // === 统计数据区域（地图下方，紧凑横排） ===
     if (lastDive) {
-        const statsY = mapY + mapH + 16;
+        const statsY = mapY + mapH + 36;
         ctx.globalAlpha = showAlpha * 0.9;
         ctx.textAlign = 'center';
 
@@ -1463,7 +1614,9 @@ function drawMazeDebrief(maze: any, cw: number, ch: number, time: number) {
             ctx.fill();
             ctx.fillStyle = 'rgba(120,255,200,0.95)';
             ctx.font = 'bold 15px Arial';
-            ctx.fillText('下一局', cw / 2, btnY + 5);
+            ctx.textBaseline = 'middle';
+            ctx.fillText('下一局', cw / 2, btnY);
+            ctx.textBaseline = 'alphabetic';
 
             // 返回主菜单提示
             const tapAlpha = 0.4 + Math.sin(time * 2.5) * 0.3;
@@ -1481,7 +1634,9 @@ function drawMazeDebrief(maze: any, cw: number, ch: number, time: number) {
             ctx.fill();
             ctx.fillStyle = 'rgba(180,220,255,0.95)';
             ctx.font = 'bold 15px Arial';
-            ctx.fillText('回到岸上', cw / 2, btnY + 5);
+            ctx.textBaseline = 'middle';
+            ctx.fillText('回到岸上', cw / 2, btnY);
+            ctx.textBaseline = 'alphabetic';
         }
     }
 }

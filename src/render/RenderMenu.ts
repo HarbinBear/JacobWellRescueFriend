@@ -465,11 +465,11 @@ export function drawMenu() {
     // 标题光晕
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
-    let titleGlow = ctx.createRadialGradient(logicW / 2, logicH * 0.28, 0, logicW / 2, logicH * 0.28, 120);
+    let titleGlow = ctx.createRadialGradient(logicW / 2, logicH * 0.27, 0, logicW / 2, logicH * 0.27, 120);
     titleGlow.addColorStop(0, 'rgba(0,200,255,0.2)');
     titleGlow.addColorStop(1, 'rgba(0,200,255,0)');
     ctx.fillStyle = titleGlow;
-    ctx.fillRect(logicW / 2 - 120, logicH * 0.18, 240, 120);
+    ctx.fillRect(logicW / 2 - 120, logicH * 0.27 - 60, 240, 120);
     ctx.restore();
 
     ctx.fillStyle = 'rgba(0,200,255,0.15)';
@@ -481,10 +481,10 @@ export function drawMenu() {
 
     ctx.fillStyle = 'rgba(0,180,220,0.15)';
     ctx.font = 'bold 28px Arial';
-    ctx.fillText("救援行动", logicW / 2 + 1, logicH * 0.37 + 1);
+    ctx.fillText("救援行动", logicW / 2 + 1, logicH * 0.35 + 1);
     ctx.fillStyle = '#a0d8ef';
     ctx.font = 'bold 28px Arial';
-    ctx.fillText("救援行动", logicW / 2, logicH * 0.37);
+    ctx.fillText("救援行动", logicW / 2, logicH * 0.35);
 
     // 分割线
     ctx.strokeStyle = 'rgba(0,200,255,0.3)';
@@ -497,7 +497,7 @@ export function drawMenu() {
     const unlock = CONFIG.menuUnlock;
 
     // ---- 按钮1：开始游戏 ----
-    let btnY = logicH * 0.50;
+    let btnY = logicH * 0.46;
     let startLocked = !unlock.startGame;
     let btnPulse = startLocked ? 0.4 : (0.85 + Math.sin(time * 2.5) * 0.15);
     let btnW = 180, btnH = 50;
@@ -530,7 +530,7 @@ export function drawMenu() {
     ctx.fillText(startLocked ? "🔒  开始游戏" : "▶  开始游戏", logicW / 2, btnY);
 
     // ---- 按钮2：章节选择 ----
-    let chBtnY = logicH * 0.62;
+    let chBtnY = logicH * 0.57;
     let chBtnW = 180, chBtnH = 50;
     let chBtnX = logicW / 2 - chBtnW / 2;
     let chBtnTop = chBtnY - chBtnH / 2;
@@ -557,7 +557,7 @@ export function drawMenu() {
     ctx.fillText(chLocked ? "🔒  章节选择" : "📖  章节选择", logicW / 2, chBtnY);
 
     // ---- 按钮3：食人鱼竞技场（风格化，危险感）----
-    let arenaBtnY = logicH * 0.74;
+    let arenaBtnY = logicH * 0.68;
     let arenaBtnW = 200, arenaBtnH = 50;
     let arenaBtnX = logicW / 2 - arenaBtnW / 2;
     let arenaBtnTop = arenaBtnY - arenaBtnH / 2;
@@ -604,7 +604,7 @@ export function drawMenu() {
     ctx.fillText(arenaLocked ? "🔒  食人鱼竞技场" : "🦈  食人鱼竞技场", logicW / 2, arenaBtnY);
 
     // ---- 按钮4：迷宫纯享版（探索感，绿色调）----
-    let mazeBtnY = logicH * 0.86;
+    let mazeBtnY = logicH * 0.79;
     let mazeBtnW = 200, mazeBtnH = 50;
     let mazeBtnX = logicW / 2 - mazeBtnW / 2;
     let mazeBtnTop = mazeBtnY - mazeBtnH / 2;
@@ -640,7 +640,7 @@ export function drawMenu() {
     // 版本号
     ctx.fillStyle = 'rgba(80,120,140,0.8)';
     ctx.font = '11px Arial';
-    ctx.fillText("v1.2.0  By 熊子", logicW / 2, logicH - 22);
+    ctx.fillText(`${CONFIG.version}  By 游呢王纸`, logicW / 2, logicH - 22);
 }
 
 

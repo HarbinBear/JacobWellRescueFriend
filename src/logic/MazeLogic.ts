@@ -105,6 +105,16 @@ export function resetMazeLogic() {
         shoreMapOpen: false,
         shoreScrollY: 0,
         divingInTimer: 0,
+        _hudEntryTimer: 0,
+        _hudDetailOpen: 0,
+        _hudDetailHolding: false,
+        _retreatDetailOpen: 0,
+        _retreatDetailHolding: false,
+        _shoreRecordOpen: false,
+        _shoreRecordAnim: 0,
+        _driveToggleOpen: 0,
+        _driveToggleHolding: false,
+        _driveSwitchTip: 0,
         mazeMap: mazeData.mazeMap,
         mazeWalls: mazeData.mazeWalls,
         mazeExplored: mazeData.mazeExplored,
@@ -170,6 +180,7 @@ export function startMazeDive(diveType: string) {
     maze.diveType = diveType;
     maze.phase = 'diving_in';
     maze.divingInTimer = 0;
+    maze._hudEntryTimer = 0;
     maze.surfacingReason = '';
     maze.startTime = Date.now();
     maze.finishTime = 0;

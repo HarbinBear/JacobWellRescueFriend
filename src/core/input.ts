@@ -387,6 +387,20 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                         continue;
                     }
                 }
+
+                // HUD详情按住检测（左上角圆环区域）
+                if (Math.hypot(t.clientX - 46, t.clientY - 48) <= 30) {
+                    maze._hudDetailHolding = true;
+                    continue;
+                }
+
+                // 手动/自动挡开关点击检测（圆环下方圆形按钮）
+                const driveToggleY = 48 + 22 + 28; // ringCY + ringR + 28
+                if (Math.hypot(t.clientX - 46, t.clientY - driveToggleY) <= 20) {
+                    CONFIG.manualDrive.enabled = !CONFIG.manualDrive.enabled;
+                    maze._driveSwitchTip = 60; // 60帧tip显示
+                    continue;
+                }
             }
 
             // 检测放弃救援按钮长按
@@ -599,17 +613,34 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                     return;
                 }
 
-                // 点击认知地图图标（信息卡片右上角的小地图区域）
+                // 点击认知地图图标（信息卡片标题栏右侧）
                 const cardX = cw * 0.06;
-                const cardY = ch * 0.56;
                 const cardW = cw * 0.88;
-                const mapIconX = cardX + cardW - 40;
-                const mapIconY = cardY + 8;
-                const mapIconSize = 36;
+                const isRecordOpen = maze._shoreRecordOpen;
+                const cardCollapsedH = 48;
+                const cardExpandedH = ch * 0.42;
+                // 使用动画进度计算实际高度
+                const animT = maze._shoreRecordAnim || 0;
+                const animEase = animT * animT * (3 - 2 * animT);
+                const cardH = cardCollapsedH + (cardExpandedH - cardCollapsedH) * animEase;
+                const cardY = ch - cardH - 16;
+                const mapIconSize = 34;
+                const mapIconX = cardX + cardW - mapIconSize - 12;
+                const mapIconY = cardY + (cardCollapsedH - mapIconSize) / 2;
                 if (tx >= mapIconX && tx <= mapIconX + mapIconSize &&
                     ty >= mapIconY && ty <= mapIconY + mapIconSize) {
                     maze.shoreMapOpen = true;
                     return;
+                }
+
+                // 点击探索记录标题栏（折叠/展开）
+                if (tx >= cardX && tx <= cardX + cardW &&
+                    ty >= cardY && ty <= cardY + cardCollapsedH) {
+                    // 排除认知地图图标区域
+                    if (!(tx >= mapIconX && tx <= mapIconX + mapIconSize)) {
+                        maze._shoreRecordOpen = !maze._shoreRecordOpen;
+                        return;
+                    }
                 }
 
                 // 点击洞口（水面入口）下潜
@@ -706,7 +737,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                 const moved = Math.hypot(tx - menuTouchStartX, ty - menuTouchStartY) > 10;
                 if(!moved) {
                     // 检测"开始游戏"按钮
-                    let btnY = ch * 0.50;
+                    let btnY = ch * 0.46;
                     let btnW = 180, btnH = 50;
                     let btnX = cw / 2 - btnW / 2;
                     if(tx >= btnX && tx <= btnX + btnW && ty >= btnY - btnH / 2 && ty <= btnY + btnH / 2) {
@@ -729,7 +760,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                         return;
                     }
                     // 检测"章节选择"按钮
-                    let chBtnY = ch * 0.62;
+                    let chBtnY = ch * 0.57;
                     let chBtnW = 180, chBtnH = 50;
                     let chBtnX = cw / 2 - chBtnW / 2;
                     if(tx >= chBtnX && tx <= chBtnX + chBtnW && ty >= chBtnY - chBtnH / 2 && ty <= chBtnY + chBtnH / 2) {
@@ -745,7 +776,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                         return;
                     }
                     // 检测"食人鱼竞技场"按钮
-                    let arenaBtnY = ch * 0.74;
+                    let arenaBtnY = ch * 0.68;
                     let arenaBtnW = 200, arenaBtnH = 50;
                     let arenaBtnX = cw / 2 - arenaBtnW / 2;
                     if(tx >= arenaBtnX && tx <= arenaBtnX + arenaBtnW && ty >= arenaBtnY - arenaBtnH / 2 && ty <= arenaBtnY + arenaBtnH / 2) {
@@ -760,7 +791,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                         return;
                     }
                     // 检测"迷宫纯享版"按钮
-                    let mazeBtnY = ch * 0.86;
+                    let mazeBtnY = ch * 0.79;
                     let mazeBtnW = 200, mazeBtnH = 50;
                     let mazeBtnX = cw / 2 - mazeBtnW / 2;
                     if(tx >= mazeBtnX && tx <= mazeBtnX + mazeBtnW && ty >= mazeBtnY - mazeBtnH / 2 && ty <= mazeBtnY + mazeBtnH / 2) {
@@ -841,6 +872,10 @@ function handleTouchEnd(changedTouches) {
                 state.mazeRescue.retreatHolding = false;
                 state.mazeRescue.retreatTouchId = null;
             }
+        }
+        // 迷宫HUD详情松手
+        if (state.mazeRescue) {
+            state.mazeRescue._hudDetailHolding = false;
         }
         // 放弃按钮松手
         if(t.identifier === abandonTouchId) {
