@@ -248,6 +248,20 @@ export const state = {
         thisNewThemes: string[];        // 本次下潜新发现的主题键名列表
         currentThemeKey: string;        // 当前所在区域的主题键名
 
+        // === 食人鱼聚集点（每局迷宫2~3个，跨下潜保留，鱼下潜时按聚集点生成） ===
+        fishDens: {
+            x: number;                  // 聚集点中心X
+            y: number;                  // 聚集点中心Y
+            radius: number;             // 聚集点活动半径
+            skulls: {                   // 聚集点附近的骷髅装饰（贴在岩石上，纯视觉）
+                x: number;              // 骷髅绘制位置X（岩石外缘）
+                y: number;              // 骷髅绘制位置Y
+                angle: number;          // 骷髅朝向角度（从岩石中心往外的法线角度）
+                size: number;           // 骷髅尺寸
+                seed: number;           // 伪随机种子（用于造型微变化）
+            }[];
+        }[];
+
         // === 本次下潜运行态数据 ===
         playerPath: {x: number, y: number}[]; // 记录玩家移动轨迹
         thisExploredBefore: boolean[][]; // 本次下潜开始时的已探索快照（用于计算增量）

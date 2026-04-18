@@ -501,3 +501,105 @@ export function getMazeShallowMaskAlpha(playerY: number, exitY: number): number 
     return Math.max(0, Math.min(1, 1 - ambient));
 }
 
+
+// =============================================
+// 绘制迷宫模式食人鱼聚集点附近的骷髅装饰
+// 每只骷髅贴在岩石外缘，面朝聚集点外侧（营造"有人死在这里"的氛围）
+// 注意：骷髅纯视觉表现，不参与碰撞，不改变玩家行为
+// =============================================
+export function drawFishDenSkulls(
+    ctx: CanvasRenderingContext2D,
+    viewL: number,
+    viewR: number,
+    viewT: number,
+    viewB: number
+) {
+    const maze = state.mazeRescue;
+    if (!maze || !maze.fishDens || maze.fishDens.length === 0) return;
+
+    ctx.save();
+    for (const den of maze.fishDens) {
+        if (!den.skulls || den.skulls.length === 0) continue;
+        for (const sk of den.skulls) {
+            // 视锥外跳过
+            if (sk.x < viewL - 30 || sk.x > viewR + 30 || sk.y < viewT - 30 || sk.y > viewB + 30) continue;
+            drawSingleSkull(ctx, sk.x, sk.y, sk.angle, sk.size, sk.seed);
+        }
+    }
+    ctx.restore();
+}
+
+// 单个骷髅剪影绘制：略带做旧感的象牙白，按朝向旋转
+function drawSingleSkull(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    angle: number,
+    size: number,
+    seed: number
+) {
+    ctx.save();
+    ctx.translate(x, y);
+    // 旋转：让骷髅"头顶"指向 angle 方向（从岩石中心往外的法线方向）
+    ctx.rotate(angle + Math.PI / 2);
+
+    // 小伪随机：用 seed 影响亮度，模拟不同风化程度
+    const shade = 0.75 + ((seed * 13.37) % 1) * 0.2;
+    const boneR = Math.floor(220 * shade);
+    const boneG = Math.floor(210 * shade);
+    const boneB = Math.floor(185 * shade);
+    const boneColor = `rgba(${boneR},${boneG},${boneB},0.85)`;
+    const shadowColor = `rgba(40,30,25,0.55)`;
+
+    // 头骨整体：上半圆 + 下半方形（下颌）
+    // 阴影底衬
+    ctx.fillStyle = shadowColor;
+    ctx.beginPath();
+    ctx.ellipse(0.6, 0.6, size * 0.85, size * 0.95, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 头骨本体
+    ctx.fillStyle = boneColor;
+    ctx.beginPath();
+    // 头顶圆弧
+    ctx.moveTo(-size * 0.75, -size * 0.15);
+    ctx.bezierCurveTo(-size * 0.9, -size * 1.0, size * 0.9, -size * 1.0, size * 0.75, -size * 0.15);
+    // 颧骨侧凹
+    ctx.lineTo(size * 0.6, size * 0.2);
+    // 下颌
+    ctx.bezierCurveTo(size * 0.55, size * 0.85, -size * 0.55, size * 0.85, -size * 0.6, size * 0.2);
+    ctx.closePath();
+    ctx.fill();
+
+    // 眼窝（两个黑洞）
+    ctx.fillStyle = 'rgba(10,5,5,0.9)';
+    const eyeY = -size * 0.15;
+    const eyeR = size * 0.22;
+    ctx.beginPath();
+    ctx.ellipse(-size * 0.3, eyeY, eyeR, eyeR * 1.1, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(size * 0.3, eyeY, eyeR, eyeR * 1.1, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 鼻腔（倒三角小洞）
+    ctx.beginPath();
+    ctx.moveTo(0, size * 0.05);
+    ctx.lineTo(-size * 0.1, size * 0.3);
+    ctx.lineTo(size * 0.1, size * 0.3);
+    ctx.closePath();
+    ctx.fill();
+
+    // 牙齿线（简化为几条短竖线）
+    ctx.strokeStyle = 'rgba(30,20,15,0.6)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let i = -2; i <= 2; i++) {
+        const tx = i * size * 0.12;
+        ctx.moveTo(tx, size * 0.48);
+        ctx.lineTo(tx, size * 0.72);
+    }
+    ctx.stroke();
+
+    ctx.restore();
+}

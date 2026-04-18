@@ -223,6 +223,7 @@ export const CONFIG = {
 
         // 怕光参数
         lightFearThreshold: 0.25,   // 触发怕光的最低亮度阈值（0~1）
+        lightFearMaxDistance: 260,  // 触发怕光的最大距离（像素，鱼距玩家超过此距离即使被照到也不怕）
         fearPauseDuration: 20,      // 怕光停顿帧数（惊吓反应）
         fearDuration: 180,          // 迅速逃跑持续帧数
 
@@ -326,8 +327,22 @@ export const CONFIG = {
 
         // === 迷宫食人鱼配置 ===
         fishEnabled: true,          // 是否在迷宫中生成食人鱼
-        fishCountMin: 1,            // 每局最少食人鱼数量
-        fishCountMax: 3,            // 每局最多食人鱼数量
+        fishCountMin: 1,            // （旧）每局最少食人鱼数量（聚集点模式下已废弃，保留兼容）
+        fishCountMax: 3,            // （旧）每局最多食人鱼数量（聚集点模式下已废弃，保留兼容）
+
+        // === 食人鱼聚集点配置（replaces per-fish random spawn） ===
+        denCountMin: 2,             // 全图聚集点最少数量
+        denCountMax: 3,             // 全图聚集点最多数量
+        denFishCountMin: 2,         // 每个聚集点最少食人鱼
+        denFishCountMax: 6,         // 每个聚集点最多食人鱼
+        denRadius: 600,             // 聚集点游荡半径（像素，鱼在此半径内自由游弋）
+        denLeashDistance: 1400,     // 离家脱离仇恨距离（像素，离开聚集点超过此距离即放弃追击回家）
+        denMinDistToSpawn: 2000,    // 聚集点离玩家出生点最小距离（像素）
+        denMinDistBetween: 1800,    // 聚集点之间最小距离（像素，避免两窝挨太近）
+        denMustCoverCriticalPath: true, // 是否保证至少一个聚集点在玩家出生点→NPC的关键路径附近
+        denSkullCountMin: 4,        // 每个聚集点附近的骷髅装饰最少数量
+        denSkullCountMax: 8,        // 每个聚集点附近的骷髅装饰最多数量
+        denSkullSearchRadiusRatio: 0.9, // 骷髅搜索半径占聚集点半径的比例
 
         // === 多次下潜闭环配置 ===
         retreatHoldDuration: 1.0,   // 探路撤离长按秒数
@@ -486,8 +501,8 @@ export const CONFIG = {
         azRayStep: 15,                    // 射线步进步长（像素，越小越精确但越耗性能）
         azNarrowDist: 50,               // 平均距离低于此值视为狭窄（像素）
         azWideDist: 800,                 // 平均距离高于此值视为空旷（像素）
-        azZoomNarrow: 1.6,              // 狭窄区域目标zoom（拉近）
-        azZoomWide: 0.85,                // 空旷区域目标zoom（拉远）
+        azZoomNarrow: 1.35,              // 狭窄区域目标zoom（拉近）
+        azZoomWide: 0.80,                // 空旷区域目标zoom（拉远）
         azSmoothSpeed: 0.015,            // zoom平滑过渡速度（越小越慢）
         azUpdateInterval: 3,             // 每隔多少帧更新一次射线检测（降低性能开销）
     },

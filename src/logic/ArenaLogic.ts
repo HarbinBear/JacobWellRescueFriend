@@ -175,6 +175,15 @@ export function updateArena() {
 
 // 竞技场玩家移动更新（复用主游戏逻辑，但无氧气消耗）
 function updateArenaPlayer() {
+    // 被凶猛鱼咬住或死亡过场期间冻结玩家（动不了，正在被撕咬）
+    if (state.fishBite && state.fishBite.active) {
+        input.move = 0;
+        input.speedUp = false;
+        player.vx = 0;
+        player.vy = 0;
+        if (state.manualDrive) state.manualDrive.activeTouches = {};
+        return;
+    }
     if (processManualDrive()) {
         // 手动挡模式：脉冲已处理
     } else {

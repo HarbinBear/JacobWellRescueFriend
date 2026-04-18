@@ -488,6 +488,75 @@ function drawMazeMinimap(maze: any, cw: number, ch: number, time: number) {
             ctx.stroke();
         }
     }
+
+    // === 食人鱼聚集点调试可视化 ===
+    // 显示聚集点活动半径、中心、骷髅位置与当前活着的食人鱼
+    if (maze.fishDens && maze.fishDens.length > 0) {
+        const baseY = mapY + toggleBtnSize + 4;
+        // 坐标换算：世界坐标 → 小地图坐标
+        const toMapX = (wx: number) => mapX + (wx / maze.mazeTileSize) * cellW;
+        const toMapY = (wy: number) => baseY + (wy / maze.mazeTileSize) * cellH;
+
+        for (const den of maze.fishDens) {
+            const dxCenter = toMapX(den.x);
+            const dyCenter = toMapY(den.y);
+            const dRadius = (den.radius / maze.mazeTileSize) * cellW;
+
+            // 活动半径填充（淡红色）
+            ctx.globalAlpha = 0.18;
+            ctx.fillStyle = 'rgba(255,80,80,1)';
+            ctx.beginPath();
+            ctx.arc(dxCenter, dyCenter, dRadius, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 活动半径边框（红色虚线）
+            ctx.globalAlpha = 0.9;
+            ctx.strokeStyle = 'rgba(255,60,60,1)';
+            ctx.lineWidth = 1;
+            if ((ctx as any).setLineDash) (ctx as any).setLineDash([2, 2]);
+            ctx.beginPath();
+            ctx.arc(dxCenter, dyCenter, dRadius, 0, Math.PI * 2);
+            ctx.stroke();
+            if ((ctx as any).setLineDash) (ctx as any).setLineDash([]);
+
+            // 中心红色 X
+            ctx.globalAlpha = 1;
+            ctx.strokeStyle = '#ff3030';
+            ctx.lineWidth = 2;
+            const xs = 4;
+            ctx.beginPath();
+            ctx.moveTo(dxCenter - xs, dyCenter - xs);
+            ctx.lineTo(dxCenter + xs, dyCenter + xs);
+            ctx.moveTo(dxCenter + xs, dyCenter - xs);
+            ctx.lineTo(dxCenter - xs, dyCenter + xs);
+            ctx.stroke();
+
+            // 骷髅位置：白色小点
+            if (den.skulls && den.skulls.length > 0) {
+                ctx.globalAlpha = 0.9;
+                ctx.fillStyle = '#fff';
+                for (const sk of den.skulls) {
+                    ctx.beginPath();
+                    ctx.arc(toMapX(sk.x), toMapY(sk.y), 1.2, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+        }
+
+        // 活着的食人鱼：红色小点（方便观察鱼相对聚集点的分布）
+        if (state.fishEnemies && state.fishEnemies.length > 0) {
+            ctx.globalAlpha = 0.85;
+            ctx.fillStyle = '#ff6040';
+            for (const fish of state.fishEnemies) {
+                if (fish.dead) continue;
+                ctx.beginPath();
+                ctx.arc(toMapX(fish.x), toMapY(fish.y), 1.8, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        ctx.globalAlpha = 1;
+    }
 }
 
 // =============================================

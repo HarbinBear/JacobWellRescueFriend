@@ -1,3 +1,7 @@
+---
+# Please note: Do not modify the header of this document. If modified, CodeBuddy (Internal Edition) will apply the default logic settings.
+type: always
+---
 # 技术文档分卷 09：已完成工作归档
 
 ## 本卷用途
@@ -260,3 +264,27 @@
 - `src/core/state.ts`：新增 `_shoreRecordAnim` 字段
 - `src/logic/MazeLogic.ts`：初始化 `_shoreRecordAnim`
 - `src/core/input.ts`：岸上卡片位置计算同步更新 + 手动挡开关点击半径更新
+
+---
+
+## 食人鱼死亡过场卡死修复（2026-04-19）
+
+**问题现象**：
+迷宫模式下偶现玩家被食人鱼咬死后，屏幕红色全屏特效触发，但玩家仍可移动，死亡过场走不到结算页面，卡死在 bite/devour 阶段。
+
+**根因分析**：
+食人鱼聚集点（2~6 条）连续扑击时，`triggerPlayerBitten()` 被多条鱼重复调用并无条件重置 `fishBite.phase='bite'` 与 `timer=0`，把已进入 `dead` 阶段的死亡过场打断。叠加被咬期间玩家移动未冻结，玩家自己可能主动凑到下一条鱼面前触发连咬，导致 `deathFadeDuration`（120 帧）的倒计时永远无法走完，`maze.phase` 永远切不到 `surfacing`，结算页无法出现。
+
+**修复方案（两处）**：
+
+1. **死亡状态守卫**：`triggerPlayerBitten()` 入口增加 `phase==='dead'` 早退判断，死亡阶段忽略后续咬击，防止多条鱼聚集时反复重置死亡倒计时。
+
+2. **被咬期间冻结玩家移动**：主线、竞技场、迷宫三个模式的移动入口前统一加 `state.fishBite.active` 冻结分支，被咬期间将 `input.move` / `player.vx` / `player.vy` 清零并清空手动挡脉冲队列。语义上正确（被咬住本就动不了），附带好处是降低玩家在聚集点反复触发连咬的概率。
+
+**修改文件**：
+- `src/logic/FishEnemy.ts`：`triggerPlayerBitten()` 入口增加 dead 阶段早退守卫
+- `src/logic/Logic.ts`：主线 `update()` 绳索冻结段旁新增被咬冻结分支
+- `src/logic/MazeLogic.ts`：迷宫 `updateMaze()` 的 `processManualDrive()` 前新增被咬冻结分支
+- `src/logic/ArenaLogic.ts`：竞技场 `updateArenaPlayer()` 函数开头新增被咬冻结分支（含早退）
+
+**验证**：`npm run typecheck` 通过。

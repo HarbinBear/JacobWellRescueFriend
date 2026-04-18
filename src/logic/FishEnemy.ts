@@ -85,8 +85,8 @@ export type FishEnemyState =
     | 'flee'        // 迅速撤退（被光驱赶）
     | 'fear'        // 怕光后退（过渡状态）
     | 'hit'         // 被打中后逃跑
-    | 'dying';      // 死亡动画（翻肚皮淡出）
-
+    | 'returning'   // 脱离仇恨后返回聚集点
+    | 'dying';      // 死亡动画（翻肚皮淘出）
 // =============================================
 // 凶猛鱼实体数据结构
 // =============================================
@@ -129,6 +129,10 @@ export interface FishEnemy {
     alertIcon: string;      // 图标内容：'?' | '!' | ''
     alertIconColor: string; // 图标颜色
     alertTimer: number;     // 图标显示剩余帧数
+    // 聚集点归属（迷宫模式下有效；主线/竞技场默认为鱼自己的出生点）
+    denX: number;           // 聚集点中心X
+    denY: number;           // 聚集点中心Y
+    denRadius: number;      // 聚集点活动半径
 }
 
 // =============================================
@@ -153,7 +157,7 @@ const CFG = () => CONFIG.fishEnemy;
 // =============================================
 // 工厂函数：创建一条凶猛鱼
 // =============================================
-export function createFishEnemy(x: number, y: number): FishEnemy {
+export function createFishEnemy(x: number, y: number, denX?: number, denY?: number, denRadius?: number): FishEnemy {
     const angle = Math.random() * Math.PI * 2;
     return {
         x, y,
@@ -184,6 +188,9 @@ export function createFishEnemy(x: number, y: number): FishEnemy {
         alertIcon: '',
         alertIconColor: '#fff',
         alertTimer: 0,
+        denX: denX !== undefined ? denX : x,
+        denY: denY !== undefined ? denY : y,
+        denRadius: denRadius !== undefined ? denRadius : (CONFIG.maze.denRadius || 600),
     };
 }
 
@@ -210,14 +217,34 @@ export function findSafeSpawnPosition(centerX: number, centerY: number): { x: nu
 }
 
 // =============================================
-// 迷宫模式专用：在地图深处随机找一个安全出生点
+// 迷宫模式专用：在指定聚集点附近找一个安全出生点
 // =============================================
-export function findMazeFishSpawnPosition(): { x: number; y: number } {
+export function findMazeFishSpawnPosition(denX?: number, denY?: number, denRadius?: number): { x: number; y: number } {
     const maze = state.mazeRescue;
     if (!maze) return { x: 0, y: 0 };
     const ts = maze.mazeTileSize;
     const wallThick = CONFIG.maze.wallThickness || 5;
-    // 在地图中下部区域随机找位置（避开顶部出口附近）
+
+    // 指定了聚集点：在聚集点半径内找一个不碰墙的通道格
+    if (denX !== undefined && denY !== undefined && denRadius !== undefined) {
+        for (let attempt = 0; attempt < 50; attempt++) {
+            const ang = Math.random() * Math.PI * 2;
+            const dist = Math.random() * denRadius;
+            const x = denX + Math.cos(ang) * dist;
+            const y = denY + Math.sin(ang) * dist;
+            const r = Math.floor(y / ts);
+            const c = Math.floor(x / ts);
+            if (r < wallThick || r >= maze.mazeRows - wallThick) continue;
+            if (c < wallThick || c >= maze.mazeCols - wallThick) continue;
+            if (maze.mazeMap[r] && !maze.mazeMap[r][c] && !checkCollisionMazeLocal(x, y)) {
+                return { x, y };
+            }
+        }
+        // 兑底：就在聚集点中心
+        return { x: denX, y: denY };
+    }
+
+    // 未指定聚集点（兼容旧逻辑）：在地图中下部区域随机找位置
     const minRow = Math.floor(maze.mazeRows * 0.3);
     const maxRow = maze.mazeRows - wallThick - 1;
     const minCol = wallThick + 1;
@@ -225,21 +252,145 @@ export function findMazeFishSpawnPosition(): { x: number; y: number } {
     for (let attempt = 0; attempt < 50; attempt++) {
         const r = minRow + Math.floor(Math.random() * (maxRow - minRow));
         const c = minCol + Math.floor(Math.random() * (maxCol - minCol));
-        // 必须是通道格（值为 0 或 falsy）
         if (maze.mazeMap[r] && !maze.mazeMap[r][c]) {
             const x = c * ts + ts / 2;
             const y = r * ts + ts / 2;
-            // 离玩家出生点足够远
             const distToSpawn = Math.hypot(x - maze.exitX, y - (wallThick + 1) * ts);
             if (distToSpawn > ts * 8) {
                 return { x, y };
             }
         }
     }
-    // 兜底：NPC 附近
     return { x: maze.npcInitX + 200, y: maze.npcInitY };
 }
 
+// =============================================
+// 迷宫模式专用：为当前局迷宫生成食人鱼聚集点列表
+// 每个聚集点：一个洞室中心 + 活动半径 + 附近的骷髅装饰
+// =============================================
+export function generateFishDens(): { x: number; y: number; radius: number; skulls: any[] }[] {
+    const maze = state.mazeRescue;
+    if (!maze) return [];
+    const mazeCfg = CONFIG.maze;
+    const ts = maze.mazeTileSize;
+    const wallThick = mazeCfg.wallThickness || 5;
+
+    const denCountMin = mazeCfg.denCountMin || 2;
+    const denCountMax = mazeCfg.denCountMax || 3;
+    const denCount = denCountMin + Math.floor(Math.random() * (denCountMax - denCountMin + 1));
+    const denRadius = mazeCfg.denRadius || 600;
+    const minDistToSpawn = mazeCfg.denMinDistToSpawn || 2000;
+    const minDistBetween = mazeCfg.denMinDistBetween || 1800;
+    const mustCoverCritical = mazeCfg.denMustCoverCriticalPath !== false;
+
+    // 玩家出生点：迷宫顶部洞口内侧
+    const spawnX = maze.exitX;
+    const spawnY = (wallThick + 1) * ts + ts / 2;
+
+    const dens: { x: number; y: number; radius: number; skulls: any[] }[] = [];
+
+    // === 策略：先尝试在“关键路径”（出生点→NPC）附近放一个，再随机擒其它 ===
+    if (mustCoverCritical && denCount > 0) {
+        // 在出生点→NPC的连线上取 0.45~0.75 区间的一个点，偏离一点
+        const t = 0.45 + Math.random() * 0.3;
+        const mx = spawnX + (maze.npcInitX - spawnX) * t;
+        const my = spawnY + (maze.npcInitY - spawnY) * t;
+        const pos = findNearbyOpenCell(maze, mx, my, 600);
+        if (pos && Math.hypot(pos.x - spawnX, pos.y - spawnY) > minDistToSpawn) {
+            dens.push({ x: pos.x, y: pos.y, radius: denRadius, skulls: [] });
+        }
+    }
+
+    // === 填充剩余聚集点：随机选取，确保离出生点和其它聚集点都有足够距离 ===
+    const maxRow = maze.mazeRows - wallThick - 1;
+    const minRow = wallThick + 1;
+    const maxCol = maze.mazeCols - wallThick - 1;
+    const minCol = wallThick + 1;
+    let outerAttempts = 0;
+    while (dens.length < denCount && outerAttempts < 200) {
+        outerAttempts++;
+        const r = minRow + Math.floor(Math.random() * (maxRow - minRow));
+        const c = minCol + Math.floor(Math.random() * (maxCol - minCol));
+        if (!maze.mazeMap[r] || maze.mazeMap[r][c]) continue;
+        const x = c * ts + ts / 2;
+        const y = r * ts + ts / 2;
+        if (Math.hypot(x - spawnX, y - spawnY) < minDistToSpawn) continue;
+        let tooClose = false;
+        for (const d of dens) {
+            if (Math.hypot(x - d.x, y - d.y) < minDistBetween) { tooClose = true; break; }
+        }
+        if (tooClose) continue;
+        dens.push({ x, y, radius: denRadius, skulls: [] });
+    }
+
+    // === 为每个聚集点生成骷髅装饰 ===
+    const skullMin = mazeCfg.denSkullCountMin || 4;
+    const skullMax = mazeCfg.denSkullCountMax || 8;
+    const skullSearchRatio = mazeCfg.denSkullSearchRadiusRatio || 0.9;
+    for (const den of dens) {
+        const skullCount = skullMin + Math.floor(Math.random() * (skullMax - skullMin + 1));
+        const searchR = den.radius * skullSearchRatio;
+        // 从聚集点附近的 mazeWalls 中随机选 skullCount 块岩石，把骷髅贴在岩石外缘
+        const candidates: any[] = [];
+        for (const w of maze.mazeWalls) {
+            if (!w) continue;
+            const d = Math.hypot(w.x - den.x, w.y - den.y);
+            if (d <= searchR && d > 40) candidates.push(w);
+        }
+        // 打乱
+        for (let i = candidates.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+        }
+        const pick = candidates.slice(0, Math.min(skullCount, candidates.length));
+        for (const w of pick) {
+            // 骷髅位置：岩石外缘，沿“从岩石中心指向聚集点外侧”的方向（暴露在聚集点这一侧，以便玩家能看见）
+            const dx = den.x - w.x;
+            const dy = den.y - w.y;
+            const dLen = Math.hypot(dx, dy) || 1;
+            // 将骷髅放在岩石边缘、面向聚集点一侧，加一点角度扰动
+            const jitter = (Math.random() - 0.5) * 0.6;
+            const angleOnRock = Math.atan2(dy, dx) + jitter;
+            const offsetR = (w.r || 30) * 0.85;
+            const skX = w.x + Math.cos(angleOnRock) * offsetR;
+            const skY = w.y + Math.sin(angleOnRock) * offsetR;
+            den.skulls.push({
+                x: skX,
+                y: skY,
+                angle: angleOnRock,
+                size: 6 + Math.random() * 5,
+                seed: Math.random() * 1000,
+            });
+        }
+    }
+
+    return dens;
+}
+
+// 辅助：从给定点出发，找最近的一个通道格子
+// =============================================
+function findNearbyOpenCell(maze: any, cx: number, cy: number, maxDist: number): { x: number; y: number } | null {
+    const ts = maze.mazeTileSize;
+    const wallThick = CONFIG.maze.wallThickness || 5;
+    const startR = Math.floor(cy / ts);
+    const startC = Math.floor(cx / ts);
+    const maxSteps = Math.ceil(maxDist / ts);
+    for (let radius = 0; radius <= maxSteps; radius++) {
+        for (let dr = -radius; dr <= radius; dr++) {
+            for (let dc = -radius; dc <= radius; dc++) {
+                if (Math.abs(dr) !== radius && Math.abs(dc) !== radius) continue;
+                const r = startR + dr;
+                const c = startC + dc;
+                if (r < wallThick || r >= maze.mazeRows - wallThick) continue;
+                if (c < wallThick || c >= maze.mazeCols - wallThick) continue;
+                if (maze.mazeMap[r] && !maze.mazeMap[r][c]) {
+                    return { x: c * ts + ts / 2, y: r * ts + ts / 2 };
+                }
+            }
+        }
+    }
+    return null;
+}
 // =============================================
 // 平滑角度插值（最短路径）
 // =============================================
@@ -251,7 +402,7 @@ function lerpAngle(current: number, target: number, factor: number): number {
 }
 
 // =============================================
-// 检测玩家手电筒是否照到凶猛鱼（考虑亮度）
+// 检测玩家手电筒是否照到凶猛鱼（考虑亮度与距离）
 // =============================================
 function isFlashlightHittingFish(fish: FishEnemy): boolean {
     const cfg = CFG();
@@ -272,6 +423,10 @@ function isFlashlightHittingFish(fish: FishEnemy): boolean {
 
     // 超出手电筒射程
     if (dist > CONFIG.lightRange) return false;
+
+    // 超出怕光有效距离（远距离照到也不怕：迷宫食人鱼更胆大）
+    const lightFearMax = cfg.lightFearMaxDistance || 0;
+    if (lightFearMax > 0 && dist > lightFearMax) return false;
 
     // 计算鱼相对玩家的角度
     const angleToFish = Math.atan2(dy, dx);
@@ -331,18 +486,19 @@ export function updateFishEnemy(fish: FishEnemy, dt: number) {
     if (fish.alertTimer > 0) fish.alertTimer--;
 
     switch (fish.state) {
-        case 'roam':    updateRoam(fish, cfg);    break;
-        case 'detect':  updateDetect(fish, cfg);  break;
-        case 'stalk':   updateStalk(fish, cfg);   break;
-        case 'circle':  updateCircle(fish, cfg);  break;
-        case 'lunge':   updateLunge(fish, cfg);   break;
-        case 'bite':    updateBite(fish, cfg);    break;
-        case 'devour':  updateDevour(fish, cfg);  break;
-        case 'retreat': updateRetreat(fish, cfg); break;
-        case 'flee':    updateFlee(fish, cfg);    break;
-        case 'fear':    updateFear(fish, cfg);    break;
-        case 'hit':     updateHit(fish, cfg);     break;
-        case 'dying':   updateDying(fish, cfg);   return; // 死亡动画不做碰撞移动
+        case 'roam':      updateRoam(fish, cfg);      break;
+        case 'detect':    updateDetect(fish, cfg);    break;
+        case 'stalk':     updateStalk(fish, cfg);     break;
+        case 'circle':    updateCircle(fish, cfg);    break;
+        case 'lunge':     updateLunge(fish, cfg);     break;
+        case 'bite':      updateBite(fish, cfg);      break;
+        case 'devour':    updateDevour(fish, cfg);    break;
+        case 'retreat':   updateRetreat(fish, cfg);   break;
+        case 'flee':      updateFlee(fish, cfg);      break;
+        case 'fear':      updateFear(fish, cfg);      break;
+        case 'hit':       updateHit(fish, cfg);       break;
+        case 'returning': updateReturning(fish, cfg); break;
+        case 'dying':     updateDying(fish, cfg);     return; // 死亡动画不做碰撞移动
     }
 
     // 应用速度并做碰撞检测
@@ -353,15 +509,26 @@ export function updateFishEnemy(fish: FishEnemy, dt: number) {
 // 各状态更新函数
 // =============================================
 
-/** 自由游弋：随机选取目标点缓慢游动 */
+/** 自由游弋：在聚集点附近随机选取目标点缓慢游动 */
 function updateRoam(fish: FishEnemy, cfg: any) {
     fish.roamTimer--;
+    // 默认以聚集点为中心取新目标；如果当前位置已经离家太远（比如之前被驱过），则直接指向聚集点中心
+    const distFromDen = Math.hypot(fish.x - fish.denX, fish.y - fish.denY);
     if (fish.roamTimer <= 0) {
-        // 随机选取附近一个游弋目标
-        const angle = Math.random() * Math.PI * 2;
-        const dist = 100 + Math.random() * 200;
-        fish.roamTargetX = fish.x + Math.cos(angle) * dist;
-        fish.roamTargetY = fish.y + Math.sin(angle) * dist;
+        if (distFromDen > fish.denRadius * 1.1) {
+            // 先向家方向缓慢回偏
+            const back = Math.atan2(fish.denY - fish.y, fish.denX - fish.x);
+            const wobble = (Math.random() - 0.5) * Math.PI * 0.4;
+            const step = 120 + Math.random() * 150;
+            fish.roamTargetX = fish.x + Math.cos(back + wobble) * step;
+            fish.roamTargetY = fish.y + Math.sin(back + wobble) * step;
+        } else {
+            // 在聚集点活动半径内随机选一点
+            const ang = Math.random() * Math.PI * 2;
+            const dist = Math.random() * fish.denRadius;
+            fish.roamTargetX = fish.denX + Math.cos(ang) * dist;
+            fish.roamTargetY = fish.denY + Math.sin(ang) * dist;
+        }
         fish.roamTimer = 120 + Math.random() * 180;
     }
 
@@ -408,6 +575,14 @@ function updateStalk(fish: FishEnemy, cfg: any) {
     const dy = player.y - fish.y;
     const dist = Math.hypot(dx, dy);
 
+    // 离家太远：脱离仇恨，回家
+    const leash = (CONFIG.maze.denLeashDistance || 1400);
+    const distFromDen = Math.hypot(fish.x - fish.denX, fish.y - fish.denY);
+    if (distFromDen > leash) {
+        startReturning(fish);
+        return;
+    }
+
     // 玩家跑远了，重新进入游弋
     if (dist > cfg.detectRange * 1.5) {
         fish.state = 'roam';
@@ -421,7 +596,7 @@ function updateStalk(fish: FishEnemy, cfg: any) {
         return;
     }
 
-    // 靠近到徘徨距离后，切换到徘徨
+    // 靠近到徘徊距离后，切换到徘徊
     if (dist < cfg.circleRadius + 20) {
         fish.state = 'circle';
         fish.stateTimer = 0;
@@ -431,9 +606,18 @@ function updateStalk(fish: FishEnemy, cfg: any) {
 
     moveToward(fish, player.x, player.y, cfg.stalkSpeed, cfg.turnSpeedStalk);
 }
-/** 在玩家附近徘徨：绕着玩家转圈，伺机扑击 */
+
+/** 在玩家附近徘徊：绕着玩家转圈，伺机扑击 */
 function updateCircle(fish: FishEnemy, cfg: any) {
     const dist = Math.hypot(player.x - fish.x, player.y - fish.y);
+
+    // 离家太远：脱离仇恨，回家
+    const leash = (CONFIG.maze.denLeashDistance || 1400);
+    const distFromDen = Math.hypot(fish.x - fish.denX, fish.y - fish.denY);
+    if (distFromDen > leash) {
+        startReturning(fish);
+        return;
+    }
 
     // 玩家跑远了
     if (dist > cfg.detectRange * 1.5) {
@@ -454,7 +638,7 @@ function updateCircle(fish: FishEnemy, cfg: any) {
     const targetY = player.y + Math.sin(fish.circleAngle) * fish.circleRadius;
     moveToward(fish, targetX, targetY, cfg.circleSpeed * 60, cfg.turnSpeedCircle);
 
-    // 徘徨一段时间后发动扑击
+    // 徘徊一段时间后发动扑击
     if (fish.stateTimer >= cfg.circleBeforeLunge) {
         fish.state = 'lunge';
         fish.stateTimer = 0;
@@ -464,12 +648,19 @@ function updateCircle(fish: FishEnemy, cfg: any) {
         fish.alertIconColor = '#ff3322';
         fish.alertTimer = 35;
     }
-}
-/** 扑向目标：先蓄力（眼睛发光起手），再高速冲刺 */
+}/** 扑向目标：先蓄力（眼睛发光起手），再高速冲刺 */
 function updateLunge(fish: FishEnemy, cfg: any) {
     const dx = player.x - fish.x;
     const dy = player.y - fish.y;
     const dist = Math.hypot(dx, dy);
+
+    // 离家太远：立刻放弃扑击，脱离仇恨回家
+    const leash = (CONFIG.maze.denLeashDistance || 1400);
+    const distFromDen = Math.hypot(fish.x - fish.denX, fish.y - fish.denY);
+    if (distFromDen > leash) {
+        startReturning(fish);
+        return;
+    }
 
     // 蓄力阶段：减速并对准玩家，眼睛发光（通过 lungeCharge < 1 判断）
     if (fish.lungeCharge < 1) {
@@ -632,6 +823,56 @@ function updateHit(fish: FishEnemy, cfg: any) {
 }
 
 // =============================================
+// 辅助：启动“回家”状态（脱离仇恨，游回聚集点）
+// =============================================
+function startReturning(fish: FishEnemy) {
+    fish.state = 'returning';
+    fish.stateTimer = 0;
+    // 把游弋目标先放在家方向的远点
+    fish.roamTargetX = fish.denX;
+    fish.roamTargetY = fish.denY;
+    fish.roamTimer = 60;
+    // 显示问号提示（灰白色，代表脱离仇恨）
+    fish.alertIcon = '?';
+    fish.alertIconColor = '#cccccc';
+    fish.alertTimer = 35;
+}
+
+/** 脱离仇恨后：边漫游边缓慢回聚集点，回到附近后切为 roam */
+function updateReturning(fish: FishEnemy, cfg: any) {
+    const distFromDen = Math.hypot(fish.x - fish.denX, fish.y - fish.denY);
+
+    // 回到聚集点附近，切回自由游弋
+    if (distFromDen < fish.denRadius * 0.9) {
+        fish.state = 'roam';
+        fish.stateTimer = 0;
+        fish.roamTimer = 0;
+        return;
+    }
+
+    // 漫游式回家：整体方向指向家，但在路径上缓慢摆动
+    fish.roamTimer--;
+    if (fish.roamTimer <= 0) {
+        const toHome = Math.atan2(fish.denY - fish.y, fish.denX - fish.x);
+        const wobble = (Math.random() - 0.5) * Math.PI * 0.5;
+        const step = 140 + Math.random() * 180;
+        fish.roamTargetX = fish.x + Math.cos(toHome + wobble) * step;
+        fish.roamTargetY = fish.y + Math.sin(toHome + wobble) * step;
+        fish.roamTimer = 60 + Math.floor(Math.random() * 90);
+    }
+
+    // 以游弋速度移动（不要太快，看起来像在漫游而不是逃命）
+    moveToward(fish, fish.roamTargetX, fish.roamTargetY, cfg.roamSpeed * 1.1, cfg.turnSpeedRoam);
+
+    // 回家路上如果玩家又跟过来且离家很近，重新仇恨
+    const distToPlayer = Math.hypot(player.x - fish.x, player.y - fish.y);
+    if (distToPlayer < cfg.detectRange * 0.8 && distFromDen < fish.denRadius * 1.3) {
+        fish.state = 'detect';
+        fish.stateTimer = 0;
+    }
+}
+
+// =============================================
 // 辅助：启动被打逃跑状态（多处复用）
 // =============================================
 function startHitFlee(fish: FishEnemy, cfg: any) {
@@ -764,6 +1005,10 @@ function applyMovement(fish: FishEnemy) {
 // 触发玩家被咬事件（设置被咬状态）
 // =============================================
 function triggerPlayerBitten(fish: FishEnemy) {
+    // 玩家已进入死亡过场（phase==='dead'），忽略后续咬击，防止多条鱼聚集时反复重置死亡倒计时
+    if (state.fishBite && state.fishBite.active && state.fishBite.phase === 'dead') {
+        return;
+    }
     if (!state.fishBite) {
         state.fishBite = {
             active: true,

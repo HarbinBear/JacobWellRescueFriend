@@ -482,6 +482,15 @@ export function update() {
         if (state.manualDrive) state.manualDrive.activeTouches = {};
     }
 
+    // 被凶猛鱼咬住或死亡过场期间冻结玩家（动不了，正在被撕咬）
+    if (state.fishBite && state.fishBite.active) {
+        input.move = 0;
+        input.speedUp = false;
+        player.vx = 0;
+        player.vy = 0;
+        if (state.manualDrive) state.manualDrive.activeTouches = {};
+    }
+
     updateNPC();
     updateSplashes();
 

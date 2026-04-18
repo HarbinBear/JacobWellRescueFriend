@@ -254,8 +254,27 @@ export const TABS: GMTab[] = [
         name: '迷宫鱼',
         items: [
             { type: 'bool', label: '启用食人鱼', path: 'maze.fishEnabled' },
-            { type: 'number', label: '最少数量', path: 'maze.fishCountMin', min: 0, max: 10, step: 1 },
-            { type: 'number', label: '最多数量', path: 'maze.fishCountMax', min: 1, max: 10, step: 1 },
+            // 聚集点数量
+            { type: 'number', label: '聚集点最少', path: 'maze.denCountMin', min: 1, max: 6, step: 1 },
+            { type: 'number', label: '聚集点最多', path: 'maze.denCountMax', min: 1, max: 8, step: 1 },
+            // 每个聚集点的鱼数量
+            { type: 'number', label: '每窝最少鱼', path: 'maze.denFishCountMin', min: 1, max: 10, step: 1 },
+            { type: 'number', label: '每窝最多鱼', path: 'maze.denFishCountMax', min: 1, max: 12, step: 1 },
+            // 聚集点空间参数
+            { type: 'number', label: '游荡半径', path: 'maze.denRadius', min: 200, max: 1200, step: 50 },
+            { type: 'number', label: '脱敌距离', path: 'maze.denLeashDistance', min: 600, max: 3000, step: 100 },
+            { type: 'number', label: '离出生点最小距离', path: 'maze.denMinDistToSpawn', min: 800, max: 4000, step: 100 },
+            { type: 'number', label: '窝间最小距离', path: 'maze.denMinDistBetween', min: 800, max: 4000, step: 100 },
+            { type: 'bool', label: '必覆盖关键路径', path: 'maze.denMustCoverCriticalPath' },
+            // 骷髅装饰
+            { type: 'number', label: '骷髅最少', path: 'maze.denSkullCountMin', min: 0, max: 20, step: 1 },
+            { type: 'number', label: '骷髅最多', path: 'maze.denSkullCountMax', min: 0, max: 30, step: 1 },
+            { type: 'number', label: '骷髅搜索半径比', path: 'maze.denSkullSearchRadiusRatio', min: 0.3, max: 1.5, step: 0.05, precision: 2 },
+            // 鱼本体关键参数
+            { type: 'number', label: '怕光最大距离', path: 'fishEnemy.lightFearMaxDistance', min: 50, max: 600, step: 10 },
+            { type: 'number', label: '怕光亮度阈值', path: 'fishEnemy.lightFearThreshold', min: 0.05, max: 1, step: 0.05, precision: 2 },
+            { type: 'number', label: '感知距离', path: 'fishEnemy.detectRange', min: 100, max: 800, step: 20 },
+            // 快捷动作
             { type: 'action', label: '🐟 生成一条食人鱼', actionId: 'spawnMazeFish' },
             { type: 'action', label: '💀 杀死所有食人鱼', actionId: 'killAllFish' },
             { type: 'action', label: '🧹 清除所有食人鱼', actionId: 'removeAllFish' },

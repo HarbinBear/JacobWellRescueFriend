@@ -9,7 +9,7 @@ import { drawRopesWorld, drawRopeButton } from './RenderRope';
 import { drawMarkersWorld, drawMarkerPreview } from './RenderMarker';
 import { drawWheelButton, drawWheel } from './RenderWheel';
 import { drawAllFishEnemies, drawFishBiteEffect } from './RenderFishEnemy';
-import { drawMazeWallShape, getMazeParticleColorByWorld, getMazeThemeColorByCell, drawMazeShallowSky, drawMazeShallowWaterTint, drawMazeShallowCaustics, getMazeShallowMaskAlpha } from './RenderMazeScene';
+import { drawMazeWallShape, getMazeParticleColorByWorld, getMazeThemeColorByCell, drawMazeShallowSky, drawMazeShallowWaterTint, drawMazeShallowCaustics, getMazeShallowMaskAlpha, drawFishDenSkulls } from './RenderMazeScene';
 import { drawGMButton, drawGMPanel } from '../gm/GMPanel';
 import { updateDustTime, drawDustDarkLayer, drawDustLitLayer } from './DustMotes';
 
@@ -221,6 +221,11 @@ export function draw() {
                 ctx.fill();
             }
         }
+    }
+
+    // 迷宫模式：绘制食人鱼聚集点附近的骷髅装饰（在出口标记之前、墙体之后）
+    if (isMazeMode) {
+        drawFishDenSkulls(ctx, viewL, viewR, viewT, viewB);
     }
 
     // 迷宫模式：绘制出口标记

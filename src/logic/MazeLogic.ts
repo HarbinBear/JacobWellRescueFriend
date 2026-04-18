@@ -9,7 +9,7 @@ import { processManualDrive } from './ManualDrive';
 import { checkMazeCollision } from './Collision';
 import { updateCameraSpringArm, snapCameraToPlayer, getAdaptiveZoom } from './CameraLogic';
 import { updateMarkers, updateWheelButtonVisibility } from './Marker';
-import { createFishEnemy, findMazeFishSpawnPosition, updateAllFishEnemies } from './FishEnemy';
+import { createFishEnemy, findMazeFishSpawnPosition, updateAllFishEnemies, generateFishDens } from './FishEnemy';
 
 // 迷宫模式使用独立的 StoryManager 实例
 const storyManager = new StoryManager();
@@ -143,7 +143,12 @@ export function resetMazeLogic() {
         thisExploredBefore: emptyExplored,
         thisRopeCountBefore: 0,
         thisMaxDepth: 0,
+        // 食人鱼聚集点占位，先放空数组，下面 generateFishDens 需要 state.mazeRescue 已存在才能读取地图数据
+        fishDens: [],
     };
+
+    // 生成食人鱼聚集点（需要 state.mazeRescue 已挂载；跨下潜保留，换地图时重建）
+    state.mazeRescue.fishDens = generateFishDens();
 
     // 初始化 NPC（被救者，岸上阶段不激活）
     state.npc.active = false;
@@ -206,9 +211,20 @@ export function startMazeDive(diveType: string) {
     state.story.redOverlay = 0;
     state.story.shake = 0;
 
-    // 生成迷宫食人鱼
+    // 生成迷宫食人鱼（按聚集点分布，每个聚集点 denFishCountMin~denFishCountMax 条）
     state.fishEnemies = [];
-    if (CONFIG.maze.fishEnabled) {
+    if (CONFIG.maze.fishEnabled && maze.fishDens && maze.fishDens.length > 0) {
+        const perMin = (CONFIG.maze as any).denFishCountMin || 2;
+        const perMax = (CONFIG.maze as any).denFishCountMax || 6;
+        for (const den of maze.fishDens) {
+            const fishCount = perMin + Math.floor(Math.random() * (perMax - perMin + 1));
+            for (let i = 0; i < fishCount; i++) {
+                const pos = findMazeFishSpawnPosition(den.x, den.y, den.radius);
+                state.fishEnemies.push(createFishEnemy(pos.x, pos.y, den.x, den.y, den.radius));
+            }
+        }
+    } else if (CONFIG.maze.fishEnabled) {
+        // 兜底：如果没有聚集点，退回旧的随机分布（保持兼容）
         const count = CONFIG.maze.fishCountMin + Math.floor(Math.random() * (CONFIG.maze.fishCountMax - CONFIG.maze.fishCountMin + 1));
         for (let i = 0; i < count; i++) {
             const pos = findMazeFishSpawnPosition();
@@ -452,6 +468,15 @@ export function updateMaze() {
 
     // 撤离长按时也冻结玩家
     if (maze.retreatHolding) {
+        input.move = 0;
+        input.speedUp = false;
+        player.vx = 0;
+        player.vy = 0;
+        if (state.manualDrive) state.manualDrive.activeTouches = {};
+    }
+
+    // 被凶猛鱼咬住或死亡过场期间冻结玩家（动不了，正在被撕咬）
+    if (state.fishBite && state.fishBite.active) {
         input.move = 0;
         input.speedUp = false;
         player.vx = 0;
