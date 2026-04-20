@@ -195,7 +195,9 @@ export const state = {
 
         // === UI 状态 ===
         minimapExpanded: boolean;   // 小地图是否展开
-        shoreMapOpen: boolean;      // 岸上全屏地图是否打开
+        shoreMapOpen: boolean;      // 岸上全屏地图是否打开（当值为true时配合shoreMapDiveIndex决定看哪一次）
+        shoreMapDiveIndex: number;  // 岸上正在回放的下潜索引（-1=未打开，>=0=diveHistory下标）
+        shoreMapAnimTimer: number;  // 岸上回放地图的轨迹动画计时（帧，每次打开重置）
         shoreScrollY: number;       // 岸上页面滚动偏移
         divingInTimer: number;      // 入水动效计时（帧）
         _hudEntryTimer: number;     // HUD入场动效计时（帧）
@@ -228,7 +230,7 @@ export const state = {
         npcFound: boolean;          // 是否已发现NPC位置
         maxDepthReached: number;    // 历史最深到达（像素y坐标）
         totalRopePlaced: number;    // 累计铺设绳索段数
-        // 每次下潜的摘要记录
+        // 每次下潜的摘要记录（只保留最近 5 次，超过自动挤掉最老的）
         diveHistory: {
             diveType: string;
             duration: number;       // 用时（秒）
@@ -237,6 +239,13 @@ export const state = {
             ropePlaced: number;     // 本次铺绳数
             returnReason: string;   // 'retreat'（主动撤离）| 'o2'（氧气耗尽）| 'rescued'（救援成功）
             newThemes?: string[];   // 本次新发现的区域主题
+            // === 地图快照（用于岸上按次回放"手绘地图"） ===
+            playerPath?: {x: number, y: number}[]; // 本次轨迹完整拷贝
+            exploredSnapshot?: boolean[][];  // 本次下潜结束时的累积已探索（深拷贝）
+            exploredBeforeSnapshot?: boolean[][]; // 本次下潜开始时的已探索快照（用于判定本次新探索高亮）
+            ropesSnapshot?: {path: {x: number, y: number}[]}[]; // 本次下潜结束时全部绳索路径（深拷贝）
+            npcFoundAtEnd?: boolean; // 这次结束时是否已发现NPC
+            finishAt?: number;       // 结束时间戳（用于列表排序）
         }[];
 
         // === 场景辨识度：区域主题与局部构造 ===

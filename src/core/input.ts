@@ -607,16 +607,59 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
             if (!moved) {
                 const maze = state.mazeRescue;
 
-                // 全屏地图打开时，点击任意位置关闭
+                // ---- 全屏地图打开时的分发：有两种子页面（列表 / 回放） ----
                 if (maze.shoreMapOpen) {
+                    const idx = (typeof maze.shoreMapDiveIndex === 'number') ? maze.shoreMapDiveIndex : -1;
+                    const list = maze.diveHistory || [];
+
+                    // 子页面A：单次下潜手绘地图回放
+                    if (idx >= 0 && list[idx]) {
+                        // 点击左上"← 记录"按钮：回到列表
+                        if (tx >= 8 && tx <= 8 + 78 && ty >= 8 && ty <= 8 + 30) {
+                            maze.shoreMapDiveIndex = -1;
+                            maze.shoreMapAnimTimer = 0;
+                            return;
+                        }
+                        // 点击其它区域：回到下潜记录列表（不关闭全屏）
+                        maze.shoreMapDiveIndex = -1;
+                        maze.shoreMapAnimTimer = 0;
+                        return;
+                    }
+
+                    // 子页面B：下潜记录列表
+                    // 点击左上"← 返回"按钮：关闭全屏回到岸上
+                    if (tx >= 8 && tx <= 8 + 68 && ty >= 8 && ty <= 8 + 30) {
+                        maze.shoreMapOpen = false;
+                        return;
+                    }
+                    // 点击列表中的某一条：打开回放
+                    if (list.length > 0) {
+                        const listTop = 78;
+                        const listBottom = ch - 36;
+                        const maxCards = 5;
+                        const avail = listBottom - listTop;
+                        const gap = 10;
+                        const cardH = Math.min(92, (avail - gap * (maxCards - 1)) / maxCards);
+                        const cardX = cw * 0.06;
+                        const cardW = cw * 0.88;
+                        for (let i = 0; i < list.length; i++) {
+                            const cy = listTop + i * (cardH + gap);
+                            if (tx >= cardX && tx <= cardX + cardW && ty >= cy && ty <= cy + cardH) {
+                                const reverseIdx = list.length - 1 - i; // 渲染时逆序
+                                maze.shoreMapDiveIndex = reverseIdx;
+                                maze.shoreMapAnimTimer = 0;
+                                return;
+                            }
+                        }
+                    }
+                    // 点击其它空白区域：关闭全屏
                     maze.shoreMapOpen = false;
                     return;
                 }
 
-                // 点击认知地图图标（信息卡片标题栏右侧）
+                // 点击"下潜记录"按钮（信息卡片标题栏右侧）—— 打开列表
                 const cardX = cw * 0.06;
                 const cardW = cw * 0.88;
-                const isRecordOpen = maze._shoreRecordOpen;
                 const cardCollapsedH = 48;
                 const cardExpandedH = ch * 0.42;
                 // 使用动画进度计算实际高度
@@ -630,13 +673,15 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                 if (tx >= mapIconX && tx <= mapIconX + mapIconSize &&
                     ty >= mapIconY && ty <= mapIconY + mapIconSize) {
                     maze.shoreMapOpen = true;
+                    maze.shoreMapDiveIndex = -1; // 默认先看列表
+                    maze.shoreMapAnimTimer = 0;
                     return;
                 }
 
                 // 点击探索记录标题栏（折叠/展开）
                 if (tx >= cardX && tx <= cardX + cardW &&
                     ty >= cardY && ty <= cardY + cardCollapsedH) {
-                    // 排除认知地图图标区域
+                    // 排除下潜记录按钮区域
                     if (!(tx >= mapIconX && tx <= mapIconX + mapIconSize)) {
                         maze._shoreRecordOpen = !maze._shoreRecordOpen;
                         return;

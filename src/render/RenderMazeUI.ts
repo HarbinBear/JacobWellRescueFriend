@@ -1,8 +1,7 @@
 import { CONFIG } from '../core/config';
 import { state, player } from '../core/state';
 import { ctx, logicW, logicH } from './Canvas';
-import { getMazeSceneThemeConfigByIndex, getMazeMainThemeConfig } from '../world/mazeScene';
-import { getMazeThemeLegendItems } from './RenderMazeScene';
+import { getMazeMainThemeConfig } from '../world/mazeScene';
 
 // 兼容微信小游戏的圆角矩形
 function rrect(c, x, y, w, h, r) {
@@ -852,7 +851,7 @@ function drawMazeShore(maze: any, cw: number, ch: number, time: number) {
     ctx.fillText('探索记录', infoX + 18, titleCenterY);
     ctx.textBaseline = 'alphabetic';
 
-    // 右侧：认知地图图标按钮（独立位置，不和标题重合）
+    // 右侧：下潜记录按钮（独立位置，不和标题重合）——点击打开列表
     const mapIconSize = 34;
     const mapIconX = cardX + cardW - mapIconSize - 12;
     const mapIconY = cardY + (cardCollapsedH - mapIconSize) / 2;
@@ -866,31 +865,42 @@ function drawMazeShore(maze: any, cw: number, ch: number, time: number) {
     ctx.beginPath();
     rrect(ctx, mapIconX, mapIconY, mapIconSize, mapIconSize, 8);
     ctx.stroke();
-    // 地图图标
+    // 小书本图标（代表"下潜记录")
     ctx.strokeStyle = '#4CAF50';
     ctx.lineWidth = 1.5;
     const mIcx = mapIconX + mapIconSize / 2;
     const mIcy = mapIconY + mapIconSize / 2;
+    // 书脊
     ctx.beginPath();
-    ctx.moveTo(mIcx - 7, mIcy - 7);
-    ctx.lineTo(mIcx - 2, mIcy - 4);
-    ctx.lineTo(mIcx + 3, mIcy - 7);
-    ctx.lineTo(mIcx + 7, mIcy - 4);
-    ctx.lineTo(mIcx + 7, mIcy + 7);
-    ctx.lineTo(mIcx + 2, mIcy + 4);
-    ctx.lineTo(mIcx - 3, mIcy + 7);
-    ctx.lineTo(mIcx - 7, mIcy + 4);
-    ctx.closePath();
+    ctx.moveTo(mIcx, mIcy - 7);
+    ctx.lineTo(mIcx, mIcy + 7);
     ctx.stroke();
+    // 左页
     ctx.beginPath();
-    ctx.moveTo(mIcx - 3, mIcy - 1);
-    ctx.lineTo(mIcx, mIcy + 2);
-    ctx.lineTo(mIcx + 3, mIcy);
+    ctx.moveTo(mIcx, mIcy - 7);
+    ctx.quadraticCurveTo(mIcx - 8, mIcy - 5, mIcx - 8, mIcy + 5);
+    ctx.lineTo(mIcx, mIcy + 7);
     ctx.stroke();
-    ctx.fillStyle = '#F44336';
+    // 右页
     ctx.beginPath();
-    ctx.arc(mIcx + 3, mIcy, 1.5, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.moveTo(mIcx, mIcy - 7);
+    ctx.quadraticCurveTo(mIcx + 8, mIcy - 5, mIcx + 8, mIcy + 5);
+    ctx.lineTo(mIcx, mIcy + 7);
+    ctx.stroke();
+    // 右下角数字徽标（显示记录条数，最多5）
+    const countNum = Math.min(5, (maze.diveHistory && maze.diveHistory.length) ? maze.diveHistory.length : 0);
+    if (countNum > 0) {
+        ctx.fillStyle = '#F44336';
+        ctx.beginPath();
+        ctx.arc(mapIconX + mapIconSize - 6, mapIconY + 6, 6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 9px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(String(countNum), mapIconX + mapIconSize - 6, mapIconY + 6);
+        ctx.textBaseline = 'alphabetic';
+    }
 
     // 展开时显示详情内容（带淡入动效）
     if (animEase > 0.3) {
@@ -938,13 +948,500 @@ function drawMazeShore(maze: any, cw: number, ch: number, time: number) {
 }
 
 // =============================================
-// 全屏认知地图查看页面
+// 全屏认知地图查看页面（手绘铅笔素描风）
+// 设计要点：
+//   1. 纯米白羊皮纸底 + 墨色铅笔线轮廓 + 红笔标注，不再按主题填彩色
+//   2. 用 marching-squares 提取"已探索水域"的闭合外轮廓，而不是逐格填色
+//   3. 对轮廓做 Chaikin 平滑，沿法线加手绘抖动，双层叠笔（淡灰底 + 墨色细线）
+//   4. 未探索区留白（就是纸色本身），不贴问号
 // =============================================
 function drawMazeMapFullscreen(maze: any, cw: number, ch: number, time: number) {
-    // 背景（旧纸张质感）
+    // 新逻辑：根据 shoreMapDiveIndex 分发：
+    //   -1 或无有效历史 → 画"下潜记录列表"
+    //   >=0 且 diveHistory 中该条存在 → 画该次下潜的"手绘地图回放"
+    const idx = (typeof maze.shoreMapDiveIndex === 'number') ? maze.shoreMapDiveIndex : -1;
+    if (idx >= 0 && maze.diveHistory && maze.diveHistory[idx]) {
+        drawShoreDiveReplay(maze, maze.diveHistory[idx], idx, cw, ch, time);
+        return;
+    }
+    drawShoreDiveList(maze, cw, ch, time);
+}
+
+// =============================================
+// 岸上下潜记录列表（B1：点"下潜记录"按钮后弹出的总入口）
+// 样式：岸上羊皮纸风外层 + 每项是一次下潜的缩略卡片
+// =============================================
+function drawShoreDiveList(maze: any, cw: number, ch: number, time: number) {
+    // 岸上羊皮纸米白底（a2：外层用岸上颜色）
     ctx.globalAlpha = 1;
     ctx.fillStyle = 'rgba(235,225,200,1)';
     ctx.fillRect(0, 0, cw, ch);
+    // 纸张斑点纹理
+    ctx.globalAlpha = 0.06;
+    for (let i = 0; i < 60; i++) {
+        const sx = Math.sin(i * 7.3 + 0.5) * cw * 0.5 + cw * 0.5;
+        const sy = Math.cos(i * 5.1 + 1.2) * ch * 0.5 + ch * 0.5;
+        const sr = Math.abs(2 + Math.sin(i * 3.7) * 1.5);
+        ctx.fillStyle = i % 3 === 0 ? '#8B7355' : '#A0926B';
+        ctx.beginPath();
+        ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // 标题（手写风）
+    ctx.globalAlpha = 0.9;
+    ctx.fillStyle = '#3E2C23';
+    ctx.font = 'italic bold 18px Georgia, serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('下潜记录', cw / 2, 34);
+    // 波浪下划线
+    ctx.strokeStyle = 'rgba(62,44,35,0.35)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let x = cw * 0.32; x < cw * 0.68; x += 3) {
+        const wy = 40 + Math.sin(x * 0.15) * 1.5;
+        if (x === cw * 0.32) ctx.moveTo(x, wy);
+        else ctx.lineTo(x, wy);
+    }
+    ctx.stroke();
+
+    // 副标题
+    ctx.globalAlpha = 0.55;
+    ctx.fillStyle = '#7A6B5C';
+    ctx.font = 'italic 11px Georgia, serif';
+    ctx.fillText('仅保留最近 5 次 · 点击任一条可翻开手绘地图', cw / 2, 58);
+
+    // 关闭提示
+    ctx.globalAlpha = 0.45;
+    ctx.fillText('点击左上角 ← 返回岸上', cw / 2, ch - 16);
+
+    // 返回按钮（左上）
+    ctx.globalAlpha = 0.85;
+    ctx.fillStyle = 'rgba(62,44,35,0.12)';
+    ctx.beginPath();
+    rrect(ctx, 8, 8, 68, 30, 14);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(62,44,35,0.4)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    rrect(ctx, 8, 8, 68, 30, 14);
+    ctx.stroke();
+    ctx.fillStyle = '#3E2C23';
+    ctx.font = 'italic 13px Georgia, serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('← 返回', 42, 23);
+    ctx.textBaseline = 'alphabetic';
+
+    // 列表区域
+    const list = maze.diveHistory || [];
+    if (list.length === 0) {
+        // 空状态
+        ctx.globalAlpha = 0.55;
+        ctx.fillStyle = '#7A6B5C';
+        ctx.font = 'italic 13px Georgia, serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('还没有下潜记录', cw / 2, ch * 0.5);
+        ctx.fillText('从水面入口下潜一次，就会有手绘地图留下', cw / 2, ch * 0.5 + 22);
+        return;
+    }
+
+    // 每条卡片
+    const listTop = 78;
+    const listBottom = ch - 36;
+    const maxCards = 5;
+    const avail = listBottom - listTop;
+    const gap = 10;
+    const cardH = Math.min(92, (avail - gap * (maxCards - 1)) / maxCards);
+    const cardX = cw * 0.06;
+    const cardW = cw * 0.88;
+
+    // 最近的下潜排最上方（逆序展示）
+    for (let i = 0; i < list.length; i++) {
+        const reverseIdx = list.length - 1 - i; // 数组中真实下标
+        const record = list[reverseIdx];
+        const cy = listTop + i * (cardH + gap);
+
+        // 卡片底（羊皮纸色块）
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = 'rgba(243,234,215,1)';
+        ctx.shadowColor = 'rgba(0,0,0,0.12)';
+        ctx.shadowBlur = 5;
+        ctx.shadowOffsetX = 1;
+        ctx.shadowOffsetY = 1;
+        ctx.beginPath();
+        rrect(ctx, cardX, cy, cardW, cardH, 10);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 0;
+
+        // 卡片边框（淡墨）
+        ctx.strokeStyle = 'rgba(70,55,45,0.3)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        rrect(ctx, cardX, cy, cardW, cardH, 10);
+        ctx.stroke();
+
+        // 左侧：缩略图（把该次 exploredSnapshot 低分辨率铺一下，给玩家一眼辨别）
+        const thumbPad = 8;
+        const thumbSize = cardH - thumbPad * 2;
+        const thumbX = cardX + thumbPad;
+        const thumbY = cy + thumbPad;
+        ctx.fillStyle = 'rgba(245,238,220,1)';
+        ctx.beginPath();
+        rrect(ctx, thumbX, thumbY, thumbSize, thumbSize, 4);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(70,55,45,0.25)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        rrect(ctx, thumbX, thumbY, thumbSize, thumbSize, 4);
+        ctx.stroke();
+        // 探索格子缩略
+        const snap = record.exploredSnapshot;
+        if (snap) {
+            const rows = snap.length;
+            const cols = rows > 0 ? snap[0].length : 0;
+            if (rows > 0 && cols > 0) {
+                const cellSz = thumbSize / Math.max(rows, cols);
+                const offX = thumbX + (thumbSize - cellSz * cols) / 2;
+                const offY = thumbY + (thumbSize - cellSz * rows) / 2;
+                ctx.fillStyle = 'rgba(90,70,55,0.55)';
+                for (let r = 0; r < rows; r++) {
+                    for (let c = 0; c < cols; c++) {
+                        if (!snap[r][c]) continue;
+                        ctx.fillRect(offX + c * cellSz, offY + r * cellSz, Math.max(0.8, cellSz), Math.max(0.8, cellSz));
+                    }
+                }
+            }
+        }
+        // 缩略图内叠一条路径概览（深棕）
+        if (record.playerPath && record.playerPath.length > 1 && record.exploredSnapshot) {
+            const rowsP = record.exploredSnapshot.length;
+            const colsP = rowsP > 0 ? record.exploredSnapshot[0].length : 0;
+            if (rowsP > 0 && colsP > 0) {
+                const cellSzP = thumbSize / Math.max(rowsP, colsP);
+                const offXP = thumbX + (thumbSize - cellSzP * colsP) / 2;
+                const offYP = thumbY + (thumbSize - cellSzP * rowsP) / 2;
+                const tile = maze.mazeTileSize || 1;
+                ctx.strokeStyle = 'rgba(170,90,40,0.85)';
+                ctx.lineWidth = 1.2;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                ctx.beginPath();
+                for (let k = 0; k < record.playerPath.length; k++) {
+                    const pt = record.playerPath[k];
+                    const px = offXP + (pt.x / tile) * cellSzP;
+                    const py = offYP + (pt.y / tile) * cellSzP;
+                    if (k === 0) ctx.moveTo(px, py);
+                    else ctx.lineTo(px, py);
+                }
+                ctx.stroke();
+            }
+        }
+
+        // 右侧：文字信息
+        const txtX = thumbX + thumbSize + 14;
+        let txtY = cy + 20;
+        // 第 N 次下潜
+        const diveNumber = maze.diveCount - list.length + reverseIdx + 1;
+        ctx.fillStyle = '#3E2C23';
+        ctx.font = 'italic bold 14px Georgia, serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(`第 ${diveNumber} 次下潜`, txtX, txtY);
+        txtY += 18;
+        // 返回原因
+        const reason = record.returnReason;
+        const reasonText = reason === 'retreat' ? '主动撤离' :
+                          reason === 'o2' ? '氧气耗尽' :
+                          reason === 'rescued' ? '救援成功' :
+                          reason === 'fishkill' ? '被食人鱼袭击' : '返回';
+        const reasonColor = reason === 'rescued' ? 'rgba(40,120,60,0.95)' :
+                           reason === 'o2' ? 'rgba(180,100,30,0.95)' :
+                           reason === 'fishkill' ? 'rgba(160,40,30,0.95)' :
+                           'rgba(70,55,45,0.85)';
+        ctx.fillStyle = reasonColor;
+        ctx.font = 'italic 12px Georgia, serif';
+        ctx.fillText(reasonText, txtX, txtY);
+        txtY += 16;
+        // 用时 / 深度 / 新探索 / 绳索
+        ctx.fillStyle = '#7A6B5C';
+        ctx.font = '11px Arial';
+        const minutes = Math.floor(record.duration / 60);
+        const seconds = record.duration % 60;
+        ctx.fillText(`用时 ${minutes}:${seconds < 10 ? '0' + seconds : seconds}  深度 ${record.maxDepth}m`, txtX, txtY);
+        txtY += 14;
+        ctx.fillText(`新探索 +${record.newExploredCount}  绳索 +${record.ropePlaced}`, txtX, txtY);
+
+        // 右上角小提示"点开"
+        ctx.globalAlpha = 0.55;
+        ctx.fillStyle = '#7A6B5C';
+        ctx.font = 'italic 10px Georgia, serif';
+        ctx.textAlign = 'right';
+        ctx.fillText('翻开 →', cardX + cardW - 10, cy + cardH - 10);
+        ctx.globalAlpha = 1;
+    }
+}
+
+// =============================================
+// 岸上单次下潜的手绘地图回放（C1：每次打开重放轨迹动画）
+// 样式：岸上羊皮纸外层 + 结算页内容风格（格子+绳索+轨迹+出口+NPC）
+// =============================================
+function drawShoreDiveReplay(maze: any, record: any, idx: number, cw: number, ch: number, time: number) {
+    // 岸上羊皮纸底（a2：外层岸上色）
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = 'rgba(235,225,200,1)';
+    ctx.fillRect(0, 0, cw, ch);
+    ctx.globalAlpha = 0.06;
+    for (let i = 0; i < 60; i++) {
+        const sx = Math.sin(i * 7.3 + 0.5) * cw * 0.5 + cw * 0.5;
+        const sy = Math.cos(i * 5.1 + 1.2) * ch * 0.5 + ch * 0.5;
+        const sr = Math.abs(2 + Math.sin(i * 3.7) * 1.5);
+        ctx.fillStyle = i % 3 === 0 ? '#8B7355' : '#A0926B';
+        ctx.beginPath();
+        ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // 标题
+    ctx.globalAlpha = 0.9;
+    ctx.fillStyle = '#3E2C23';
+    ctx.font = 'italic bold 17px Georgia, serif';
+    ctx.textAlign = 'center';
+    const diveNumber = maze.diveCount - maze.diveHistory.length + idx + 1;
+    ctx.fillText(`第 ${diveNumber} 次下潜 · 手绘地图`, cw / 2, 30);
+
+    // 返回列表按钮（左上）
+    ctx.globalAlpha = 0.85;
+    ctx.fillStyle = 'rgba(62,44,35,0.12)';
+    ctx.beginPath();
+    rrect(ctx, 8, 8, 78, 30, 14);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(62,44,35,0.4)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    rrect(ctx, 8, 8, 78, 30, 14);
+    ctx.stroke();
+    ctx.fillStyle = '#3E2C23';
+    ctx.font = 'italic 12px Georgia, serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('← 记录', 47, 23);
+    ctx.textBaseline = 'alphabetic';
+
+    // 底部关闭提示
+    ctx.globalAlpha = 0.45;
+    ctx.fillStyle = '#7A6B5C';
+    ctx.font = 'italic 11px Georgia, serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('点击其它区域返回下潜记录', cw / 2, ch - 14);
+
+    // ---- 地图区域 ----
+    const padding = 24;
+    const mapTopY = 48;
+    const mapBottomY = ch - 36;
+    const mapAreaW = cw - padding * 2;
+    const mapAreaH = mapBottomY - mapTopY;
+    const cols = maze.mazeCols;
+    const rows = maze.mazeRows;
+    const mapRatio = cols / rows;
+    const areaRatio = mapAreaW / mapAreaH;
+    let mapW: number, mapH: number;
+    if (mapRatio > areaRatio) {
+        mapW = mapAreaW;
+        mapH = mapW / mapRatio;
+    } else {
+        mapH = mapAreaH;
+        mapW = mapH * mapRatio;
+    }
+    const mapX = (cw - mapW) / 2;
+    const mapY = mapTopY + (mapAreaH - mapH) / 2;
+    const cellW = mapW / cols;
+    const cellH = mapH / rows;
+
+    // 纸张地图底（羊皮纸圆角卡）
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = 'rgba(243,234,215,1)';
+    ctx.shadowColor = 'rgba(0,0,0,0.18)';
+    ctx.shadowBlur = 8;
+    ctx.shadowOffsetX = 2;
+    ctx.shadowOffsetY = 2;
+    ctx.beginPath();
+    rrect(ctx, mapX - 10, mapY - 10, mapW + 20, mapH + 20, 10);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
+    // 边框
+    ctx.strokeStyle = 'rgba(70,55,45,0.35)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    rrect(ctx, mapX - 10, mapY - 10, mapW + 20, mapH + 20, 10);
+    ctx.stroke();
+
+    // ---- 地图内容（结算页风格：格子 + 绳索 + 轨迹 + 出口 + NPC） ----
+    const snap = record.exploredSnapshot;
+    const before = record.exploredBeforeSnapshot;
+    if (snap) {
+        for (let r = 0; r < rows; r++) {
+            if (!snap[r]) continue;
+            for (let c = 0; c < cols; c++) {
+                if (!snap[r][c]) continue;
+                const cell = maze.mazeMap[r] ? maze.mazeMap[r][c] : 1;
+                const px = mapX + c * cellW;
+                const py = mapY + r * cellH;
+                if (cell === 0) {
+                    // 用羊皮纸友好色调：本次新探 = 棕红高亮，旧探 = 淡褐底
+                    const isNew = before && before[r] && !before[r][c];
+                    ctx.fillStyle = isNew ? 'rgba(170,90,40,0.55)' : 'rgba(140,115,85,0.28)';
+                } else {
+                    // 墙体：更深的墨褐
+                    ctx.fillStyle = 'rgba(60,45,35,0.55)';
+                }
+                ctx.fillRect(px, py, Math.max(1, cellW), Math.max(1, cellH));
+            }
+        }
+    }
+
+    // ---- 绳索（快照；棕红色） ----
+    if (record.ropesSnapshot && record.ropesSnapshot.length > 0) {
+        ctx.globalAlpha = 0.75;
+        ctx.strokeStyle = 'rgba(140,70,25,0.85)';
+        ctx.lineWidth = Math.max(1, cellW * 0.8);
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        for (const rope of record.ropesSnapshot) {
+            if (!rope.path || rope.path.length < 2) continue;
+            ctx.beginPath();
+            for (let i = 0; i < rope.path.length; i++) {
+                const pt = rope.path[i];
+                const px = mapX + (pt.x / maze.mazeTileSize) * cellW;
+                const py = mapY + (pt.y / maze.mazeTileSize) * cellH;
+                if (i === 0) ctx.moveTo(px, py);
+                else ctx.lineTo(px, py);
+            }
+            ctx.stroke();
+        }
+        ctx.lineCap = 'butt';
+        ctx.lineJoin = 'miter';
+    }
+
+    // ---- 玩家轨迹（每次打开重播动画，90 帧展开） ----
+    if (record.playerPath && record.playerPath.length > 0) {
+        const pathLen = record.playerPath.length;
+        const animDuration = 90;
+        const animProgress = Math.min(1, Math.max(0, maze.shoreMapAnimTimer / animDuration));
+        const drawCount = Math.max(1, Math.floor(pathLen * animProgress));
+        ctx.globalAlpha = 0.9;
+        // 手绘铅笔感：双勾
+        // 底笔（粗而淡）
+        ctx.strokeStyle = 'rgba(200,140,40,0.45)';
+        ctx.lineWidth = Math.max(1.8, cellW * 1.4);
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.beginPath();
+        for (let i = 0; i < drawCount; i++) {
+            const pt = record.playerPath[i];
+            const px = mapX + (pt.x / maze.mazeTileSize) * cellW;
+            const py = mapY + (pt.y / maze.mazeTileSize) * cellH;
+            if (i === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+        // 面笔（细而深）
+        ctx.strokeStyle = 'rgba(130,60,20,0.9)';
+        ctx.lineWidth = Math.max(1, cellW * 0.9);
+        ctx.beginPath();
+        for (let i = 0; i < drawCount; i++) {
+            const pt = record.playerPath[i];
+            const px = mapX + (pt.x / maze.mazeTileSize) * cellW;
+            const py = mapY + (pt.y / maze.mazeTileSize) * cellH;
+            if (i === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+        ctx.lineCap = 'butt';
+        ctx.lineJoin = 'miter';
+
+        // 轨迹笔尖闪烁
+        if (animProgress < 1 && drawCount > 0) {
+            const lastPt = record.playerPath[drawCount - 1];
+            const lpx = mapX + (lastPt.x / maze.mazeTileSize) * cellW;
+            const lpy = mapY + (lastPt.y / maze.mazeTileSize) * cellH;
+            const pulse = 0.5 + Math.sin(time * 6) * 0.5;
+            ctx.globalAlpha = pulse;
+            ctx.fillStyle = 'rgba(130,60,20,1)';
+            ctx.beginPath();
+            ctx.arc(lpx, lpy, Math.max(2, cellW * 1.8), 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
+
+    // ---- 出口标记（红圈） ----
+    {
+        const exitMX = mapX + (maze.exitX / maze.mazeTileSize) * cellW;
+        const exitMY = mapY + (maze.exitY / maze.mazeTileSize) * cellH;
+        ctx.globalAlpha = 0.9;
+        ctx.strokeStyle = 'rgba(40,120,60,0.95)';
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.arc(exitMX, exitMY, Math.max(4, cellW * 2.2), 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(40,120,60,0.65)';
+        ctx.beginPath();
+        ctx.arc(exitMX, exitMY, Math.max(2, cellW * 1.3), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(40,120,60,0.95)';
+        ctx.font = 'italic 10px Georgia, serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('出口', exitMX, exitMY - 12);
+    }
+
+    // ---- NPC 标记（若这次已发现） ----
+    if (record.npcFoundAtEnd) {
+        const npcMX = mapX + (maze.npcInitX / maze.mazeTileSize) * cellW;
+        const npcMY = mapY + (maze.npcInitY / maze.mazeTileSize) * cellH;
+        const rescued = record.returnReason === 'rescued';
+        const col = rescued ? 'rgba(40,120,60,0.95)' : 'rgba(170,40,30,0.95)';
+        ctx.globalAlpha = 0.95;
+        ctx.strokeStyle = col;
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.moveTo(npcMX - 6, npcMY - 6);
+        ctx.lineTo(npcMX + 6, npcMY + 6);
+        ctx.moveTo(npcMX + 6, npcMY - 6);
+        ctx.lineTo(npcMX - 6, npcMY + 6);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(npcMX, npcMY, Math.max(5, cellW * 2.4), 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = col;
+        ctx.font = 'italic 10px Georgia, serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(rescued ? '已救出' : '被困者', npcMX, npcMY - 14);
+    }
+
+    // ---- 本次下潜数据条（底部） ----
+    const infoBarY = ch - 32;
+    ctx.globalAlpha = 0.72;
+    ctx.fillStyle = '#3E2C23';
+    ctx.font = 'italic 11px Georgia, serif';
+    ctx.textAlign = 'center';
+    const minutes = Math.floor(record.duration / 60);
+    const seconds = record.duration % 60;
+    const reasonText = record.returnReason === 'retreat' ? '主动撤离' :
+                      record.returnReason === 'o2' ? '氧气耗尽' :
+                      record.returnReason === 'rescued' ? '救援成功' :
+                      record.returnReason === 'fishkill' ? '被食人鱼袭击' : '返回';
+    ctx.fillText(`${reasonText} · 用时 ${minutes}:${seconds < 10 ? '0' + seconds : seconds} · 深度 ${record.maxDepth}m · 新探索 +${record.newExploredCount} · 绳索 +${record.ropePlaced}`, cw / 2, infoBarY);
+
+    // 每帧推进轨迹动画计时
+    maze.shoreMapAnimTimer = (maze.shoreMapAnimTimer || 0) + 1;
+}
+
+// （保留）旧的"铅笔素描全屏认知地图"，已不再直接作为入口使用；
+// 如果未来需要回退老方案，可以从这里恢复。
+function drawMazeMapFullscreenLegacy(maze: any, cw: number, ch: number, time: number) {
     // 纸张纹理（随机斑点）
     ctx.globalAlpha = 0.06;
     for (let i = 0; i < 80; i++) {
@@ -969,14 +1466,14 @@ function drawMazeMapFullscreen(maze: any, cw: number, ch: number, time: number) 
     ctx.lineTo(cw, ch * 0.5);
     ctx.stroke();
 
-    // 标题（手写风格）
-    ctx.globalAlpha = 0.85;
-    ctx.fillStyle = '#5D4037';
+    // ---- 标题（手写风格） ----
+    ctx.globalAlpha = 0.9;
+    ctx.fillStyle = '#3E2C23';
     ctx.font = 'italic bold 18px Georgia, serif';
     ctx.textAlign = 'center';
     ctx.fillText('认知地图', cw / 2, 30);
     // 标题下划线（手绘波浪线）
-    ctx.strokeStyle = 'rgba(93,64,55,0.3)';
+    ctx.strokeStyle = 'rgba(62,44,35,0.35)';
     ctx.lineWidth = 1;
     ctx.beginPath();
     for (let x = cw * 0.3; x < cw * 0.7; x += 3) {
@@ -987,12 +1484,12 @@ function drawMazeMapFullscreen(maze: any, cw: number, ch: number, time: number) 
     ctx.stroke();
 
     // 关闭提示
-    ctx.globalAlpha = 0.4;
-    ctx.fillStyle = '#888';
+    ctx.globalAlpha = 0.45;
+    ctx.fillStyle = '#7A6B5C';
     ctx.font = 'italic 11px Georgia, serif';
     ctx.fillText('点击任意位置关闭', cw / 2, ch - 16);
 
-    // 地图区域计算
+    // ---- 地图区域计算 ----
     const padding = 24;
     const mapAreaW = cw - padding * 2;
     const mapAreaH = ch - 80;
@@ -1013,9 +1510,9 @@ function drawMazeMapFullscreen(maze: any, cw: number, ch: number, time: number) 
     const cellW = mapW / cols;
     const cellH = mapH / rows;
 
-    // 纸张底色（带圆角和阴影）
+    // ---- 纸张底色（带圆角和阴影） ----
     ctx.globalAlpha = 1;
-    ctx.fillStyle = 'rgba(240,232,215,1)';
+    ctx.fillStyle = 'rgba(243,234,215,1)';
     ctx.shadowColor = 'rgba(0,0,0,0.15)';
     ctx.shadowBlur = 8;
     ctx.shadowOffsetX = 2;
@@ -1027,27 +1524,23 @@ function drawMazeMapFullscreen(maze: any, cw: number, ch: number, time: number) 
     ctx.shadowOffsetX = 0;
     ctx.shadowOffsetY = 0;
 
-    // 地图边框（手绘不规则线条）
-    ctx.strokeStyle = 'rgba(120,100,80,0.35)';
-    ctx.lineWidth = 1.5;
+    // 地图边框（手绘不规则线条，淡墨色）
+    ctx.strokeStyle = 'rgba(70,55,45,0.35)';
+    ctx.lineWidth = 1.4;
     ctx.beginPath();
-    // 上边
     for (let x = mapX - 4; x < mapX + mapW + 4; x += 4) {
         const jitter = Math.sin(x * 0.3) * 1.2;
         if (x === mapX - 4) ctx.moveTo(x, mapY - 4 + jitter);
         else ctx.lineTo(x, mapY - 4 + jitter);
     }
-    // 右边
     for (let y = mapY - 4; y < mapY + mapH + 4; y += 4) {
         const jitter = Math.sin(y * 0.25) * 1.2;
         ctx.lineTo(mapX + mapW + 4 + jitter, y);
     }
-    // 下边
     for (let x = mapX + mapW + 4; x > mapX - 4; x -= 4) {
         const jitter = Math.sin(x * 0.28) * 1.2;
         ctx.lineTo(x, mapY + mapH + 4 + jitter);
     }
-    // 左边
     for (let y = mapY + mapH + 4; y > mapY - 4; y -= 4) {
         const jitter = Math.sin(y * 0.22) * 1.2;
         ctx.lineTo(mapX - 4 + jitter, y);
@@ -1055,198 +1548,290 @@ function drawMazeMapFullscreen(maze: any, cw: number, ch: number, time: number) 
     ctx.closePath();
     ctx.stroke();
 
-    // 未探索区域底色（迷雾感）
-    ctx.globalAlpha = 0.3;
-    ctx.fillStyle = 'rgba(200,190,170,0.5)';
-    ctx.fillRect(mapX, mapY, mapW, mapH);
-    // 未探索区域的问号标记
-    ctx.globalAlpha = 0.08;
-    ctx.fillStyle = '#8B7355';
-    ctx.font = '14px Georgia, serif';
-    ctx.textAlign = 'center';
-    for (let i = 0; i < 6; i++) {
-        const qx = mapX + mapW * (0.15 + i * 0.15);
-        const qy = mapY + mapH * (0.3 + Math.sin(i * 2.1) * 0.2);
-        ctx.fillText('?', qx, qy);
-    }
+    // ============================================================
+    // 核心：把"已探索的洞穴(可通行)"提取成闭合轮廓，用铅笔笔触描出
+    // ============================================================
 
-    // === 手绘风格：将已探索区域按区块绘制，带笔迹抖动 ===
-    // 先用较大的采样步长扫描，画出不规则的区域轮廓
-    const step = 2; // 每2格采样一次，让线条更粗犷
-    ctx.globalAlpha = 0.7;
-
-    // 绘制已探索的水域区域（蓝色水彩笔触）
-    for (let r = 0; r < rows; r += step) {
-        for (let c = 0; c < cols; c += step) {
-            // 检查这个区块是否有已探索的格子
-            let hasExplored = false;
-            let isWater = false;
-            for (let dr = 0; dr < step && r + dr < rows; dr++) {
-                for (let dc = 0; dc < step && c + dc < cols; dc++) {
-                    if (maze.mazeExplored[r + dr] && maze.mazeExplored[r + dr][c + dc]) {
-                        hasExplored = true;
-                        if (maze.mazeMap[r + dr][c + dc] === 0) isWater = true;
-                    }
-                }
-            }
-            if (!hasExplored) continue;
-
-            const px = mapX + c * cellW;
-            const py = mapY + r * cellH;
-            const bw = step * cellW;
-            const bh = step * cellH;
-            // 手绘抖动偏移
-            const jx = Math.sin(r * 3.7 + c * 2.1) * 1.5;
-            const jy = Math.cos(r * 2.3 + c * 4.1) * 1.5;
-
-            if (isWater) {
-                // 水域：根据区域主题着色
-                let waterColor = `rgba(${120 + Math.sin(r + c) * 20},${175 + Math.sin(r * 2) * 15},${210 + Math.cos(c * 3) * 10},0.55)`;
-                if (maze.sceneThemeMap) {
-                    const tIdx = maze.sceneThemeMap[r] ? maze.sceneThemeMap[r][c] : -1;
-                    const tCfg = getMazeSceneThemeConfigByIndex(maze.sceneThemeKeys, tIdx);
-                    if (tCfg) waterColor = tCfg.mapColor;
-                }
-                ctx.fillStyle = waterColor;
-                ctx.beginPath();
-                ctx.moveTo(px + jx + 1, py + jy + 1);
-                ctx.lineTo(px + bw + jx - 1 + Math.sin(r) * 0.8, py + jy + Math.cos(c) * 0.8);
-                ctx.lineTo(px + bw + jx + Math.sin(r + 1) * 0.8, py + bh + jy - 1);
-                ctx.lineTo(px + jx - Math.cos(c + 1) * 0.8, py + bh + jy + Math.sin(r) * 0.5);
-                ctx.closePath();
-                ctx.fill();
-            } else {
-                // 岩壁：棕色铅笔线条填充
-                ctx.fillStyle = `rgba(${100 + Math.sin(r * 1.5) * 15},${85 + Math.cos(c * 2) * 10},${65 + Math.sin(r + c) * 8},0.45)`;
-                ctx.beginPath();
-                ctx.moveTo(px + jx, py + jy);
-                ctx.lineTo(px + bw + jx + Math.sin(r * 2) * 1, py + jy + Math.cos(c * 2) * 1);
-                ctx.lineTo(px + bw + jx, py + bh + jy);
-                ctx.lineTo(px + jx + Math.cos(r) * 1, py + bh + jy + Math.sin(c) * 1);
-                ctx.closePath();
-                ctx.fill();
-                // 岩壁纹理线（铅笔划痕）
-                ctx.strokeStyle = `rgba(80,65,50,0.2)`;
-                ctx.lineWidth = 0.5;
-                ctx.beginPath();
-                ctx.moveTo(px + jx + 1, py + jy + bh * 0.3);
-                ctx.lineTo(px + bw + jx - 1, py + jy + bh * 0.6);
-                ctx.stroke();
+    // 1. 生成 mask：已探索 + 洞穴(mazeMap==0) = true，否则 false
+    //    mask 尺寸 = (cols+1) x (rows+1)，外围一圈补 false 方便提取边缘
+    const maskCols = cols + 2;
+    const maskRows = rows + 2;
+    const mask: Uint8Array = new Uint8Array(maskCols * maskRows);
+    for (let r = 0; r < rows; r++) {
+        const row = maze.mazeExplored[r];
+        if (!row) continue;
+        for (let c = 0; c < cols; c++) {
+            if (row[c] && maze.mazeMap[r][c] === 0) {
+                mask[(r + 1) * maskCols + (c + 1)] = 1;
             }
         }
     }
+    const inMask = (mc: number, mr: number) => (mc >= 0 && mr >= 0 && mc < maskCols && mr < maskRows && mask[mr * maskCols + mc] === 1);
 
-    // 已探索区域的边缘轮廓（手绘不规则线条）
-    ctx.globalAlpha = 0.4;
-    ctx.strokeStyle = 'rgba(80,65,50,0.5)';
-    ctx.lineWidth = 1.2;
-    for (let r = 1; r < rows - 1; r++) {
-        for (let c = 1; c < cols - 1; c++) {
-            if (!maze.mazeExplored[r] || !maze.mazeExplored[r][c]) continue;
-            if (maze.mazeMap[r][c] !== 0) continue;
-            // 检查是否是边缘（相邻有未探索或岩壁）
-            const neighbors = [
-                [r - 1, c], [r + 1, c], [r, c - 1], [r, c + 1]
-            ];
-            for (const [nr, nc] of neighbors) {
-                const isEdge = !maze.mazeExplored[nr]?.[nc] || maze.mazeMap[nr][nc] !== 0;
-                if (isEdge) {
-                    const px = mapX + c * cellW + cellW / 2;
-                    const py = mapY + r * cellH + cellH / 2;
-                    const npx = mapX + nc * cellW + cellW / 2;
-                    const npy = mapY + nr * cellH + cellH / 2;
-                    const mx = (px + npx) / 2;
-                    const my = (py + npy) / 2;
-                    // 手绘短线段
-                    const jitter = Math.sin(r * 5.3 + c * 3.7) * 1.5;
-                    ctx.beginPath();
-                    ctx.moveTo(mx - cellW * 0.4 + jitter, my + Math.cos(r + c) * 0.8);
-                    ctx.lineTo(mx + cellW * 0.4 - jitter, my - Math.sin(r + c) * 0.8);
-                    ctx.stroke();
-                    break; // 每个边缘格只画一次
-                }
-            }
+    // 将 mask 格坐标转成屏幕坐标（mask 偏移了 1）
+    const mcToScreenX = (mc: number) => mapX + (mc - 1) * cellW;
+    const mrToScreenY = (mr: number) => mapY + (mr - 1) * cellH;
+
+    // 2. marching squares 提取所有闭合轮廓
+    //    做法：遍历所有"mask 为 true 的格子的边"，如果它的另一侧是 false，就是轮廓边。
+    //    用 edge key 去重并串联成多边形。
+    type Pt = { x: number; y: number };
+    const contours: Pt[][] = [];
+    // edges 存一条有向边 (a -> b)，走向约定为：cave 在左手边，墙体在右手边（逆时针围住 cave）
+    // 每个 cave 格（mc, mr）有 4 条潜在边：
+    //   上边 (mc, mr)->(mc+1, mr)   要求 (mc, mr-1) 不是 cave
+    //   右边 (mc+1, mr)->(mc+1, mr+1) 要求 (mc+1, mr) 不是 cave
+    //   下边 (mc+1, mr+1)->(mc, mr+1) 要求 (mc, mr+1) 不是 cave
+    //   左边 (mc, mr+1)->(mc, mr)   要求 (mc-1, mr) 不是 cave
+    // 用 map 把"起点"映射到"终点"，然后串连起来。
+    const nextOf = new Map<string, string>();
+    const ptKey = (mc: number, mr: number) => mc + ',' + mr;
+    const addEdge = (ax: number, ay: number, bx: number, by: number) => {
+        nextOf.set(ptKey(ax, ay), ptKey(bx, by));
+    };
+
+    for (let mr = 0; mr < maskRows; mr++) {
+        for (let mc = 0; mc < maskCols; mc++) {
+            if (!inMask(mc, mr)) continue;
+            if (!inMask(mc, mr - 1)) addEdge(mc, mr, mc + 1, mr);
+            if (!inMask(mc + 1, mr)) addEdge(mc + 1, mr, mc + 1, mr + 1);
+            if (!inMask(mc, mr + 1)) addEdge(mc + 1, mr + 1, mc, mr + 1);
+            if (!inMask(mc - 1, mr)) addEdge(mc, mr + 1, mc, mr);
         }
     }
 
-    // 绳索路径（手绘虚线风格）
-    if (state.rope && state.rope.ropes && state.rope.ropes.length > 0) {
-        ctx.globalAlpha = 0.75;
-        ctx.strokeStyle = 'rgba(180,130,40,0.85)';
-        ctx.lineWidth = 2;
-        ctx.setLineDash([4, 3]);
-        for (const rope of state.rope.ropes) {
-            if (!rope.path || rope.path.length < 2) continue;
+    // 串联所有闭合路径
+    const visited = new Set<string>();
+    for (const startKey of nextOf.keys()) {
+        if (visited.has(startKey)) continue;
+        const poly: Pt[] = [];
+        let cur = startKey;
+        let guard = 0;
+        while (!visited.has(cur) && guard < 200000) {
+            visited.add(cur);
+            const [mcStr, mrStr] = cur.split(',');
+            const mc = parseInt(mcStr, 10);
+            const mr = parseInt(mrStr, 10);
+            poly.push({ x: mcToScreenX(mc), y: mrToScreenY(mr) });
+            const nxt = nextOf.get(cur);
+            if (!nxt) break;
+            cur = nxt;
+            guard++;
+        }
+        if (poly.length >= 3) contours.push(poly);
+    }
+
+    // 3. Chaikin 平滑（闭合多边形，2 次迭代）
+    const chaikin = (poly: Pt[], iter: number) => {
+        let cur = poly;
+        for (let k = 0; k < iter; k++) {
+            const nxt: Pt[] = [];
+            const n = cur.length;
+            for (let i = 0; i < n; i++) {
+                const p0 = cur[i];
+                const p1 = cur[(i + 1) % n];
+                nxt.push({ x: p0.x * 0.75 + p1.x * 0.25, y: p0.y * 0.75 + p1.y * 0.25 });
+                nxt.push({ x: p0.x * 0.25 + p1.x * 0.75, y: p0.y * 0.25 + p1.y * 0.75 });
+            }
+            cur = nxt;
+        }
+        return cur;
+    };
+    const smoothed = contours.map(p => chaikin(p, 2));
+
+    // 4. 如果还没有任何已探索区域，直接跳过洞穴绘制
+    if (smoothed.length > 0) {
+        // 4.1 内部斜线阴影（极淡铅笔填充，仅在洞穴内）
+        //     用 canvas 的 clip 裁出洞穴区域，画 45° 斜线
+        ctx.save();
+        ctx.beginPath();
+        for (const poly of smoothed) {
+            const n = poly.length;
+            for (let i = 0; i < n; i++) {
+                const p = poly[i];
+                if (i === 0) ctx.moveTo(p.x, p.y);
+                else ctx.lineTo(p.x, p.y);
+            }
+            ctx.closePath();
+        }
+        ctx.clip('evenodd');
+        // 斜线
+        ctx.globalAlpha = 0.07;
+        ctx.strokeStyle = '#5D4A3B';
+        ctx.lineWidth = 0.5;
+        ctx.beginPath();
+        const diag = mapW + mapH;
+        const hatchGap = 5;
+        for (let d = -mapH; d < diag; d += hatchGap) {
+            const x1 = mapX + d;
+            const y1 = mapY;
+            const x2 = mapX + d + mapH;
+            const y2 = mapY + mapH;
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+        }
+        ctx.stroke();
+        ctx.restore();
+
+        // 4.2 双层叠笔轮廓：先淡灰粗底色笔，再墨色细线收口
+        // 共通工具：沿多边形绘制，带法线抖动和起笔/收笔淡入淡出
+        const drawPencilStroke = (poly: Pt[], jitterAmp: number, lineWidth: number, color: string, phase: number) => {
+            const n = poly.length;
+            if (n < 3) return;
+            ctx.lineWidth = lineWidth;
+            ctx.strokeStyle = color;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            // 预计算每个点的法线方向 + 抖动偏移
+            const pts: Pt[] = new Array(n);
+            for (let i = 0; i < n; i++) {
+                const prev = poly[(i - 1 + n) % n];
+                const next = poly[(i + 1) % n];
+                const dx = next.x - prev.x;
+                const dy = next.y - prev.y;
+                const len = Math.hypot(dx, dy) || 1;
+                const nxv = -dy / len;
+                const nyv = dx / len;
+                const jitter = Math.sin(i * 0.6 + phase) * 0.6 + Math.sin(i * 1.73 + phase * 1.4) * 0.4;
+                pts[i] = { x: poly[i].x + nxv * jitter * jitterAmp, y: poly[i].y + nyv * jitter * jitterAmp };
+            }
             ctx.beginPath();
-            const startPt = rope.path[0];
-            let sx = mapX + (startPt.x / maze.mazeTileSize) * cellW;
-            let sy = mapY + (startPt.y / maze.mazeTileSize) * cellH;
-            ctx.moveTo(sx + Math.sin(sy) * 0.8, sy + Math.cos(sx) * 0.8);
-            for (let i = 1; i < rope.path.length; i++) {
+            ctx.moveTo(pts[0].x, pts[0].y);
+            for (let i = 1; i <= n; i++) {
+                const p = pts[i % n];
+                ctx.lineTo(p.x, p.y);
+            }
+            ctx.stroke();
+        };
+
+        for (const poly of smoothed) {
+            // 底笔：淡灰色、略粗、抖动大
+            ctx.globalAlpha = 0.35;
+            drawPencilStroke(poly, 1.4, 2.0, 'rgba(90,70,55,0.55)', 0);
+            // 收口笔：墨色、细、抖动小、相位错开
+            ctx.globalAlpha = 0.85;
+            drawPencilStroke(poly, 0.7, 1.0, 'rgba(40,28,20,0.9)', 2.1);
+        }
+    }
+
+    // ============================================================
+    // 绳索路径（棕红色铅笔，双勾）
+    // ============================================================
+    if (state.rope && state.rope.ropes && state.rope.ropes.length > 0) {
+        const drawRopeStroke = (rope: any, width: number, color: string, alpha: number, phase: number) => {
+            ctx.globalAlpha = alpha;
+            ctx.strokeStyle = color;
+            ctx.lineWidth = width;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.beginPath();
+            let prevX = 0, prevY = 0;
+            for (let i = 0; i < rope.path.length; i++) {
                 const pt = rope.path[i];
                 const rx = mapX + (pt.x / maze.mazeTileSize) * cellW;
                 const ry = mapY + (pt.y / maze.mazeTileSize) * cellH;
-                // 手绘抖动
-                ctx.lineTo(rx + Math.sin(ry * 0.5 + i) * 1, ry + Math.cos(rx * 0.5 + i) * 1);
+                const jitter = Math.sin(i * 0.9 + phase) * 0.6;
+                // 用上一段方向的法线做偏移
+                let nx = 0, ny = 0;
+                if (i > 0) {
+                    const dx = rx - prevX;
+                    const dy = ry - prevY;
+                    const len = Math.hypot(dx, dy) || 1;
+                    nx = -dy / len;
+                    ny = dx / len;
+                }
+                const ox = rx + nx * jitter;
+                const oy = ry + ny * jitter;
+                if (i === 0) ctx.moveTo(ox, oy);
+                else ctx.lineTo(ox, oy);
+                prevX = rx;
+                prevY = ry;
             }
             ctx.stroke();
+        };
+        for (const rope of state.rope.ropes) {
+            if (!rope.path || rope.path.length < 2) continue;
+            // 底笔：较粗、暖棕
+            drawRopeStroke(rope, 2.6, 'rgba(165,95,45,0.55)', 0.6, 0);
+            // 面笔：细、深褐
+            drawRopeStroke(rope, 1.2, 'rgba(100,55,25,0.9)', 0.85, 1.3);
         }
         ctx.setLineDash([]);
     }
 
-    // 出口标记（手绘三角箭头 + 文字）
+    // ============================================================
+    // 出口标记（红色铅笔圆圈 + 内部小三角 + "出口"文字）
+    // ============================================================
     const exitMapX = mapX + (maze.exitX / maze.mazeTileSize) * cellW;
     const exitMapY = mapY + (maze.exitY / maze.mazeTileSize) * cellH;
-    ctx.globalAlpha = 0.85;
-    ctx.fillStyle = '#4CAF50';
-    // 手绘三角形
-    ctx.beginPath();
-    ctx.moveTo(exitMapX, exitMapY - 7);
-    ctx.lineTo(exitMapX - 5, exitMapY + 3);
-    ctx.lineTo(exitMapX + 5, exitMapY + 3);
-    ctx.closePath();
-    ctx.fill();
-    // 手绘圈
-    ctx.strokeStyle = '#2E7D32';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    for (let a = 0; a < Math.PI * 2; a += 0.2) {
-        const cr = 7 + Math.sin(a * 3) * 0.8;
-        const cx = exitMapX + Math.cos(a) * cr;
-        const cy = exitMapY + Math.sin(a) * cr;
-        if (a === 0) ctx.moveTo(cx, cy);
-        else ctx.lineTo(cx, cy);
+    {
+        const redInk = 'rgba(160,40,30,0.9)';
+        const redInkLight = 'rgba(160,40,30,0.45)';
+        // 双勾圈（多画一圈让它更像手绘）
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        for (let pass = 0; pass < 2; pass++) {
+            ctx.globalAlpha = pass === 0 ? 0.5 : 0.9;
+            ctx.strokeStyle = pass === 0 ? redInkLight : redInk;
+            ctx.lineWidth = pass === 0 ? 2.2 : 1.1;
+            ctx.beginPath();
+            for (let a = 0; a <= Math.PI * 2 + 0.05; a += 0.15) {
+                const cr = 8 + Math.sin(a * 3 + pass) * 0.8;
+                const cx = exitMapX + Math.cos(a) * cr;
+                const cy = exitMapY + Math.sin(a) * cr;
+                if (a === 0) ctx.moveTo(cx, cy);
+                else ctx.lineTo(cx, cy);
+            }
+            ctx.stroke();
+        }
+        // 内部向上小三角
+        ctx.globalAlpha = 0.9;
+        ctx.strokeStyle = redInk;
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(exitMapX, exitMapY - 4);
+        ctx.lineTo(exitMapX - 3.2, exitMapY + 2.5);
+        ctx.lineTo(exitMapX + 3.2, exitMapY + 2.5);
+        ctx.closePath();
+        ctx.stroke();
+        // 文字
+        ctx.fillStyle = redInk;
+        ctx.font = 'italic 10px Georgia, serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('出口', exitMapX, exitMapY - 12);
     }
-    ctx.closePath();
-    ctx.stroke();
-    ctx.fillStyle = '#2E7D32';
-    ctx.font = 'italic 10px Georgia, serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('出口', exitMapX, exitMapY - 12);
 
-    // NPC 标记（已发现时显示，手绘X标记 + 脉冲）
+    // ============================================================
+    // NPC 标记（红色铅笔 X + 圈注 + 手写体"被困者"）
+    // ============================================================
     if (maze.npcFound) {
         const npcMapX = mapX + (maze.npcInitX / maze.mazeTileSize) * cellW;
         const npcMapY = mapY + (maze.npcInitY / maze.mazeTileSize) * cellH;
-        const pulse = 0.6 + Math.sin(time * 3) * 0.4;
-        ctx.globalAlpha = pulse;
-        // 手绘X标记
-        ctx.strokeStyle = '#D32F2F';
-        ctx.lineWidth = 2.5;
-        ctx.beginPath();
-        ctx.moveTo(npcMapX - 5, npcMapY - 5);
-        ctx.lineTo(npcMapX + 5 + Math.sin(time) * 0.5, npcMapY + 5);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(npcMapX + 5, npcMapY - 5);
-        ctx.lineTo(npcMapX - 5 + Math.cos(time) * 0.5, npcMapY + 5);
-        ctx.stroke();
+        const pulse = 0.65 + Math.sin(time * 3) * 0.35;
+        ctx.lineCap = 'round';
+        // 双勾 X（先粗淡、再细浓）
+        const drawX = (w: number, a: number, col: string) => {
+            ctx.globalAlpha = a;
+            ctx.strokeStyle = col;
+            ctx.lineWidth = w;
+            ctx.beginPath();
+            ctx.moveTo(npcMapX - 5.5, npcMapY - 5.5);
+            ctx.lineTo(npcMapX + 5.5 + Math.sin(time) * 0.4, npcMapY + 5.5);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(npcMapX + 5.5, npcMapY - 5.5);
+            ctx.lineTo(npcMapX - 5.5 + Math.cos(time) * 0.4, npcMapY + 5.5);
+            ctx.stroke();
+        };
+        drawX(2.6, 0.45 * pulse, 'rgba(170,45,35,0.55)');
+        drawX(1.2, 0.95 * pulse, 'rgba(130,25,20,0.95)');
         // 手绘圈
-        ctx.strokeStyle = 'rgba(211,47,47,0.5)';
+        ctx.globalAlpha = 0.55 * pulse;
+        ctx.strokeStyle = 'rgba(160,40,30,0.75)';
         ctx.lineWidth = 1;
         ctx.beginPath();
-        for (let a = 0; a < Math.PI * 2; a += 0.15) {
-            const cr = 9 + Math.sin(a * 4 + time) * 1.2;
+        for (let a = 0; a <= Math.PI * 2 + 0.05; a += 0.15) {
+            const cr = 10 + Math.sin(a * 4 + time) * 1;
             const cx = npcMapX + Math.cos(a) * cr;
             const cy = npcMapY + Math.sin(a) * cr;
             if (a === 0) ctx.moveTo(cx, cy);
@@ -1254,53 +1839,80 @@ function drawMazeMapFullscreen(maze: any, cw: number, ch: number, time: number) 
         }
         ctx.closePath();
         ctx.stroke();
-        ctx.globalAlpha = 0.85;
-        ctx.fillStyle = '#BF360C';
+        // 文字
+        ctx.globalAlpha = 0.9;
+        ctx.fillStyle = 'rgba(130,25,20,0.95)';
         ctx.font = 'italic 10px Georgia, serif';
-        ctx.fillText('被困者', npcMapX, npcMapY - 14);
+        ctx.textAlign = 'center';
+        ctx.fillText('被困者', npcMapX, npcMapY - 16);
     }
 
-    // 图例（手绘风格）
-    ctx.globalAlpha = 0.6;
+    // ============================================================
+    // 图例（素描风，只保留三类手绘标记语义，不再出现主题色块）
+    // ============================================================
+    ctx.globalAlpha = 0.75;
     ctx.font = 'italic 10px Georgia, serif';
     ctx.textAlign = 'left';
     const legendX = mapX + 4;
-    let legendY = mapY + mapH + 16;
-    const themeItems = getMazeThemeLegendItems(maze.sceneThemeKeys);
+    const legendY = mapY + mapH + 18;
     let lx = legendX;
-    const legendItemW = 62;
     const legendMaxX = mapX + mapW - 10;
-    for (let ti = 0; ti < themeItems.length; ti++) {
-        const item = themeItems[ti] as any;
-        if (!item) continue;
-        if (lx + legendItemW > legendMaxX && ti > 0) {
+    const advance = (w: number) => {
+        lx += w;
+        if (lx > legendMaxX) {
             lx = legendX;
-            legendY += 16;
         }
-        const discovered = maze.discoveredThemes && maze.discoveredThemes.includes(item.key);
-        ctx.fillStyle = discovered ? item.mapColor : 'rgba(180,170,160,0.3)';
-        ctx.beginPath();
-        ctx.arc(lx + 4, legendY - 2, 4, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = discovered ? '#5D4037' : 'rgba(150,140,130,0.5)';
-        ctx.fillText(discovered ? item.name : '???', lx + 12, legendY + 2);
-        lx += legendItemW;
-    }
-    // 绳索图例
-    if (lx + 50 > legendMaxX) {
-        lx = legendX;
-        legendY += 16;
-    }
-    ctx.strokeStyle = 'rgba(180,130,40,0.85)';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([3, 2]);
+    };
+
+    // 出口图例：红色小圈 + "出口"
+    ctx.strokeStyle = 'rgba(160,40,30,0.9)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(lx + 6, legendY - 1, 4.5, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = '#3E2C23';
+    ctx.fillText('出口', lx + 15, legendY + 2);
+    advance(50);
+
+    // 被困者图例：红色小 X
+    ctx.strokeStyle = 'rgba(130,25,20,0.95)';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(lx + 2, legendY - 4);
+    ctx.lineTo(lx + 10, legendY + 3);
+    ctx.moveTo(lx + 10, legendY - 4);
+    ctx.lineTo(lx + 2, legendY + 3);
+    ctx.stroke();
+    ctx.fillStyle = '#3E2C23';
+    ctx.fillText('被困者', lx + 15, legendY + 2);
+    advance(60);
+
+    // 绳索图例：棕色实线带一点抖动
+    ctx.strokeStyle = 'rgba(100,55,25,0.9)';
+    ctx.lineWidth = 1.6;
     ctx.beginPath();
     ctx.moveTo(lx, legendY);
-    ctx.lineTo(lx + 18, legendY - 1 + Math.sin(lx) * 0.5);
+    ctx.lineTo(lx + 6, legendY - 1);
+    ctx.lineTo(lx + 12, legendY + 0.5);
+    ctx.lineTo(lx + 18, legendY - 0.5);
     ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.fillStyle = '#5D4037';
+    ctx.fillStyle = '#3E2C23';
     ctx.fillText('绳索', lx + 22, legendY + 2);
+    advance(50);
+
+    // 已探索图例：双勾铅笔圆圈（象征洞穴轮廓）
+    ctx.strokeStyle = 'rgba(90,70,55,0.55)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(lx + 6, legendY - 1, 4.5, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(40,28,20,0.9)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(lx + 6, legendY - 1, 4.5, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = '#3E2C23';
+    ctx.fillText('已探区', lx + 15, legendY + 2);
 }
 
 // =============================================

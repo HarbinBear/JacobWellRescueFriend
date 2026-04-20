@@ -104,6 +104,8 @@ export function resetMazeLogic() {
         retreatTouchId: null,
         minimapExpanded: false,
         shoreMapOpen: false,
+        shoreMapDiveIndex: -1,
+        shoreMapAnimTimer: 0,
         shoreScrollY: 0,
         divingInTimer: 0,
         _hudEntryTimer: 0,
@@ -337,7 +339,50 @@ function finishMazeDive(returnReason: string) {
     }
     const ropePlaced = (state.rope ? state.rope.ropes.length : 0) - maze.thisRopeCountBefore;
 
-    // 记录下潜历史
+    // === 深拷贝本次下潜结束时的地图相关快照，供岸上按次回放"手绘地图" ===
+    // 1. 玩家轨迹（路径点结构简单，直接逐点拷贝）
+    const pathSnap: {x: number, y: number}[] = [];
+    if (maze.playerPath) {
+        for (let i = 0; i < maze.playerPath.length; i++) {
+            const p = maze.playerPath[i];
+            pathSnap.push({ x: p.x, y: p.y });
+        }
+    }
+    // 2. 本次结束时的累积已探索矩阵（布尔二维数组，深拷贝）
+    const exploredSnap: boolean[][] = [];
+    for (let r = 0; r < maze.mazeRows; r++) {
+        const row: boolean[] = [];
+        const src = maze.mazeExplored[r];
+        for (let c = 0; c < maze.mazeCols; c++) {
+            row.push(!!(src && src[c]));
+        }
+        exploredSnap.push(row);
+    }
+    // 3. 本次开始前的已探索快照（用于区分"本次新探索"高亮色）
+    const exploredBeforeSnap: boolean[][] = [];
+    for (let r = 0; r < maze.mazeRows; r++) {
+        const row: boolean[] = [];
+        const src = maze.thisExploredBefore ? maze.thisExploredBefore[r] : null;
+        for (let c = 0; c < maze.mazeCols; c++) {
+            row.push(!!(src && src[c]));
+        }
+        exploredBeforeSnap.push(row);
+    }
+    // 4. 绳索路径深拷贝（后续下潜还会加绳，要把"本次结束当下的样子"冻结下来）
+    const ropesSnap: {path: {x: number, y: number}[]}[] = [];
+    if (state.rope && state.rope.ropes) {
+        for (const rope of state.rope.ropes) {
+            if (!rope.path) continue;
+            const pathCopy: {x: number, y: number}[] = [];
+            for (let i = 0; i < rope.path.length; i++) {
+                const pt = rope.path[i];
+                pathCopy.push({ x: pt.x, y: pt.y });
+            }
+            ropesSnap.push({ path: pathCopy });
+        }
+    }
+
+    // 记录下潜历史（带快照）
     maze.diveHistory.push({
         diveType: maze.diveType,
         duration: duration,
@@ -346,7 +391,19 @@ function finishMazeDive(returnReason: string) {
         ropePlaced: ropePlaced,
         returnReason: returnReason,
         newThemes: maze.thisNewThemes ? maze.thisNewThemes.slice() : [],
+        playerPath: pathSnap,
+        exploredSnapshot: exploredSnap,
+        exploredBeforeSnapshot: exploredBeforeSnap,
+        ropesSnapshot: ropesSnap,
+        npcFoundAtEnd: !!maze.npcFound,
+        finishAt: Date.now(),
     });
+
+    // 只保留最近 5 次下潜记录，超过的把最老的挤掉（FIFO）
+    const MAX_DIVE_HISTORY = 5;
+    while (maze.diveHistory.length > MAX_DIVE_HISTORY) {
+        maze.diveHistory.shift();
+    }
 
     // 更新跨下潜统计
     maze.diveCount++;

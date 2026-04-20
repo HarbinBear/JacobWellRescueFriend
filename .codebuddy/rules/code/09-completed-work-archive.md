@@ -288,3 +288,88 @@ type: always
 - `src/logic/ArenaLogic.ts`：竞技场 `updateArenaPlayer()` 函数开头新增被咬冻结分支（含早退）
 
 **验证**：`npm run typecheck` 通过。
+
+---
+
+## 岸上全屏手绘认知地图重做（2026-04-20）
+
+**问题**：
+旧版 `drawMazeMapFullscreen` 按 `step=2` 扫描已探索格子，每个区块涂一个方形色块，并且水域色块按区域主题 `mapColor` 上色（蓝、黄、红、灰等），导致整张地图读感像"一堆彩色格子拼的马赛克"，完全没有手绘地图的气质。
+
+**重做目标**（用户确认方向）：
+1. 主题彩色完全退出地图主体，只做单色铅笔素描。
+2. 未探索区域彻底留白（纸色），不再贴迷雾和问号。
+3. 只改岸上全屏认知地图，小地图和结算页轨迹图不动。
+
+**新实现方案（算法级重做）**：
+
+1. **mask 提取**：把"已探索(mazeExplored)+ 洞穴(mazeMap==0)"的格子合成一张 `(cols+2)×(rows+2)` 的布尔 mask（外围补一圈 false 方便提取边缘）。
+2. **marching squares 轮廓提取**：遍历每个 mask 为 true 的格子的四条边，只要外侧是 false 就生成一条有向边（约定 cave 在左手边，逆时针围住 cave）。用 `nextOf` 映射把边串联成若干条闭合多边形。
+3. **Chaikin 平滑**：对每条闭合多边形做 2 次 Chaikin 平滑（0.75/0.25 比例），让棱角圆润。
+4. **内部斜线阴影**：用 `ctx.clip('evenodd')` 把所有轮廓当作裁剪区（外面加 outer rect 一起参与 evenodd 也无所谓，这里只用 smoothed 本身），在内部画 45° 斜线（alpha=0.07、lineWidth=0.5、间距 5px），营造"铅笔素描浅阴影"的洞穴感，不再用彩色。
+5. **双层叠笔轮廓**：每条闭合多边形走两遍——
+   - 底笔：`rgba(90,70,55,0.55)`、lineWidth=2、alpha=0.35、抖动幅度 1.4px（淡灰粗底）
+   - 收口笔：`rgba(40,28,20,0.9)`、lineWidth=1、alpha=0.85、抖动幅度 0.7px、相位错开 2.1（墨色细笔收边）
+   抖动沿每个采样点的法线方向施加，用双频正弦合成，模拟铅笔起伏。
+6. **绳索**：改成棕红双勾铅笔线（不再是虚线），底笔粗暖棕 `rgba(165,95,45,0.55)` + 面笔深褐 `rgba(100,55,25,0.9)`，沿路径法线加微抖动。
+7. **红笔标注**：出口用双圈红（`rgba(160,40,30)`）+ 向上小三角 + "出口"；被困者用双笔 X + 手绘圈 + "被困者"，保留脉冲呼吸。
+8. **图例重设计**：彻底去掉按主题分色的彩色圆点图例（以前会有 5 种岩性色点），改为语义图例四项：出口（红圈）、被困者（红 X）、绳索（棕色抖动线）、已探区（双勾铅笔圆圈）。
+
+**修改文件**：
+- `src/render/RenderMazeUI.ts`：整体重写 `drawMazeMapFullscreen()`；移除对 `getMazeSceneThemeConfigByIndex` 和 `getMazeThemeLegendItems` 的 import（只保留 `getMazeMainThemeConfig`，结算页轨迹图仍在用）。
+- `ToDo.md`:"⭐️⭐️⭐️"段的"手绘地图重做"项移除。
+
+**视觉读感变化**：
+- 旧：底色迷雾灰 + 蓝黄红灰彩色方块拼贴 + 格子状边缘碎线 + 均匀虚线绳索
+- 新：米白羊皮纸 + 连续闭合的铅笔轮廓洞穴 + 内部浅斜线阴影 + 红笔圈注 + 棕色双勾绳索，未探区域完全留白。
+
+**验证**：`npm run typecheck` 通过。
+
+---
+
+## 岸上手绘地图改造为"按次下潜回放 + 最近 5 次记录"（2026-04-21）
+
+**背景**：
+上一版岸上"手绘地图"（marching-squares 铅笔素描）读感不佳，且只展示跨下潜累积的最终状态，玩家无法回看每一次下潜各自的轨迹。本次彻底改掉。
+
+**新方案**：
+- 岸上信息卡片右侧图标从"地图图标"改为"下潜记录"小书本图标，右上角徽标显示当前记录条数（0~5）
+- 点击后**先进"下潜记录列表"页**：每条卡片显示该次下潜的缩略图（本次累积已探索 + 轨迹预览）、第 N 次、返回原因、用时、深度、新探索格子数、绳索+N
+- **点任意一条卡片 → 进入该次的"手绘地图回放"页**：
+  - 外层**羊皮纸米白岸上色**（A2：外层用岸上颜色）
+  - 地图内容借鉴结算页画法：深色格子 + 本次新探索用棕红高亮 / 旧探索用淡褐底 + 墙体墨褐 + 绳索棕红双勾 + 出口绿圈 + NPC 红/绿 X 圈注
+  - **每次打开重放 90 帧轨迹展开动画**（C1），末端笔尖闪烁脉冲
+  - 底部一行紧凑信息条（原因 · 用时 · 深度 · 新探索 · 绳索）
+- **每次下潜单独存档**：`finishMazeDive()` 把该次结束时的 `playerPath`、`mazeExplored` 快照、`thisExploredBefore` 快照、绳索路径快照、NPC 是否发现标志全部深拷贝进 `diveHistory` 条目
+- **只保留最近 5 次**：`diveHistory` 末尾每次 push 后执行 `while (length > 5) shift()`，超过自动挤掉最老的
+- **只对当前地图有效**：`resetMazeLogic()` 开新一局时 `diveHistory = []`，因为换地图整个 `state.mazeRescue` 会整体重建，历史自然归零
+
+**新增状态字段**（`state.mazeRescue`）：
+- `shoreMapDiveIndex: number` — 岸上正在回放的下潜索引（-1=列表页，>=0=diveHistory下标）
+- `shoreMapAnimTimer: number` — 岸上回放地图的轨迹动画计时（帧），每次打开重置为 0
+
+**diveHistory 条目新增字段**：
+- `playerPath?: {x, y}[]` — 本次轨迹深拷贝
+- `exploredSnapshot?: boolean[][]` — 本次结束时累积已探索（深拷贝）
+- `exploredBeforeSnapshot?: boolean[][]` — 本次开始前已探索快照（用于区分"本次新探索"高亮色）
+- `ropesSnapshot?: {path: {x,y}[]}[]` — 本次结束时全部绳索路径（深拷贝，因后续下潜还会铺绳）
+- `npcFoundAtEnd?: boolean` — 该次结束时是否已发现 NPC
+- `finishAt?: number` — 结束时间戳
+
+**存储成本**：
+100×100 布尔矩阵 ≈ 10000 个 bool（纯内存 JS 对象，不序列化），单条下潜约 20~40KB，最多 5 条 ≈ 200KB，可接受。
+
+**修改文件**：
+- `src/core/state.ts`：`mazeRescue.shoreMapDiveIndex`/`shoreMapAnimTimer` 新增；`diveHistory[]` 类型新增 6 个可选快照字段
+- `src/logic/MazeLogic.ts`：`resetMazeLogic()` 初始化新字段；`finishMazeDive()` 做 4 份深拷贝（轨迹/已探索/已探索前置/绳索）并把快照写进 `diveHistory`，末尾按 5 条上限做 FIFO
+- `src/render/RenderMazeUI.ts`：
+  - 岸上信息卡片右侧按钮图标改为"书本"+ 记录条数徽标
+  - `drawMazeMapFullscreen()` 改为分发器：`shoreMapDiveIndex<0` → `drawShoreDiveList`；>=0 → `drawShoreDiveReplay`
+  - 新增 `drawShoreDiveList()`：羊皮纸底 + 标题 + 最多 5 条逆序卡片（每条带缩略图 + 路径预览 + 文字信息）
+  - 新增 `drawShoreDiveReplay()`：羊皮纸底 + 地图区 + 结算页风格内容 + 90 帧轨迹展开动画 + 笔尖脉冲
+  - 原函数更名为 `drawMazeMapFullscreenLegacy()` 保留但不再被调用（以备回退）
+- `src/core/input.ts`：岸上点击分发大幅改造
+  - 打开时先进列表；点卡片→回放；回放页点左上"← 记录"或空白→回列表；列表页点"← 返回"或空白→关闭全屏回到岸上
+  - 把岸上卡片右侧按钮点击从"打开认知地图"改为"打开下潜记录列表"（同时重置 `shoreMapDiveIndex=-1`、`shoreMapAnimTimer=0`）
+
+**验证**：`npm run typecheck` 通过，无新增类型报错。
