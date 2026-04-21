@@ -358,7 +358,7 @@ export function generateFishDens(): { x: number; y: number; radius: number; skul
                 x: skX,
                 y: skY,
                 angle: angleOnRock,
-                size: 6 + Math.random() * 5,
+                size: 12 + Math.random() * 8,
                 seed: Math.random() * 1000,
             });
         }

@@ -106,8 +106,8 @@ export const CONFIG = {
     marker: {
         // 交互按钮（轮盘触发器）
         btnRadius: 36,              // 交互按钮半径
-        btnXRatio: 0.82,            // 按钮X位置比例（与旧绳索按钮相同位置）
-        btnYRatio: 0.75,            // 按钮Y位置比例
+        btnXRatio: 0.92,            // 按钮X位置比例（右下角，getWheelBtnPos会自动clamp保证轮盘完整显示）
+        btnYRatio: 0.88,            // 按钮Y位置比例（右下角）
         // 轮盘
         wheelOuterRadius: 100,      // 轮盘外径
         wheelInnerRadius: 24,       // 轮盘内径（死区，松手取消）
