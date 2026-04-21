@@ -351,18 +351,22 @@ export function updateWheelButtonVisibility() {
         return;
     }
 
-    // 检测静止
-    const speedThreshold = CONFIG.ropeStillSpeedThreshold || 1.5;
-    const isStill = input.move === 0 && Math.hypot(player.vx, player.vy) < speedThreshold;
+    // 判定“没有移动输入”：
+    // - 自动挡：摇杆未推（input.move === 0）
+    // - 手动挡：没有活跃的搓屏触点
+    const isManual = !!(CONFIG as any).manualDrive?.enabled;
+    const hasManualTouch = isManual
+        ? Object.keys(state.manualDrive?.activeTouches || {}).length > 0
+        : false;
+    const noMoveInput = isManual ? !hasManualTouch : (input.move === 0);
 
     const nearbyInfo = detectWheelContext();
-    if (nearbyInfo.context !== 'none' && isStill) {
-        state.wheel.stillTimer += 1 / 60;
-    } else {
-        state.wheel.stillTimer = 0;
-    }
+    // 规则：在可交互区域附近，只要没有移动输入，立即显示交互按钮
+    // 不再等待 stillTimer 静止计时，避免出现用户误以为“没反应”的情况
+    // stillTimer 字段保留但始终重置为 0，保持数据兼容
+    state.wheel.stillTimer = 0;
 
-    if (nearbyInfo.context !== 'none' && state.wheel.stillTimer >= CONFIG.ropeStillTimeToShow) {
+    if (nearbyInfo.context !== 'none' && noMoveInput) {
         state.wheel.btnVisible = true;
         state.wheel.nearbyInfo = nearbyInfo;
     } else {

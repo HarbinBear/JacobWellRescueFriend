@@ -411,7 +411,7 @@ export const CONFIG = {
         autoExposureTarget: 0.5,        // 目标平均亮度（画面整体想维持在多亮）
 
         // Tone Mapping
-        enableToneMapping: false,        // 是否启用 Tone Mapping
+        enableToneMapping: true,        // 是否启用 Tone Mapping
         toneMappingMode: 1,              // 0=Reinhard, 1=ACES
         reinhardWhitePoint: 2.0,         // Reinhard 扩展白点（越大允许越亮的值保留）
     },
