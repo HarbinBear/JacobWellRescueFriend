@@ -309,6 +309,7 @@ export function startMazeDive(diveType: string) {
     if (state.wheel) {
         state.wheel.open = false;
         state.wheel.btnVisible = false;
+        state.wheel.btnActive = false;
         state.wheel.sectors = [];
         state.wheel.highlightIndex = -1;
         state.wheel.expandProgress = 0;

@@ -29,46 +29,85 @@ export function drawWheelButton() {
     const { x: btnX, y: btnY } = getWheelBtnPos();
     const radius = CONFIG.marker.btnRadius;
     const time = Date.now() / 1000;
+    // 是否为可交互态（false = 灰态，提示"停下就能交互"）
+    const active = !!state.wheel.btnActive;
 
     ctx.save();
 
-    // 呼吸脉冲光晕
-    const glowAlpha = 0.15 + Math.sin(time * 3) * 0.1;
-    ctx.beginPath();
-    ctx.arc(btnX, btnY, radius + 8, 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(100, 180, 255, ${glowAlpha})`;
-    ctx.fill();
+    if (active) {
+        // =============== 可交互态（原样式）===============
+        // 呼吸脉冲光晕
+        const glowAlpha = 0.15 + Math.sin(time * 3) * 0.1;
+        ctx.beginPath();
+        ctx.arc(btnX, btnY, radius + 8, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(100, 180, 255, ${glowAlpha})`;
+        ctx.fill();
 
-    // 按钮底圆
-    ctx.beginPath();
-    ctx.arc(btnX, btnY, radius, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(10, 25, 40, 0.85)';
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(100, 180, 255, 0.6)';
-    ctx.lineWidth = 2;
-    ctx.stroke();
+        // 按钮底圆
+        ctx.beginPath();
+        ctx.arc(btnX, btnY, radius, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(10, 25, 40, 0.85)';
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(100, 180, 255, 0.6)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
 
-    // 中心图标：⊕ 符号（十字 + 圆）
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
-    ctx.lineWidth = 1.5;
-    // 外圆
-    ctx.beginPath();
-    ctx.arc(btnX, btnY, 8, 0, Math.PI * 2);
-    ctx.stroke();
-    // 十字
-    ctx.beginPath();
-    ctx.moveTo(btnX - 5, btnY);
-    ctx.lineTo(btnX + 5, btnY);
-    ctx.moveTo(btnX, btnY - 5);
-    ctx.lineTo(btnX, btnY + 5);
-    ctx.stroke();
+        // 中心图标：⊕ 符号（十字 + 圆）
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(btnX, btnY, 8, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(btnX - 5, btnY);
+        ctx.lineTo(btnX + 5, btnY);
+        ctx.moveTo(btnX, btnY - 5);
+        ctx.lineTo(btnX, btnY + 5);
+        ctx.stroke();
 
-    // 文字标签
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-    ctx.font = '10px Arial';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.fillText('标记', btnX, btnY + radius + 6);
+        // 文字标签
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+        ctx.font = '10px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        ctx.fillText('标记', btnX, btnY + radius + 6);
+    } else {
+        // =============== 灰态（移动中，提示"停下就能交互"）===============
+        // 不画呼吸光晕，整体压低透明度
+        ctx.globalAlpha = 0.45;
+
+        // 按钮底圆（偏灰色调）
+        ctx.beginPath();
+        ctx.arc(btnX, btnY, radius, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(30, 35, 40, 0.75)';
+        ctx.fill();
+        // 虚线灰色描边，暗示"不可点击"
+        ctx.strokeStyle = 'rgba(160, 170, 180, 0.5)';
+        ctx.lineWidth = 1.5;
+        if (typeof ctx.setLineDash === 'function') ctx.setLineDash([4, 3]);
+        ctx.stroke();
+        if (typeof ctx.setLineDash === 'function') ctx.setLineDash([]);
+
+        // 中心图标：⊕ 符号（灰色版本）
+        ctx.strokeStyle = 'rgba(200, 210, 220, 0.55)';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.arc(btnX, btnY, 8, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(btnX - 5, btnY);
+        ctx.lineTo(btnX + 5, btnY);
+        ctx.moveTo(btnX, btnY - 5);
+        ctx.lineTo(btnX, btnY + 5);
+        ctx.stroke();
+
+        // 文字标签：提示"停下"
+        ctx.fillStyle = 'rgba(210, 220, 230, 0.6)';
+        ctx.font = '9px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        ctx.fillText('停下标记', btnX, btnY + radius + 6);
+    }
 
     ctx.restore();
 }

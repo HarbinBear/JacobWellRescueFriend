@@ -281,7 +281,8 @@ export const state = {
     markers: [] as any[],
     // 轮盘交互状态
     wheel: {
-        btnVisible: false,       // 交互按钮是否可见
+        btnVisible: false,       // 交互按钮是否可见（靠近可交互对象即显示）
+        btnActive: false,        // 交互按钮是否可点击（额外要求：无移动输入；否则为灰态不可交互）
         open: false,             // 轮盘是否打开
         sectors: [] as any[],    // 当前扇区列表
         highlightIndex: -1,      // 当前高亮扇区索引（-1=无）
@@ -401,6 +402,7 @@ export function resetState() {
     // 重置轮盘状态
     state.wheel = {
         btnVisible: false,
+        btnActive: false,
         open: false,
         sectors: [],
         highlightIndex: -1,

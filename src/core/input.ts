@@ -281,7 +281,8 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
         }
 
         // 轮盘交互按钮检测（替代旧绳索按钮）
-        if (state.wheel && state.wheel.btnVisible && !state.wheel.open) {
+        // 仅在 btnActive 为 true 时响应点击；灰态（btnVisible=true 但 btnActive=false）不响应
+        if (state.wheel && state.wheel.btnVisible && state.wheel.btnActive && !state.wheel.open) {
             const { x: btnX, y: btnY } = getWheelBtnPos();
             for (let t of res.touches) {
                 const dx = t.clientX - btnX;

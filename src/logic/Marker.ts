@@ -348,10 +348,11 @@ export function updateWheelButtonVisibility() {
     // 水面以上不显示（主线模式）
     if (state.screen === 'play' && player.y <= 0) {
         state.wheel.btnVisible = false;
+        state.wheel.btnActive = false;
         return;
     }
 
-    // 判定“没有移动输入”：
+    // 判定"没有移动输入"：
     // - 自动挡：摇杆未推（input.move === 0）
     // - 手动挡：没有活跃的搓屏触点
     const isManual = !!(CONFIG as any).manualDrive?.enabled;
@@ -361,16 +362,22 @@ export function updateWheelButtonVisibility() {
     const noMoveInput = isManual ? !hasManualTouch : (input.move === 0);
 
     const nearbyInfo = detectWheelContext();
-    // 规则：在可交互区域附近，只要没有移动输入，立即显示交互按钮
-    // 不再等待 stillTimer 静止计时，避免出现用户误以为“没反应”的情况
     // stillTimer 字段保留但始终重置为 0，保持数据兼容
     state.wheel.stillTimer = 0;
 
-    if (nearbyInfo.context !== 'none' && noMoveInput) {
+    // 两态显示规则：
+    // - 附近有可交互对象 -> btnVisible=true（按钮显示出来，提示玩家"这里可以交互"）
+    // - 同时没有移动输入 -> btnActive=true（按钮为正常可交互态）
+    // - 附近有可交互对象 + 有移动输入 -> btnVisible=true、btnActive=false（灰态/半透明，提示"停下就能交互"）
+    // - 附近没有可交互对象 -> btnVisible=false、btnActive=false（不显示）
+    if (nearbyInfo.context !== 'none') {
         state.wheel.btnVisible = true;
-        state.wheel.nearbyInfo = nearbyInfo;
+        state.wheel.btnActive = noMoveInput;
+        // 只在可交互态下才填充 nearbyInfo，灰态下清空（确保点击时没法打开轮盘）
+        state.wheel.nearbyInfo = noMoveInput ? nearbyInfo : null;
     } else {
         state.wheel.btnVisible = false;
+        state.wheel.btnActive = false;
         state.wheel.nearbyInfo = null;
     }
 }
