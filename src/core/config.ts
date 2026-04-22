@@ -269,7 +269,27 @@ export const CONFIG = {
         npcMinDistRatio: 0.55,      // NPC离出发点的最小距离占地图对角线比例
         npcRescueRange: 80,         // 靠近NPC多近触发救援交互（像素）
         npcRescueHoldDuration: 0.8, // 长按多少秒完成绑绳（秒）
-        npcFollowSpeed: 3.2,        // NPC跟随速度
+        npcFollowSpeed: 3.2,        // NPC基础跟随速度（跟随阶段兜底值）
+
+        // === NPC 跟随距离约束（绑绳后，D方案：柔性加速+超距拖慢玩家）===
+        npcTetherIdealDist: 70,     // 理想跟随距离（像素，NPC在此距离舒适漂移）
+        npcTetherMaxDist: 220,      // 绳索最大拉伸距离，超过此距离玩家被拖慢
+        npcFollowSpeedMin: 1.2,     // 距离等于理想值时的最低追赶速度
+        npcFollowSpeedMax: 9.0,     // 距离接近最大值时的最高追赶速度
+        npcTetherPullFactor: 0.55,  // 玩家超距时被拖慢系数（0=不拖慢，1=完全拉停）
+
+        // === NPC 呼救表现（未被救时，玩家进入感知半径才呼救）===
+        npcDistressActivateRatio: 3.0, // 呼救激活距离 = npcRescueRange * 该系数
+        npcDistressBubbleRate: 0.08,   // 每帧生成呼救气泡的概率
+        npcDistressHaloInterval: 1.6,  // 呼救闪光圈周期（秒）
+        npcDistressArmSwing: 0.55,     // 挥手幅度（弧度）
+
+        // === 救援绳渲染（玩家↔NPC，绑绳后）===
+        rescueRopeColor: '#d7c48a',    // 绳索基色
+        rescueRopeWidth: 2,            // 绳索粗细
+        rescueRopeSegments: 10,        // 绳索折线段数
+        rescueRopeSlackAmp: 6,         // 绳索松弛幅度（像素）
+        rescueRopeWaveAmp: 2,          // 绳索水中摆动幅度（像素）
 
         // 小地图
         minimapSize: 160,           // 小地图尺寸（像素）

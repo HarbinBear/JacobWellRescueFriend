@@ -6,6 +6,7 @@ import { initWebGLLight, isWebGLAvailable, uploadPolyData, uploadSiltData, uploa
 import { drawDiver } from './RenderDiver';
 import { drawUI, drawControls, drawSlashEffect } from './RenderUI';
 import { drawRopesWorld, drawRopeButton } from './RenderRope';
+import { drawRescueRopeWorld, drawNPCDistressWorld } from './RenderRescueRope';
 import { drawMarkersWorld, drawMarkerPreview } from './RenderMarker';
 import { drawWheelButton, drawWheel } from './RenderWheel';
 import { drawAllFishEnemies, drawFishBiteEffect } from './RenderFishEnemy';
@@ -363,6 +364,9 @@ export function draw() {
     // --- 绘制绳索（世界空间，在角色之前）---
     drawRopesWorld();
 
+    // --- 绘制救援绳（玩家↔NPC，仅迷宫模式绑绳后）---
+    drawRescueRopeWorld(ctx);
+
     // --- 绘制标记（世界空间，在绳索之后）---
     drawMarkersWorld(ctx);
 
@@ -438,6 +442,9 @@ export function draw() {
         forwardVisual: state.manualDrive.forwardVisual,
         turnVisual: state.manualDrive.turnVisual,
     });
+
+    // --- 绘制 NPC 呼救表现（气泡、挥手、闪光圈，仅迷宫未被救时）---
+    drawNPCDistressWorld(ctx);
 
     // 绘制暗色悬浮尘埃（光照前，作为移动参照物）
     updateDustTime(1 / 60);

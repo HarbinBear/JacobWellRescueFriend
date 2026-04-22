@@ -160,6 +160,13 @@ export function resetMazeLogic() {
     state.npc.vy = 0;
     state.npc.angle = -Math.PI / 2;
     state.npc.state = 'wait';
+    // 重置呼救表现运行态
+    state.npc.distressActive = false;
+    state.npc.distressTimer = 0;
+    state.npc.distressArmPhase = 0;
+    state.npc.distressBubbles = [];
+    state.npc.distressHalos = [];
+    state.npc.distressHaloTimer = 0;
 
     // 玩家放在出口位置（岸上阶段不显示，但预设好）
     player.x = mazeData.exitX;
@@ -260,6 +267,13 @@ export function startMazeDive(diveType: string) {
     state.npc.vy = 0;
     state.npc.angle = -Math.PI / 2;
     state.npc.state = 'wait';
+    // 重置呼救表现运行态（跨下潜清理）
+    state.npc.distressActive = false;
+    state.npc.distressTimer = 0;
+    state.npc.distressArmPhase = 0;
+    state.npc.distressBubbles = [];
+    state.npc.distressHalos = [];
+    state.npc.distressHaloTimer = 0;
 
     // 记录本次下潜开始时的探索快照（用于计算增量）
     maze.thisExploredBefore = [];
@@ -621,22 +635,57 @@ export function updateMaze() {
     // --- NPC 更新 ---
     if (state.npc.active) {
         if (maze.npcRescued) {
-            // NPC 跟随玩家
+            // ===== 救援中：柔性跟随 + 绳索最大距离约束（D方案） =====
             const dx = player.x - state.npc.x;
             const dy = player.y - state.npc.y;
             const dist = Math.hypot(dx, dy);
-            const npcSpeed = CONFIG.maze.npcFollowSpeed;
-            if (dist > 30) {
+            const ideal = CONFIG.maze.npcTetherIdealDist;
+            const maxD = CONFIG.maze.npcTetherMaxDist;
+            const vMin = CONFIG.maze.npcFollowSpeedMin;
+            const vMax = CONFIG.maze.npcFollowSpeedMax;
+
+            if (dist > ideal * 0.6) {
+                // 距离越远追得越快：在 ideal ~ maxD 间用平滑系数映射到 vMin ~ vMax
+                const tRaw = (dist - ideal) / Math.max(1, (maxD - ideal));
+                const tClamp = Math.max(0, Math.min(1, tRaw));
+                // smoothstep
+                const tSmooth = tClamp * tClamp * (3 - 2 * tClamp);
+                const npcSpeed = vMin + (vMax - vMin) * tSmooth;
                 state.npc.vx = (dx / dist) * npcSpeed;
                 state.npc.vy = (dy / dist) * npcSpeed;
                 state.npc.x += state.npc.vx;
                 state.npc.y += state.npc.vy;
+            } else {
+                // 近距离轻微漂浮，避免贴脸抖动
+                state.npc.vx *= 0.85;
+                state.npc.vy *= 0.85;
+                state.npc.x += state.npc.vx;
+                state.npc.y += state.npc.vy;
             }
+
+            // 距离超过最大值 → 玩家被绳索拖慢（回拉玩家位置）
+            if (dist > maxD) {
+                const over = dist - maxD;
+                const pull = CONFIG.maze.npcTetherPullFactor;
+                // 将玩家朝 NPC 方向拉回 over*pull 像素
+                const pullLen = over * pull;
+                player.x -= (dx / dist) * pullLen;
+                player.y -= (dy / dist) * pullLen;
+                // 同时轻微衰减玩家速度的远离分量，表现为"绳索崩紧"
+                const vDot = player.vx * (dx / dist) + player.vy * (dy / dist);
+                if (vDot > 0) {
+                    // vDot>0 表示玩家正远离 NPC
+                    const damp = 1 - pull * 0.8;
+                    player.vx -= (dx / dist) * vDot * (1 - damp);
+                    player.vy -= (dy / dist) * vDot * (1 - damp);
+                }
+            }
+
             if (Math.abs(state.npc.vx) > 0.1 || Math.abs(state.npc.vy) > 0.1) {
                 state.npc.angle = Math.atan2(state.npc.vy, state.npc.vx);
             }
         } else {
-            // NPC 静止漂动
+            // ===== 未被救：静止漂动 + 朝向玩家 + 呼救表现 =====
             if (Math.random() < 0.05) {
                 state.npc.vx += (Math.random() - 0.5) * 0.5;
                 state.npc.vy += (Math.random() - 0.5) * 0.5;
@@ -648,11 +697,64 @@ export function updateMaze() {
             // 朝向玩家
             const dx = player.x - state.npc.x;
             const dy = player.y - state.npc.y;
+            const distToPlayer = Math.hypot(dx, dy);
             const targetAngle = Math.atan2(dy, dx);
             let diff = targetAngle - state.npc.angle;
             while (diff > Math.PI) diff -= Math.PI * 2;
             while (diff < -Math.PI) diff += Math.PI * 2;
             state.npc.angle += diff * 0.05;
+
+            // --- 呼救表现：玩家进入感知半径才激活 ---
+            const distressRange = CONFIG.maze.npcRescueRange * CONFIG.maze.npcDistressActivateRatio;
+            const nowActive = distToPlayer < distressRange;
+            state.npc.distressActive = nowActive;
+
+            if (nowActive) {
+                const dt = 1 / 60; // 按主循环 60fps 估算
+                state.npc.distressTimer += dt;
+                // 挥手相位持续推进（sin 用于驱动手臂摆动）
+                state.npc.distressArmPhase = (state.npc.distressArmPhase + dt * 3.5) % (Math.PI * 2);
+
+                // 生成呼救气泡（头顶冒出，向上漂）
+                if (Math.random() < CONFIG.maze.npcDistressBubbleRate) {
+                    const offAng = state.npc.angle - Math.PI / 2 + (Math.random() - 0.5) * 0.6;
+                    const r = 10 + Math.random() * 4;
+                    state.npc.distressBubbles.push({
+                        x: state.npc.x + Math.cos(offAng) * r,
+                        y: state.npc.y + Math.sin(offAng) * r,
+                        vx: (Math.random() - 0.5) * 0.4,
+                        vy: -0.6 - Math.random() * 0.5,
+                        life: 1,
+                        size: 1.5 + Math.random() * 2,
+                    });
+                }
+
+                // 生成呼救闪光圈（周期性，用于远距离方向提示）
+                state.npc.distressHaloTimer -= dt;
+                if (state.npc.distressHaloTimer <= 0) {
+                    state.npc.distressHalos.push({ t: 0 });
+                    state.npc.distressHaloTimer = CONFIG.maze.npcDistressHaloInterval;
+                }
+            } else {
+                // 离开感知半径：停止产生新呼救，已有粒子继续消散
+                state.npc.distressTimer = 0;
+            }
+
+            // 更新呼救气泡
+            for (let i = state.npc.distressBubbles.length - 1; i >= 0; i--) {
+                const b = state.npc.distressBubbles[i];
+                b.x += b.vx;
+                b.y += b.vy;
+                b.vx *= 0.97;
+                b.life -= 0.015;
+                if (b.life <= 0) state.npc.distressBubbles.splice(i, 1);
+            }
+            // 更新呼救闪光圈
+            for (let i = state.npc.distressHalos.length - 1; i >= 0; i--) {
+                const h = state.npc.distressHalos[i];
+                h.t += 1 / 60 / CONFIG.maze.npcDistressHaloInterval;
+                if (h.t >= 1) state.npc.distressHalos.splice(i, 1);
+            }
         }
 
         // 检测是否发现NPC（靠近一定距离就标记为已发现）

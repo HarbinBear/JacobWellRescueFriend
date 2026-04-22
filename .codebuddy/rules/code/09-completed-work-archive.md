@@ -423,3 +423,63 @@ type: always
 - `src/gm/GMConfig.ts`："手动挡" Tab 新增 4 个参数条目（掉头阈值 / 软过渡宽度 / 朝向补偿 / 推进残留）
 
 **验证**：`npm run typecheck` 通过，无新增类型报错。自动挡路径无任何改动。
+
+---
+
+## NPC 救援反馈：呼救 + 绑绳渲染 + 距离约束（2026-04-22）
+
+**需求**：
+1. 被救者在被救前需要给出呼救反应（原本只是静止漂动 + 朝向玩家，没有任何呼救表现）
+2. 绑绳完成后需要绘制玩家↔NPC 之间那根救援绳（原本无连接线）
+3. 被救后 NPC 要跟玩家保持距离，不要被甩开太远（原本以固定速度跟随，玩家快搓容易甩开）
+
+**方案选型（用户确认）**：
+- 呼救反应：**C 方案**（远处黄色脉冲闪光圈做方向指示 + 近处气泡+挥手补充近距离表现）
+- 呼救时机：**B 方案**（玩家进入 `npcRescueRange * 3` 感知半径才激活呼救，离开即停止生成新粒子，已有粒子自然消散）
+- 绳索样式：**B 方案**（复用 RenderRope 的节点绳基调：主绳线 + 每隔几段一个小绳节 + 两端锚点）
+- 距离约束：**D 方案**（近距离NPC轻微漂浮；距离越远NPC追得越快，速度按 smoothstep 从 `vMin` 平滑映射到 `vMax`；超过 `maxDist` 则玩家位置被朝NPC方向拉回，并衰减玩家远离分量的速度，模拟"绳索绷紧拖慢玩家"）
+- 适用范围：**仅迷宫模式**（主线 `Logic.ts` 的 `updateNPC()` 未改动，保持原状态机行为）
+
+**核心机制**：
+
+1. **呼救激活判断（每帧）**：距离 `< npcRescueRange * npcDistressActivateRatio`（默认 3.0）才激活，激活后推进 `distressTimer`、`distressArmPhase`，并按概率生成气泡；闪光圈按 `npcDistressHaloInterval`（默认 1.6s）周期生成。
+2. **呼救粒子/圈的消散独立于激活**：即使玩家离开感知范围，已有粒子继续跑完生命周期，避免"突然消失"的割裂感。
+3. **救援绳渲染**：`RenderRescueRope.ts` 根据玩家↔NPC 实时位置构造 10 段折线，每段带 `sin(t*PI)` 松弛包络 + 水中摆动 + 轻微下垂，tension = dist/maxD 超过 0.85 时绳色略变暖（提示绷紧）。
+4. **柔性跟随**：`dist > ideal*0.6` 时按平滑映射速度前进；否则 NPC 仅继续衰减旧速度轻微漂浮，避免贴脸抖动。
+5. **超距拖慢玩家**：`dist > maxD` 时，玩家位置沿"NPC→玩家"反向被拉回 `over * pullFactor` 像素；并衰减玩家速度中"远离 NPC 方向"的分量，让玩家直观感到"被绳拉住"。
+
+**新增配置（`CONFIG.maze`，11 个参数）**：
+- `npcTetherIdealDist: 70` — 理想跟随距离
+- `npcTetherMaxDist: 220` — 绳索最大拉伸距离
+- `npcFollowSpeedMin: 1.2` — 理想距离处的最低追赶速度
+- `npcFollowSpeedMax: 9.0` — 最大距离处的最高追赶速度
+- `npcTetherPullFactor: 0.55` — 玩家超距时被拖慢系数
+- `npcDistressActivateRatio: 3.0` — 呼救激活半径 = `npcRescueRange × 该系数`
+- `npcDistressBubbleRate: 0.08` — 每帧生成呼救气泡的概率
+- `npcDistressHaloInterval: 1.6` — 呼救闪光圈生成周期（秒）
+- `npcDistressArmSwing: 0.55` — 挥手幅度（弧度）
+- `rescueRopeColor / rescueRopeWidth / rescueRopeSegments / rescueRopeSlackAmp / rescueRopeWaveAmp` — 救援绳样式
+
+**新增状态（`state.npc`）**：
+- `distressActive` — 是否处于呼救激活范围内
+- `distressTimer` — 呼救累积时间
+- `distressArmPhase` — 挥手动作相位
+- `distressBubbles: {x,y,vx,vy,life,size}[]` — 呼救气泡粒子列表
+- `distressHalos: {t}[]` — 呼救闪光圈列表
+- `distressHaloTimer` — 下一个闪光圈生成倒计时
+
+**新建文件**：`src/render/RenderRescueRope.ts`（`drawRescueRopeWorld()` + `drawNPCDistressWorld()` 两个导出函数）
+
+**修改文件**：
+- `src/core/config.ts`：`CONFIG.maze` 新增 11 个参数，`npcFollowSpeed` 注释改为"跟随阶段兜底值"
+- `src/core/state.ts`：`state.npc` 追加 6 个呼救运行态字段
+- `src/logic/MazeLogic.ts`：两处 NPC 初始化（`resetMazeLogic()` 岸上、`startMazeDive()` 下潜开始）追加呼救状态清理；`updateMaze()` 中 NPC 更新段完全重写（救援中走柔性跟随+绳索约束；未救走静止漂动+呼救表现；气泡和闪光圈更新与消散独立于激活状态）
+- `src/render/Render.ts`：新增 `import { drawRescueRopeWorld, drawNPCDistressWorld }`；`drawRopesWorld()` 之后绘制救援绳；玩家绘制之后绘制 NPC 呼救表现
+
+**渲染顺序**（迷宫模式、绑绳后）：
+```
+...粒子/水草/鱼... → drawRopesWorld() → drawRescueRopeWorld() → 
+标记/鱼敌 → NPC → 玩家 → drawNPCDistressWorld()（气泡+挥手+闪光圈在最上层）
+```
+
+**验证**：`npm run typecheck` 通过，无新增类型报错。主线 `updateNPC()` 未改动，主线行为不受影响。

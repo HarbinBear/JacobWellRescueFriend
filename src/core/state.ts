@@ -74,6 +74,21 @@ export const state = {
         offsetTimer: 0, // 随机偏移计时器
         offsetX: -40,   // 随机偏移X
         offsetY: -40    // 随机偏移Y
+        ,
+        // === 呼救表现运行态（仅迷宫模式未被救时使用） ===
+        distressActive: false,      // 是否处于呼救激活范围内
+        distressTimer: 0,           // 呼救时间累积（秒）
+        distressArmPhase: 0,        // 挥手动作相位（0~1，基于 sin 周期）
+        distressBubbles: [] as {    // 呼救气泡粒子
+            x: number; y: number;
+            vx: number; vy: number;
+            life: number;           // 剩余寿命（0~1）
+            size: number;
+        }[],
+        distressHalos: [] as {      // 呼救闪光圈（方向指示）
+            t: number;              // 生命周期 0~1
+        }[],
+        distressHaloTimer: 0,       // 下一个闪光圈生成倒计时（秒）
     },
     camera: {
         zoom: 1,
