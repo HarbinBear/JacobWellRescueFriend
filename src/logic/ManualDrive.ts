@@ -97,6 +97,33 @@ export function processManualDrive(): boolean {
             inputY = -inputY;
         }
 
+        // --- 计算输入方向与身体朝向的夹角（用于转向渐进动画） ---
+        // inputAngleWorld 表示本次输入希望潜水员朝向的世界角度
+        const inputAngleWorld = Math.atan2(inputY, inputX);
+        let bodyInputDiff = inputAngleWorld - player.angle;
+        // 归一化到 [-π, π]
+        while (bodyInputDiff > Math.PI) bodyInputDiff -= Math.PI * 2;
+        while (bodyInputDiff < -Math.PI) bodyInputDiff += Math.PI * 2;
+        const bodyInputAbs = Math.abs(bodyInputDiff);
+
+        // 掉头程度 t：0 = 完全同向，1 = 完全反向；在 bigTurnThreshold 附近用 blendWidth 做软过渡
+        // t = 0 时正常移动+转向；t = 1 时只转身不推进（仅靠惯性滑行）
+        const bigTurnHalfWidth = Math.max(0.01, cfg.bigTurnBlendWidth * 0.5);
+        const bigTurnLow = cfg.bigTurnThreshold - bigTurnHalfWidth;
+        const bigTurnHigh = cfg.bigTurnThreshold + bigTurnHalfWidth;
+        let bigTurnT: number;
+        if (bodyInputAbs <= bigTurnLow) bigTurnT = 0;
+        else if (bodyInputAbs >= bigTurnHigh) bigTurnT = 1;
+        else {
+            const u = (bodyInputAbs - bigTurnLow) / (bigTurnHigh - bigTurnLow);
+            // smoothstep，避免硬切
+            bigTurnT = u * u * (3 - 2 * u);
+        }
+
+        // 推进融合系数：同向（bigTurnT=0）时乘 cos(diff)（0~1），大掉头时降到 bigTurnThrustFactor
+        const forwardBlend = Math.max(0, Math.cos(bodyInputAbs));
+        const thrustBlendFactor = forwardBlend * (1 - bigTurnT) + cfg.bigTurnThrustFactor * bigTurnT;
+
         const effectiveDistance = Math.max(cfg.minSwipeDist, cfg.effectiveDistance);
         const effectiveDistNow = Math.min(totalDist, effectiveDistance);
         const wasFinished = td.finished;
@@ -124,7 +151,8 @@ export function processManualDrive(): boolean {
 
         if (deltaDistance > 0) {
             const distanceRatio = deltaDistance / effectiveDistance;
-            const deltaForward = thrustPower * distanceRatio * forwardDot;
+            // 推进受转向渐进系数调制：同向全量，大掉头阶段几乎为 0（仅靠惯性滑行）
+            const deltaForward = thrustPower * distanceRatio * forwardDot * thrustBlendFactor;
             const deltaTurn = turnPower * distanceRatio * turnAmount;
 
             if (deltaForward > 0.0001) {
@@ -137,9 +165,19 @@ export function processManualDrive(): boolean {
                 player.targetAngle = player.angle;
             }
 
+            // 大掉头阶段额外施加朝向补偿：保证即使侧向分量很小，身体也能迅速转向输入方向
+            // 这一部分只改角度，不改速度，速度由水阻自然衰减形成"滑行"观感
+            if (bigTurnT > 0.001 && bodyInputAbs > 0.001) {
+                const assistStep = cfg.bigTurnAssist * bigTurnT * distanceRatio *
+                    Math.min(1, bodyInputAbs / Math.PI * 2);
+                const assistSign = bodyInputDiff > 0 ? 1 : -1;
+                player.angle += assistSign * assistStep;
+                player.targetAngle = player.angle;
+            }
+
             md.hasInput = true;
 
-            const inputAngle = Math.atan2(inputY, inputX);
+            const inputAngle = inputAngleWorld;
             const inputDelta = deltaDistance * (forwardDot + turnAmount + frameDist * 0.02);
             if (inputDelta > strongestInputDelta) {
                 strongestInputDelta = inputDelta;
@@ -153,10 +191,11 @@ export function processManualDrive(): boolean {
         }
 
         const visualProgress = wasFinished ? 0 : effectiveProgress;
-        const kickVisual = forwardDot * visualProgress;
+        // 动作表现：大掉头时压低"前进踢水"表现、抬高"转向修正"表现
+        const kickVisual = forwardDot * visualProgress * (1 - bigTurnT);
         const turnVisualSigned = turnSign * turnAmount * visualProgress;
-        const kickStrengthNorm = wasFinished ? 0 : Math.min(1, 0.28 + forwardDot * 0.52 + frameDist * 0.018);
-        const turnStrengthNorm = wasFinished ? 0 : Math.min(1, 0.2 + turnAmount * 0.55 + frameDist * 0.015);
+        const kickStrengthNorm = wasFinished ? 0 : Math.min(1, (0.28 + forwardDot * 0.52 + frameDist * 0.018) * (1 - bigTurnT * 0.85));
+        const turnStrengthNorm = wasFinished ? 0 : Math.min(1, 0.2 + turnAmount * 0.55 + frameDist * 0.015 + bigTurnT * 0.35);
 
         if (td.strokeSide < 0) {
             leftKickProgressTarget = Math.max(leftKickProgressTarget, visualProgress);

@@ -373,3 +373,53 @@ type: always
   - 把岸上卡片右侧按钮点击从"打开认知地图"改为"打开下潜记录列表"（同时重置 `shoreMapDiveIndex=-1`、`shoreMapAnimTimer=0`）
 
 **验证**：`npm run typecheck` 通过，无新增类型报错。
+
+---
+
+## 手动挡转向渐进动画（2026-04-22）
+
+**需求背景**：
+手动挡之前转向过于灵敏——向反方向搓屏时，身体会立刻跟着输入方向产生推进，导致"一边掉头一边往反方向飞出去"的割裂感。ToDo 要求转向做成渐进动画：反向输入时先做掉头再移动，转向角度 > 90° 不移动、< 90° 转向与移动融合。
+
+**设计原则**：
+- **只影响手动挡**：自动挡/摇杆走的是另一条链路，不受本次改动影响
+- **允许少量滑行**：大掉头阶段不施加新推力，但保留已有速度让各向异性水阻自然衰减，形成"一边拧身子一边惯性漂行"的观感
+- **软过渡避免跳变**：阈值附近用 smoothstep 融合，而不是硬切
+
+**核心机制**：
+
+1. **计算身体-输入夹角 `bodyInputDiff`**：每帧对每个有效触点算 `atan2(inputY, inputX) - player.angle` 并归一化到 `[-π, π]`，取绝对值 `bodyInputAbs` 得到 0~π 的掉头程度。
+
+2. **软阈值 `bigTurnT`（0~1）**：以 `bigTurnThreshold`（默认 π/2 = 90°）为中心、`bigTurnBlendWidth`（默认 0.35 弧度）为软过渡宽度，用 smoothstep 从 0 渐变到 1。
+   - `bigTurnT = 0` → 正常同向推进
+   - `bigTurnT = 1` → 完全掉头阶段，推力几乎为零
+
+3. **推进融合系数 `thrustBlendFactor`**：
+   - 同向时按 `cos(bodyInputAbs)` 衰减（角度越偏推进越弱）
+   - 大掉头时降到 `bigTurnThrustFactor`（默认 0，可调至 0.1~0.2 允许轻微爬行）
+   - 两者用 `bigTurnT` 线性混合
+
+4. **朝向补偿 `bigTurnAssist`**：大掉头阶段额外施加纯角度修正（不触碰速度），保证即使侧向分量 `lateralDot` 很小、只靠现有 `turnPower` 路径无法及时掉头时，身体也能加速拧过来。补偿量 = `bigTurnAssist × bigTurnT × distanceRatio × min(1, bodyInputAbs / π × 2)`，朝输入方向推。
+
+5. **转向路径原样保留**：原有的 `turnPower * turnAmount` 那一路逻辑不动，侧向分量该起作用还是起作用。`bigTurnAssist` 是叠加项，用来兜底大角度反向输入时的转身速率。
+
+6. **动作表现同步**：
+   - `kickVisual` 乘以 `(1 - bigTurnT)` → 前进踢水在掉头阶段几乎不显示
+   - `kickStrengthNorm` 乘以 `(1 - bigTurnT × 0.85)` → 踢水力度压低
+   - `turnStrengthNorm` 加上 `bigTurnT × 0.35` → 转向修正动作更明显
+
+**"允许少量滑行"的实现**：
+没有新增任何滑行专用代码。机制是：大掉头阶段新推力为 0 但旧速度保留，各向异性水阻（`dragForward=0.975`、`dragLateral=0.9`）继续逐帧衰减，身体拧过来后新方向的 `cosA/sinA` 改变导致原来的前向速度变成侧向速度，被更大的 `dragLateral` 更快吃掉。因此玩家看到的就是"拧身子的同时沿旧方向滑行一小段再停下"。
+
+**新增配置（`CONFIG.manualDrive`）**：
+- `bigTurnThreshold: 1.5708`（π/2，大掉头阈值）
+- `bigTurnBlendWidth: 0.35`（软过渡宽度）
+- `bigTurnAssist: 0.08`（每帧朝向补偿速率）
+- `bigTurnThrustFactor: 0`（大掉头阶段推进残留系数）
+
+**修改文件**：
+- `src/core/config.ts`：`manualDrive` 新增 4 个转向渐进动画参数
+- `src/logic/ManualDrive.ts`：`processManualDrive()` 内每个触点循环前新增 `bodyInputDiff / bigTurnT / thrustBlendFactor` 计算；推进施加处乘 `thrustBlendFactor`；大掉头阶段额外施加 `bigTurnAssist` 朝向补偿；动作表现对 `bigTurnT` 做对应压低/抬升
+- `src/gm/GMConfig.ts`："手动挡" Tab 新增 4 个参数条目（掉头阈值 / 软过渡宽度 / 朝向补偿 / 推进残留）
+
+**验证**：`npm run typecheck` 通过，无新增类型报错。自动挡路径无任何改动。

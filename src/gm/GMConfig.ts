@@ -146,6 +146,10 @@ export const TABS: GMTab[] = [
             { type: 'number', label: '力度衰减速度', path: 'manualDrive.kickStrengthDecay', min: 0.005, max: 0.2, step: 0.005, precision: 3 },
             { type: 'number', label: '身体跟随速率', path: 'manualDrive.bodyAlignRate', min: 0.01, max: 0.5, step: 0.01, precision: 2 },
             { type: 'number', label: '跟随最低速度', path: 'manualDrive.bodyAlignMinSpeed', min: 0.05, max: 2, step: 0.05, precision: 2 },
+            { type: 'number', label: '掉头阈值(弧度)', path: 'manualDrive.bigTurnThreshold', min: 0.5, max: 2.5, step: 0.05, precision: 2 },
+            { type: 'number', label: '掉头软过渡宽度', path: 'manualDrive.bigTurnBlendWidth', min: 0.05, max: 1.2, step: 0.05, precision: 2 },
+            { type: 'number', label: '掉头朝向补偿', path: 'manualDrive.bigTurnAssist', min: 0, max: 0.3, step: 0.01, precision: 2 },
+            { type: 'number', label: '掉头推进残留', path: 'manualDrive.bigTurnThrustFactor', min: 0, max: 1, step: 0.05, precision: 2 },
             { type: 'number', label: '输入死区', path: 'manualDrive.minSwipeDist', min: 0.5, max: 10, step: 0.5, precision: 1 },
             { type: 'bool', label: '反转方向', path: 'manualDrive.reverseDir' },
         ]
