@@ -109,6 +109,7 @@ export function resetMazeLogic() {
         shoreMapAnimTimer: 0,
         shoreScrollY: 0,
         divingInTimer: 0,
+        divingInBubbles: [],
         _hudEntryTimer: 0,
         _hudDetailOpen: 0,
         _hudDetailHolding: false,
@@ -200,6 +201,34 @@ export function startMazeDive(diveType: string) {
     maze.phase = 'diving_in';
     maze.divingInTimer = 0;
     maze._hudEntryTimer = 0;
+
+    // 初始化入水气泡转场：完全照搬剧情模式 state.transition 的气泡公式
+    // 剧情模式做法：200 个气泡随机撒在全屏，速度方向为"从屏幕中心指向自己位置"
+    // 这样气泡整体呈持续向外飘散的背景流动感，超出屏幕后回绕
+    {
+        const cw = CONFIG.screenWidth;
+        const ch = CONFIG.screenHeight;
+        const cx = cw / 2;
+        const cy = ch / 2;
+        const bubbles: any[] = [];
+        for (let i = 0; i < 200; i++) {
+            const x = Math.random() * cw;
+            const y = Math.random() * ch;
+            const size = 10 + Math.random() * 50;
+            const dx = x - cx;
+            const dy = y - cy;
+            const dist = Math.hypot(dx, dy) || 1;
+            const speed = 5 + Math.random() * 10;
+            const vx = (dx / dist) * speed + (Math.random() - 0.5) * 5;
+            const vy = (dy / dist) * speed + (Math.random() - 0.5) * 5;
+            bubbles.push({
+                x, y, size, vx, vy,
+                baseSize: size,
+                wobble: Math.random() * Math.PI * 2,
+            });
+        }
+        maze.divingInBubbles = bubbles;
+    }
     maze.surfacingReason = '';
     maze.startTime = Date.now();
     maze.finishTime = 0;

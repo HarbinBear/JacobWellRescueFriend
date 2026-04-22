@@ -1916,140 +1916,69 @@ function drawMazeMapFullscreenLegacy(maze: any, cw: number, ch: number, time: nu
 }
 
 // =============================================
-// 入水动效绘制
+// 入水动效绘制：完全照搬剧情模式（state.transition）的气泡转场观感
+// - 200 个气泡随机撒在全屏，速度方向为"从屏幕中心指向自己位置"，持续向外飘散并回绕
+// - 气泡造型：纯白主体 + 左上角高亮小点（alpha 比主体大 1.5 倍）
+// - 背景：rgba(0,60,100) 半透明覆盖，浓度跟随 alpha（和剧情模式 in 模式一致）
+// - 节奏：90 帧总长，前 50 帧 alpha 从 0 渐入到 1，后 40 帧保持 1，到 90 帧后 phase 切 play 瞬接水下场景
 // =============================================
 function drawMazeDivingIn(maze: any, cw: number, ch: number, time: number) {
     const timer = maze.divingInTimer;
-    const totalFrames = 90;
-    const progress = Math.min(1, timer / totalFrames);
+    const inFrames = 50;  // 前 50 帧气泡与背景浓度从 0 渐入到 1，之后保持满值
 
-    // 阶段1（0~0.4）：岸上场景，水面涟漪扩大
-    // 阶段2（0.4~0.7）：蓝色水面从中心扩散覆盖全屏
-    // 阶段3（0.7~1.0）：水下深蓝渐入，气泡上浮
+    // alpha 曲线：0 → 1 后保持（对应剧情模式 out 阶段，屏幕被气泡+蓝色覆盖物逐渐吞没）
+    // 不做淡出，因为迷宫 diving_in 期间底层不画水下场景，淡出会露出空白画布
+    // 90 帧结束瞬切 play，此时蓝色覆盖直接换成水下场景主画面，色调接近观感连贯
+    const alpha = Math.min(1, timer / inFrames);
 
-    if (progress < 0.4) {
-        // 阶段1：岸上场景 + 水面涟漪
-        const p1 = progress / 0.4;
-
-        // 绘制简化的岸上背景
-        const skyGrad = ctx.createLinearGradient(0, 0, 0, ch * 0.4);
-        skyGrad.addColorStop(0, '#87CEEB');
-        skyGrad.addColorStop(1, '#E8F5E9');
-        ctx.fillStyle = skyGrad;
-        ctx.fillRect(0, 0, cw, ch * 0.4);
-        const grassGrad = ctx.createLinearGradient(0, ch * 0.38, 0, ch);
-        grassGrad.addColorStop(0, '#66BB6A');
-        grassGrad.addColorStop(1, '#388E3C');
-        ctx.fillStyle = grassGrad;
-        ctx.fillRect(0, ch * 0.38, cw, ch * 0.62);
-
-        // 洞口水面涟漪扩大
-        const poolX = cw * 0.5;
-        const poolY = ch * 0.48;
-        const baseW = 80;
-        const expandScale = 1 + p1 * 2;
-        ctx.globalAlpha = 0.8;
-        ctx.fillStyle = '#1565C0';
-        ctx.beginPath();
-        ctx.ellipse(poolX, poolY, baseW * expandScale, baseW * 0.5 * expandScale, 0, 0, Math.PI * 2);
-        ctx.fill();
-
-        // 涟漪
-        ctx.globalAlpha = 0.5 * (1 - p1);
-        ctx.strokeStyle = '#90CAF9';
-        ctx.lineWidth = 2;
-        for (let w = 0; w < 5; w++) {
-            const waveR = (30 + w * 20) * expandScale + Math.sin(time * 3 + w) * 5;
-            ctx.beginPath();
-            ctx.ellipse(poolX, poolY, waveR, waveR * 0.5, 0, 0, Math.PI * 2);
-            ctx.stroke();
-        }
-
-        // 入水文字
-        ctx.globalAlpha = p1;
-        ctx.fillStyle = '#fff';
-        ctx.font = 'bold 16px Arial';
-        ctx.textAlign = 'center';
-        ctx.shadowColor = 'rgba(0,0,0,0.5)';
-        ctx.shadowBlur = 4;
-        ctx.fillText('入水...', poolX, poolY - 10);
-        ctx.shadowBlur = 0;
-
-    } else if (progress < 0.7) {
-        // 阶段2：蓝色水面从中心扩散覆盖全屏
-        const p2 = (progress - 0.4) / 0.3;
-        const radius = Math.hypot(cw, ch) * p2;
-
-        // 先画岸上残影
-        ctx.globalAlpha = 1 - p2;
-        const skyGrad = ctx.createLinearGradient(0, 0, 0, ch * 0.4);
-        skyGrad.addColorStop(0, '#87CEEB');
-        skyGrad.addColorStop(1, '#E8F5E9');
-        ctx.fillStyle = skyGrad;
-        ctx.fillRect(0, 0, cw, ch * 0.4);
-        const grassGrad = ctx.createLinearGradient(0, ch * 0.38, 0, ch);
-        grassGrad.addColorStop(0, '#66BB6A');
-        grassGrad.addColorStop(1, '#388E3C');
-        ctx.fillStyle = grassGrad;
-        ctx.fillRect(0, ch * 0.38, cw, ch * 0.62);
-
-        // 蓝色圆形扩散
-        ctx.globalAlpha = 1;
-        const waterGrad = ctx.createRadialGradient(cw / 2, ch * 0.48, 0, cw / 2, ch * 0.48, radius);
-        waterGrad.addColorStop(0, 'rgba(10,40,80,0.95)');
-        waterGrad.addColorStop(0.6, 'rgba(15,50,100,0.9)');
-        waterGrad.addColorStop(1, 'rgba(5,20,50,0.85)');
-        ctx.fillStyle = waterGrad;
-        ctx.beginPath();
-        ctx.arc(cw / 2, ch * 0.48, radius, 0, Math.PI * 2);
-        ctx.fill();
-
-    } else {
-        // 阶段3：水下深蓝 + 气泡上浮
-        const p3 = (progress - 0.7) / 0.3;
-
-        // 深蓝背景
-        ctx.globalAlpha = 1;
-        const deepGrad = ctx.createLinearGradient(0, 0, 0, ch);
-        deepGrad.addColorStop(0, 'rgba(5,20,50,1)');
-        deepGrad.addColorStop(0.5, 'rgba(8,30,60,1)');
-        deepGrad.addColorStop(1, 'rgba(3,15,35,1)');
-        ctx.fillStyle = deepGrad;
+    // --- 气泡更新与绘制 ---
+    const bubbles = maze.divingInBubbles;
+    if (!bubbles || bubbles.length === 0) {
+        // 气泡数据缺失兜底：仅画背景
+        ctx.fillStyle = `rgba(0, 60, 100, ${alpha})`;
         ctx.fillRect(0, 0, cw, ch);
+        return;
+    }
 
-        // 气泡上浮
-        ctx.globalAlpha = 0.6;
-        for (let i = 0; i < 12; i++) {
-            const bx = cw * 0.3 + (i % 4) * cw * 0.12 + Math.sin(i * 2.3 + time * 2) * 15;
-            const by = ch * (1 - p3 * 0.8) - i * ch * 0.06 + Math.sin(i * 1.7 + time * 3) * 10;
-            const br = 2 + (i % 3) * 1.5;
-            ctx.fillStyle = 'rgba(150,200,255,0.4)';
-            ctx.beginPath();
-            ctx.arc(bx, by, br, 0, Math.PI * 2);
-            ctx.fill();
-        }
+    // --- 背景：蓝色半透明覆盖，浓度跟随 alpha ---
+    ctx.fillStyle = `rgba(0, 60, 100, ${alpha})`;
+    ctx.fillRect(0, 0, cw, ch);
 
-        // 光柱从上方射入
-        ctx.globalAlpha = 0.15 * (1 - p3);
-        const lightGrad = ctx.createLinearGradient(cw / 2, 0, cw / 2, ch * 0.6);
-        lightGrad.addColorStop(0, 'rgba(100,180,255,0.5)');
-        lightGrad.addColorStop(1, 'rgba(100,180,255,0)');
-        ctx.fillStyle = lightGrad;
+    // --- 气泡运动：照搬剧情模式的 update 公式 ---
+    for (const b of bubbles) {
+        b.x += b.vx;
+        b.y += b.vy;
+
+        b.wobble += 0.1;
+        b.x += Math.sin(b.wobble) * 0.5;
+
+        // 剧情模式里 out 阶段做轻微减速
+        b.vx *= 0.98;
+        b.vy *= 0.98;
+
+        // 超出屏幕回绕到另一边（照搬剧情模式）
+        if (b.y < -100) b.y = ch + 100;
+        if (b.y > ch + 100) b.y = -100;
+        if (b.x < -100) b.x = cw + 100;
+        if (b.x > cw + 100) b.x = -100;
+    }
+
+    // --- 气泡绘制：照搬剧情模式（主体半透白 + 左上小高光）---
+    for (const b of bubbles) {
+        let bodyA = alpha * 0.6;
+        if (bodyA > 1) bodyA = 1;
+
+        ctx.fillStyle = `rgba(255, 255, 255, ${bodyA})`;
         ctx.beginPath();
-        ctx.moveTo(cw * 0.35, 0);
-        ctx.lineTo(cw * 0.65, 0);
-        ctx.lineTo(cw * 0.7, ch * 0.6);
-        ctx.lineTo(cw * 0.3, ch * 0.6);
-        ctx.closePath();
+        ctx.arc(b.x, b.y, b.size, 0, Math.PI * 2);
         ctx.fill();
 
-        // 下潜深度文字
-        const depthShow = Math.floor(p3 * 10);
-        ctx.globalAlpha = 0.8;
-        ctx.fillStyle = 'rgba(150,200,255,0.8)';
-        ctx.font = 'bold 14px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText(`下潜中... ${depthShow}m`, cw / 2, ch / 2);
+        let highA = bodyA * 1.5;
+        if (highA > 1) highA = 1;
+        ctx.fillStyle = `rgba(255, 255, 255, ${highA})`;
+        ctx.beginPath();
+        ctx.arc(b.x - b.size * 0.3, b.y - b.size * 0.3, b.size * 0.2, 0, Math.PI * 2);
+        ctx.fill();
     }
 }
 

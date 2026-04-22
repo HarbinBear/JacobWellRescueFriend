@@ -215,6 +215,7 @@ export const state = {
         shoreMapAnimTimer: number;  // 岸上回放地图的轨迹动画计时（帧，每次打开重置）
         shoreScrollY: number;       // 岸上页面滚动偏移
         divingInTimer: number;      // 入水动效计时（帧）
+        divingInBubbles: any[];     // 入水气泡转场列表（每次 startMazeDive 重建）
         _hudEntryTimer: number;     // HUD入场动效计时（帧）
         _hudDetailOpen: number;     // HUD详情展开进度（0~1，0=收起，1=展开）
         _hudDetailHolding: boolean; // HUD详情是否正在按住
