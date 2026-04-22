@@ -10,6 +10,7 @@ import { checkMazeCollision } from './Collision';
 import { updateCameraSpringArm, snapCameraToPlayer, getAdaptiveZoom } from './CameraLogic';
 import { updateMarkers, updateWheelButtonVisibility } from './Marker';
 import { createFishEnemy, findMazeFishSpawnPosition, updateAllFishEnemies, generateFishDens } from './FishEnemy';
+import { playSFX } from '../audio/AudioManager';
 
 // 迷宫模式使用独立的 StoryManager 实例
 const storyManager = new StoryManager();
@@ -190,6 +191,9 @@ export function resetMazeLogic() {
 export function startMazeDive(diveType: string) {
     const maze = state.mazeRescue;
     if (!maze) return;
+
+    // 入水气泡音效：入水动作本身，声音应盖在 diving_in 动画（约 1.5 秒）上
+    playSFX('diveSplash');
 
     // 设置下潜类型（不区分scout/rescue，统一为scout，发现NPC后自动可绑绳）
     maze.diveType = diveType;

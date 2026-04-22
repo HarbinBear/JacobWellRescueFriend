@@ -8,11 +8,17 @@
 //    运行时先 wx.cloud.init() 初始化，再 getTempFileURL 把 cloud:// FileID 换成临时 HTTPS URL；
 //    URL 有效期 2 小时，播放报 10002 过期错误时自动重新获取；
 //    云开发不可用或请求失败时，降级到本地 path（仅在开发者工具里还能听）。
+// 6. SFX（一次性音效，如入水气泡）走独立 SFX 通道：
+//    - 启动时同样预创建上下文并预拉取临时 URL，触发时尽量做到低延迟
+//    - 不参与 BGM 的 _currentBGM / 淡入淡出逻辑
+//    - 静音时直接跳过触发，而不是淡出
+//    - 触发时 stop() -> seek(0) -> play()，保证在同一触发点可以重播
 
 import { CONFIG } from '../core/config';
 import { state } from '../core/state';
 
 type AudioKey = 'menuBGM';
+type SFXKey = 'diveSplash';
 
 interface AudioEntry {
     path: string;              // 本地降级路径（云存储不可用时兜底）
@@ -25,6 +31,15 @@ interface AudioEntry {
     srcReady: boolean;         // src 是否已赋值（云存储模式下要等 URL 换回来）
     pendingPlay: boolean;      // 是否有一个"等 URL 就绪后自动播"的请求挂起
     urlResolving: boolean;     // 是否正在请求 getTempFileURL，避免重复发
+}
+
+// SFX 条目：相比 BGM 少了淡入淡出相关字段，因为一次性音效不做淡入淡出
+interface SFXEntry {
+    path: string;
+    ctx: any | null;
+    srcReady: boolean;
+    urlResolving: boolean;
+    pendingPlay: boolean;      // URL 还没回来时挂起的播放请求（到了立刻播一次）
 }
 
 // 音频资源清单
@@ -43,6 +58,17 @@ const ENTRIES: Record<AudioKey, AudioEntry> = {
     },
 };
 
+// SFX 清单（一次性音效）
+const SFX_ENTRIES: Record<SFXKey, SFXEntry> = {
+    diveSplash: {
+        path: 'audio/ElevenLabs_A_diver_jumps_into_the_.mp3',
+        ctx: null,
+        srcReady: false,
+        urlResolving: false,
+        pendingPlay: false,
+    },
+};
+
 // 当前应该播放的 BGM 键（由外部设置）
 let _currentBGM: AudioKey | null = null;
 let _initialized = false;
@@ -57,13 +83,21 @@ export function initAudio(): void {
     // 先尝试初始化云开发
     _tryInitCloud();
 
-    // 创建所有音频上下文
+    // 创建所有 BGM 音频上下文
     for (const key of Object.keys(ENTRIES) as AudioKey[]) {
         _createContext(key);
         // 如果启用了云存储，立即发起 FileID→临时 URL 的请求（B 方案：预加载）
         // 这样到主菜单时通常 URL 已经就绪，不用等待
         if (_cloudInited) {
             _resolveAndApplyCloudURL(key);
+        }
+    }
+
+    // 创建所有 SFX 上下文并预拉取云 URL
+    for (const key of Object.keys(SFX_ENTRIES) as SFXKey[]) {
+        _createSFXContext(key);
+        if (_cloudInited) {
+            _resolveAndApplySFXCloudURL(key);
         }
     }
 }
@@ -193,6 +227,111 @@ function _resolveAndApplyCloudURL(key: AudioKey): void {
     });
 }
 
+// ===== SFX 上下文创建与云 URL 解析 =====
+
+function _createSFXContext(key: SFXKey): void {
+    const entry = SFX_ENTRIES[key];
+    try {
+        const wxAny = (typeof wx !== 'undefined') ? (wx as any) : null;
+        if (wxAny && typeof wxAny.createInnerAudioContext === 'function') {
+            const ctx = wxAny.createInnerAudioContext();
+            ctx.loop = false;
+            ctx.autoplay = false;
+            // 云存储启用时 src 会在 _resolveAndApplySFXCloudURL 里异步赋值；
+            // 否则立即用本地路径兜底
+            if (!_cloudInited) {
+                ctx.src = entry.path;
+                entry.srcReady = true;
+            }
+            ctx.onError((err: any) => {
+                const code = err && (err.errCode || err.code);
+                console.warn('[Audio] SFX ' + key + ' 播放错误:', err);
+                // 10002 = 临时 URL 过期；SFX 不像 BGM 那样常驻播放，只把 srcReady 置回 false 等下次触发时再重拉
+                if (_cloudInited && (code === 10002 || code === -1 || code === undefined)) {
+                    entry.srcReady = false;
+                    _resolveAndApplySFXCloudURL(key);
+                }
+            });
+            entry.ctx = ctx;
+        } else if (typeof (globalThis as any).Audio !== 'undefined') {
+            // 浏览器兜底（不走云存储，直接本地路径）
+            const ctx = new (globalThis as any).Audio(entry.path);
+            ctx.loop = false;
+            entry.ctx = ctx;
+            entry.srcReady = true;
+        }
+    } catch (e) {
+        console.warn('[Audio] 创建 SFX 上下文失败:', e);
+    }
+}
+
+// 把 SFX 的 cloud:// FileID 换成临时 HTTPS URL，并写回 ctx.src
+function _resolveAndApplySFXCloudURL(key: SFXKey): void {
+    const entry = SFX_ENTRIES[key];
+    if (!entry || !entry.ctx) return;
+    if (!_cloudInited) return;
+    if (entry.urlResolving) return;
+
+    const fileID = CONFIG.audio.cloud.fileIDs[key];
+    if (!fileID) {
+        try { entry.ctx.src = entry.path; entry.srcReady = true; } catch (e) { /* 忽略 */ }
+        return;
+    }
+
+    const wxAny = (typeof wx !== 'undefined') ? (wx as any) : null;
+    if (!wxAny || !wxAny.cloud || typeof wxAny.cloud.getTempFileURL !== 'function') {
+        try { entry.ctx.src = entry.path; entry.srcReady = true; } catch (e) { /* 忽略 */ }
+        return;
+    }
+
+    entry.urlResolving = true;
+    wxAny.cloud.getTempFileURL({
+        fileList: [fileID],
+        success: (res: any) => {
+            entry.urlResolving = false;
+            const item = res && res.fileList && res.fileList[0];
+            if (item && item.tempFileURL && (!item.status || item.status === 0)) {
+                try {
+                    entry.ctx.src = item.tempFileURL;
+                    entry.srcReady = true;
+                    // 若有挂起的播放请求（URL 未回来时触发了一次），URL 就绪后立刻播一次
+                    if (entry.pendingPlay) {
+                        entry.pendingPlay = false;
+                        _actuallyPlaySFX(key);
+                    }
+                } catch (e) {
+                    console.warn('[Audio] SFX 写入临时 URL 失败:', e);
+                }
+            } else {
+                console.warn('[Audio] SFX getTempFileURL 返回异常，降级到本地:', item);
+                try { entry.ctx.src = entry.path; entry.srcReady = true; } catch (e) { /* 忽略 */ }
+            }
+        },
+        fail: (err: any) => {
+            entry.urlResolving = false;
+            console.warn('[Audio] SFX getTempFileURL 请求失败，降级到本地:', err);
+            try { entry.ctx.src = entry.path; entry.srcReady = true; } catch (e) { /* 忽略 */ }
+        },
+    });
+}
+
+// 内部：真正执行 SFX 播放（stop -> seek(0) -> play）
+function _actuallyPlaySFX(key: SFXKey): void {
+    const entry = SFX_ENTRIES[key];
+    if (!entry || !entry.ctx || !entry.srcReady) return;
+    try {
+        // 音量：受全局静音开关控制；静音时直接不播
+        if (state.audio.muted) return;
+        entry.ctx.volume = Math.max(0, Math.min(1, CONFIG.audio.sfxVolume));
+        // 尝试把播放头拉回起点：InnerAudioContext 支持 stop()/seek(0)
+        try { entry.ctx.stop(); } catch (e) { /* 忽略 */ }
+        try { if (typeof entry.ctx.seek === 'function') entry.ctx.seek(0); } catch (e) { /* 忽略 */ }
+        entry.ctx.play();
+    } catch (e) {
+        console.warn('[Audio] SFX 播放失败:', e);
+    }
+}
+
 // ===== 播放控制 =====
 
 // 请求播放某个 BGM；若已是当前 BGM 则保持
@@ -224,6 +363,22 @@ export function playBGM(key: AudioKey): void {
 // 请求停止当前 BGM（淡出后真正 pause）
 export function stopBGM(): void {
     _currentBGM = null;
+}
+
+// 播放一次性音效（SFX）。静音时直接跳过；云 URL 未就绪时挂起，就绪后立刻触发一次。
+export function playSFX(key: SFXKey): void {
+    if (state.audio.muted) return;
+    const entry = SFX_ENTRIES[key];
+    if (!entry || !entry.ctx) return;
+    if (!entry.srcReady) {
+        // URL 还没回来：挂一个 pendingPlay，URL 回来时立刻播
+        entry.pendingPlay = true;
+        if (_cloudInited && !entry.urlResolving) {
+            _resolveAndApplySFXCloudURL(key);
+        }
+        return;
+    }
+    _actuallyPlaySFX(key);
 }
 
 // 切换全局静音开关（true=静音，false=恢复）

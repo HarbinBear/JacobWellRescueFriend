@@ -539,9 +539,10 @@ export const CONFIG = {
     // - 静音按钮并不真暂停 BGM，只把音量淡到 0，时间轴仍在推进；离开主菜单时才真正暂停
     // - 淡入淡出通过每帧线性逼近 targetVolume 实现
     audio: {
-        bgmVolume: 0.5,         // BGM 目标音量（0~1）
+        bgmVolume: 1,         // BGM 目标音量（0~1）
+        sfxVolume: 0.8,         // 一次性音效（SFX）目标音量（0~1），与 BGM 独立
         fadeStep: 0.01,         // 每帧音量变化步长（60fps 下约 1.7 秒淡入淡出到位）
-        animSpeed: 0.03,        // 按钮音符旋转速度（弧度/帧，0.03 约每秒半圈）
+        animSpeed: 0.01,        // 按钮音符旋转速度（弧度/帧，0.03 约每秒半圈）
         iconFadeStep: 0.08,     // 按钮图标在静音/开启之间切换的淡入淡出步长
 
         // 云存储配置：音频放在微信小游戏云开发的云存储里，不占主包体
@@ -553,6 +554,7 @@ export const CONFIG = {
             // 每条音频的 FileID 映射；key 必须与 AudioManager 的 AudioKey 对应
             fileIDs: {
                 menuBGM: 'cloud://cloud1-d8gh6fpnh6d0928e8.636c-cloud1-d8gh6fpnh6d0928e8-1424920608/audio/Echoes_of_the_Sunken_Grotto_2026-04-22T150024.mp3',
+                diveSplash: 'cloud://cloud1-d8gh6fpnh6d0928e8.636c-cloud1-d8gh6fpnh6d0928e8-1424920608/audio/ElevenLabs_A_diver_jumps_into_the_.mp3',
             } as Record<string, string>,
         },
     },
