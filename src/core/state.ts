@@ -336,6 +336,13 @@ export const state = {
             anchor: null
         },
         stillTimer: 0
+    },
+    // 全局音频状态（持久态，跨模式保留）
+    // muted=true 时仅把音量淡到 0，不真正暂停音频，保留时间轴
+    audio: {
+        muted: false,         // 是否静音（true=关闭声音，false=开启声音）
+        animPhase: 0,         // 按钮循环音波动画相位（弧度）
+        iconProgress: 1,      // 按钮图标切换进度：0=静音视觉，1=开启视觉
     }
 };
 

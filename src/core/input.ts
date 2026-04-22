@@ -3,6 +3,8 @@ import { state, input, touches, player } from './state';
 import { createFishEnemy, triggerPlayerAttack, findSafeSpawnPosition } from '../logic/FishEnemy';
 import { DEBUG_FISH_BTN, ATTACK_BTN, FLASHLIGHT_BTN } from '../render/RenderUI';
 import { isGMOpen, handleGMTouchStart, handleGMTouchMove, handleGMTouchEnd } from '../gm/GMPanel';
+import { hitAudioButton } from '../render/RenderAudioToggle';
+import { toggleMuted } from '../audio/AudioManager';
 import { buildWheelSectors, executeWheelAction } from '../logic/Marker';
 import { getWheelBtnPos } from '../render/RenderWheel';
 
@@ -180,6 +182,12 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
     }
 
     wx.onTouchStart((res) => {
+        // 全局音频开关按钮优先消费（在 GM 按钮左侧）
+        const audioTouch = res.touches[res.touches.length - 1];
+        if (audioTouch && hitAudioButton(audioTouch.clientX, audioTouch.clientY)) {
+            toggleMuted();
+            return;
+        }
         // GM面板优先消费触摸事件
         const gmTouch = res.touches[res.touches.length - 1];
         if (gmTouch && handleGMTouchStart(gmTouch.clientX, gmTouch.clientY)) {

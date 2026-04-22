@@ -534,6 +534,29 @@ export const CONFIG = {
         azUpdateInterval: 3,             // 每隔多少帧更新一次射线检测（降低性能开销）
     },
 
+    // ===== 音频系统配置 =====
+    // 说明：
+    // - 静音按钮并不真暂停 BGM，只把音量淡到 0，时间轴仍在推进；离开主菜单时才真正暂停
+    // - 淡入淡出通过每帧线性逼近 targetVolume 实现
+    audio: {
+        bgmVolume: 0.5,         // BGM 目标音量（0~1）
+        fadeStep: 0.01,         // 每帧音量变化步长（60fps 下约 1.7 秒淡入淡出到位）
+        animSpeed: 0.03,        // 按钮音符旋转速度（弧度/帧，0.03 约每秒半圈）
+        iconFadeStep: 0.08,     // 按钮图标在静音/开启之间切换的淡入淡出步长
+
+        // 云存储配置：音频放在微信小游戏云开发的云存储里，不占主包体
+        // 运行时会先用 wx.cloud.init() 初始化云开发，再用 getTempFileURL 把 FileID 换成临时 HTTPS URL
+        // 临时 URL 有效期 2 小时，URL 过期时（errCode=10002）会自动重新请求
+        cloud: {
+            enabled: true,                                          // 是否启用云存储；关闭则回退到本地路径
+            envId: 'cloud1-d8gh6fpnh6d0928e8',                      // 云开发环境 ID
+            // 每条音频的 FileID 映射；key 必须与 AudioManager 的 AudioKey 对应
+            fileIDs: {
+                menuBGM: 'cloud://cloud1-d8gh6fpnh6d0928e8.636c-cloud1-d8gh6fpnh6d0928e8-1424920608/audio/Echoes_of_the_Sunken_Grotto_2026-04-22T150024.mp3',
+            } as Record<string, string>,
+        },
+    },
+
     // ===== 玩家攻击（挥氧气瓶）配置 =====
     attack: {
         // 攻击范围

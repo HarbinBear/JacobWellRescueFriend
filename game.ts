@@ -1,9 +1,13 @@
 import { initTextures, draw } from './src/render/Render';
 import { resetGameLogic, update, resetArenaLogic, updateArena, resetMazeLogic, replayMazeLogic, updateMaze, startMazeDive, returnToShore } from './src/logic/Logic';
 import { initInput } from './src/core/input';
+import { initAudio, updateAudio } from './src/audio/AudioManager';
 
 // 初始化纹理
 initTextures();
+
+// 初始化音频系统（创建 BGM 上下文）
+initAudio();
 
 // 初始化输入监听，传入重置回调（支持从指定关卡开始）
 initInput(
@@ -23,6 +27,7 @@ function gameLoop() {
     update();
     updateArena();
     updateMaze();
+    updateAudio();
     draw();
     requestAnimationFrame(gameLoop);
 }

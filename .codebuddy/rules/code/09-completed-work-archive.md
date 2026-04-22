@@ -483,3 +483,50 @@ type: always
 ```
 
 **验证**：`npm run typecheck` 通过，无新增类型报错。主线 `updateNPC()` 未改动，主线行为不受影响。
+
+---
+
+## P9：音频系统基础框架 + BGM 云存储接入（2026-04-22 ~ 2026-04-23）
+
+**阶段一：音频管理器基础框架**
+
+- 新建 `src/audio/AudioManager.ts`，承担音频系统总入口
+- `InnerAudioContext`（小游戏）/ `HTMLAudioElement`（浏览器兜底）双路径
+- 静音 != 暂停：关闭开关只把音量淡到 0，音频本体持续播放保留时间轴，重新开启时从实时位置继续（"后台一直在放，只是没发声"）
+- 离开主菜单时执行真正的淡出+暂停
+- 淡入淡出通过逐帧线性逼近 `targetVolume` 实现
+- 顶部 GM 按钮左侧新增全局音频开关，开启时显示循环音波旋转动画，关闭时显示斜线屏蔽图标，两种状态切换均走淡入淡出
+
+**阶段二：BGM 接入微信云开发云存储（解决主包 4MB 超限）**
+
+**问题背景**：主菜单 BGM MP3 体积 3.45MB，加上代码与贴图后整包 5068KB 超过 4MB 主包限制，微信开发者工具报 `source size exceed max limit 4MB`。
+
+**方案**：接入微信云开发云存储，音频放云端，运行时换取临时 URL 播放。
+
+**实现要点**：
+- `CONFIG.audio.cloud` 新增配置：`enabled` / `envId` / `fileIDs` 映射
+- `initAudio()` 启动即调 `wx.cloud.init({ env })`，失败降级
+- **预加载策略（B 方案）**：初始化时立即并行发起 `getTempFileURL`，到达主菜单时 URL 通常已就绪
+- `_resolveAndApplyCloudURL()` 把 `cloud://` FileID 换成临时 HTTPS URL 后再赋值给 `ctx.src`
+- 每条 Entry 引入 `srcReady` / `pendingPlay` / `urlResolving` 三个状态位
+- `playBGM()` 时 URL 尚未就绪会挂起 `pendingPlay`，URL 回来后自动启动播放
+- `onError` 捕获 `errCode === 10002`（临时 URL 过期）自动重新请求，无缝续播
+- 云开发不可用或请求失败时自动降级到本地 `path`
+
+**踩坑记录**：
+1. **权限报错 `STORAGE_EXCEED_AUTHORITY`**：云开发上传后的文件默认权限是"仅创建者可读写"，小游戏运行时调用 `getTempFileURL` 返回 `tempFileURL: ""` 且 `status: 1`。必须在云开发控制台把文件权限改为"所有用户可读，仅创建者可读写"，或 bucket 级设置自定义规则 `{ "read": true, "write": "auth != null" }`。
+2. **InnerAudioContext.src 不吃 cloud:// 协议**：必须先通过 `getTempFileURL` 换成 `https://` 真实 URL 后再赋值。
+3. **临时 URL 有效期 2 小时**：单次游戏会话内够用，但长时间挂起后需要 `onError` 10002 触发重拉。
+
+**真机验证**：上传 BGM 到云存储 → 本地 `audio/` 目录清空 → 主包瘦身通过 4MB 限制 → 权限改为公开可读 → 真机播放正常，淡入淡出 / 静音切换 / 离开主菜单暂停 / 回到主菜单恢复播放位置 全部按预期工作。
+
+**修改文件**：
+- `src/audio/AudioManager.ts`（新建）
+- `src/core/config.ts`：新增 `CONFIG.audio` 配置组（含 `cloud` 子对象）
+- `src/core/state.ts`：新增 `state.audio`（muted / animPhase / iconProgress）
+- `src/core/input.ts`：顶部音频开关点击检测
+- `src/render/Render.ts`：音频开关按钮绘制（音符旋转 / 斜线屏蔽 / 淡入淡出）
+- `game.ts`：启动时调用 `initAudio()`，主循环调用 `updateAudio()`
+- `audio/`：本地 MP3 清空（已上传云存储）
+
+**音频格式选型结论**：微信小游戏首选 **MP3**（体积小，~128kbps 约 1MB/分钟，`InnerAudioContext` 原生支持，云存储按流量计费更省）。不建议用 WAV（体积约 10 倍）。

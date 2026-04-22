@@ -12,6 +12,7 @@ import { drawWheelButton, drawWheel } from './RenderWheel';
 import { drawAllFishEnemies, drawFishBiteEffect } from './RenderFishEnemy';
 import { drawMazeWallShape, getMazeParticleColorByWorld, getMazeThemeColorByCell, drawMazeShallowSky, drawMazeShallowWaterTint, drawMazeShallowCaustics, getMazeShallowMaskAlpha, drawFishDenSkulls } from './RenderMazeScene';
 import { drawGMButton, drawGMPanel } from '../gm/GMPanel';
+import { drawAudioToggle } from './RenderAudioToggle';
 import { updateDustTime, drawDustDarkLayer, drawDustLitLayer } from './DustMotes';
 
 // 向后兼容，重新导出 canvas 和 ctx
@@ -1024,7 +1025,8 @@ export function draw() {
         }
     }
 
-    // 5. GM工具面板（最顶层，始终绘制）
+    // 5. GM工具面板 + 全局音频开关按钮（最顶层，始终绘制）
+    drawAudioToggle(ctx);
     drawGMButton(ctx);
     drawGMPanel(ctx);
 }
