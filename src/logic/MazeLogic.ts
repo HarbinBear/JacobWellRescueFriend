@@ -11,14 +11,69 @@ import { updateCameraSpringArm, snapCameraToPlayer, getAdaptiveZoom } from './Ca
 import { updateMarkers, updateWheelButtonVisibility } from './Marker';
 import { createFishEnemy, findMazeFishSpawnPosition, updateAllFishEnemies, generateFishDens } from './FishEnemy';
 import { playSFX } from '../audio/AudioManager';
+import { loadMazeProgress, saveMazeProgress, clearMazeSave } from './MazeSave';
 
 // 迷宫模式使用独立的 StoryManager 实例
 const storyManager = new StoryManager();
 
 // =============================================
-// 迷宫多次下潜闭环：初始化（生成新地图，进入岸上阶段）
+// 迷宫多次下潜闭环：初始化
+// 默认行为：优先尝试读取本地存档；读档成功则直接恢复到岸上阶段，不生成新地图。
+// 读档失败（无存档/版本不兼容/数据损坏）才走原来的流程生成新地图。
 // =============================================
 export function resetMazeLogic() {
+    // === 优先尝试读取本地存档 ===
+    // 注意：loadMazeProgress 成功时会直接把 state.mazeRescue / state.rope.ropes / state.markers
+    // 恢复到岸上阶段；这里只需要补上相机、屏幕模式等与 state.mazeRescue 无关的运行态。
+    if (loadMazeProgress() && state.mazeRescue) {
+        // 运行态杂项清理（这些字段不在存档里，或者每次进场都应该重置）
+        player.silt = 0;
+        player.vx = 0;
+        player.vy = 0;
+        particles.length = 0;
+        state.splashes = [];
+        state.fishEnemies = [];
+        state.fishBite = null;
+        state.flashlightOn = true;
+        state.story.redOverlay = 0;
+        state.story.shake = 0;
+        state.playerAttack = {
+            active: false,
+            timer: 0,
+            cooldownTimer: 0,
+            angle: 0,
+        };
+
+        // NPC 岸上阶段不激活，但预设好位置（读档时 mazeRescue 里有 npcInitX/Y）
+        state.npc.active = false;
+        state.npc.x = state.mazeRescue.npcInitX;
+        state.npc.y = state.mazeRescue.npcInitY;
+        state.npc.vx = 0;
+        state.npc.vy = 0;
+        state.npc.angle = -Math.PI / 2;
+        state.npc.state = 'wait';
+        state.npc.distressActive = false;
+        state.npc.distressTimer = 0;
+        state.npc.distressArmPhase = 0;
+        state.npc.distressBubbles = [];
+        state.npc.distressHalos = [];
+        state.npc.distressHaloTimer = 0;
+
+        // 相机初始化（存档不保存相机运行态，直接归位到出口）
+        state.camera = {
+            zoom: 1, targetZoom: 1,
+            x: state.mazeRescue.exitX, y: state.mazeRescue.exitY,
+            targetX: state.mazeRescue.exitX, targetY: state.mazeRescue.exitY,
+            vx: 0, vy: 0,
+            swayX: 0, swayY: 0, swayTime: 0,
+        };
+
+        // 切换到迷宫模式
+        state.screen = 'mazeRescue';
+        return;
+    }
+
+    // === 没有存档：走原来的逻辑生成一张新地图 ===
     // 重置基础状态（不调用 resetState，避免污染主线地图）
     player.o2 = 100;
     player.silt = 0;
@@ -184,6 +239,9 @@ export function resetMazeLogic() {
 
     // 切换到迷宫模式
     state.screen = 'mazeRescue';
+
+    // 新地图刚生成，立即保存一次初始存档，防止进游戏没开过下潜就退出的情况下档丢失
+    saveMazeProgress();
 }
 
 // =============================================
@@ -464,6 +522,10 @@ function finishMazeDive(returnReason: string) {
     maze.phase = 'debrief';
     maze.resultTimer = 0;
     maze.finishTime = Date.now();
+
+    // 一次下潜结束、本次成果已记录到 diveHistory，此时的 state 已经属于"回到岸上之后的进度"
+    // 直接落盘，防止玩家在 debrief 页退出游戏导致本次记录丢失
+    saveMazeProgress();
 }
 
 // =============================================
@@ -477,13 +539,19 @@ export function returnToShore() {
     maze.resultTimer = 0;
     // 停用NPC
     state.npc.active = false;
+
+    // 回到岸上时再保存一次：虽然 finishMazeDive 已经落过盘，但从 debrief 切回 shore 时
+    // phase 字段发生变化，再存一次更稳妥。
+    saveMazeProgress();
 }
 
 // =============================================
-// 迷宫多次下潜闭环：重玩（生成新地图，重新开始）
+// 迷宫多次下潜闭环：重玩（清档 + 生成新地图，重新开始）
+// 触发入口：救援成功结算页的"下一局"按钮
 // =============================================
 export function replayMazeLogic() {
-    // 直接调用完整重置，生成新地图
+    // 先清掉旧存档，后续 resetMazeLogic 读档会读不到，自然进入新地图生成分支
+    clearMazeSave();
     resetMazeLogic();
 }
 

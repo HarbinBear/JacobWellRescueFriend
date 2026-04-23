@@ -755,7 +755,9 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                 const nextBtnY = ch - 50;
                 if (tx >= nextBtnX && tx <= nextBtnX + nextBtnW &&
                     ty >= nextBtnY - nextBtnH / 2 && ty <= nextBtnY + nextBtnH / 2) {
-                    if (onMaze) onMaze();
+                    // 下一局：清空本地存档并生成全新地图
+                    if (onMazeReplay) onMazeReplay();
+                    else if (onMaze) onMaze();
                     return;
                 }
                 // 点击其他区域返回主菜单

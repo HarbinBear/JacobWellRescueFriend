@@ -109,6 +109,27 @@ type: always
 - 调整面板布局：修改 `GMConfig.ts` 中的布局常量
 - 改面板样式：修改 `GMRender.ts`
 
+### 1.9 改迷宫本地存档（保存/读档/清档）
+
+优先检查：
+
+- `src/core/SaveStorage.ts`（wx / localStorage 统一封装）
+- `src/logic/MazeSave.ts`（迷宫存档主模块，v2 压缩格式：mazeMap 运行时重建 + boolean 位图 base64 + 场景图 RLE + 路径量化）
+- `src/logic/MazeLogic.ts` 中的三个保存时机：`resetMazeLogic()` 开头读档与末尾兜底保存、`finishMazeDive()` 末尾保存、`returnToShore()` 末尾保存；以及 `replayMazeLogic()` 的清档分支
+
+常见动作：
+
+- **新增要持久化的字段**：
+  - 如果字段挂在 `state.mazeRescue` 下且在存档不关心的大字段黑名单之外（`mazeMap` / `mazeWalls` / `mazeExplored` / `thisExploredBefore` / `sceneThemeKeys` / `sceneThemeMap` / `sceneBlendMap` / `sceneStructureMap` / `mazeCols` / `mazeRows` / `mazeTileSize` / `exitX` / `exitY` / `npcInitX` / `npcInitY` / `spawnX` / `spawnY` / `diveHistory` / `playerPath` / `divingInBubbles`），会自动进入 `packed.rest` 里跟随存档写入
+  - 如果新字段是黑名单里类似的大矩阵（比如另一份 100×100 数据），需要在 `MazeSave.ts` 里手动添加打包/解包路径
+  - `state.rope.ropes` / `state.markers` / `player` 字段都已经单独处理
+- **改动存档格式（不兼容）**：递增 `MazeSave.ts` 中的 `MAZE_SAVE_VERSION`，版本不同的老存档会被自动丢弃；并同步调整 `MAZE_SAVE_KEY`（如 `maze_save_v3`），避免老 key 污染
+- **调试存档**：调试代码里调用 `clearMazeSave()` 强制清档；或直接清除微信开发者工具的"清缓存 → Storage"
+- **体积监控**：`saveMazeProgress()` 会打印存档大小到 console，v2 压缩后单次下潜约 300~400KB，5 次下潜约 1~2MB；接近 800KB 会自动打出 `console.warn`。若多次下潜后仍接近单 key 上限（Android ~512KB），需进一步做：
+  1. 减少保留的下潜快照条数（`MAX_DIVE_HISTORY`）
+  2. 把 `packed` 拆成多个 key（`maze_save_v3_main` / `maze_save_v3_history`）
+  3. 最终切换到 P4 种子方案（地图不存，靠 seed 重建）
+
 ---
 
 ## 二、扩展代码时最容易踩的坑

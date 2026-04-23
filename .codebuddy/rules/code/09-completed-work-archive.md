@@ -591,3 +591,109 @@ BGM 框架完成后，在 AudioManager 上扩展一条独立的 SFX 通道，用
 - 聚集点位置选择要避开必经路径，否则新手玩家刚下潜就会被团灭
 
 ---
+
+## 迷宫模式本地存档（2026-04-23）
+
+**需求背景**：
+迷宫模式以多次下潜为核心循环，玩家需要通过多次探索累积地图信息、铺设绳索、发现 NPC。如果每次退出小游戏（或回主菜单）就清空所有进度，这个循环就无法建立长期留存感。
+
+**设计方案（路线 A：简化版 JSON 快照）**：
+
+没有选择 devplan 中 P4"种子 + 增量快照"的复杂方案，原因是 P4 需要先把 `generateMazeMap()` 和 `mazeScene.ts` 全部接入确定性 PRNG，工作量大。路线 A 直接把 `state.mazeRescue` 整个序列化为 JSON 写入微信本地存储，体积约 100~500KB，单 key 写一个存档槽够用，一天内就能落地。
+
+**核心机制**：
+
+1. **只在岸上阶段保存**：水下游戏过程中不保存，避免高频写磁盘和存档半状态问题
+2. **三个保存时机**：
+   - `resetMazeLogic()` 生成新地图后立即保存一次初始存档（防止没开过下潜就退出导致下次又是新图）
+   - `finishMazeDive()` 本次下潜成果写入 `diveHistory` 后保存一次（防止 debrief 页面退出丢失）
+   - `returnToShore()` 从 debrief 回到 shore 时再保存一次（以防万一）
+3. **读档时机**：`resetMazeLogic()` 开头先调用 `loadMazeProgress()`，读档成功则直接用存档恢复到岸上，跳过新图生成；读档失败（无存档/版本不兼容/数据损坏）才走原来的新图生成路径
+4. **单存档**：key 为 `maze_save_v1`，版本号 `1`，版本不同直接丢弃
+5. **不加"继续救援"入口**：主菜单点"迷宫纯享版"直接自动读档，玩家无感
+6. **清档时机**：救援成功结算页的"下一局"按钮改为调用 `replayMazeLogic()`，它内部先 `clearMazeSave()` 再 `resetMazeLogic()`
+
+**跨平台兼容**：
+- 微信小游戏环境用 `wx.setStorageSync` / `getStorageSync` / `removeStorageSync`
+- H5 / 非微信环境降级到 `window.localStorage`
+- 由 `src/core/SaveStorage.ts` 做统一封装，上层不感知差异
+
+**存档内容**：
+- `state.mazeRescue`（整个迷宫运行时状态，含 mazeMap / mazeWalls / mazeExplored / 场景主题 / 下潜历史 / 食人鱼聚集点等）
+- `state.rope.ropes`（已铺设的绳索）
+- `state.markers`（所有岩石/绳索标记）
+- `player.x/y/angle/o2`（岸上其实不重要，但一并保存避免 undefined）
+
+**不保存的内容**：
+- 音频静音状态（跨模式持久态，但每次进入迷宫都重新评估）
+- GM 面板 CONFIG 修改（调试态，不持久）
+- 相机弹簧臂 / 摇曳相位（每次进场重新初始化）
+- 入水气泡转场粒子 / UI 折叠动画进度（瞬时动画态，读档后由 `loadMazeProgress()` 强制清零）
+- 轮盘交互状态、长按计时（瞬时交互态）
+
+**新增文件**：
+- `src/core/SaveStorage.ts`：wx / localStorage 统一封装，暴露 `saveJSON / loadJSON / removeKey` 三个函数
+- `src/logic/MazeSave.ts`：迷宫存档主模块，暴露 `saveMazeProgress / loadMazeProgress / clearMazeSave / hasMazeSave` 四个函数，以及 `MAZE_SAVE_KEY / MAZE_SAVE_VERSION` 两个常量
+
+**修改文件**：
+- `src/logic/MazeLogic.ts`：`resetMazeLogic()` 开头加读档分支；`finishMazeDive()` / `returnToShore()` 末尾加 `saveMazeProgress()`；`replayMazeLogic()` 改为先 `clearMazeSave()` 再 `resetMazeLogic()`
+- `src/core/input.ts`：救援成功结算页"下一局"按钮从 `onMaze()` 改为 `onMazeReplay()`，确保走清档分支
+
+**关键教训**：
+- `saveMazeProgress()` 序列化整个 `state.mazeRescue` 时会带上一堆瞬时运行态字段（例如 `_hudEntryTimer`、`divingInBubbles`、`shoreMapOpen`）。这些字段直接随存档写入虽然多占了一点空间，但读档时 `loadMazeProgress()` 会把它们强制清零，不会影响行为
+- 因为存档包含完整 `mazeMap` / `mazeWalls`（迷宫数据本身就是个大对象），一次存档约 100~500KB，仍在 wx 单 key 1MB 上限内。未来如果要缩小体积，再切换到 P4 种子方案
+- `resetMazeLogic()` 成功读档后的状态必须手动兜底：相机、NPC 运行态、玩家 vx/vy 这些都不在存档里，必须补上初始化，否则会用前一次会话残留的值
+
+---
+
+## 迷宫模式本地存档 v2 压缩升级（2026-04-24）
+
+**问题现象**：
+Android 端真机调试，迷宫里退出到主界面再进，**地图还在但标记和下潜记录全部丢失**；控制台报错：
+
+```
+[SaveStorage] wx.setStorageSync 失败 key=maze_save_v1
+i: APP-SERVICE-SDK:setStorageSync:fail:entry size limit reached
+```
+
+**根因**：
+- 微信官方标注 `wx.setStorageSync` 单 key 上限 1MB，但 **Android 端实际 ~512KB 左右就会抛 `entry size limit reached`**
+- v1 格式直接 `JSON.stringify(state.mazeRescue)`，有几个体积爆炸的热点：
+  1. `mazeMap[r][c]`（100×100）存的是 wall 对象引用，JSON 化时每格都展开成完整副本，单这一项 ~300KB
+  2. `mazeWalls` 里的基础 wall 还嵌套 `extras` 数组（同 row/col 的装饰圆），同一个额外圆被序列化两次
+  3. `diveHistory` 每条记录包含两份 100×100 的 boolean `exploredSnapshot` / `exploredBeforeSnapshot`，JSON 化每份 ~40KB，下潜 3~5 次后累积 ~400KB
+- 这三项相加 v1 存档在 2~3 次下潜后就会突破 Android 上限，触发静默写入失败，用户从老存档读回的就是"没标记没下潜记录"的早期版本
+
+**v2 压缩方案**（不改运行时结构，只改存档格式）：
+
+| 原体积大头 | 压缩手段 | 压缩比 |
+|---|---|---|
+| `mazeMap`（100×100 嵌套 wall 对象） | 不存，运行时从 `mazeWalls + solidMask` 重建 | ~300KB → 0 |
+| `mazeWalls.extras` 嵌套 | 存档时展平成普通数组，读档时按 `(row,col)` 聚合，第一个作为基础墙后续挂到 extras | 重复序列化消除 |
+| `mazeExplored` + 两份 diveHistory snapshot | 位图 + 手写 base64（10000 boolean → 1250 字节 → base64 ~1.7KB） | 每份 40KB → 1.7KB |
+| `sceneThemeMap`（数字二维） | RLE（`v,count,v,count,...`） | 连续大区块压缩比极高 |
+| `sceneStructureMap`（字符串枚举 'none'/'stalactite'） | 位图 base64（只有两个取值） | 字符串 → 1 bit/格 |
+| `sceneBlendMap`（稀疏 `{theme2,blend}`） | 只存非空格点的扁平 `[r,c,theme2,blendQuant]`，blend 量化 0~255 | 只留过渡带 |
+| `playerPath` / 绳索 path | `Math.round` 成 int 扁平数组 `[x,y,x,y,...]` | 去字段名去浮点 |
+
+**实测效果**：单次下潜存档从 v1 的 ~500KB+ 降到 **~374KB**，5 次下潜约 1.8MB（但单 key 不会累积到这么大，因为 `MAX_DIVE_HISTORY=5` 会 FIFO 挤掉老记录，最终稳定在 ~400KB 级别）。
+
+**新增设计要点**：
+1. **版本号 + key 同步升级**：`MAZE_SAVE_KEY = 'maze_save_v2'`、`MAZE_SAVE_VERSION = 2`；`clearMazeSave()` 同时 `removeKey('maze_save_v1')` 清理老 key，避免占用存储空间
+2. **手写 base64 编解码**：微信小游戏环境 `btoa` 对非 latin1 字符串不友好，统一用 `uint8ToBase64` / `base64ToUint8` 自己实现
+3. **`mazeMap` 重建规则**：`mazeWalls` 扁平数组按顺序遍历，第一个出现在某 `(row,col)` 的 wall 作为基础墙（因为 `map.ts` 生成时就是先 push 基础墙再 push 装饰圆），后续同 `(row,col)` 的挂到 `extras`；`solidMask` 位图单独记录哪些格是内部实体墙（值 `2`）
+4. **`rest` 兜底字段**：`saveMazeProgress()` 浅拷贝 `state.mazeRescue`，把所有大矩阵字段剔除后剩下的（`diveCount` / `phase` / `discoveredThemes` / `maxDepthReached` 等几十个小字段）统一塞进 `packed.rest`，读档时 spread 回 `maze` 对象。**这意味着 `state.mazeRescue` 新增小字段会自动随存档写入，不需要改 `MazeSave.ts`**
+5. **800KB 预警**：`saveMazeProgress` 写入后若序列化长度超过 800KB，`console.warn` 提醒需要继续优化；不会静默丢数据
+6. **老档弃档策略**：v1 老存档因版本号不匹配自动丢弃（用户已明确确认"不管旧存档"）
+
+**修改文件**：
+- `src/logic/MazeSave.ts`：完整重写，从 179 行扩展到 ~690 行。新增压缩工具函数（位图/RLE/稀疏/路径量化）、`PackedMaze` / `PackedDive` 内部结构、`saveMazeProgress` / `loadMazeProgress` 按新格式打包解包
+- `.codebuddy/rules/devplan.md`：P5 里程碑备注更新
+- `.codebuddy/rules/code/05-common-tasks-pitfalls.md`：1.9 节更新，补充 v2 压缩后的字段落点、体积指标和未来扩展路径
+
+**调用方零改动**：`hasMazeSave` / `saveMazeProgress` / `loadMazeProgress` / `clearMazeSave` 四个对外函数签名不变，`MazeLogic.ts` 里 7 处调用点全部兼容。
+
+**关键教训**：
+- 微信小游戏 Android 端 `wx.setStorageSync` 单 key 上限远低于官方标注的 1MB（实测 ~512KB），且超限时是**抛异常不是返回失败码**，必须 try/catch 才能拿到错误；否则调用方完全感知不到，只会观察到"老存档读回来缺一部分数据"的诡异现象
+- 大 boolean 矩阵 + 嵌套对象引用是 JSON 序列化体积炸弹的主要来源，遇到类似结构（迷宫 explored / 覆盖图 / 遮挡图）直接用位图 + base64，压缩比 20~40 倍
+- `mazeMap` 这种"既是空间索引又是对象容器"的双重语义结构，存档时应该**只存一侧语义**（位图 / 索引），读档时从另一侧（对象列表）重建引用关系
