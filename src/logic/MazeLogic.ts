@@ -12,6 +12,7 @@ import { updateMarkers, updateWheelButtonVisibility } from './Marker';
 import { createFishEnemy, findMazeFishSpawnPosition, updateAllFishEnemies, generateFishDens } from './FishEnemy';
 import { playSFX } from '../audio/AudioManager';
 import { loadMazeProgress, saveMazeProgress, clearMazeSave } from './MazeSave';
+import { setActiveSeededRandom, clearActiveSeededRandom } from '../core/SeededRandom';
 
 // 迷宫模式使用独立的 StoryManager 实例
 const storyManager = new StoryManager();
@@ -67,6 +68,18 @@ export function resetMazeLogic() {
             vx: 0, vy: 0,
             swayX: 0, swayY: 0, swayTime: 0,
         };
+
+        // 读档后重建食人鱼聚集点 + 骷髅（P4：fishDens 不进存档，由派生 seed 确定性重建）
+        // 必须在 state.mazeRescue 挂好之后调用，因为 generateFishDens 会读 mazeWalls / mazeMap / mazeRows / mazeCols
+        if (state.mazeRescue.seed != null) {
+            const fishDensSeed = ((state.mazeRescue.seed >>> 0) ^ 0xDEADBEEF) >>> 0;
+            setActiveSeededRandom(fishDensSeed);
+            try {
+                state.mazeRescue.fishDens = generateFishDens();
+            } finally {
+                clearActiveSeededRandom();
+            }
+        }
 
         // 切换到迷宫模式
         state.screen = 'mazeRescue';
@@ -175,6 +188,7 @@ export function resetMazeLogic() {
         _driveToggleOpen: 0,
         _driveToggleHolding: false,
         _driveSwitchTip: 0,
+        seed: mazeData.seed,
         mazeMap: mazeData.mazeMap,
         mazeWalls: mazeData.mazeWalls,
         mazeExplored: mazeData.mazeExplored,
@@ -207,7 +221,15 @@ export function resetMazeLogic() {
     };
 
     // 生成食人鱼聚集点（需要 state.mazeRescue 已挂载；跨下潜保留，换地图时重建）
-    state.mazeRescue.fishDens = generateFishDens();
+    // P4 种子化：用一个从主 seed 派生的子种子激活 PRNG，保证同 seed 下聚集点/骷髅完全一致
+    // 派生方式选用按位异或常量，避免与主地图生成使用相同序列，不污染主地图的确定性
+    const fishDensSeed = (mazeData.seed ^ 0xDEADBEEF) >>> 0;
+    setActiveSeededRandom(fishDensSeed);
+    try {
+        state.mazeRescue.fishDens = generateFishDens();
+    } finally {
+        clearActiveSeededRandom();
+    }
 
     // 初始化 NPC（被救者，岸上阶段不激活）
     state.npc.active = false;

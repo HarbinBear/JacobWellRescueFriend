@@ -17,8 +17,8 @@ type: always
 | P1 | 角色表现（重绘潜水员） | 🔴 高 | 🟡 进行中 | 身体 roll 滚动、腿部脚蹼造型、手电发光位置 |
 | P2 | 手电筒光照改进（VPL连续化） | 🟡 中 | ⬜ 未开始 | 离散虚拟光源 → 连续反射面 |
 | P3 | 生命系统增强 | 🟢 低 | ⬜ 未开始 | 氧气与运动关联 + 呼吸气泡 |
-| **P4** | **地形序列化系统** | 🔴 高 | ⬜ 未开始 | 种子 + 增量快照编解码，支持存档恢复与好友分享 |
-| P5 | 迷宫模式本地存档 | 🔴 高 | ✅ 已完成 | 简化版 JSON 快照（非 P4 种子方案），岸上自动读写；v2 压缩格式解决 Android 端单 key 超限问题 |
+| **P4** | **地形序列化系统** | 🔴 高 | 🟡 部分完成 | 第一阶段完成：种子 + PRNG + 地图重建 + v3 存档；好友分享编码待做 |
+| P5 | 迷宫模式本地存档 | 🔴 高 | ✅ 已完成 | v3 种子版存档：地图结构靠 seed 重建，单次下潜 ~10~30KB，远低于 Android 上限 |
 
 ---
 
@@ -177,48 +177,80 @@ type: always
 
 **任务拆分**：
 
-- [ ] T4.1 实现确定性 PRNG 模块（`src/core/SeededRandom.ts`）
-  - mulberry32 或 xoshiro128 算法
-  - 提供 `random()`、`randInt(min, max)`、`rand(min, max)` 接口
+- [x] T4.1 实现确定性 PRNG 模块（`src/core/SeededRandom.ts`）
+  - mulberry32 算法
+  - 提供 `srand()`、`srandInt(min, max)`、`srandRange(min, max)`、`srandPick(arr)` 接口
+  - 模块级活跃实例机制：`setActiveSeededRandom(seed)` / `clearActiveSeededRandom()`，无活跃实例时 `srand()` 退化为 `Math.random()`
   - 单元测试：同种子多次调用产生完全一致的序列
-- [ ] T4.2 改造 `generateMazeMap()` 接入 PRNG
-  - 新增可选 `seed` 参数
-  - 替换函数内所有 `Math.random()` 为 PRNG 调用
-  - 验证：同种子生成完全一致的 `mazeMap`、`mazeWalls`、关键坐标
-- [ ] T4.3 改造 `createMazeSceneData()` 接入 PRNG
-  - `mazeScene.ts` 中所有随机调用替换为 PRNG
-  - 验证：同种子生成完全一致的场景主题数据
+- [x] T4.2 改造 `generateMazeMap()` 接入 PRNG
+  - 新增可选 `seed` 参数；不传时用 `generateRandomSeed()` 自动生成
+  - 替换 `map.ts` 中全部 81 处 `Math.random()` 为 `srand()`
+  - 外层函数用 try/finally 保证激活和清理，内层 `buildMazeInternal` 保留原逻辑
+  - 返回值新增 `seed` 字段
+- [x] T4.3 改造 `createMazeSceneData()` 接入 PRNG
+  - `mazeScene.ts` 中 2 处 `Math.random()` 替换为 `srand()`
+  - 由 `generateMazeMap` 外层同一个 PRNG 驱动（同 seed 下场景主题也完全一致）
 - [ ] T4.4 实现序列化编码器（`src/core/MapCodec.ts`）
   - `encodeSeedOnly(seed): string` — 纯种子编码（好友分享用）
-  - `encodeFullState(seed, state): string` — 种子 + 进度编码（存档用）
+  - `encodeFullState(seed, state): string` — 种子 + 进度编码（二维码/链接场景用）
   - 二进制打包 + CRC16 校验 + Base64url 输出
-- [ ] T4.5 实现序列化解码器
-  - `decode(str): { version, seed, progress? }` — 解码入口
-  - 版本校验 + CRC16 验证 + TLV 解析
-  - 未知 Tag 自动跳过（向前兼容）
-- [ ] T4.6 实现进度数据的 TLV 编解码
-  - explored 位图 RLE 压缩/解压
-  - 绳索数据编解码（墙索引 + 路径关键点）
-  - 标记数据编解码
-  - 下潜统计与历史编解码
-  - 玩家位置与 NPC 状态编解码
-- [ ] T4.7 接入迷宫逻辑层
-  - `resetMazeLogic()` 支持从种子重建地图
-  - `startMazeDive()` 支持从进度数据恢复状态
-  - 新增 `serializeCurrentMaze(): string` 导出当前完整状态
-  - 新增 `deserializeMaze(code: string): boolean` 从字符串恢复
-- [ ] T4.8 `state.mazeRescue` 新增 `seed` 字段
-  - 生成地图时记录种子
-  - 序列化时读取种子
-- [ ] T4.9 验证与边界测试
-  - 同种子多次生成一致性验证
-  - 编码→解码→重建→再编码 的往返一致性验证
-  - 空进度（纯种子）编解码验证
-  - 大量绳索/标记下的编码长度测试
-  - 版本兼容性测试（未知 Tag 跳过）
-- [ ] T4.10 离线验证脚本
+  - **暂不急**：当前 v3 存档走 wx.storage JSON 已足够；MapCodec 主要用于 URL / 二维码场景
+- [ ] T4.5 实现序列化解码器（MapCodec 配套）
+- [ ] T4.6 实现 TLV 进度数据编解码（MapCodec 配套）
+- [x] T4.7 接入迷宫逻辑层
+  - `resetMazeLogic()` 新建地图分支记录 `mazeData.seed` 到 `state.mazeRescue.seed`
+  - `loadMazeProgress()` 读档时调 `generateMazeMap(seed)` 重建完整结构，再把 explored / markers / ropes / player 覆盖上去
+  - `saveMazeProgress()` 只存 seed + 进度数据，不再存地图结构
+- [x] T4.8 `state.mazeRescue` 新增 `seed` 字段（uint32）
+- [ ] T4.9 验证与边界测试（建议后续实机验证）
+  - 同种子多次生成一致性
+  - 编码→解码→重建→再编码 往返一致性
+  - 大量绳索/标记下的存档长度测试
+- [ ] T4.10 离线验证脚本（可选）
   - 扩展 `scripts/inspectMaze.js` 支持 `--seed <N>` 参数
-  - 验证同种子两次生成结果完全一致
+
+**第一阶段已交付**（T4.1 / T4.2 / T4.3 / T4.7 / T4.8）：
+- 新建 `src/core/SeededRandom.ts`
+- `src/world/map.ts` / `src/world/mazeScene.ts` 全部 `Math.random` 迷宫路径已种子化
+- `src/logic/MazeSave.ts` 升级为 v3 种子版，key 改为 `maze_save_v3`
+- `src/logic/MazeLogic.ts` / `src/core/state.ts` 接入 seed 字段
+- 老 v1 / v2 存档 key 在 `clearMazeSave()` 里会被一起删掉（用户已确认不保留老档）
+- 单次下潜存档从 v2 的 ~374KB 降到预期 ~10~30KB，地图结构从存档里完全移除
+- `npm run typecheck` 通过
+
+**序列化完整性修复**（第一阶段上线后的三处 bug 修复，确保"同 seed 下场景一模一样"）：
+
+1. **绳子端点丢失（用户实测目击）**：原 v3 存档只扁平化了 `ropes[*].path`，丢失了 `start / end / startWall / endWall / slackFactor / mode` 6 个字段，导致 `RenderRope.ts` 的 `drawNail` / `drawKnot` 在读档后全部失效（端点钉子和绳结不绘制）。
+   - 修复：新增 `PackedLiveRope` 结构完整打包 `start / end / startWall(x,y,r) / endWall(x,y,r) / path / slackFactor / mode`；wall 不存对象引用、只存坐标特征；读档时用 `findWallByRef()` 在新 `mazeWalls` 里做最近匹配（容差 2px），找不到就挂 null（宁缺毋挂错）。
+   - 对应 `diveHistory[*].ropesSnapshot` 也补了 `start / end` 端点，供岸上回放地图绘制端点钉子。
+
+2. **食人鱼聚集点与骷髅未进种子**：`FishEnemy.ts::generateFishDens()` 里还有 11 处原生 `Math.random()`（聚集点数量 / 位置 / 骷髅数量 / 骷髅岩石选择 / 骷髅角度抖动 / 骷髅尺寸 / 骷髅渲染 seed），导致同 seed 下每次读档骷髅布局都不一样，好友分享时对方看到的骷髅布局也与原作者不同。
+   - 修复：11 处 `Math.random()` 全部改 `srand()`；`MazeLogic.ts` 在 `resetMazeLogic()` 新建地图分支和读档分支两处，都用**派生种子**（`seed ^ 0xDEADBEEF`）激活 PRNG 包住 `generateFishDens()` 调用。
+   - `fishDens` 从存档里剔除（不再靠 JSON 原样恢复），读档时由派生 seed 确定性重建，真正做到"同 seed 下骷髅形状位置完全一致"。
+
+3. **`ropesSnapshot` 历史快照绳子也丢端点**：`diveHistory[*].ropesSnap` 老实现也只存 path，岸上按次回放地图画到端点钉子时同样缺数据。
+   - 修复：新增 `PackedHistoryRope` 结构（start / end / path 三项），与活绳子打包分开；历史快照不需要 wall 引用，因此只补两个坐标端点。
+
+**修复后序列化清单**（全部带复原能力的字段）：
+
+| 类别 | 来源 | 一致性来源 |
+|---|---|---|
+| `mazeMap` / `mazeWalls` / `sceneThemeKeys/Map/BlendMap/StructureMap` / `exit/spawn/npc 坐标` / `mazeTileSize/Cols/Rows` | `generateMazeMap(seed)` | ✅ 种子 |
+| `fishDens`（聚集点 + 骷髅数量/位置/角度/尺寸） | `generateFishDens()` 包在派生 seed 里 | ✅ 派生种子 `seed ^ 0xDEADBEEF` |
+| `mazeExplored` | 存档位图 base64 | ✅ 位图 |
+| `diveHistory[*]`（含 exploredSnapshot / exploredBeforeSnapshot / playerPath / ropesSnapshot 带端点） | 存档 | ✅ 完整 |
+| `state.rope.ropes[*]`（含 start / end / startWall / endWall / slackFactor / mode） | 存档 + wall 最近匹配回挂 | ✅ 完整 |
+| `state.markers`（`wallX/wallY` 是坐标对位） | 存档原样 | ✅ 重建无影响 |
+| `player.x/y/angle/o2` | 存档 `playerPos` | ✅ |
+| `diveCount / npcFound / maxDepthReached / totalRopePlaced / discoveredThemes / currentThemeKey / ...` | 存档 `rest` | ✅ |
+| `fishEnemies` 鱼个体 | 下潜时重建 | ✅ 运行时 |
+| 粒子、鱼群 AI、入水气泡、相机抖动、闪电特效等运行时随机 | 保留 `Math.random` | ✅ 不影响地图结构 |
+
+**修复涉及文件**：
+- `src/logic/FishEnemy.ts`：`generateFishDens()` 内 11 处 `Math.random` → `srand`，补 SeededRandom import
+- `src/logic/MazeLogic.ts`：新建地图分支与读档分支两处，都用派生 seed 包 `generateFishDens()`；读档分支末尾补 fishDens 重建
+- `src/logic/MazeSave.ts`：新增 `PackedLiveRope` / `PackedHistoryRope` / `packWallRef` / `findWallByRef` / `packLiveRope` / `unpackLiveRope` / `packHistoryRope` / `unpackHistoryRope`；rest 黑名单加上 `fishDens`
+- `npm run typecheck` 通过
 
 ---
 
@@ -251,11 +283,11 @@ P4（地形序列化）──→ 好友分享需求（另提单）
 - NPC 救援反馈（呼救气泡+挥手+闪光圈、救援绳节点绳渲染、柔性跟随+超距拖慢玩家）
 - **音频系统基础框架完成**（AudioManager + BGM 云存储接入 + SFX 通道 + 入水气泡音效）
 - 岸上全屏手绘认知地图重做 + 按次下潜回放
-- **迷宫模式本地存档完成**（路线 A 简化版 JSON 快照：岸上阶段自动写入 wx.setStorageSync，下次进迷宫自动读档；`finishMazeDive` / `returnToShore` / `resetMazeLogic` 三个时机保存；"下一局"按钮清档重开；**v2 压缩格式** `maze_save_v2`：mazeMap 运行时重建 + boolean 位图 base64 + 场景图 RLE + 路径量化，单次下潜存档从 v1 的 ~500KB+ 降到 ~374KB，解决 Android 端 `wx.setStorageSync: entry size limit reached` 丢数据问题）
+- **迷宫模式本地存档完成**（v1 简化版 → v2 压缩版 → **v3 种子版**：地图结构不再进存档，由 `generateMazeMap(seed)` 从 uint32 种子确定性重建；`src/core/SeededRandom.ts` 提供 mulberry32 PRNG + 模块级活跃实例机制；`src/world/map.ts` 81 处 + `src/world/mazeScene.ts` 2 处 `Math.random` 全量种子化；`maze_save_v3` key 下单次下潜存档从 v2 的 ~374KB 降到预期 ~10~30KB，彻底解决 Android 端单 key 超限问题；同种子可完全重建同一张地图，为后续好友分享地图打下基础）
 
 **下一步优先**：
 1. P1 角色表现修复（T1.3 roll 滚动、T1.4 腿部脚蹼、T1.5 手电位置）
-2. P4 地形序列化系统（T4.1 ~ T4.10）
+2. P4 地形序列化系统剩余任务（T4.4/T4.5/T4.6 MapCodec 编解码器——仅在需要做好友分享链接/二维码时再做；当前 wx.storage JSON 存档已够用）
 
 ---
 

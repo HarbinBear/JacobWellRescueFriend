@@ -1,40 +1,35 @@
-// 迷宫模式本地存档模块（v2 压缩版）
+// 迷宫模式本地存档模块（v3 种子版）
 //
 // 需求：迷宫模式当前关卡进度持久化，退出到主界面或退出小游戏后再回来能接上。
 //
-// v1 方案的问题：
-// 直接 JSON.stringify(state.mazeRescue) 会把 mazeMap 里嵌套的 wall 对象全部展开，
-// 再加上 diveHistory 里每条记录都带两份 100×100 boolean 快照，几次下潜后
-// 单个 key 超过 Android 端 wx.setStorageSync 的 ~512KB 上限，报
-// "entry size limit reached"，导致存档写入失败，标记和下潜记录丢失。
+// v1 / v2 的问题：
+// - v1 直接 JSON.stringify，一次下潜就 500KB+，Android 单 key 超限丢数据
+// - v2 压缩了位图与场景图，降到 ~374KB/次下潜，但随着下潜次数堆积仍会逼近上限
 //
-// v2 压缩方案（不改变运行时结构，只改存档格式）：
-// - mazeMap 不存：运行时从 mazeWalls + mazeCols + mazeRows 重建
-//     每个格子要么是 0（空）、2（内部实体墙无装饰圆）、wall 对象（边界墙）
-//     wall 对象自带 row/col，读档时把同 (row,col) 的第一个作为基础墙，
-//     后续同 (row,col) 的挂到 .extras 数组上；mazeMap[r][c] 指回基础墙
-// - mazeWalls 的 extras 嵌套字段不存：避免同一个额外圆被序列化两次
-// - boolean 二维数组（mazeExplored + 每条 diveHistory 的两份 snapshot）用位图+base64
-// - sceneThemeMap（数字二维数组，范围 -1~7）用 RLE
-// - sceneStructureMap（字符串 'none'|'stalactite'）用位图
-// - sceneBlendMap（稀疏 {theme2,blend} 对象）只存非空格点
-// - 玩家路径 playerPath 用 int16 量化
+// v3 方案（种子 + 增量快照）：
+// 地图结构（mazeMap / mazeWalls / 场景主题各图 / exit/spawn/npc 坐标 / 食人鱼聚集点 / 骷髅）
+// 通过确定性 PRNG 从 seed 完全重建，因此存档里不再保存这些大字段，只需：
+//   - seed：uint32，恢复时用 generateMazeMap(seed) 重建完整地图
+//   - mazeExplored：100×100 位图 base64
+//   - diveHistory：每条压缩（exploredSnapshot + exploredBeforeSnapshot + playerPath + 绳索含端点）
+//   - rest：diveCount / npcFound / maxDepthReached / totalRopePlaced 等小字段
+//   - ropes / markers / player：绳索（完整端点 + wall 坐标最近匹配回挂）、标记、玩家状态
 //
-// 存档体积预估（100×100 迷宫 + 5 次下潜）：约 60~100KB，远小于 Android 上限
+// 预期单次下潜体积：~10~30KB；5 次下潜 ~50~150KB，远低于单 key 上限。
 //
-// 版本号：MAZE_SAVE_VERSION = 2；老 v1 存档自动丢弃
+// 版本号：MAZE_SAVE_VERSION = 3；老 v1 / v2 存档自动丢弃（用户已确认不保留老档）
 
 import { state, player } from '../core/state';
 import { saveJSON, loadJSON, removeKey } from '../core/SaveStorage';
+import { generateMazeMap } from '../world/map';
 
-export const MAZE_SAVE_KEY = 'maze_save_v2';
-export const MAZE_SAVE_VERSION = 2;
+export const MAZE_SAVE_KEY = 'maze_save_v3';
+export const MAZE_SAVE_VERSION = 3;
 
 // ============================ 压缩工具函数 ============================
 
-// base64 编码/解码（小游戏没有 Buffer，用 btoa/atoa 自己做）
+// base64 编码/解码（小游戏没有 Buffer，自己做）
 function uint8ToBase64(bytes: Uint8Array): string {
-    // 小游戏环境 btoa 有字符串长度限制和不接受非 latin1，所以手写
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
     let out = '';
     let i = 0;
@@ -113,124 +108,7 @@ function unpackBoolMap(b64: string, rows: number, cols: number): boolean[][] {
     return map;
 }
 
-// 数字二维数组（-1~127 范围）RLE 压缩（-1 映射为 255）
-// 输出形如 "v:count|v:count|..."，逗号分隔
-function packThemeMap(map: number[][] | null | undefined, rows: number, cols: number): string {
-    if (!map) return '';
-    const bytes = new Uint8Array(rows * cols);
-    for (let r = 0; r < rows; r++) {
-        const row = map[r];
-        for (let c = 0; c < cols; c++) {
-            const v = row ? row[c] : -1;
-            bytes[r * cols + c] = (v < 0 ? 255 : (v & 0xff));
-        }
-    }
-    // RLE
-    const runs: number[] = [];
-    let curVal = bytes[0];
-    let curCount = 1;
-    for (let i = 1; i < bytes.length; i++) {
-        if (bytes[i] === curVal && curCount < 65535) {
-            curCount++;
-        } else {
-            runs.push(curVal, curCount);
-            curVal = bytes[i];
-            curCount = 1;
-        }
-    }
-    runs.push(curVal, curCount);
-    return runs.join(',');
-}
-
-function unpackThemeMap(str: string, rows: number, cols: number): number[][] {
-    const map: number[][] = [];
-    for (let r = 0; r < rows; r++) map.push(new Array(cols).fill(-1));
-    if (!str) return map;
-    const parts = str.split(',');
-    let idx = 0;
-    for (let i = 0; i + 1 < parts.length; i += 2) {
-        const v = parseInt(parts[i], 10);
-        const count = parseInt(parts[i + 1], 10);
-        const real = (v === 255 ? -1 : v);
-        for (let k = 0; k < count; k++) {
-            const r = Math.floor(idx / cols);
-            const c = idx % cols;
-            if (r < rows) map[r][c] = real;
-            idx++;
-        }
-    }
-    return map;
-}
-
-// 字符串枚举二维数组（当前只有 'none'|'stalactite'）→ 位图
-function packStructureMap(map: string[][] | null | undefined, rows: number, cols: number): string {
-    const bitLen = rows * cols;
-    const byteLen = (bitLen + 7) >> 3;
-    const bytes = new Uint8Array(byteLen);
-    if (!map) return uint8ToBase64(bytes);
-    for (let r = 0; r < rows; r++) {
-        const row = map[r];
-        if (!row) continue;
-        for (let c = 0; c < cols; c++) {
-            if (row[c] === 'stalactite') {
-                const idx = r * cols + c;
-                bytes[idx >> 3] |= (1 << (idx & 7));
-            }
-        }
-    }
-    return uint8ToBase64(bytes);
-}
-
-function unpackStructureMap(b64: string, rows: number, cols: number): string[][] {
-    const bytes = base64ToUint8(b64);
-    const map: string[][] = [];
-    for (let r = 0; r < rows; r++) {
-        const row: string[] = [];
-        for (let c = 0; c < cols; c++) {
-            const idx = r * cols + c;
-            const bit = (bytes[idx >> 3] >> (idx & 7)) & 1;
-            row.push(bit === 1 ? 'stalactite' : 'none');
-        }
-        map.push(row);
-    }
-    return map;
-}
-
-// 稀疏 blend 对象 → 扁平数组 [r,c,theme2,blendInt] ...（blend 量化 0-255）
-function packBlendMap(map: any[][] | null | undefined, rows: number, cols: number): number[] {
-    const out: number[] = [];
-    if (!map) return out;
-    for (let r = 0; r < rows; r++) {
-        const row = map[r];
-        if (!row) continue;
-        for (let c = 0; c < cols; c++) {
-            const cell = row[c];
-            if (cell && typeof cell === 'object') {
-                const q = Math.max(0, Math.min(255, Math.round((cell.blend || 0) * 255)));
-                out.push(r, c, cell.theme2 | 0, q);
-            }
-        }
-    }
-    return out;
-}
-
-function unpackBlendMap(flat: number[], rows: number, cols: number): any[][] {
-    const map: any[][] = [];
-    for (let r = 0; r < rows; r++) map.push(new Array(cols).fill(null));
-    if (!flat) return map;
-    for (let i = 0; i + 3 < flat.length; i += 4) {
-        const r = flat[i];
-        const c = flat[i + 1];
-        const theme2 = flat[i + 2];
-        const blend = flat[i + 3] / 255;
-        if (r >= 0 && r < rows && c >= 0 && c < cols) {
-            map[r][c] = { theme2, blend };
-        }
-    }
-    return map;
-}
-
-// 玩家路径 {x,y}[] → Int16Array 扁平（坐标范围 0~12000，int16 足够）
+// 玩家路径 {x,y}[] → 扁平 int（坐标范围 0~12000，int32 足够）
 function packPath(path: {x: number, y: number}[] | null | undefined): number[] {
     if (!path || path.length === 0) return [];
     const out: number[] = [];
@@ -249,78 +127,126 @@ function unpackPath(flat: number[] | null | undefined): {x: number, y: number}[]
     return out;
 }
 
-// mazeWalls 扁平化：去掉 extras 嵌套字段（避免重复序列化）
-// 因为 extras 里的 wall 对象本身也在 mazeWalls 数组中，它们都有 row/col
-function packWalls(walls: any[]): any[] {
-    const out: any[] = [];
+// ============================ 绳索端点与 wall 引用重挂 ============================
+//
+// 活绳子 state.rope.ropes[*] 结构（参考 Rope.ts endRope 真实写入）：
+//   { start: {x,y}, startWall: wall, end: {x,y}, endWall: wall, path, slackFactor, mode }
+// 其中 wall 是 mazeWalls 里的对象引用。因为存档里 mazeWalls 靠 seed 重建，地址必然变化，
+// 所以我们只存 wall 的坐标特征（x/y/r），读档时用"近距离匹配"在新 mazeWalls 里找回真实对象。
+//
+// 匹配规则：先取坐标差平方最小的墙；如果距离超过容差（默认 2px），退回 null。
+// 这样即便 seed 算法未来微调，绳子钉子位置小幅漂移也不会挂错墙。
+
+interface PackedWallRef {
+    x: number;
+    y: number;
+    r: number;
+}
+
+interface PackedLiveRope {
+    start: {x: number, y: number} | null;
+    end: {x: number, y: number} | null;
+    startWall: PackedWallRef | null;
+    endWall: PackedWallRef | null;
+    path: number[];          // 扁平 [x,y,...]
+    slackFactor: number;
+    mode: string;
+}
+
+interface PackedHistoryRope {
+    // 历史快照只用来画轨迹和端点，不需要 wall 对象引用
+    start: {x: number, y: number} | null;
+    end: {x: number, y: number} | null;
+    path: number[];
+}
+
+// 把一个 wall 对象压成 {x,y,r}；null 安全
+function packWallRef(wall: any): PackedWallRef | null {
+    if (!wall) return null;
+    return {
+        x: Math.round(wall.x * 100) / 100,
+        y: Math.round(wall.y * 100) / 100,
+        r: Math.round((wall.r || 0) * 100) / 100,
+    };
+}
+
+// 端点坐标压缩（保留两位小数；绳子端点落在岩石外缘，精度需要高一点）
+function packPoint(p: any): {x: number, y: number} | null {
+    if (!p || typeof p.x !== 'number' || typeof p.y !== 'number') return null;
+    return {
+        x: Math.round(p.x * 100) / 100,
+        y: Math.round(p.y * 100) / 100,
+    };
+}
+
+// 根据坐标特征在 mazeWalls 中查找最近的 wall 对象
+// tolerancePx：距离超过这个阈值就认为匹配失败（防止错挂）
+function findWallByRef(walls: any[], ref: PackedWallRef | null, tolerancePx: number = 2): any {
+    if (!ref || !Array.isArray(walls) || walls.length === 0) return null;
+    let best: any = null;
+    let bestD2 = Infinity;
     for (let i = 0; i < walls.length; i++) {
         const w = walls[i];
         if (!w) continue;
-        // 只保留基础字段，丢掉 extras 嵌套
-        out.push({
-            x: w.x,
-            y: w.y,
-            r: w.r,
-            row: w.row,
-            col: w.col,
-            isBorder: !!w.isBorder,
-        });
+        const dx = w.x - ref.x;
+        const dy = w.y - ref.y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < bestD2) {
+            bestD2 = d2;
+            best = w;
+        }
     }
-    return out;
+    if (!best) return null;
+    // 距离超过容差，算匹配失败（宁可挂 null 也不要挂错）
+    if (Math.sqrt(bestD2) > tolerancePx) {
+        console.warn('[MazeSave] wall 最近匹配距离=' + Math.sqrt(bestD2).toFixed(2) +
+                     'px 超过容差=' + tolerancePx + 'px，端点可能未正确回挂');
+        return null;
+    }
+    return best;
 }
 
-// 根据打平的 wall 列表 + rows/cols 重建 mazeMap（同时把 extras 挂回基础 wall）
-// 规则：grid[r][c] 初始化为 0；存档另带 solidMask 标记哪些格是内部实体 2 或 border
-// 但我们选择更简洁做法：重建时根据每个 wall 的 (row,col) 聚合
-//   第一个出现在该 (row,col) 的 wall 是基础墙，后续同 (row,col) 挂到 extras
-//   然后根据 rebuilt 的位置把 mazeMap[r][c] = baseWall
-//   对于 mazeMap 值为 2（内部实体，无 wall 对象）的格子，靠单独的 solidMask 位图还原
-function rebuildMazeMap(walls: any[], solidMask: boolean[][], rows: number, cols: number): any[][] {
-    const map: any[][] = [];
-    for (let r = 0; r < rows; r++) {
-        map.push(new Array(cols).fill(0));
-    }
-    // 聚合墙
-    const baseWallByCell: { [key: string]: any } = {};
-    for (let i = 0; i < walls.length; i++) {
-        const w = walls[i];
-        if (!w) continue;
-        const key = w.row + ',' + w.col;
-        if (!baseWallByCell[key]) {
-            w.extras = [];
-            baseWallByCell[key] = w;
-            if (w.row >= 0 && w.row < rows && w.col >= 0 && w.col < cols) {
-                map[w.row][w.col] = w;
-            }
-        } else {
-            baseWallByCell[key].extras.push(w);
-        }
-    }
-    // solidMask 处理内部实体墙（值为 2 的格子）
-    for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-            if (solidMask[r] && solidMask[r][c]) {
-                if (map[r][c] === 0) {
-                    map[r][c] = 2;
-                }
-            }
-        }
-    }
-    return map;
+// 打包单条活绳子
+function packLiveRope(rope: any): PackedLiveRope {
+    return {
+        start: packPoint(rope && rope.start),
+        end: packPoint(rope && rope.end),
+        startWall: packWallRef(rope && rope.startWall),
+        endWall: packWallRef(rope && rope.endWall),
+        path: packPath(rope && rope.path),
+        slackFactor: (rope && typeof rope.slackFactor === 'number') ? rope.slackFactor : 0,
+        mode: (rope && typeof rope.mode === 'string') ? rope.mode : 'tight',
+    };
 }
 
-// 从运行时 mazeMap 里抽出内部实体墙位图（值 === 2 的格子）
-function extractSolidMask(mazeMap: any[][], rows: number, cols: number): boolean[][] {
-    const mask: boolean[][] = [];
-    for (let r = 0; r < rows; r++) {
-        const row: boolean[] = [];
-        const src = mazeMap[r];
-        for (let c = 0; c < cols; c++) {
-            row.push(src && src[c] === 2);
-        }
-        mask.push(row);
-    }
-    return mask;
+// 解包单条活绳子，并用新 mazeWalls 回挂 startWall / endWall
+function unpackLiveRope(p: PackedLiveRope, newMazeWalls: any[]): any {
+    return {
+        start: p.start ? { x: p.start.x, y: p.start.y } : null,
+        end: p.end ? { x: p.end.x, y: p.end.y } : null,
+        startWall: findWallByRef(newMazeWalls, p.startWall),
+        endWall: findWallByRef(newMazeWalls, p.endWall),
+        path: unpackPath(p.path),
+        slackFactor: p.slackFactor,
+        mode: p.mode,
+    };
+}
+
+// 打包单条历史快照绳子（diveHistory[*].ropesSnapshot[*]）
+function packHistoryRope(rope: any): PackedHistoryRope {
+    return {
+        start: packPoint(rope && rope.start),
+        end: packPoint(rope && rope.end),
+        path: packPath(rope && rope.path),
+    };
+}
+
+function unpackHistoryRope(p: PackedHistoryRope): any {
+    return {
+        start: p.start ? { x: p.start.x, y: p.start.y } : null,
+        end: p.end ? { x: p.end.x, y: p.end.y } : null,
+        path: unpackPath(p.path),
+    };
 }
 
 // ============================ 存档主结构 ============================
@@ -333,40 +259,27 @@ interface PackedDive {
     ropePlaced: number;
     returnReason: string;
     newThemes: string[];
-    playerPath: number[];          // 扁平 [x,y,x,y,...] int
-    exploredSnap: string;          // 位图 base64
-    exploredBeforeSnap: string;    // 位图 base64
-    ropesSnap: number[][];         // 每条绳索 [x,y,x,y,...]
+    playerPath: number[];              // 扁平 [x,y,x,y,...] int
+    exploredSnap: string;              // 位图 base64
+    exploredBeforeSnap: string;        // 位图 base64
+    ropesSnap: PackedHistoryRope[];    // 每条历史绳索（含端点）
     npcFoundAtEnd: boolean;
     finishAt: number;
 }
 
 interface PackedMaze {
-    // 基础尺寸
+    // 种子：恢复时用 generateMazeMap(seed) 重建完整地图结构
+    seed: number;
+
+    // 地图尺寸（用于位图解压时的 rows/cols；重建出来应该和存档一致，这里留一份方便严格校验）
     mazeCols: number;
     mazeRows: number;
-    mazeTileSize: number;
 
-    // 墙体（去掉 extras 嵌套）
-    mazeWalls: any[];
-    // 内部实体墙（值===2）位图
-    solidMask: string;
-
-    // 探索位图
+    // 累计探索位图（跨下潜保留）
     mazeExplored: string;
 
-    // 场景
-    sceneThemeKeys: string[];
-    sceneThemeMap: string;         // RLE
-    sceneBlendMap: number[];       // 稀疏扁平
-    sceneStructureMap: string;     // 位图
-
-    // 出口/NPC/出生点
-    exitX: number; exitY: number;
-    npcInitX: number; npcInitY: number;
-    spawnX: number; spawnY: number;
-
-    // 其它运行时字段（小，直接原样保留，这里用 any 放过）
+    // 其它运行时字段（diveCount / npcFound / maxDepthReached / totalRopePlaced / discoveredThemes
+    //               / diveHistory 压缩版 / 其它小字段）
     rest: any;
 }
 
@@ -374,7 +287,7 @@ interface MazeSaveData {
     version: number;
     timestamp: number;
     packed: PackedMaze;
-    ropes: number[][];             // 每条绳索路径扁平
+    ropes: PackedLiveRope[];           // 活绳子数组（完整端点 + wall 坐标）
     markers: any[];
     playerPos: { x: number; y: number; angle: number; o2: number };
 }
@@ -398,22 +311,25 @@ export function hasMazeSave(): boolean {
 export function saveMazeProgress(): boolean {
     const maze: any = state.mazeRescue;
     if (!maze) return false;
-    if (!maze.mazeMap || !maze.mazeWalls) return false;
+    if (maze.seed == null) {
+        console.warn('[MazeSave] 存档未保存：mazeRescue.seed 缺失');
+        return false;
+    }
 
     const rows: number = maze.mazeRows | 0;
     const cols: number = maze.mazeCols | 0;
     if (rows <= 0 || cols <= 0) return false;
 
-    // 打包 diveHistory（每条记录压缩两份 snapshot + 路径 + 绳索）
+    // 打包 diveHistory（每条记录压缩两份 snapshot + 路径 + 绳索含端点）
     const packedHistory: PackedDive[] = [];
     const src = Array.isArray(maze.diveHistory) ? maze.diveHistory : [];
     for (let i = 0; i < src.length; i++) {
         const d = src[i];
         if (!d) continue;
-        const ropesSnap: number[][] = [];
+        const ropesSnap: PackedHistoryRope[] = [];
         if (Array.isArray(d.ropesSnapshot)) {
             for (let j = 0; j < d.ropesSnapshot.length; j++) {
-                ropesSnap.push(packPath(d.ropesSnapshot[j] && d.ropesSnapshot[j].path));
+                ropesSnap.push(packHistoryRope(d.ropesSnapshot[j]));
             }
         }
         packedHistory.push({
@@ -433,56 +349,48 @@ export function saveMazeProgress(): boolean {
         });
     }
 
-    // mazeRescue 中除掉大字段后的其它运行时字段
-    // （方法：浅拷贝整棵 mazeRescue，把已经单独处理的大字段删除）
+    // 收集其它小字段（剔除所有能从种子重建或已经单独压缩的大字段）
     const rest: any = {};
     for (const k in maze) {
         if (!Object.prototype.hasOwnProperty.call(maze, k)) continue;
-        // 这些字段已经单独压缩或单独处理，不再塞进 rest
-        if (k === 'mazeMap' || k === 'mazeWalls' ||
-            k === 'mazeExplored' || k === 'thisExploredBefore' ||
+        if (k === 'seed' ||
+            // 能从 seed 重建的，全部不存
+            k === 'mazeMap' || k === 'mazeWalls' ||
             k === 'sceneThemeKeys' || k === 'sceneThemeMap' ||
             k === 'sceneBlendMap' || k === 'sceneStructureMap' ||
             k === 'mazeCols' || k === 'mazeRows' || k === 'mazeTileSize' ||
             k === 'exitX' || k === 'exitY' ||
             k === 'npcInitX' || k === 'npcInitY' ||
             k === 'spawnX' || k === 'spawnY' ||
+            // 骷髅 / 聚集点也能从 seed 重建（MazeLogic 里用派生 seed 包住 generateFishDens）
+            k === 'fishDens' ||
+            // 单独压缩的大字段
+            k === 'mazeExplored' || k === 'thisExploredBefore' ||
             k === 'diveHistory' ||
+            // 不该跨 session 存的运行时杂项
             k === 'playerPath' ||
             k === 'divingInBubbles') {
             continue;
         }
         rest[k] = maze[k];
     }
-    rest.diveHistory = packedHistory; // 压缩后历史塞进 rest
-
-    const solidMask = extractSolidMask(maze.mazeMap, rows, cols);
-
-    // 绳索路径扁平化
-    const ropes: number[][] = [];
-    if (state.rope && Array.isArray(state.rope.ropes)) {
-        for (let i = 0; i < state.rope.ropes.length; i++) {
-            const rp = state.rope.ropes[i];
-            ropes.push(packPath(rp && rp.path));
-        }
-    }
+    rest.diveHistory = packedHistory;
 
     const packed: PackedMaze = {
+        seed: (maze.seed >>> 0),
         mazeCols: cols,
         mazeRows: rows,
-        mazeTileSize: maze.mazeTileSize,
-        mazeWalls: packWalls(maze.mazeWalls),
-        solidMask: packBoolMap(solidMask, rows, cols),
         mazeExplored: packBoolMap(maze.mazeExplored, rows, cols),
-        sceneThemeKeys: Array.isArray(maze.sceneThemeKeys) ? maze.sceneThemeKeys.slice() : [],
-        sceneThemeMap: packThemeMap(maze.sceneThemeMap, rows, cols),
-        sceneBlendMap: packBlendMap(maze.sceneBlendMap, rows, cols),
-        sceneStructureMap: packStructureMap(maze.sceneStructureMap, rows, cols),
-        exitX: maze.exitX, exitY: maze.exitY,
-        npcInitX: maze.npcInitX, npcInitY: maze.npcInitY,
-        spawnX: maze.spawnX, spawnY: maze.spawnY,
         rest,
     };
+
+    // 活绳子（完整打包：端点 + wall 坐标 + slack + mode）
+    const ropes: PackedLiveRope[] = [];
+    if (state.rope && Array.isArray(state.rope.ropes)) {
+        for (let i = 0; i < state.rope.ropes.length; i++) {
+            ropes.push(packLiveRope(state.rope.ropes[i]));
+        }
+    }
 
     const data: MazeSaveData = {
         version: MAZE_SAVE_VERSION,
@@ -503,10 +411,9 @@ export function saveMazeProgress(): boolean {
         try {
             const approxSize = JSON.stringify(data).length;
             const kb = Math.round(approxSize / 1024);
-            console.log('[MazeSave] 存档已保存，大小约 ' + kb + ' KB');
-            // 800KB 安全线预警
-            if (approxSize > 800 * 1024) {
-                console.warn('[MazeSave] 存档接近单 key 上限（' + kb + 'KB），需要继续优化压缩');
+            console.log('[MazeSave] 存档已保存（v3 种子），大小约 ' + kb + ' KB（seed=' + (maze.seed >>> 0) + '）');
+            if (approxSize > 400 * 1024) {
+                console.warn('[MazeSave] 存档仍偏大（' + kb + 'KB），可考虑裁剪 diveHistory 条数');
             }
         } catch (e) { /* 忽略 */ }
     }
@@ -515,6 +422,12 @@ export function saveMazeProgress(): boolean {
 
 /**
  * 尝试从本地读取并恢复迷宫进度
+ *
+ * 恢复流程：
+ *   1. 读取种子 → generateMazeMap(seed) 重建完整地图结构
+ *   2. fishDens 留空；由 MazeLogic.resetMazeLogic 的读档分支用派生 seed 重建一次
+ *   3. 把存档里的 mazeExplored / diveHistory / rest / ropes / markers / player 覆盖上去
+ *   4. 绳索 wall 端点用"最近匹配"在新 mazeWalls 里找回对象引用
  */
 export function loadMazeProgress(): boolean {
     const data = loadJSON<MazeSaveData>(MAZE_SAVE_KEY);
@@ -524,27 +437,26 @@ export function loadMazeProgress(): boolean {
         return false;
     }
     const packed = data.packed;
-    if (!packed || !packed.mazeWalls || !packed.mazeCols || !packed.mazeRows) {
-        console.warn('[MazeSave] 存档数据不完整，丢弃');
+    if (!packed || packed.seed == null) {
+        console.warn('[MazeSave] 存档数据不完整（缺 seed），丢弃');
         return false;
     }
 
-    const rows = packed.mazeRows | 0;
-    const cols = packed.mazeCols | 0;
+    // === 用种子重建完整地图 ===
+    const mazeData = generateMazeMap(packed.seed >>> 0);
+    const rows = mazeData.mazeRows;
+    const cols = mazeData.mazeCols;
 
-    // 重建 mazeWalls（普通数组，wall 对象没有 extras）
-    const walls = packed.mazeWalls.map((w: any) => ({
-        x: w.x, y: w.y, r: w.r,
-        row: w.row, col: w.col,
-        isBorder: !!w.isBorder,
-    }));
+    // 严格校验：存档里的 rows/cols 必须和当前算法产出一致
+    // （避免 CONFIG.maze.cols/rows 改过导致老档和新算法不匹配）
+    if (packed.mazeRows !== rows || packed.mazeCols !== cols) {
+        console.warn('[MazeSave] 存档尺寸不匹配（' + packed.mazeRows + 'x' + packed.mazeCols +
+                     ' vs 当前 ' + rows + 'x' + cols + '），丢弃');
+        return false;
+    }
 
-    const solidMask = unpackBoolMap(packed.solidMask, rows, cols);
-    const mazeMap = rebuildMazeMap(walls, solidMask, rows, cols);
+    // 用存档里的已探索位图覆盖（种子重建出来的是全 false，这里要换成累积探索）
     const mazeExplored = unpackBoolMap(packed.mazeExplored, rows, cols);
-    const sceneThemeMap = unpackThemeMap(packed.sceneThemeMap, rows, cols);
-    const sceneBlendMap = unpackBlendMap(packed.sceneBlendMap, rows, cols);
-    const sceneStructureMap = unpackStructureMap(packed.sceneStructureMap, rows, cols);
 
     // 装配 mazeRescue
     const maze: any = {};
@@ -555,20 +467,24 @@ export function loadMazeProgress(): boolean {
             }
         }
     }
+    // 种子与重建出来的地图结构字段全部直接来自 mazeData
+    maze.seed = mazeData.seed;
     maze.mazeCols = cols;
     maze.mazeRows = rows;
-    maze.mazeTileSize = packed.mazeTileSize;
-    maze.mazeWalls = walls;
-    maze.mazeMap = mazeMap;
+    maze.mazeTileSize = mazeData.mazeTileSize;
+    maze.mazeWalls = mazeData.mazeWalls;
+    maze.mazeMap = mazeData.mazeMap;
     maze.mazeExplored = mazeExplored;
-    maze.sceneThemeKeys = packed.sceneThemeKeys || [];
-    maze.sceneThemeMap = sceneThemeMap;
-    maze.sceneBlendMap = sceneBlendMap;
-    maze.sceneStructureMap = sceneStructureMap;
-    maze.exitX = packed.exitX; maze.exitY = packed.exitY;
-    maze.npcInitX = packed.npcInitX; maze.npcInitY = packed.npcInitY;
-    maze.spawnX = packed.spawnX; maze.spawnY = packed.spawnY;
+    maze.sceneThemeKeys = mazeData.mazeSceneThemeKeys;
+    maze.sceneThemeMap = mazeData.mazeSceneThemeMap;
+    maze.sceneBlendMap = mazeData.mazeSceneBlendMap;
+    maze.sceneStructureMap = mazeData.mazeSceneStructureMap;
+    maze.exitX = mazeData.exitX; maze.exitY = mazeData.exitY;
+    maze.npcInitX = mazeData.npcInitX; maze.npcInitY = mazeData.npcInitY;
+    maze.spawnX = mazeData.spawnX; maze.spawnY = mazeData.spawnY;
     maze.divingInBubbles = [];
+    // fishDens 留空占位；MazeLogic.resetMazeLogic 的读档分支会用派生 seed 重建一次
+    maze.fishDens = [];
 
     // 展开压缩后的 diveHistory
     const packedHistory: PackedDive[] = Array.isArray(maze.diveHistory) ? maze.diveHistory : [];
@@ -576,10 +492,10 @@ export function loadMazeProgress(): boolean {
     for (let i = 0; i < packedHistory.length; i++) {
         const d = packedHistory[i];
         if (!d) continue;
-        const ropesSnap: {path: {x: number, y: number}[]}[] = [];
+        const ropesSnap: any[] = [];
         if (Array.isArray(d.ropesSnap)) {
             for (let j = 0; j < d.ropesSnap.length; j++) {
-                ropesSnap.push({ path: unpackPath(d.ropesSnap[j]) });
+                ropesSnap.push(unpackHistoryRope(d.ropesSnap[j]));
             }
         }
         realHistory.push({
@@ -641,10 +557,11 @@ export function loadMazeProgress(): boolean {
             stillTimer: 0,
         } as any;
     }
+    // 活绳子解包 + wall 最近匹配回挂
     const restoredRopes: any[] = [];
     if (Array.isArray(data.ropes)) {
         for (let i = 0; i < data.ropes.length; i++) {
-            restoredRopes.push({ path: unpackPath(data.ropes[i]) });
+            restoredRopes.push(unpackLiveRope(data.ropes[i], maze.mazeWalls));
         }
     }
     state.rope.ropes = restoredRopes;
@@ -660,7 +577,8 @@ export function loadMazeProgress(): boolean {
         player.o2 = data.playerPos.o2;
     }
 
-    console.log('[MazeSave] 存档恢复成功，已完成 ' + (maze.diveCount || 0) + ' 次下潜');
+    console.log('[MazeSave] 存档恢复成功（v3 种子），seed=' + (mazeData.seed >>> 0) +
+                '，已完成 ' + (maze.diveCount || 0) + ' 次下潜，活绳子 ' + restoredRopes.length + ' 条');
     return true;
 }
 
@@ -669,7 +587,8 @@ export function loadMazeProgress(): boolean {
  */
 export function clearMazeSave(): void {
     removeKey(MAZE_SAVE_KEY);
-    // 顺便清除 v1 老档，避免占用空间
+    // 顺便清除老 v1 / v2 存档，避免占用空间
     removeKey('maze_save_v1');
+    removeKey('maze_save_v2');
     console.log('[MazeSave] 存档已清除');
 }

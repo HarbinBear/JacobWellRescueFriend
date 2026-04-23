@@ -2,6 +2,7 @@ import { CONFIG } from '../core/config';
 import { state } from '../core/state';
 import { CAVE_MAP_DATA } from './mapData';
 import { createMazeSceneData } from './mazeScene';
+import { srand, setActiveSeededRandom, clearActiveSeededRandom, generateRandomSeed } from '../core/SeededRandom';
 
 // 默认洞穴段配置（可通过 CONFIG.caveSegments 覆盖）
 // 每段: { name, startRow, endRow, centerCol(可选), width, widthVariance, drift, narrowStart(可选), narrowEndWidth(可选), targetCol(可选), pullStrength(可选) }
@@ -99,9 +100,9 @@ export function generateMap() {
                 let border = isBorderTile(state.map, r, c, rows, cols);
                 if (border) {
                     // 边缘岩石：生成渲染用圆形对象
-                    let offsetX = (Math.random() - 0.5) * tileSize * 0.6;
-                    let offsetY = (Math.random() - 0.5) * tileSize * 0.6;
-                    let radius = tileSize * (0.6 + Math.random() * 0.4);
+                    let offsetX = (srand() - 0.5) * tileSize * 0.6;
+                    let offsetY = (srand() - 0.5) * tileSize * 0.6;
+                    let radius = tileSize * (0.6 + srand() * 0.4);
 
                     let wall = {
                         x: c * tileSize + tileSize / 2 + offsetX,
@@ -130,15 +131,15 @@ export function generateMap() {
     // 水草（只在浅水区和第一洞室的边缘岩石上）
     for (let w of state.walls) {
         if (w.y < 30 * tileSize) {
-            if (Math.random() < 0.3) {
-                let angle = Math.random() * Math.PI * 2;
+            if (srand() < 0.3) {
+                let angle = srand() * Math.PI * 2;
                 let dist = w.r * 0.8;
                 state.plants.push({
                     x: w.x + Math.cos(angle) * dist,
                     y: w.y + Math.sin(angle) * dist,
-                    len: 10 + Math.random() * 15,
-                    color: Math.random() > 0.5 ? '#2e8b57' : '#3cb371',
-                    offset: Math.random() * Math.PI * 2
+                    len: 10 + srand() * 15,
+                    color: srand() > 0.5 ? '#2e8b57' : '#3cb371',
+                    offset: srand() * Math.PI * 2
                 });
             }
         }
@@ -147,23 +148,23 @@ export function generateMap() {
     // 鱼群（只在浅水区）
     let schools = 5;
     for (let s = 0; s < schools; s++) {
-        let centerR = Math.floor(Math.random() * 20 + 2);
-        let centerC = Math.floor(cols / 2 + (Math.random() - 0.5) * 10);
+        let centerR = Math.floor(srand() * 20 + 2);
+        let centerC = Math.floor(cols / 2 + (srand() - 0.5) * 10);
 
         if (state.map[centerR] && state.map[centerR][centerC] === 0) {
-            let count = Math.floor(Math.random() * 5) + 3;
+            let count = Math.floor(srand() * 5) + 3;
             let colors = ['#ff7f50', '#ffd700', '#00bfff'];
-            let schoolColor = colors[Math.floor(Math.random() * colors.length)];
+            let schoolColor = colors[Math.floor(srand() * colors.length)];
 
             for (let i = 0; i < count; i++) {
                 state.fishes.push({
-                    x: centerC * tileSize + tileSize / 2 + (Math.random() - 0.5) * tileSize * 2,
-                    y: centerR * tileSize + tileSize / 2 + (Math.random() - 0.5) * tileSize * 2,
-                    vx: (Math.random() - 0.5) * 1.0,
-                    vy: (Math.random() - 0.5) * 0.3,
-                    size: 4 + Math.random() * 3,
+                    x: centerC * tileSize + tileSize / 2 + (srand() - 0.5) * tileSize * 2,
+                    y: centerR * tileSize + tileSize / 2 + (srand() - 0.5) * tileSize * 2,
+                    vx: (srand() - 0.5) * 1.0,
+                    vy: (srand() - 0.5) * 0.3,
+                    size: 4 + srand() * 3,
                     color: schoolColor,
-                    phase: Math.random() * Math.PI * 2
+                    phase: srand() * Math.PI * 2
                 });
             }
         }
@@ -237,10 +238,10 @@ export function generateArenaMap() {
     for (let i = 0; i < obstCount; i++) {
         // 随机尝试放置，避免太靠近出生点
         for (let attempt = 0; attempt < 20; attempt++) {
-            const ow = arenaCfg.obstacleMinSize + Math.random() * (arenaCfg.obstacleMaxSize - arenaCfg.obstacleMinSize);
-            const oh = arenaCfg.obstacleMinSize + Math.random() * (arenaCfg.obstacleMaxSize - arenaCfg.obstacleMinSize);
-            const ox = innerLeft + Math.random() * (innerW - ow);
-            const oy = innerTop + Math.random() * (innerH - oh);
+            const ow = arenaCfg.obstacleMinSize + srand() * (arenaCfg.obstacleMaxSize - arenaCfg.obstacleMinSize);
+            const oh = arenaCfg.obstacleMinSize + srand() * (arenaCfg.obstacleMaxSize - arenaCfg.obstacleMinSize);
+            const ox = innerLeft + srand() * (innerW - ow);
+            const oy = innerTop + srand() * (innerH - oh);
 
             // 检查与出生点的距离
             const cx = ox + ow / 2;
@@ -267,9 +268,9 @@ export function generateArenaMap() {
             if (state.map[r][c] === 1) {
                 let border = isBorderTile(state.map, r, c, rows, cols);
                 if (border) {
-                    const offsetX = (Math.random() - 0.5) * ts * 0.5;
-                    const offsetY = (Math.random() - 0.5) * ts * 0.5;
-                    const radius = ts * (0.55 + Math.random() * 0.35);
+                    const offsetX = (srand() - 0.5) * ts * 0.5;
+                    const offsetY = (srand() - 0.5) * ts * 0.5;
+                    const radius = ts * (0.55 + srand() * 0.35);
                     const wall = {
                         x: c * ts + ts / 2 + offsetX,
                         y: r * ts + ts / 2 + offsetY,
@@ -301,8 +302,44 @@ export function generateArenaMap() {
 // 算法：多层洞室节点 + 弯折通道网络 + 死路支洞 + 元胞自动机平滑
 // 目标：保证可通，同时让正确路线隐藏在多重分叉和拐弯之后
 // 返回迷宫专属数据，不写入全局 state.map（避免污染主线地图）
+//
+// P4 种子化改造：
+// - 传入 seed 时根据该种子确定性重建同一张地图（用于存档恢复与好友分享）
+// - 不传 seed 时生成一个随机 uint32 种子
+// - 返回值里额外带出 seed，便于调用方记录到 state / 存档
+// - 生成过程开始时激活种子，结束时清理，保证之后的 Math.random 不受影响
 // =============================================
-export function generateMazeMap(): {
+export function generateMazeMap(seed?: number): {
+    seed: number;
+    mazeMap: any[][];
+    mazeWalls: any[];
+    mazeExplored: boolean[][];
+    mazeSceneThemeKeys: string[];
+    mazeSceneThemeMap: number[][];
+    mazeSceneBlendMap: {theme2: number, blend: number}[][];
+    mazeSceneStructureMap: string[][];
+    mazeCols: number;
+    mazeRows: number;
+    mazeTileSize: number;
+    exitX: number;
+    exitY: number;
+    npcInitX: number;
+    npcInitY: number;
+    spawnX: number;
+    spawnY: number;
+} {
+    const actualSeed = (seed == null) ? generateRandomSeed() : (seed >>> 0);
+    setActiveSeededRandom(actualSeed);
+    try {
+        return buildMazeInternal(actualSeed);
+    } finally {
+        clearActiveSeededRandom();
+    }
+}
+
+// 真正的迷宫生成实现（外层 generateMazeMap 负责激活/清理种子）
+function buildMazeInternal(actualSeed: number): {
+    seed: number;
     mazeMap: any[][];
     mazeWalls: any[];
     mazeExplored: boolean[][];
@@ -368,7 +405,7 @@ export function generateMazeMap(): {
     }
 
     function rand(min: number, max: number) {
-        return min + Math.random() * (max - min);
+        return min + srand() * (max - min);
     }
 
     function randInt(min: number, max: number) {
@@ -434,7 +471,7 @@ export function generateMazeMap(): {
             const steps = Math.max(12, Math.ceil(seg * 2.8));
             const nx = (b.r - a.r) / Math.max(1, seg);
             const ny = -(b.c - a.c) / Math.max(1, seg);
-            const phase = Math.random() * Math.PI * 2;
+            const phase = srand() * Math.PI * 2;
             const wobbleAmp = rand(0.15, 0.55);
 
             for (let step = 0; step <= steps; step++) {
@@ -473,7 +510,7 @@ export function generateMazeMap(): {
 
         for (let i = 1; i <= bendCount; i++) {
             const t = i / (bendCount + 1);
-            const side = Math.sin(t * Math.PI * rand(1.0, 1.8) + Math.random() * 2.2) * bendiness;
+            const side = Math.sin(t * Math.PI * rand(1.0, 1.8) + srand() * 2.2) * bendiness;
             points.push({
                 r: from.r + dy * t + nx * side + rand(-0.45, 0.45),
                 c: from.c + dx * t + ny * side + rand(-0.65, 0.65),
@@ -505,12 +542,12 @@ export function generateMazeMap(): {
                 }
                 if (grid[r][c] === 1) {
                     // 岩石变空地：周围空地多，或者有一定概率被侵蚀
-                    if (count8 >= 5 || (count8 >= 4 && Math.random() < 0.2)) {
+                    if (count8 >= 5 || (count8 >= 4 && srand() < 0.2)) {
                         next[r][c] = 0;
                     }
                 } else {
                     // 空地变岩石：周围岩石多，或者有一定概率沉积
-                    if (count8 <= 2 || (count8 <= 3 && Math.random() < 0.1)) {
+                    if (count8 <= 2 || (count8 <= 3 && srand() < 0.1)) {
                         next[r][c] = 1;
                     }
                 }
@@ -577,7 +614,7 @@ export function generateMazeMap(): {
 
         let laneIdxX = clamp(Math.floor(laneCountX / 2) + randInt(-1, 1), 0, laneCountX - 1);
         let laneIdxY = 0; // 从顶部开始
-        let sideDirX = Math.random() < 0.5 ? -1 : 1;
+        let sideDirX = srand() < 0.5 ? -1 : 1;
         let sideDirY = 1; // 初始向下
         // 主路节点数
         const mainCount = 20;
@@ -587,13 +624,13 @@ export function generateMazeMap(): {
         // 蛇形游走：每步随机决定是横向还是纵向移动
         for (let i = 1; i < mainCount; i++) {
             // 随机决定这一步主要向哪个方向发展
-            const goHorizontal = Math.random() < 0.45; // 45%概率横向移动
+            const goHorizontal = srand() < 0.45; // 45%概率横向移动
             
             if (goHorizontal) {
                 // 横向移动为主
                 if (laneIdxX <= 1) sideDirX = 1;
                 else if (laneIdxX >= laneCountX - 2) sideDirX = -1;
-                else if (Math.random() < 0.6) sideDirX *= -1;
+                else if (srand() < 0.6) sideDirX *= -1;
                 laneIdxX = clamp(laneIdxX + sideDirX * randInt(1, 3), 0, laneCountX - 1);
                 // 纵向也稍微移动
                 laneIdxY = clamp(laneIdxY + randInt(0, 1), 0, laneCountY - 1);
@@ -601,10 +638,10 @@ export function generateMazeMap(): {
                 // 纵向移动为主
                 if (laneIdxY <= 1) sideDirY = 1;
                 else if (laneIdxY >= laneCountY - 2) sideDirY = -1;
-                else if (Math.random() < 0.5) sideDirY *= -1;
+                else if (srand() < 0.5) sideDirY *= -1;
                 laneIdxY = clamp(laneIdxY + sideDirY * randInt(1, 2), 0, laneCountY - 1);
                 // 横向也稍微移动
-                if (Math.random() < 0.7) {
+                if (srand() < 0.7) {
                     sideDirX *= -1;
                     laneIdxX = clamp(laneIdxX + sideDirX * randInt(0, 1), 0, laneCountX - 1);
                 }
@@ -639,8 +676,8 @@ export function generateMazeMap(): {
         }
         const npcAnchor = npcAnchorCandidates[randInt(0, npcAnchorCandidates.length - 1)];
         // NPC 偏离主路，放在一条分支的末端
-        const npcLateralDir = Math.random() < 0.5 ? -1 : 1;
-        const npcVerticalDir = Math.random() < 0.5 ? -1 : 1;
+        const npcLateralDir = srand() < 0.5 ? -1 : 1;
+        const npcVerticalDir = srand() < 0.5 ? -1 : 1;
         const npcNode = createNode(
             npcAnchor.r + npcVerticalDir * rand(3, 8),
             npcAnchor.c + npcLateralDir * rand(6, 14),
@@ -653,7 +690,7 @@ export function generateMazeMap(): {
         const branchRoots: MazeNode[] = [];
         for (let i = 1; i < mainNodes.length; i++) {
             branchRoots.push(mainNodes[i]);
-            if (Math.random() < 0.6) branchRoots.push(mainNodes[i]);
+            if (srand() < 0.6) branchRoots.push(mainNodes[i]);
         }
 
         const loopableNodes: MazeNode[] = [];
@@ -667,8 +704,8 @@ export function generateMazeMap(): {
         for (let i = 0; i < deepBranchCount; i++) {
             const root = branchRoots[randInt(0, branchRoots.length - 1)];
             let prev = root;
-            let lateralDir = Math.random() < 0.5 ? -1 : 1;
-            let verticalDir = Math.random() < 0.5 ? -1 : 1;
+            let lateralDir = srand() < 0.5 ? -1 : 1;
+            let verticalDir = srand() < 0.5 ? -1 : 1;
             const chainLength = randInt(1, 4);
             const branchNodes: MazeNode[] = [];
             for (let step = 0; step < chainLength; step++) {
@@ -683,13 +720,13 @@ export function generateMazeMap(): {
                 addEdge(prev, next);
                 branchNodes.push(next);
                 loopableNodes.push(next);
-                if (Math.random() < 0.45) lateralDir *= -1;
-                if (Math.random() < 0.3) verticalDir *= -1;
+                if (srand() < 0.45) lateralDir *= -1;
+                if (srand() < 0.3) verticalDir *= -1;
                 prev = next;
             }
 
             // 回环连接
-            if (branchNodes.length >= 2 && Math.random() < 0.4) {
+            if (branchNodes.length >= 2 && srand() < 0.4) {
                 const tail = branchNodes[branchNodes.length - 1];
                 const candidates = loopableNodes.filter(node => {
                     if (node.id === tail.id || node.id === root.id) return false;
@@ -711,7 +748,7 @@ export function generateMazeMap(): {
             const root = loopableNodes[randInt(0, loopableNodes.length - 1)];
             const leaf = createNode(
                 root.r + rand(-7.0, 7.0),
-                root.c + (Math.random() < 0.5 ? -1 : 1) * rand(4.5, 12.0),
+                root.c + (srand() < 0.5 ? -1 : 1) * rand(4.5, 12.0),
                 'deadEnd',
                 rand(0.88, 1.05)
             );
@@ -747,7 +784,7 @@ export function generateMazeMap(): {
         digPocket(grid, spawnNode, 0.92);
         digPocket(grid, npcNode, 0.96);
         for (const node of nodes) {
-            if (node.tag !== 'deadEnd' && Math.random() < 0.18) {
+            if (node.tag !== 'deadEnd' && srand() < 0.18) {
                 digPocket(grid, node, 0.68);
             }
         }
@@ -1010,9 +1047,9 @@ export function generateMazeMap(): {
                 if (border) {
                     // 基础墙体，保证碰撞覆盖
                     const wall: any = {
-                        x: c * ts + ts / 2 + (Math.random() - 0.5) * ts * 0.4,
-                        y: r * ts + ts / 2 + (Math.random() - 0.5) * ts * 0.4,
-                        r: ts * (0.5 + Math.random() * 0.2),
+                        x: c * ts + ts / 2 + (srand() - 0.5) * ts * 0.4,
+                        y: r * ts + ts / 2 + (srand() - 0.5) * ts * 0.4,
+                        r: ts * (0.5 + srand() * 0.2),
                         row: r,
                         col: c,
                         isBorder: true
@@ -1022,13 +1059,13 @@ export function generateMazeMap(): {
                     
                     // 额外添加1-2个随机圆，打破网格感，表现结构无规则
                     // 额外圆同时挂到基础 wall 的 extras 数组上，供碰撞检测使用
-                    const extraCount = Math.random() < 0.5 ? 1 : 2;
+                    const extraCount = srand() < 0.5 ? 1 : 2;
                     const extras: any[] = [];
                     for (let i = 0; i < extraCount; i++) {
                         const extra = {
-                            x: c * ts + ts / 2 + (Math.random() - 0.5) * ts * 0.8,
-                            y: r * ts + ts / 2 + (Math.random() - 0.5) * ts * 0.8,
-                            r: ts * (0.3 + Math.random() * 0.5),
+                            x: c * ts + ts / 2 + (srand() - 0.5) * ts * 0.8,
+                            y: r * ts + ts / 2 + (srand() - 0.5) * ts * 0.8,
+                            r: ts * (0.3 + srand() * 0.5),
                             row: r,
                             col: c,
                             isBorder: true
@@ -1055,6 +1092,7 @@ export function generateMazeMap(): {
     const spawnY = spawnNode.r * ts + ts / 2;
 
     return {
+        seed: actualSeed,
         mazeMap,
         mazeWalls,
         mazeExplored,

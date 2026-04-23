@@ -1,5 +1,6 @@
 import { CONFIG } from '../core/config';
 import { state, player } from '../core/state';
+import { srand } from '../core/SeededRandom';
 
 // =============================================
 // 判断当前是否处于迷宫模式
@@ -277,7 +278,7 @@ export function generateFishDens(): { x: number; y: number; radius: number; skul
 
     const denCountMin = mazeCfg.denCountMin || 2;
     const denCountMax = mazeCfg.denCountMax || 3;
-    const denCount = denCountMin + Math.floor(Math.random() * (denCountMax - denCountMin + 1));
+    const denCount = denCountMin + Math.floor(srand() * (denCountMax - denCountMin + 1));
     const denRadius = mazeCfg.denRadius || 600;
     const minDistToSpawn = mazeCfg.denMinDistToSpawn || 2000;
     const minDistBetween = mazeCfg.denMinDistBetween || 1800;
@@ -292,7 +293,7 @@ export function generateFishDens(): { x: number; y: number; radius: number; skul
     // === 策略：先尝试在“关键路径”（出生点→NPC）附近放一个，再随机擒其它 ===
     if (mustCoverCritical && denCount > 0) {
         // 在出生点→NPC的连线上取 0.45~0.75 区间的一个点，偏离一点
-        const t = 0.45 + Math.random() * 0.3;
+        const t = 0.45 + srand() * 0.3;
         const mx = spawnX + (maze.npcInitX - spawnX) * t;
         const my = spawnY + (maze.npcInitY - spawnY) * t;
         const pos = findNearbyOpenCell(maze, mx, my, 600);
@@ -309,8 +310,8 @@ export function generateFishDens(): { x: number; y: number; radius: number; skul
     let outerAttempts = 0;
     while (dens.length < denCount && outerAttempts < 200) {
         outerAttempts++;
-        const r = minRow + Math.floor(Math.random() * (maxRow - minRow));
-        const c = minCol + Math.floor(Math.random() * (maxCol - minCol));
+        const r = minRow + Math.floor(srand() * (maxRow - minRow));
+        const c = minCol + Math.floor(srand() * (maxCol - minCol));
         if (!maze.mazeMap[r] || maze.mazeMap[r][c]) continue;
         const x = c * ts + ts / 2;
         const y = r * ts + ts / 2;
@@ -328,7 +329,7 @@ export function generateFishDens(): { x: number; y: number; radius: number; skul
     const skullMax = mazeCfg.denSkullCountMax || 8;
     const skullSearchRatio = mazeCfg.denSkullSearchRadiusRatio || 0.9;
     for (const den of dens) {
-        const skullCount = skullMin + Math.floor(Math.random() * (skullMax - skullMin + 1));
+        const skullCount = skullMin + Math.floor(srand() * (skullMax - skullMin + 1));
         const searchR = den.radius * skullSearchRatio;
         // 从聚集点附近的 mazeWalls 中随机选 skullCount 块岩石，把骷髅贴在岩石外缘
         const candidates: any[] = [];
@@ -339,7 +340,7 @@ export function generateFishDens(): { x: number; y: number; radius: number; skul
         }
         // 打乱
         for (let i = candidates.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
+            const j = Math.floor(srand() * (i + 1));
             [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
         }
         const pick = candidates.slice(0, Math.min(skullCount, candidates.length));
@@ -349,7 +350,7 @@ export function generateFishDens(): { x: number; y: number; radius: number; skul
             const dy = den.y - w.y;
             const dLen = Math.hypot(dx, dy) || 1;
             // 将骷髅放在岩石边缘、面向聚集点一侧，加一点角度扰动
-            const jitter = (Math.random() - 0.5) * 0.6;
+            const jitter = (srand() - 0.5) * 0.6;
             const angleOnRock = Math.atan2(dy, dx) + jitter;
             const offsetR = (w.r || 30) * 0.85;
             const skX = w.x + Math.cos(angleOnRock) * offsetR;
@@ -358,8 +359,8 @@ export function generateFishDens(): { x: number; y: number; radius: number; skul
                 x: skX,
                 y: skY,
                 angle: angleOnRock,
-                size: 12 + Math.random() * 8,
-                seed: Math.random() * 1000,
+                size: 12 + srand() * 8,
+                seed: srand() * 1000,
             });
         }
     }

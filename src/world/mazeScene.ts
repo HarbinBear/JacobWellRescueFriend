@@ -1,4 +1,5 @@
 import { CONFIG } from '../core/config';
+import { srand } from '../core/SeededRandom';
 
 export type MazeMainThemeKey = 'muddy' | 'limestone' | 'rusty' | 'hardRock';
 export type MazeRockShape = 'round' | 'angular' | 'smooth' | 'spiky';
@@ -97,7 +98,7 @@ const MAZE_MAIN_THEMES: Record<MazeMainThemeKey, MazeMainThemeConfig> = {
 function shuffleArray<T>(items: T[]): T[] {
     const result = items.slice();
     for (let i = result.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
+        const j = Math.floor(srand() * (i + 1));
         const temp = result[i];
         result[i] = result[j];
         result[j] = temp;
@@ -106,7 +107,7 @@ function shuffleArray<T>(items: T[]): T[] {
 }
 
 function randInt(min: number, max: number): number {
-    return Math.floor(min + Math.random() * (max - min + 1));
+    return Math.floor(min + srand() * (max - min + 1));
 }
 
 function createEmptyBlendMap(rows: number, cols: number): MazeSceneCellBlend[][] {

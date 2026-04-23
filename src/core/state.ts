@@ -227,6 +227,11 @@ export const state = {
         _driveToggleHolding: boolean; // 手动/自动挡详情是否正在按住
         _driveSwitchTip: number;    // 手动/自动挡切换tip倒计时（帧）
 
+        // === 迷宫种子（P4 地形序列化） ===
+        // uint32 范围的种子，用于通过确定性 PRNG 完全重建 mazeMap / mazeWalls / 场景数据
+        // 生成地图时记录，存档读档时恢复
+        seed: number;
+
         // === 迷宫专属地图数据（跨下潜保留） ===
         mazeMap: any[][];
         mazeWalls: any[];
