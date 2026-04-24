@@ -2,6 +2,7 @@ import { CONFIG } from '../core/config';
 import { state, player, input } from '../core/state';
 import { findNearestWall } from './Rope';
 import { pathLength, samplePolyline } from './Pathfinding';
+import { findNearbyOxygenTank, startInstallTank, cancelInstallTank } from './OxygenTank';
 
 // ============ 类型定义 ============
 
@@ -35,7 +36,8 @@ export type WheelAction =
     | 'markDanger'   // 放红叉标记
     | 'markUnknown'  // 放黄问号标记
     | 'markSafe'     // 放绿圈标记
-    | 'removeMarker'; // 拆除标记
+    | 'removeMarker' // 拆除标记
+    | 'installTank'; // 安装氧气瓶
 
 export interface WheelSector {
     action: WheelAction;
@@ -52,6 +54,7 @@ export type WheelContext =
     | 'markedWall'      // 靠近已有标记的岩石
     | 'ropeMid'         // 靠近绳索中段
     | 'ropeMarkedMid'   // 靠近绳索中段已有标记
+    | 'oxygenTank'      // 靠近氧气瓶
     | 'none';           // 不在任何可交互对象附近
 
 // ============ 全局标记 ID 计数器 ============
@@ -156,12 +159,24 @@ interface NearbyInfo {
     ropeT?: number;       // 绳索上的参数位置
     isEndpoint?: boolean; // 是否是绳索端点
     existingMarker?: Marker; // 已有标记
+    oxygenTankId?: number; // 附近氧气瓶 id（context=oxygenTank 时有效）
 }
 
 /** 检测玩家附近的可交互对象，返回上下文信息 */
 export function detectWheelContext(): NearbyInfo {
     const result: NearbyInfo = { context: 'none' };
     if (!state.rope) return result;
+
+    // === 0. 最高优先：氧气瓶 ===
+    // 氧气瓶不受铺绳状态/绳索状态影响，靠近就能触发（但不用抢抽绳索中的端点拆绳）
+    {
+        const tank = findNearbyOxygenTank();
+        if (tank) {
+            result.context = 'oxygenTank';
+            result.oxygenTankId = tank.id;
+            return result;
+        }
+    }
 
     const anchorDist = CONFIG.ropeAnchorDistance;
 
@@ -265,6 +280,10 @@ export function buildWheelSectors(ctx: WheelContext, hasExistingMarker: boolean)
     // 根据上下文决定扇区内容
     // 规则：铺绳中只有结束铺绳；拆绳/拆标记场景只有拆；其余场景按标准布局
     switch (ctx) {
+        case 'oxygenTank':
+            // 靠近氧气瓶：只有安装氧气瓶，占满 360°
+            sectors.push({ action: 'installTank', label: '安装氧气瓶', startAngle: 0, endAngle: 0 });
+            break;
         case 'ropingWall':
             // 铺绳中靠近岩石：只有结束铺绳，占满360°
             sectors.push({ action: 'endRope', label: '结束铺绳', startAngle: 0, endAngle: 0 });
@@ -453,6 +472,28 @@ export function executeWheelAction(action: WheelAction) {
         case 'removeMarker': {
             if (info.existingMarker) {
                 startRemoveMarker(info.existingMarker.id);
+            }
+            break;
+        }
+        case 'installTank': {
+            // 轮盘松手选中：启动安装
+            // 注意：安装进度的按住驱动由 input.ts 中的 previewAction 维持，
+            // 这里只在“松手确认”时被触发，代表“立即完成一次安装动作”。
+            // 为了符合用户需求（按住瓶子设置到自己身上），这里把进度直接推到 1，
+            // 触发 completeInstall（有完整的视觉反馈：飞瓶、气泡、辉光、氧气条上涨、跳字）。
+            if (info.oxygenTankId != null) {
+                startInstallTank(info.oxygenTankId);
+                const maze = state.mazeRescue;
+                if (maze && maze.oxygenTanks) {
+                    for (const t of maze.oxygenTanks) {
+                        if (t.id === info.oxygenTankId && !t.consumed) {
+                            // 立即完成（轮盘已经有自己的长按进度作为“按住”语义）
+                            t.holdProgress = 1;
+                            t.isBeingInstalled = true;
+                            break;
+                        }
+                    }
+                }
             }
             break;
         }

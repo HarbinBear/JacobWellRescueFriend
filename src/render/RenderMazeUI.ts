@@ -2,6 +2,7 @@ import { CONFIG } from '../core/config';
 import { state, player } from '../core/state';
 import { ctx, logicW, logicH } from './Canvas';
 import { getMazeMainThemeConfig } from '../world/mazeScene';
+import { drawOxygenScreenGlow } from './RenderOxygenTank';
 
 // 兼容微信小游戏的圆角矩形
 function rrect(c, x, y, w, h, r) {
@@ -62,8 +63,15 @@ export function drawMazeHUD() {
 
     // === 游戏中 HUD ===
 
+    // 氧气拾取拾取后的全屏绿色辉光（在所有 HUD 之前绘制，不遮挖 HUD）
+    drawOxygenScreenGlow(ctx, cw, ch);
+
     // --- 左上角：深度 + 圆形氧气环 + 按住展开详情 + 手动挡开关 ---
-    const o2Ratio = Math.max(0, player.o2 / 100);
+    // 氧气环显示值走动画值（拾取时平滑上涨），在 oxygenFeedback 存在时使用，否则回落到 player.o2
+    const o2DisplayRaw = (state.mazeRescue && state.mazeRescue.oxygenFeedback && typeof state.mazeRescue.oxygenFeedback.o2DisplayAnim === 'number')
+        ? state.mazeRescue.oxygenFeedback.o2DisplayAnim
+        : player.o2;
+    const o2Ratio = Math.max(0, Math.min(1, o2DisplayRaw / 100));
     const depth = Math.max(0, Math.floor(player.y / maze.mazeTileSize));
 
     // 入场动效：前 40 帧从左侧滑入 + 淡入
@@ -175,6 +183,41 @@ export function drawMazeHUD() {
         ctx.arc(ringCX, ringCY, ringR + 2, o2StartAngle, o2EndAngle);
         ctx.stroke();
         ctx.lineWidth = ringW;
+    }
+
+    // 氧气拾取脉冲（绿色放大环 + 跳字）：在 oxygenFeedback.o2RingPulse > 0 时显示
+    const o2RingPulseT = (maze.oxygenFeedback && maze.oxygenFeedback.o2RingPulse) || 0;
+    if (o2RingPulseT > 0) {
+        const p = o2RingPulseT; // 1→0
+        // 向外扩散的绿色光环
+        const expandR = ringR + 4 + (1 - p) * 22;
+        const ringAlpha = p * 0.9;
+        ctx.save();
+        ctx.globalAlpha = hudAlpha * ringAlpha;
+        ctx.strokeStyle = 'rgba(120, 255, 180, 0.85)';
+        ctx.lineWidth = 3 * p + 1;
+        ctx.beginPath();
+        ctx.arc(ringCX, ringCY, expandR, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+    }
+    // "+X%" 跳字：在氧气环右侧向上飘
+    if (maze.oxygenFeedback && maze.oxygenFeedback.floatText) {
+        const ft = maze.oxygenFeedback.floatText;
+        const ftT = Math.max(0, Math.min(1, ft.timer));
+        const floatY = ringCY - 8 - (1 - ftT) * 28;
+        ctx.save();
+        ctx.globalAlpha = hudAlpha * ftT * 0.95;
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.shadowColor = 'rgba(0,0,0,0.6)';
+        ctx.shadowBlur = 6;
+        ctx.fillStyle = 'rgba(160, 255, 200, 1)';
+        ctx.font = 'bold 18px Arial';
+        ctx.fillText(ft.text, ringCX + ringR + 10, floatY);
+        ctx.shadowBlur = 0;
+        ctx.textBaseline = 'alphabetic';
+        ctx.restore();
     }
 
     // 圆环中心：深度数字

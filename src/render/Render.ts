@@ -11,6 +11,7 @@ import { drawMarkersWorld, drawMarkerPreview } from './RenderMarker';
 import { drawWheelButton, drawWheel } from './RenderWheel';
 import { drawAllFishEnemies, drawFishBiteEffect } from './RenderFishEnemy';
 import { drawMazeWallShape, getMazeParticleColorByWorld, getMazeThemeColorByCell, drawMazeShallowSky, drawMazeShallowWaterTint, drawMazeShallowCaustics, getMazeShallowMaskAlpha, drawFishDenSkulls } from './RenderMazeScene';
+import { drawOxygenTanksWorld, drawOxygenFeedbackWorld } from './RenderOxygenTank';
 import { drawGMButton, drawGMPanel } from '../gm/GMPanel';
 import { drawAudioToggle } from './RenderAudioToggle';
 import { updateDustTime, drawDustDarkLayer, drawDustLitLayer } from './DustMotes';
@@ -387,6 +388,12 @@ export function draw() {
 
     // --- 绘制凶猛鱼敌人（在角色之前）---
     drawAllFishEnemies(ctx);
+
+    // --- 迷宫模式：绘制氧气瓶（静态位点 + 交互环）+ 拾取反馈（飞瓶/气泡爆发）---
+    if (isMazeMode && state.mazeRescue && state.mazeRescue.phase === 'play') {
+        drawOxygenTanksWorld(ctx, viewL, viewR, viewT, viewB);
+        drawOxygenFeedbackWorld(ctx);
+    }
 
     // --- 计算光照参数（体积光和遮罩共用）---
     let vRayDist = CONFIG.lightRange;

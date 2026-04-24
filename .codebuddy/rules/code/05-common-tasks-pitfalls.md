@@ -77,6 +77,25 @@ type: always
 - `src/core/config.ts` 中的 `marker` 配置
 - `src/gm/GMConfig.ts` 中的
 
+### 1.5c 改氧气瓶系统（迷宫模式补给）
+
+优先检查：
+
+- `src/logic/OxygenTank.ts`（数据结构、派生 seed 生成、按住进度、飞瓶与视觉反馈状态机）
+- `src/render/RenderOxygenTank.ts`（瓶体/飞行瓶/气泡爆发/全屏辉光）
+- `src/logic/Marker.ts`（`oxygenTank` 上下文、`installTank` 扇区与动作执行）
+- `src/logic/MazeLogic.ts`（`resetMazeLogic` 新建 + 读档两个分支都需重建氧气瓶；`updateMaze` 中调用 `updateOxygenTanks()`）
+- `src/render/RenderMazeUI.ts`（氧气环脉冲 + "+X%" 跳字 + 全屏辉光挂载点）
+- `src/logic/MazeSave.ts`（rest 黑名单已排除 `oxygenTanks` / `oxygenFeedback`；`consumedTankIds` 走 rest 自动持久化）
+- `src/core/config.ts` 中的 `oxygenTank` 配置
+- `src/gm/GMConfig.ts` 中的"氧气瓶"Tab
+
+常见陷阱：
+
+- 新加"已消耗 id"相关字段时，务必检查 `MazeSave.ts` 的 rest 黑名单，避免误过滤
+- 氧气瓶生成必须包裹在派生 seed 的 `setActiveSeededRandom()` / `clearActiveSeededRandom()` 中，否则同 seed 下布局会漂移
+- `consumedTankIds` 在换新地图（`replayMazeLogic`）时要清空，否则新地图会继承老瓶子的"已消耗"状态
+
 ### 1.6 改凶猛鱼行为或攻击判定
 
 优先检查：

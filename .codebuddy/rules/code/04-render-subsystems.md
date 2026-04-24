@@ -90,6 +90,40 @@ type: always
 
 配置参数集中在 `CONFIG.marker` 子对象中，GM 面板有独立的
 
+### 1.6b 氧气瓶系统 `src/logic/OxygenTank.ts`
+
+氧气瓶系统是迷宫模式专属的补给子系统，与标记系统类似：**逻辑和渲染各自独立模块，由 `MazeLogic.ts` 和 `Marker.ts`（轮盘上下文）驱动**。
+
+对外提供：
+
+- `buildOxygenTanksForMaze(mainSeed, consumedIds)`：根据主 seed 派生子种子 `seed ^ 0xCAFEBABE`，确定性生成当前迷宫的氧气瓶列表（已消耗 id 会被标 consumed）
+- `generateOxygenTanks()`：候选岩石扫描 + 聚落优先撒点 + 全图补充散落
+- `updateOxygenTanks()`：每帧更新所有瓶子的呼吸相位、按住进度、飞行瓶、气泡爆发、屏幕辉光、氧气条上涨动画
+- `findNearbyOxygenTank()`：供 `Marker.ts` 的 `detectWheelContext()` 最高优先级检测使用
+- `startInstallTank(id)` / `cancelInstallTank(id)`：轮盘松手确认安装时触发
+- `createOxygenFeedback()`：反馈运行态工厂，读档时由 `MazeLogic` 重建
+
+核心设计：
+
+- **位置来自派生种子**：每个氧气瓶都贴在岩石表面外缘（法线方向外推 `w.r * 0.9` + 小抖动），**永远不悬空、不嵌岩石**。
+- **聚落优先、全图散落补位**：食人鱼聚落内 70% 概率刷新（2~4 个/聚落），聚落外散落 3~6 个，整张地图总计约 10~20 个。
+- **按住安装 = 轮盘扇区**：接入现有 `Marker.ts` 轮盘系统；`WheelContext` 新增 `oxygenTank`，`WheelAction` 新增 `installTank`；靠近氧气瓶自动出现按钮，按住松手即触发安装，`completeInstall` 负责所有视觉反馈。
+- **跨下潜持久，同 seed 不再刷**：已消耗的瓶子 id 存在 `state.mazeRescue.consumedTankIds` 数组里，走 `MazeSave.ts` 的 `rest` 字段自动持久化；`buildOxygenTanksForMaze` 在重建时把这些 id 标为 consumed，渲染和拾取都会跳过它们。
+- **运行态反馈不进存档**：`oxygenTanks` / `oxygenFeedback` 都在 `MazeSave.ts` 的 rest 黑名单里，跨 session 重建即可。
+
+渲染由专项模块负责：
+
+- `src/render/RenderOxygenTank.ts`：
+  - `drawOxygenTanksWorld()`：世界层静态瓶体（黄色圆柱 + 红色顶阀 + 呼吸发光）+ 按住进度环
+  - `drawOxygenFeedbackWorld()`：飞行瓶尾迹 + 气泡爆发（拾取瞬间从玩家位置向外扩散）
+  - `drawOxygenScreenGlow()`：全屏绿色边缘辉光（由 `RenderMazeUI` 在 HUD 开头调用）
+- `RenderMazeUI.ts` 中氧气环新增两种拾取反馈：
+  - 拾取脉冲：绿色放大光环（0.8s）
+  - `+X%` 跳字：氧气环右侧向上飘（1.5s）
+  - 氧气环数字从 `oxygenFeedback.o2DisplayAnim` 读取（追 `player.o2` 的平滑值）
+
+配置参数集中在 `CONFIG.oxygenTank` 子对象中，GM 面板有独立的"氧气瓶"Tab。
+
 ### 1.3 敌鱼系统 `src/logic/FishEnemy.ts`
 
 敌鱼系统至少提供：

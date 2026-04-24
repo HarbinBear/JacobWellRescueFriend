@@ -10,6 +10,7 @@ import { checkMazeCollision } from './Collision';
 import { updateCameraSpringArm, snapCameraToPlayer, getAdaptiveZoom } from './CameraLogic';
 import { updateMarkers, updateWheelButtonVisibility } from './Marker';
 import { createFishEnemy, findMazeFishSpawnPosition, updateAllFishEnemies, generateFishDens } from './FishEnemy';
+import { buildOxygenTanksForMaze, updateOxygenTanks, createOxygenFeedback } from './OxygenTank';
 import { playSFX } from '../audio/AudioManager';
 import { loadMazeProgress, saveMazeProgress, clearMazeSave } from './MazeSave';
 import { setActiveSeededRandom, clearActiveSeededRandom } from '../core/SeededRandom';
@@ -79,6 +80,15 @@ export function resetMazeLogic() {
             } finally {
                 clearActiveSeededRandom();
             }
+
+            // 氧气瓶：fishDens 出来之后再重建（氧气瓶依赖聚落位置）
+            // 消耗过的瓶子由 consumedTankIds 控制（已从存档进入 mazeRescue）
+            state.mazeRescue.oxygenTanks = buildOxygenTanksForMaze(
+                state.mazeRescue.seed,
+                state.mazeRescue.consumedTankIds || []
+            );
+            if (!Array.isArray(state.mazeRescue.consumedTankIds)) state.mazeRescue.consumedTankIds = [];
+            state.mazeRescue.oxygenFeedback = createOxygenFeedback();
         }
 
         // 切换到迷宫模式
@@ -218,6 +228,10 @@ export function resetMazeLogic() {
         thisMaxDepth: 0,
         // 食人鱼聚集点占位，先放空数组，下面 generateFishDens 需要 state.mazeRescue 已存在才能读取地图数据
         fishDens: [],
+        // 氧气瓶系统占位：后面紧跟着用派生 seed 完整生成
+        oxygenTanks: [],
+        consumedTankIds: [],
+        oxygenFeedback: null,
     };
 
     // 生成食人鱼聚集点（需要 state.mazeRescue 已挂载；跨下潜保留，换地图时重建）
@@ -230,6 +244,11 @@ export function resetMazeLogic() {
     } finally {
         clearActiveSeededRandom();
     }
+
+    // 氧气瓶：新地图新 seed，consumedTankIds 清空，全量生成
+    state.mazeRescue.consumedTankIds = [];
+    state.mazeRescue.oxygenTanks = buildOxygenTanksForMaze(mazeData.seed, []);
+    state.mazeRescue.oxygenFeedback = createOxygenFeedback();
 
     // 初始化 NPC（被救者，岸上阶段不激活）
     state.npc.active = false;
@@ -747,6 +766,9 @@ export function updateMaze() {
     // --- 标记系统 ---
     updateMarkers();
     updateWheelButtonVisibility();
+
+    // --- 氧气瓶系统（进度/飞瓶/气泡爆发/屏幕辉光动画） ---
+    updateOxygenTanks();
 
     // --- 轮盘展开动画 ---
     if (state.wheel && state.wheel.open) {

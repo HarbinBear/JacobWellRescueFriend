@@ -364,6 +364,10 @@ export function saveMazeProgress(): boolean {
             k === 'spawnX' || k === 'spawnY' ||
             // 骷髅 / 聚集点也能从 seed 重建（MazeLogic 里用派生 seed 包住 generateFishDens）
             k === 'fishDens' ||
+            // 氧气瓶列表从 seed + consumedTankIds 重建（consumedTankIds 会保留在 rest 里）
+            k === 'oxygenTanks' ||
+            // 氧气拾取的运行态反馈（飞瓶、气泡、跳字、屏幕辉光）不跨 session 保留
+            k === 'oxygenFeedback' ||
             // 单独压缩的大字段
             k === 'mazeExplored' || k === 'thisExploredBefore' ||
             k === 'diveHistory' ||
@@ -485,6 +489,11 @@ export function loadMazeProgress(): boolean {
     maze.divingInBubbles = [];
     // fishDens 留空占位；MazeLogic.resetMazeLogic 的读档分支会用派生 seed 重建一次
     maze.fishDens = [];
+    // 氧气瓶：占位，由 MazeLogic.resetMazeLogic 的读档分支用派生 seed 重建一次；
+    // consumedTankIds 从 rest 里来（若 rest 没给就兜底成空数组）
+    maze.oxygenTanks = [];
+    if (!Array.isArray(maze.consumedTankIds)) maze.consumedTankIds = [];
+    maze.oxygenFeedback = null; // 视觉反馈运行态，读档后由 MazeLogic 重建
 
     // 展开压缩后的 diveHistory
     const packedHistory: PackedDive[] = Array.isArray(maze.diveHistory) ? maze.diveHistory : [];

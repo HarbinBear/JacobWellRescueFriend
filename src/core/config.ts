@@ -373,6 +373,34 @@ export const CONFIG = {
         debriefShowDelay: 30,       // 结算页延迟显示帧数
     },
 
+    // ===== 氧气瓶配置（迷宫模式，跨下潜持久，同 seed 已消耗不再刷新） =====
+    oxygenTank: {
+        // 生成：聚集点附近（主要来源）
+        denCountMin: 2,                 // 每个食人鱼聚落内最少刷几个
+        denCountMax: 4,                 // 每个食人鱼聚落内最多刷几个
+        denSearchRadiusRatio: 0.85,     // 聚落半径内搜索岩石的比例
+
+        // 生成：全图散落（次要来源，给非战斗路线补给）
+        scatterCountMin: 3,             // 聚落外全图最少散落几个
+        scatterCountMax: 6,             // 聚落外全图最多散落几个
+
+        // 距离约束
+        minDistBetween: 300,            // 任意两个氧气瓶之间的最小距离（像素）
+        minDistToSpawn: 600,            // 离玩家出生点的最小距离（像素）
+
+        // 单瓶补给量
+        amountMin: 25,                  // 最低补充氧气百分点
+        amountMax: 35,                  // 最高补充氧气百分点
+
+        // 交互
+        pickRange: 90,                  // 进入多近可开始安装（像素）
+        installDuration: 1.2,           // 按住多少秒完成安装
+
+        // 视觉
+        bodyScale: 1,                   // 瓶体缩放
+        breathSpeed: 0.05,              // 呼吸发光推进速度（弧度/帧）
+    },
+
     // ===== 悬浮尘埃配置 =====
     dust: {
         enabled: true,              // 是否启用悬浮尘埃

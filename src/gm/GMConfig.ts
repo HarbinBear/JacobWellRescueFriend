@@ -255,6 +255,23 @@ export const TABS: GMTab[] = [
         ]
     },
     {
+        name: '氧气瓶',
+        items: [
+            { type: 'number', label: '聚落最少/个', path: 'oxygenTank.denCountMin', min: 0, max: 6, step: 1 },
+            { type: 'number', label: '聚落最多/个', path: 'oxygenTank.denCountMax', min: 0, max: 8, step: 1 },
+            { type: 'number', label: '散落最少', path: 'oxygenTank.scatterCountMin', min: 0, max: 10, step: 1 },
+            { type: 'number', label: '散落最多', path: 'oxygenTank.scatterCountMax', min: 0, max: 15, step: 1 },
+            { type: 'number', label: '瓶间最小距', path: 'oxygenTank.minDistBetween', min: 100, max: 800, step: 20 },
+            { type: 'number', label: '离出生最小距', path: 'oxygenTank.minDistToSpawn', min: 200, max: 2000, step: 50 },
+            { type: 'number', label: '补给最小', path: 'oxygenTank.amountMin', min: 5, max: 50, step: 1 },
+            { type: 'number', label: '补给最大', path: 'oxygenTank.amountMax', min: 10, max: 80, step: 1 },
+            { type: 'number', label: '拾取范围', path: 'oxygenTank.pickRange', min: 40, max: 200, step: 5 },
+            { type: 'number', label: '安装秒数', path: 'oxygenTank.installDuration', min: 0.3, max: 3, step: 0.1, precision: 1 },
+            { type: 'number', label: '瓶体缩放', path: 'oxygenTank.bodyScale', min: 0.5, max: 2, step: 0.05, precision: 2 },
+            { type: 'number', label: '呼吸速度', path: 'oxygenTank.breathSpeed', min: 0.01, max: 0.2, step: 0.01, precision: 2 },
+        ]
+    },
+    {
         name: '迷宫鱼',
         items: [
             { type: 'bool', label: '启用食人鱼', path: 'maze.fishEnabled' },
