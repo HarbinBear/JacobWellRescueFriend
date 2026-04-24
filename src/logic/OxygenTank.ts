@@ -15,6 +15,7 @@
 import { CONFIG } from '../core/config';
 import { state, player } from '../core/state';
 import { srand, setActiveSeededRandom, clearActiveSeededRandom } from '../core/SeededRandom';
+import { checkMazeCollision } from './Collision';
 
 // =============================================
 // 数据结构
@@ -185,7 +186,13 @@ export function generateOxygenTanks(): OxygenTank[] {
     return tanks;
 }
 
-/** 尝试在指定岩石表面生成一个氧气瓶，返回 null 表示被最小距离规则过滤掉 */
+/** 尝试在指定岩石的"岩石与水域交界处"生成一个氧气瓶。
+ *  做了三件事：
+ *   1. 真正把候选点放到岩石半径之外（`w.r + safeMargin`），而不是 0.9r 那种还在岩石内部的位置
+ *   2. 调用 `checkMazeCollision` 确认"玩家中心能站在那儿且不撞任何墙/装饰圆"
+ *   3. 多角度扫描（主方向 + 两侧各 30/60/90/120/180°），任何一个方向能放下就算成功
+ *  返回 null 表示该岩石所有方向都被周围墙体堵死，或者被出生点/距离规则拒绝。
+ */
 function tryPlaceOnWall(
     w: any,
     refX: number, refY: number,
@@ -196,33 +203,74 @@ function tryPlaceOnWall(
     amountMin: number, amountMax: number,
     id: number
 ): OxygenTank | null {
-    // 法线方向：岩石中心指向参考点（聚落中心 / 开阔方向），附带轻微抖动避免整齐
-    const jitter = (srand() - 0.5) * 0.5;
-    const normalAngle = Math.atan2(refY - w.y, refX - w.x) + jitter;
-    const offsetR = (w.r || 30) * 0.9;
-    const tx = w.x + Math.cos(normalAngle) * offsetR;
-    const ty = w.y + Math.sin(normalAngle) * offsetR;
+    const maze = state.mazeRescue;
+    if (!maze) return null;
 
-    // 出生点距离
-    if (Math.hypot(tx - spawnX, ty - spawnY) < minDistToSpawn) return null;
-    // 彼此距离
-    for (const t of existing) {
-        if (Math.hypot(tx - t.x, ty - t.y) < minDistBetween) return null;
+    // 主朝向：从岩石中心指向参考点（聚落中心 / 开阔方向）
+    const baseAngle = Math.atan2(refY - w.y, refX - w.x);
+
+    // 安全边距：玩家半径 + 额外缓冲，确保瓶子在水域里、玩家能游到拾取范围内
+    const playerRadius = CONFIG.maze.playerRadius || 12;
+    const safeMargin = playerRadius + 10;          // 瓶子中心离岩石表面多少像素
+    const wallR = w.r || 30;
+    // 核心修复：offsetR 从 `w.r + safeMargin` 起步，**一定在岩石外部**
+    const offsetR = wallR + safeMargin;
+
+    // 多角度扫描：主方向优先，不行再依次尝试两侧偏转
+    // 之所以需要这么多角度：单个岩石"指向开阔方向"的那一侧可能正好挨着另一颗岩石，
+    // 而完全相反的那一侧反而是空旷水域
+    const angleOffsets = [0, Math.PI / 6, -Math.PI / 6, Math.PI / 3, -Math.PI / 3,
+                          Math.PI / 2, -Math.PI / 2, Math.PI * 2 / 3, -Math.PI * 2 / 3, Math.PI];
+
+    for (const off of angleOffsets) {
+        // 每个候选角度加一点固定抖动（基于 srand，保证确定性），避免过于规整
+        const jitter = (srand() - 0.5) * 0.25;
+        const angle = baseAngle + off + jitter;
+        const tx = w.x + Math.cos(angle) * offsetR;
+        const ty = w.y + Math.sin(angle) * offsetR;
+
+        // 出生点距离
+        if (Math.hypot(tx - spawnX, ty - spawnY) < minDistToSpawn) continue;
+        // 彼此距离
+        let tooClose = false;
+        for (const t of existing) {
+            if (Math.hypot(tx - t.x, ty - t.y) < minDistBetween) { tooClose = true; break; }
+        }
+        if (tooClose) continue;
+
+        // 关键：确认"玩家中心放在这里不会撞任何墙"
+        // checkMazeCollision 会同时检查基础 wall + extras 装饰圆
+        if (checkMazeCollision(tx, ty, maze)) continue;
+
+        // 进一步验证"玩家能从周围靠近这个点"：
+        // 检查瓶子周围 4 个等距方向上，至少有一个方向在 1.5*playerRadius 距离内是水域
+        // 这样能筛掉"瓶子虽在水里，但四面被墙夹成一个小口袋，玩家游不过去"
+        let hasOpenSide = false;
+        const probeDist = playerRadius * 1.5;
+        for (let k = 0; k < 4; k++) {
+            const a = (k / 4) * Math.PI * 2;
+            const px = tx + Math.cos(a) * probeDist;
+            const py = ty + Math.sin(a) * probeDist;
+            if (!checkMazeCollision(px, py, maze)) { hasOpenSide = true; break; }
+        }
+        if (!hasOpenSide) continue;
+
+        const amount = amountMin + srand() * (amountMax - amountMin);
+        return {
+            id,
+            x: tx, y: ty,
+            wallX: w.x, wallY: w.y,
+            normalAngle: angle,               // 瓶体朝向用最终生效的角度，方向看起来更自然
+            amount,
+            consumed: false,
+            holdProgress: 0,
+            isBeingInstalled: false,
+            breathPhase: srand() * Math.PI * 2,
+        };
     }
 
-    const amount = amountMin + srand() * (amountMax - amountMin);
-
-    return {
-        id,
-        x: tx, y: ty,
-        wallX: w.x, wallY: w.y,
-        normalAngle,
-        amount,
-        consumed: false,
-        holdProgress: 0,
-        isBeingInstalled: false,
-        breathPhase: srand() * Math.PI * 2,
-    };
+    // 所有角度都放不下：这颗岩石不适合放氧气瓶
+    return null;
 }
 
 // =============================================
