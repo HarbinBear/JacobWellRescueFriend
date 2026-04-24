@@ -28,6 +28,7 @@ type: always
    - [05-dive-loop-and-production.md](./design/05-dive-loop-and-production.md)：多次下潜闭环的程序/美术/UI 拆解稿
    - [06-diver-visual-design.md](./design/06-diver-visual-design.md)：潜水员角色表现与手动挡输入可视化设计稿
    - [07-playdead-methodology-design.md](./design/07-playdead-methodology-design.md)：Playdead 方法论在本项目中的表现落地稿
+   - [08-toner-master-narrative.md](./design/08-toner-master-narrative.md)：《唐老师的救援》叙事蓝本（主线未来目标形态，不是当前已实现内容；当前四关是其早期雏形）
 
 ## 最短阅读建议
 
@@ -46,6 +47,8 @@ type: always
 - **改多次下潜闭环、跨下潜持久化、岸上整理地图、正式救援状态**：优先读 `05-dive-loop-and-production.md`
 - **改潜水员角色绘制、手动挡动作联动、角色表现细调**：优先读 `06-diver-visual-design.md`
 - **改画面统一性、Playdead 风格方法论、相机体感、表现层优先级**：优先读 `07-playdead-methodology-design.md`
+- **讨论主线叙事的未来走向、失忆/女孩/梦境/八音盒/三线合一、完美结局条件**：优先读 `08-toner-master-narrative.md`（注意：这是目标形态，不是当前实现）
+- **做“玩家感知被救者”这类和未来叙事绑定的新能力**：先读 `08-toner-master-narrative.md` 的第五节，再回到对应玩法分卷
 
 ## 设计文档与技术文档分工
 

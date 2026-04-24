@@ -21,6 +21,29 @@ import { checkMazeCollision } from './Collision';
 // 数据结构
 // =============================================
 
+// 氧气瓶外观随机变体（"这瓶子是哪家哪年的"）
+export interface TankVariant {
+    bodyColor: number;       // 瓶体主色索引（0~3：老黄/暗红/军绿/褪色灰蓝）
+    valveColor: number;      // 顶阀颜色索引（0~2：红/橙/黑）
+    labelKind: number;       // 标签文字索引（0~3：O₂/AIR/32%/模糊）
+    rustLevel: number;       // 锈蚀程度（0~2：新/旧/锈斑）
+    tilt: number;            // 摆放倾倒角度（弧度，相对法线 ±30°）
+    hasCrack: boolean;       // 是否有瓶身裂口（15% 概率）
+    seed: number;            // 细节种子，供渲染里生成锈斑点、划痕等
+}
+
+// 伴生物件（前人留下的遗物：潜水镜、潜水衣碎片等）
+export interface CompanionProp {
+    kind: 'goggles' | 'suit' | 'clothStrip';  // 物件类型
+    offsetX: number;                           // 相对瓶子的世界偏移 X
+    offsetY: number;                           // 相对瓶子的世界偏移 Y
+    angle: number;                             // 物件自身旋转（弧度）
+    color: number;                             // 颜色索引（含义由 kind 决定）
+    formVariant: number;                       // 形态变体索引（含义由 kind 决定）
+    size: number;                              // 整体尺寸缩放（0.85~1.15）
+    seed: number;                              // 细节种子
+}
+
 export interface OxygenTank {
     id: number;                // 稳定 ID（seed 派生）
     x: number;                 // 世界坐标
@@ -35,6 +58,10 @@ export interface OxygenTank {
     isBeingInstalled: boolean; // 是否正在被安装（与轮盘扇区状态联动）
     // 视觉装饰
     breathPhase: number;       // 呼吸发光相位，稍微错开瓶子之间节奏
+    // 外观随机（同 seed 下确定性派生，不进存档）
+    variant: TankVariant;
+    // 伴生遗物（前人留下的镜子/潜水衣等，纯装饰，不参与交互与碰撞）
+    companions: CompanionProp[];
 }
 
 // 飞行中的氧气瓶（视觉反馈，拾取瞬间创建）
@@ -256,6 +283,63 @@ function tryPlaceOnWall(
         if (!hasOpenSide) continue;
 
         const amount = amountMin + srand() * (amountMax - amountMin);
+
+        // === 外观随机（确定性，同 seed 下完全一致） ===
+        const variant: TankVariant = {
+            bodyColor: Math.floor(srand() * 4),        // 0~3
+            valveColor: Math.floor(srand() * 3),       // 0~2
+            labelKind: Math.floor(srand() * 4),        // 0~3
+            rustLevel: Math.floor(srand() * 3),        // 0~2
+            tilt: (srand() - 0.5) * (Math.PI / 3),     // ±30°
+            hasCrack: srand() < 0.15,                  // 15% 有裂口
+            seed: Math.floor(srand() * 0x7fffffff),
+        };
+
+        // === 伴生遗物组合抽签（40/25/20/15） ===
+        // 0: 单瓶     1: 瓶+镜    2: 瓶+衣碎片    3: 全套（镜+衣）
+        const roll = srand();
+        let companionSet = 0;
+        if (roll < 0.40) companionSet = 0;
+        else if (roll < 0.65) companionSet = 1;
+        else if (roll < 0.85) companionSet = 2;
+        else companionSet = 3;
+        const companions: CompanionProp[] = [];
+        // 伴生物件放在瓶子"贴岩石那一侧"附近，自然地散落在岩石表面
+        // 瓶子的法线方向是"朝外"（朝水域），反方向是"贴岩石"
+        const tangent = angle + Math.PI / 2;  // 沿岩石表面方向
+        const addGoggles = (sideSign: number, dist: number) => {
+            companions.push({
+                kind: 'goggles',
+                offsetX: Math.cos(tangent) * dist * sideSign + Math.cos(angle) * -3,
+                offsetY: Math.sin(tangent) * dist * sideSign + Math.sin(angle) * -3,
+                angle: srand() * Math.PI * 2,
+                color: Math.floor(srand() * 3),
+                formVariant: Math.floor(srand() * 3),   // 0=完好 1=裂纹 2=单边碎
+                size: 0.85 + srand() * 0.3,
+                seed: Math.floor(srand() * 0x7fffffff),
+            });
+        };
+        const addSuit = (sideSign: number, dist: number) => {
+            companions.push({
+                kind: srand() < 0.45 ? 'clothStrip' : 'suit',
+                offsetX: Math.cos(tangent) * dist * sideSign + Math.cos(angle) * -5,
+                offsetY: Math.sin(tangent) * dist * sideSign + Math.sin(angle) * -5,
+                angle: srand() * Math.PI * 2,
+                color: Math.floor(srand() * 3),
+                formVariant: Math.floor(srand() * 3),   // 0=完整上衣 1=腰片 2=撕碎布
+                size: 0.85 + srand() * 0.3,
+                seed: Math.floor(srand() * 0x7fffffff),
+            });
+        };
+        if (companionSet === 1) {
+            addGoggles(srand() < 0.5 ? 1 : -1, 16 + srand() * 8);
+        } else if (companionSet === 2) {
+            addSuit(srand() < 0.5 ? 1 : -1, 18 + srand() * 10);
+        } else if (companionSet === 3) {
+            addGoggles(1, 14 + srand() * 6);
+            addSuit(-1, 18 + srand() * 8);
+        }
+
         return {
             id,
             x: tx, y: ty,
@@ -266,6 +350,8 @@ function tryPlaceOnWall(
             holdProgress: 0,
             isBeingInstalled: false,
             breathPhase: srand() * Math.PI * 2,
+            variant,
+            companions,
         };
     }
 
