@@ -25,7 +25,15 @@ type DiverMotion = {
     rightTurnStrength?: number;
     forwardVisual?: number;
     turnVisual?: number;
+    // 鞭腿加速 boost（0~1）：输入加速瘦间提升鞭腿频率与幅度
+    kickDrive?: number;
+    // 角色身份（每个独立的腿部相位时钟按此 id 缓存；player/npc 各一个）
+    id?: string;
 };
+
+// 模块级腿部相位时钟：每个角色独立追踪，由 drawDiver 每帧按速度+boost 推进
+// phase 取值 0~1，freq 为单帧推进比例
+const legClocks: Map<string, { phase: number }> = new Map();
 
 function clamp(value: number, min: number, max: number) {
     return Math.max(min, Math.min(max, value));
@@ -97,102 +105,111 @@ function drawLegAndFin(
     hipX: number,
     hipY: number,
     side: number,
-    kickProgress: number,
-    kickStrength: number,
+    legPhase: number,
+    ampNorm: number,
     turnProgress: number,
     turnStrength: number,
-    swimCycle: number,
     bodyYaw: number,
     colors: DiverColors,
 ) {
     const cfg = CONFIG.diver;
 
-    // ===== 鞭状踢水相位：从髋→膝→踝依次滞后，形成自由泳踢腿的 S 形鞭打 =====
-    // 一个踢水周期的相位取值为 0~1，sin(phase·π) 得到 0→1→0 的发力波形
-    // 输入侧 kickProgress 是"主动踢水"的相位推进，swimCycle 是漂浮/滑行时的低频自摆
-    const activeStrength = kickStrength; // 主动踢水强度
-    const idlePhaseWave = swimCycle;     // 漂浮时的低频摆动（-1~1）
+    // ===== 相位波形：俯视 2D 模拟上下打水 =====
+    // 一条腿的完整鞭打周期为 legPhase ∈ [0,1)：
+    //   0.0  腿完全收起（膝微弯、脚蹼抬离水平面）
+    //   0.5  腿伸直到底（发力瞬间，腿最长、脚蹼水平展开最长、往后甩出最远）
+    //   1.0  回到收起
+    // 主视觉三层叠加：
+    //   1) 腿前后伸缩（kickStretchAmp） ——让腿的总长度像呼吸一样变化
+    //   2) 脚蹼长度脉动（finLengthPulse） ——脚蹼在踢到底时最长
+    //   3) 脚蹼沿身体轴挥拍（finSweepAmp） ——踢到底时脚蹼往后甩出一段，再回收
+    // ampNorm（0~1）由速度 + kickDrive 综合驱动，ampNorm=0 时腿停住不动
 
-    // 相位滞后：让髋-膝-踝在时间上错开，形成鞭状传导
-    const hipPhase = kickProgress;
-    const kneePhase = clamp(kickProgress - cfg.kickPhaseLagKnee, 0, 1);
-    const anklePhase = clamp(kickProgress - cfg.kickPhaseLagAnkle, 0, 1);
+    // 髋→膝→踝相位滞后（鞭状传导）
+    // 注意：滞后只用于"前后伸缩"和"脚蹼脉动"的时间差，不产生任何左右分量
+    const hipPh = legPhase;
+    const kneePh = ((legPhase - cfg.kickPhaseLagKnee) % 1 + 1) % 1;
+    const anklePh = ((legPhase - cfg.kickPhaseLagAnkle) % 1 + 1) % 1;
 
-    const hipWave = Math.sin(hipPhase * Math.PI) * activeStrength;
-    const kneeWave = Math.sin(kneePhase * Math.PI) * activeStrength;
-    const ankleWave = Math.sin(anklePhase * Math.PI) * activeStrength;
+    // 发力波形：sin(2π·phase) 得到 -1→+1→-1 的鞭打（+1 = 下踢到底，-1 = 上抬到顶）
+    // ampNorm 作为总强度开关：0=完全不动
+    // hipWave 仅保留给将来使用，当前不参与任何侧向计算
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const _hipWave = Math.sin(hipPh * Math.PI * 2) * ampNorm;
+    const kneeWave = Math.sin(kneePh * Math.PI * 2) * ampNorm;
+    const ankleWave = Math.sin(anklePh * Math.PI * 2) * ampNorm;
 
-    // 转向修正（拐弯时整条腿外摆一点）
+    // 转向修正（侧向唯一来源，只有在玩家转向时才产生侧向位移）
     const turnEase = easeStroke(turnProgress) * turnStrength;
     const turnOffset = turnEase * cfg.turnLegOffset;
 
-    // 身体传导扭动（让腿在发力峰值时随躯干左右传导一点）
-    const bodyWave = (Math.sin(hipPhase * Math.PI) * 2 - 1) * activeStrength * cfg.kickBodyWave * 0.25;
+    // ===== 关键点坐标（局部坐标系：+x 为角色朝向，-x 为腿延伸方向） =====
+    // 侧向位移只来自 turnOffset 和 side * kickBaseSpread（基础张开，静态值）
+    // 所有与 wave 相关的 side 侧向项全部清零，避免脚蹼在左右方向画圈
 
-    // ===== 关键点坐标（局部坐标系：+x 为角色朝向，+y 为身体右侧） =====
-    // 注意当前角色朝向 +x，腿往 -x 方向长出；因此 y 方向的侧向鞭摆由 side（-1/+1）决定左右
-    const baseSpread = cfg.kickBaseSpread;
-
-    // 髋点：小幅度鞭摆 + 漂浮自摆
-    const hipSwayY = side * (hipWave * cfg.kickAmpHip + idlePhaseWave * cfg.legKickAmplitude * 6)
-                   + bodyYaw * 0.35 + turnOffset * 0.25;
+    // 髋点：基本不动，只有轻微 bodyYaw 和转向偏移
     const hipPX = hipX;
-    const hipPY = hipY + hipSwayY;
+    const hipPY = hipY + bodyYaw * 0.3 + turnOffset * 0.2;
 
-    // 膝点：沿 -x 延伸 thighLength，并做相位滞后的侧向鞭摆
-    // 少量前后位移（大腿根驱动）保留一点"推水"感，但不主导
-    const kneeForward = -cfg.thighLength + hipWave * 0.6;
-    const kneeLateral = side * (kneeWave * cfg.kickAmpKnee + idlePhaseWave * cfg.legKickAmplitude * 10)
-                      + turnOffset * 0.75 + bodyWave * 0.4
-                      + side * baseSpread; // 自然张开
+    // 大腿：沿 -x 延伸，长度随 kneeWave 伸缩（纯前后运动）
+    const thighStretch = kneeWave * cfg.kickStretchAmp * 0.6;
+    const kneeForward = -(cfg.thighLength + thighStretch);
+    // 侧向：只有转向修正 + 静态基础张开（side * kickBaseSpread 当前为 0）
+    const kneeLateral = side * cfg.kickBaseSpread + turnOffset * 0.7;
     const kneePX = hipPX + kneeForward;
     const kneePY = hipPY + kneeLateral;
 
-    // 踝点：从膝再延伸 calfLength，更强的鞭摆滞后（小腿尾随）
-    const ankleForward = -cfg.calfLength + kneeWave * 0.4;
-    const ankleLateral = side * (ankleWave * cfg.kickAmpAnkle + idlePhaseWave * cfg.legKickAmplitude * 6)
-                       + turnOffset * 0.3;
+    // 小腿：沿 -x 延伸，叠加更强的鞭状伸缩（纯前后运动）
+    const calfStretch = ankleWave * cfg.kickStretchAmp * 0.8;
+    const ankleForward = -(cfg.calfLength + calfStretch);
+    // 侧向：只保留转向修正（衰减到 0.25，膝盖侧向的延续）
+    const ankleLateral = turnOffset * 0.25;
     const anklePX = kneePX + ankleForward;
     const anklePY = kneePY + ankleLateral;
 
-    // ===== 绘制大腿（锥形填充：髋端粗，膝端略细） =====
+    // ===== 绘制大腿 =====
     drawTaperedLimb(renderCtx, hipPX, hipPY, kneePX, kneePY,
         cfg.thighWidthHip, cfg.thighWidthKnee, colors.suit, '#1c262c');
 
-    // ===== 绘制小腿（锥形填充：膝端略粗，踝端最细） =====
+    // ===== 绘制小腿 =====
     drawTaperedLimb(renderCtx, kneePX, kneePY, anklePX, anklePY,
         cfg.calfWidthKnee, cfg.calfWidthAnkle, colors.suit, '#1c262c');
 
-    // ===== 膝盖关节小圆（表现屈伸） =====
+    // ===== 膝盖关节小圆 =====
     renderCtx.fillStyle = '#1c262c';
     renderCtx.beginPath();
     renderCtx.arc(kneePX, kneePY, cfg.kneeCapRadius, 0, Math.PI * 2);
     renderCtx.fill();
 
-    // ===== 绘制蛙鞋（现代开趾蛙鞋剪影 + 柔性反弹） =====
-    // 脚蹼的"根部方向"由小腿朝向决定（踝→膝的反向量是脚后跟方向，脚蹼往反向即 -x 继续延伸）
+    // ===== 脚蹼挥拍：沿身体朝向轴的切向位移（主视觉三） =====
+    // 踢到底（ankleWave=+1）时脚蹼整体往后甩一段；上抬时脚蹼往前收回
+    // 切向 = -x 方向（身体后方），所以 ankleX 向 -x 再推一段
+    const finSweepX = -ankleWave * cfg.finSweepAmp;  // 向身体后方的额外位移
+    // 挥拍的起点也就变成了新的 ankle 位置
+    const finAnchorX = anklePX + finSweepX;
+    const finAnchorY = anklePY;
+
+    // ===== 绘制蛙鞋 =====
+    // 脚蹼朝向仍然沿小腿延长线
     const calfDX = anklePX - kneePX;
     const calfDY = anklePY - kneePY;
     const calfLen = Math.hypot(calfDX, calfDY) || 1;
-    // 脚背朝向（沿小腿延长线）
     const footDirX = calfDX / calfLen;
     const footDirY = calfDY / calfLen;
 
-    // 蛙鞋尾端的柔性鞭打：用 ankleWave 与 kneeWave 的差分作为"材质滞后于骨骼"的反弹
-    const whipSignal = (ankleWave - kneeWave);
-    // 加上转向偏转与漂浮自摆，让蛙鞋末端有一个小角度偏摆
-    const finTipAngle = side * (cfg.finWhipAmp * whipSignal
-                              + idlePhaseWave * cfg.legKickAmplitude * 0.8
-                              + turnEase * cfg.finTurnSkew);
+    // 蛙鞋末端柔性偏摆：只保留"转向修正"（玩家主动转弯时脚蹼偏转一点方向）
+    // **关键**：完全去掉 side * whipSignal 分量——左右腿本来用 side 相反符号驱动会形成"画圈"错觉
+    // 俯视 2D 下鞭腿是上下运动投影，脚蹼末端不应该有任何左右偏摆
+    const finTipAngle = turnEase * cfg.finTurnSkew * side;
 
-    // 蛙鞋额外基础开合（保留老参数做微调）
-    const extraSpread = cfg.finSpreadBase
-                     + Math.abs(idlePhaseWave) * cfg.finSpreadSwim
-                     + activeStrength * cfg.finSpreadStroke * 0.5;
+    // 蛙鞋长度脉动（主视觉之二）：踢到底时最长，抬起时缩短
+    const finLengthFactor = 1 + ankleWave * cfg.finLengthPulse;
+    const extraSpread = cfg.finSpreadBase + ampNorm * cfg.finSpreadStroke * 0.6;
 
-    drawSwimFin(renderCtx, anklePX, anklePY, footDirX, footDirY, finTipAngle, extraSpread, colors, cfg);
+    drawSwimFin(renderCtx, finAnchorX, finAnchorY, footDirX, footDirY, finTipAngle,
+        extraSpread, finLengthFactor, colors, cfg);
 
-    // ===== 脚踝接点（蛙鞋与小腿之间的小圆，掩盖拼接边） =====
+    // ===== 脚踝接点（画在原踝位置，连接小腿末端和脚蹼根） =====
     renderCtx.fillStyle = colors.suit;
     renderCtx.beginPath();
     renderCtx.arc(anklePX, anklePY, Math.max(1.8, cfg.calfWidthAnkle * 0.55), 0, Math.PI * 2);
@@ -259,11 +276,12 @@ function drawSwimFin(
     dirX: number, dirY: number,
     tipAngle: number,
     extraSpread: number,
+    finLengthFactor: number,
     colors: DiverColors,
     cfg: typeof CONFIG.diver,
 ) {
-    const totalLen = cfg.finShapeLength;
-    const rootLen = totalLen * cfg.finShapeRootRatio;
+    const totalLen = cfg.finShapeLength * finLengthFactor;
+    const rootLen = cfg.finShapeLength * cfg.finShapeRootRatio;  // 鞋套段不随脉动缩放，保持与脚踝贴合
     const bellyLen = totalLen * cfg.finShapeBellyRatio;
 
     // 宽度（叠加 extraSpread 作为小幅调整，避免完全相同的蛙鞋剪影）
@@ -459,8 +477,42 @@ export function drawDiver(
     renderCtx.translate(x + driftX, y + driftY);
     renderCtx.rotate(angle + bodyRoll);
 
-    drawLegAndFin(renderCtx, -8.2, -4.2, -1, leftKickProgress, leftKickStrength, leftTurnProgress, leftTurnStrength, swimCycle * idleBlend, bodyYaw, c);
-    drawLegAndFin(renderCtx, -8.2, 4.2, 1, rightKickProgress, rightKickStrength, rightTurnProgress, rightTurnStrength, -swimCycle * idleBlend, bodyYaw, c);
+    // ===== 腿部相位时钟：完全由速度 + kickDrive boost 自驱（渲染侧自持） =====
+    // 速度归一化：玩家手动挡 maxSpeed=11，自动挡/NPC 一般 4~6，这里用 6 做归一化让两种模式都能进入高频段
+    const speedRefMax = 6;
+    const speedNorm = clamp(speed / speedRefMax, 0, 1);
+    const kickDriveVal = clamp(motion.kickDrive ?? 0, 0, 1);
+    // 频率：base + speedNorm 主导 + kickDrive 加速瞬间 boost
+    // kickDrive boost 降到 0.3 倍，避免手动挡加速瞬间腿摆得过快
+    const freq = cfg.legAutoFreqBase
+               + speedNorm * cfg.legAutoFreqBoost
+               + kickDriveVal * cfg.legAutoFreqBoost * 0.3;
+    // 幅度：由速度主导（静止时=0 → 腿不动），kickDrive 给加速瞬间的额外鞭打
+    const ampNorm = clamp(speedNorm + kickDriveVal * 0.5, 0, 1);
+
+    // 取/建本角色的相位时钟
+    const clockId = motion.id ?? 'anon';
+    let clock = legClocks.get(clockId);
+    if (!clock) {
+        clock = { phase: 0 };
+        legClocks.set(clockId, clock);
+    }
+    // 速度极低时让相位缓慢归到 0（腿收起停住），避免"停下时腿还半弯"
+    if (ampNorm < 0.02) {
+        // 距离 0 或 1 谁近就往哪收（相位是周期的，0 和 1 视作同一收腿姿态）
+        const distTo0 = Math.min(clock.phase, 1 - clock.phase);
+        if (distTo0 > 0.005) {
+            clock.phase += (clock.phase < 0.5 ? -1 : 1) * 0.02;
+            clock.phase = ((clock.phase % 1) + 1) % 1;
+        }
+    } else {
+        clock.phase = (clock.phase + freq) % 1;
+    }
+    const legPhaseVal = clock.phase;
+
+    drawLegAndFin(renderCtx, -8.2, -4.2, -1, legPhaseVal, ampNorm, leftTurnProgress, leftTurnStrength, bodyYaw, c);
+    // 右腿相位 +0.5，实现左右交替鞭打
+    drawLegAndFin(renderCtx, -8.2, 4.2, 1, (legPhaseVal + 0.5) % 1, ampNorm, rightTurnProgress, rightTurnStrength, bodyYaw, c);
 
     renderCtx.save();
     renderCtx.scale(torsoCompress, 1);

@@ -429,6 +429,7 @@ export function draw() {
             hasTank: true,
             vx: state.npc.vx,
             vy: state.npc.vy,
+            id: 'npc',
         });
     }
 
@@ -449,6 +450,8 @@ export function draw() {
         rightTurnStrength: state.manualDrive.rightTurnStrength,
         forwardVisual: state.manualDrive.forwardVisual,
         turnVisual: state.manualDrive.turnVisual,
+        kickDrive: state.manualDrive.kickDrive,
+        id: 'player',
     });
 
     // 生命探知仪：玩家身上的 LED 灯（与节拍同步闪烁）

@@ -36,6 +36,9 @@ export function processManualDrive(): boolean {
 
     md.hasInput = false;
 
+    // 鞘腿自动驱动：本帧来自输入的总推进强度（需要 deltaForward 累积后才能归一化）
+    let driveAccum = 0;
+
     let strongestInputAngle = md.lastInputAngle;
     let strongestInputDelta = 0;
 
@@ -158,6 +161,8 @@ export function processManualDrive(): boolean {
             if (deltaForward > 0.0001) {
                 player.vx += cosA * deltaForward;
                 player.vy += sinA * deltaForward;
+                // 累积本帧输入驱动量（后续用于推动 kickDrive、驱动鞘腿时钟）
+                driveAccum += deltaForward;
             }
 
             if (deltaTurn > 0.0001 && turnSign !== 0) {
@@ -253,6 +258,18 @@ export function processManualDrive(): boolean {
     md.rightTurnStrength = moveScalar(md.rightTurnStrength, rightTurnStrengthTarget, cfg.kickStrengthRise, strengthFall);
     md.forwardVisual = moveScalar(md.forwardVisual, Math.min(1, forwardVisualTarget), cfg.kickStrengthRise, visualFall);
     md.turnVisual = moveSignedScalar(md.turnVisual, Math.max(-1, Math.min(1, turnVisualTarget)), cfg.kickStrengthRise, visualFall);
+
+    // 鞭腿自动驱动 kickDrive 更新：
+    // kickDrive 现在只表示"加速瞬间的短暂 boost"，不再是腿部动画的唯一驱动源
+    // 腿部动画主要由速度驱动（渲染侧按 speed/maxSpeed 算），kickDrive 只在加速时给腿额外的鞭打力度和频率
+    // - 有输入时，按 driveAccum 的比例向上推
+    // - 无输入时，以 kickDriveDecay 缓慢衰减
+    const driveTarget = Math.min(1, driveAccum / Math.max(0.1, cfg.thrustMax * 0.6));
+    if (md.hasInput && driveTarget > md.kickDrive) {
+        md.kickDrive = Math.min(1, md.kickDrive + cfg.kickDriveRise * Math.max(driveTarget - md.kickDrive, 0.1));
+    } else {
+        md.kickDrive = Math.max(0, md.kickDrive - cfg.kickDriveDecay);
+    }
 
     return true;
 }

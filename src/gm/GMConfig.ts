@@ -152,6 +152,9 @@ export const TABS: GMTab[] = [
             { type: 'number', label: '掉头推进残留', path: 'manualDrive.bigTurnThrustFactor', min: 0, max: 1, step: 0.05, precision: 2 },
             { type: 'number', label: '输入死区', path: 'manualDrive.minSwipeDist', min: 0.5, max: 10, step: 0.5, precision: 1 },
             { type: 'bool', label: '反转方向', path: 'manualDrive.reverseDir' },
+            // ---- 自动鞭腿驱动 ----
+            { type: 'number', label: 'kickDrive上升率', path: 'manualDrive.kickDriveRise', min: 0.01, max: 0.5, step: 0.01, precision: 2 },
+            { type: 'number', label: 'kickDrive衰减率', path: 'manualDrive.kickDriveDecay', min: 0.002, max: 0.1, step: 0.002, precision: 3 },
         ]
     },
     {
@@ -199,6 +202,13 @@ export const TABS: GMTab[] = [
             { type: 'number', label: '叶片尖端宽', path: 'diver.finShapeTipWidth', min: 0, max: 12, step: 0.2, precision: 1 },
             { type: 'number', label: '鞋套段占比', path: 'diver.finShapeRootRatio', min: 0.0, max: 0.4, step: 0.02, precision: 2 },
             { type: 'number', label: '腹部位置占比', path: 'diver.finShapeBellyRatio', min: 0.0, max: 0.85, step: 0.02, precision: 2 },
+            // ---- 自动鞭腿时钟 & 俯视鞭打主视觉 ----
+            { type: 'number', label: '腿时钟基础频率', path: 'diver.legAutoFreqBase', min: 0, max: 0.08, step: 0.002, precision: 3 },
+            { type: 'number', label: '腿时钟驱动加速', path: 'diver.legAutoFreqBoost', min: 0.02, max: 0.4, step: 0.01, precision: 2 },
+            { type: 'number', label: '腿停摆阈值', path: 'diver.legKickStopThreshold', min: 0.005, max: 0.2, step: 0.005, precision: 3 },
+            { type: 'number', label: '腿前后伸缩幅', path: 'diver.kickStretchAmp', min: 0, max: 14, step: 0.2, precision: 1 },
+            { type: 'number', label: '脚蹼长度脉动', path: 'diver.finLengthPulse', min: 0, max: 1.2, step: 0.02, precision: 2 },
+            { type: 'number', label: '脚蹼挥拍幅度', path: 'diver.finSweepAmp', min: 0, max: 10, step: 0.2, precision: 1 },
         ]
     },
     {

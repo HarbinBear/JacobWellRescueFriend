@@ -498,6 +498,12 @@ export const CONFIG = {
         kickStrengthRise: 0.16,      // 踢水力度抬升速度
         kickStrengthDecay: 0.05,     // 踢水力度衰减速度
 
+        // --- 鞘腿自动驱动参数（由输入加速度驱动，脑腿自动交替鞘）---
+        // kickDrive 是一个 0~1 的累积量：每帧输入推力向上累积，无输入时衰减
+        // 腔腿相位时钟按（legAutoFreqBase + kickDrive * legAutoFreqBoost）推进
+        kickDriveRise: 0.04,         // 输入时 kickDrive 上升速度（0~1，越大越快达到最大）
+        kickDriveDecay: 0.012,       // 无输入时 kickDrive 衰减速度（很慢，让鞘腿慢慢停下来）
+
         // --- 身体朝向跟随参数 ---
         bodyAlignRate: 0.06,         // 身体朝向跟随速度方向的速率（0~1，越大越快对齐）
         bodyAlignMinSpeed: 0.5,      // 速度低于此值时身体不跟随（避免静止时抖动）
@@ -557,6 +563,14 @@ export const CONFIG = {
         finShapeTipWidth: 7.6,      // 叶片尖端宽度
         finShapeRootRatio: 0.1,    // 鞋套段占比
         finShapeBellyRatio: 0.65,   // 叶片最宽处位置占比
+        // ---- 自动鞘腿时钟（两腿同相位钟差π交替）----
+        legAutoFreqBase: 0.012,       // 脚腿相位时钟在静止状态下的基础推进速度（弱惯性尾动）
+        legAutoFreqBoost: 0.08,       // kickDrive=1 时额外推进速度（实际频率 = base + drive*boost，放慢了）
+        legKickStopThreshold: 0.03,   // kickDrive 低于此值时相位时钟缓慢停摆
+        // ---- 俯视 2D 模拟上下打水：腿前后伸缩 + 脚踼长度脉动 + 脚踼挥拍 ----
+        kickStretchAmp: 1,            // 腿沿身体前后轴的伸缩幅度（踢到底时腿伸直，抓水时腿收）
+        finLengthPulse: 0.3,          // 脚踼长度脉动比例（1.0 ± pulse 之间，踢到底时最长）
+        finSweepAmp: 3.1,             // 脚踼沿身体前后轴的挥拍位移（踢到底时脚踼整体往后甸一段）
     },
 
     // ===== 相机系统（弹簧臂 + 水中摇曳）配置 =====

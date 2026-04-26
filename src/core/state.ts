@@ -169,8 +169,10 @@ export const state = {
         // 角色表现运行态：整体前进/转向可视化混合量
         forwardVisual: 0,
         turnVisual: 0,
-    },
-    // 食人鱼纯享版竞技场状态
+        // 鞭腿加速 boost：累积输入带来的加速度（0~1），仅在加速瘦间增强腿部鞘打强度与频率
+        // （腿部动画主驱动源是 player 速度，由渲染侧直接读 vx/vy 计算）
+        kickDrive: 0,
+    },    // 食人鱼纯享版竞技场状态
     fishArena: null as null | {
         round: number;          // 当前轮次（从1开始）
         fishAlive: number;      // 本轮存活鱼数
@@ -431,6 +433,7 @@ export function resetState() {
         rightTurnStrength: 0,
         forwardVisual: 0,
         turnVisual: 0,
+        kickDrive: 0,
     };
 
     // 重置标记系统
