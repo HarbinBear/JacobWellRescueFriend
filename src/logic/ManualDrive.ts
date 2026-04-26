@@ -202,17 +202,18 @@ export function processManualDrive(): boolean {
         const kickStrengthNorm = wasFinished ? 0 : Math.min(1, (0.28 + forwardDot * 0.52 + frameDist * 0.018) * (1 - bigTurnT * 0.85));
         const turnStrengthNorm = wasFinished ? 0 : Math.min(1, 0.2 + turnAmount * 0.55 + frameDist * 0.015 + bigTurnT * 0.35);
 
-        if (td.strokeSide < 0) {
-            leftKickProgressTarget = Math.max(leftKickProgressTarget, visualProgress);
-            leftKickStrengthTarget = Math.max(leftKickStrengthTarget, Math.min(1, kickStrengthNorm));
-            leftTurnProgressTarget = Math.max(leftTurnProgressTarget, visualProgress);
-            leftTurnStrengthTarget = Math.max(leftTurnStrengthTarget, Math.min(1, turnStrengthNorm));
-        } else {
-            rightKickProgressTarget = Math.max(rightKickProgressTarget, visualProgress);
-            rightKickStrengthTarget = Math.max(rightKickStrengthTarget, Math.min(1, kickStrengthNorm));
-            rightTurnProgressTarget = Math.max(rightTurnProgressTarget, visualProgress);
-            rightTurnStrengthTarget = Math.max(rightTurnStrengthTarget, Math.min(1, turnStrengthNorm));
-        }
+        // 手动挡视觉：左右手/左右腿同步发力（双手一起划）
+        // 转向仍按 turnVisualTarget 的正负号驱动身体侧倾，左右 turn 强度取同值即可
+        const kickStrengthClamped = Math.min(1, kickStrengthNorm);
+        const turnStrengthClamped = Math.min(1, turnStrengthNorm);
+        leftKickProgressTarget = Math.max(leftKickProgressTarget, visualProgress);
+        rightKickProgressTarget = Math.max(rightKickProgressTarget, visualProgress);
+        leftKickStrengthTarget = Math.max(leftKickStrengthTarget, kickStrengthClamped);
+        rightKickStrengthTarget = Math.max(rightKickStrengthTarget, kickStrengthClamped);
+        leftTurnProgressTarget = Math.max(leftTurnProgressTarget, visualProgress);
+        rightTurnProgressTarget = Math.max(rightTurnProgressTarget, visualProgress);
+        leftTurnStrengthTarget = Math.max(leftTurnStrengthTarget, turnStrengthClamped);
+        rightTurnStrengthTarget = Math.max(rightTurnStrengthTarget, turnStrengthClamped);
 
         forwardVisualTarget += kickVisual;
         turnVisualTarget += turnVisualSigned;
@@ -272,4 +273,76 @@ export function processManualDrive(): boolean {
     }
 
     return true;
+}
+
+/**
+ * 自动挡（摇杆/AI）模式下更新潜水员动作视觉信号
+ *
+ * 自动挡分支不会调用 processManualDrive()，因此 state.manualDrive 的各项运行态
+ * 动画字段永远停留在 0，drawDiver 接不到任何手脚动作信号。这里补一个轻量级
+ * 更新器：根据玩家当前速度、角速度和是否在加速，把 forwardVisual、turnVisual、
+ * 左右转向动作强度以及 kickDrive 写成合理值，保证：
+ *   - 有速度时潜水员腿部相位时钟会继续推进（靠渲染侧 speedNorm）
+ *   - 有转向时身体侧倾、手臂做转向修正
+ *   - 加速时 kickDrive 给腿一点额外鞭打 boost
+ *
+ * 参数：
+ *   angleDiff  本帧想要转过的角度差（有符号，按世界坐标）
+ *   isThrust   本帧是否在主动推进（input.move 大于 0 或 AI 移动）
+ */
+export function updateAutoDriveVisual(angleDiff: number, isThrust: boolean): void {
+    const md = state.manualDrive;
+    if (!md) return;
+    const cfg = CONFIG.manualDrive;
+
+    // 速度归一化：用作手动挡同一套 maxSpeed 基准，保证自动挡下动画节奏与手动挡接近
+    const speed = Math.hypot(player.vx, player.vy);
+    const speedRef = Math.max(0.1, cfg.maxSpeed);
+    const speedNorm = Math.max(0, Math.min(1, speed / speedRef));
+
+    // 转向信号：angleDiff 越大身体侧倾/手臂划转越夸张；经过 0.6 弧度（约 34°）就接近满量
+    const turnAbs = Math.min(1, Math.abs(angleDiff) / 0.6);
+    // turnVisual 带符号：正值 = 向左侧倾/左手内收，负值 = 向右侧倾/右手内收
+    const turnVisualTarget = Math.max(-1, Math.min(1, angleDiff / 0.6));
+    // 左右 turn 强度同时抬高（自动挡没有"左右腿独立"概念），让两侧手臂对称参与转向修正
+    const turnStrengthTarget = turnAbs;
+    const turnProgressTarget = turnAbs;
+
+    // 前进信号：推进中且速度非零时，forwardVisual 给 speedNorm 大小，让身体轻微前倾压缩
+    const forwardVisualTarget = isThrust ? speedNorm : speedNorm * 0.6;
+
+    // kickDrive：推进时把当前 kickDrive 抬到与速度匹配的水平；无推进时按配置衰减
+    const kickDriveTargetBoost = isThrust ? Math.min(1, speedNorm + 0.15) : 0;
+
+    const moveScalar = (current: number, target: number, rise: number, fall: number) => {
+        if (target > current) return Math.min(target, current + rise);
+        return Math.max(target, current - fall);
+    };
+    const moveSignedScalar = (current: number, target: number, rise: number, fall: number) => {
+        const delta = target - current;
+        if (Math.abs(delta) < 0.0001) return target;
+        const step = delta > 0 ? rise : fall;
+        if (Math.abs(delta) <= step) return target;
+        return current + Math.sign(delta) * step;
+    };
+
+    // 自动挡踢水动作复用速度相位时钟驱动，leftKickProgress / rightKickProgress 不需要写
+    // 但 forwardVisual / turnVisual / left*Turn* / right*Turn* 必须写
+    md.forwardVisual = moveScalar(md.forwardVisual, forwardVisualTarget, cfg.kickStrengthRise, cfg.kickStrengthDecay);
+    md.turnVisual = moveSignedScalar(md.turnVisual, turnVisualTarget, cfg.kickStrengthRise, cfg.kickStrengthDecay);
+
+    md.leftTurnProgress = moveScalar(md.leftTurnProgress, turnProgressTarget, cfg.kickProgressRate, cfg.kickRecoverRate);
+    md.rightTurnProgress = moveScalar(md.rightTurnProgress, turnProgressTarget, cfg.kickProgressRate, cfg.kickRecoverRate);
+    md.leftTurnStrength = moveScalar(md.leftTurnStrength, turnStrengthTarget, cfg.kickStrengthRise, cfg.kickStrengthDecay);
+    md.rightTurnStrength = moveScalar(md.rightTurnStrength, turnStrengthTarget, cfg.kickStrengthRise, cfg.kickStrengthDecay);
+
+    // kickDrive 使用自己的 rise/decay（与手动挡 kickDriveRise/Decay 保持一致）
+    if (kickDriveTargetBoost > md.kickDrive) {
+        md.kickDrive = Math.min(1, md.kickDrive + cfg.kickDriveRise * Math.max(kickDriveTargetBoost - md.kickDrive, 0.1));
+    } else {
+        md.kickDrive = Math.max(0, md.kickDrive - cfg.kickDriveDecay);
+    }
+
+    // 自动挡不写 left/right KickProgress / Strength（让渲染侧完全用速度驱动腿部相位时钟）
+    md.hasInput = isThrust;
 }

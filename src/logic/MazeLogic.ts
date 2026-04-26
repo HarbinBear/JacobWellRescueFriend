@@ -5,7 +5,7 @@ import { getMazeMainThemeConfig, getMazeSceneThemeKeyByIndex } from '../world/ma
 import { StoryManager } from '../story/StoryManager';
 import { triggerSilt, updateParticles, updateSplashes } from './Particle';
 import { updateRopeSystem } from './Rope';
-import { processManualDrive } from './ManualDrive';
+import { processManualDrive, updateAutoDriveVisual } from './ManualDrive';
 import { checkMazeCollision } from './Collision';
 import { updateCameraSpringArm, snapCameraToPlayer, getAdaptiveZoom } from './CameraLogic';
 import { updateMarkers, updateWheelButtonVisibility } from './Marker';
@@ -722,6 +722,9 @@ export function updateMaze() {
         }
         player.vx *= CONFIG.waterDrag;
         player.vy *= CONFIG.waterDrag;
+
+        // 自动挡动作视觉：写入转向/前进信号，让 drawDiver 能呈现转向身体侧倾与手臂动作
+        updateAutoDriveVisual(angleDiff * CONFIG.turnSpeed, input.move > 0);
     }
 
     // 碰撞检测（使用迷宫专属地图）

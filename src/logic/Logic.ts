@@ -5,7 +5,7 @@ import { StoryManager } from '../story/StoryManager';
 import { Particle, createSplash, updateSplashes, triggerSilt, updateParticles } from './Particle';
 import { updateRopeSystem, findNearestWall } from './Rope';
 import { updateAllFishEnemies, createFishEnemy, findSafeSpawnPosition, findMazeFishSpawnPosition } from './FishEnemy';
-import { processManualDrive } from './ManualDrive';
+import { processManualDrive, updateAutoDriveVisual } from './ManualDrive';
 import { checkCollision, getNearestWallDist, checkMazeCollision } from './Collision';
 
 import { updateCameraSpringArm, snapCameraToPlayer, getAdaptiveZoom } from './CameraLogic';
@@ -645,6 +645,9 @@ export function update() {
 
         player.vx *= CONFIG.waterDrag;
         player.vy *= CONFIG.waterDrag;
+
+        // 自动挡动作视觉：写入转向/前进信号，让 drawDiver 能呈现转向身体侧倾与手臂动作
+        updateAutoDriveVisual(angleDiff * CONFIG.turnSpeed, input.move > 0);
     }
 
     let nextX = player.x + player.vx;

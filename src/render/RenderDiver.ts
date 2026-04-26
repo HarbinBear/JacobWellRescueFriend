@@ -29,6 +29,10 @@ type DiverMotion = {
     kickDrive?: number;
     // 角色身份（每个独立的腿部相位时钟按此 id 缓存；player/npc 各一个）
     id?: string;
+    // 自动挡巡航姿态：为 true 时双手完全贴身收起向后伸直（流线型下潜），
+    // 为 false 则保持原带臂摇摆/划水姿态。适用于在摇杆／自动挡移动时
+    // 突出“没有划手动作”的贴身巡航观感。
+    autoSwim?: boolean;
 };
 
 // 模块级腿部相位时钟：每个角色独立追踪，由 drawDiver 每帧按速度+boost 推进
@@ -435,6 +439,7 @@ export function drawDiver(
     const idleBlend = clamp(1 - speed / 1.2, 0, 1);
     const swimBlend = clamp(speed / 3.5, 0, 1);
 
+    const autoSwim = motion.autoSwim === true;
     const leftKickProgress = clamp(motion.leftKickProgress ?? 0, 0, 1);
     const rightKickProgress = clamp(motion.rightKickProgress ?? 0, 0, 1);
     const leftKickStrength = clamp(motion.leftKickStrength ?? 0, 0, 1);
@@ -468,10 +473,25 @@ export function drawDiver(
     const rightArmTurn = easeStroke(rightTurnProgress) * rightTurnStrength;
     const armClose = swimBlend * cfg.armCloseBySpeed;
 
-    const leftArmUpper = Math.PI + 0.68 - armClose + Math.sin(time * cfg.armIdleFrequency) * cfg.armIdleAmplitude * idleBlend + leftArmKick * cfg.armKickSwing - leftArmTurn * cfg.armTurnSwing + turnVisual * 0.08;
-    const rightArmUpper = Math.PI - 0.68 + armClose - Math.sin(time * cfg.armIdleFrequency) * cfg.armIdleAmplitude * idleBlend - rightArmKick * cfg.armKickSwing + rightArmTurn * cfg.armTurnSwing + turnVisual * 0.08;
-    const leftArmLower = leftArmUpper + 0.22 - leftArmKick * 0.08 + leftArmTurn * 0.12 - armClose * 0.18;
-    const rightArmLower = rightArmUpper - 0.22 + rightArmKick * 0.08 - rightArmTurn * 0.12 + armClose * 0.18;
+    // 自动挡巡航：双手完全收起贴身（身体局部坐标下 +x 为身体朋向，手臂从肩部向 -x 伸向后方 = 角度 π）
+    // blend 用 swimBlend 控制渐变：静止时手张开滋浮，移动时逐渐收拢为贴身姿态
+    const autoBlend = autoSwim ? swimBlend : 0;
+    // 自动挡下的目标角度（完全沿 -x 贴身）与原展开姿态按 autoBlend 插值
+    const baseOpenL = Math.PI + 0.68 - armClose;
+    const baseOpenR = Math.PI - 0.68 + armClose;
+    const baseTuckL = Math.PI + 0.28; // 左手贴身但保留肩宽张开，沿身体后方自然下垂
+    const baseTuckR = Math.PI - 0.28;
+    const baseL = baseOpenL * (1 - autoBlend) + baseTuckL * autoBlend;
+    const baseR = baseOpenR * (1 - autoBlend) + baseTuckR * autoBlend;
+    // 划水晃动幅度在巡航姿态下衰减，避免贴身时还在接收划水信号抽动
+    const strokeScale = 1 - autoBlend * 0.9;
+
+    const leftArmUpper = baseL + Math.sin(time * cfg.armIdleFrequency) * cfg.armIdleAmplitude * idleBlend + leftArmKick * cfg.armKickSwing * strokeScale - leftArmTurn * cfg.armTurnSwing + turnVisual * 0.08;
+    const rightArmUpper = baseR - Math.sin(time * cfg.armIdleFrequency) * cfg.armIdleAmplitude * idleBlend - rightArmKick * cfg.armKickSwing * strokeScale + rightArmTurn * cfg.armTurnSwing + turnVisual * 0.08;
+    // 前臂在巡航姿态下也贴身伸直：把原本的 ±0.22 偏转衰减掉
+    const forearmOffset = 0.22 * (1 - autoBlend * 0.85);
+    const leftArmLower = leftArmUpper + forearmOffset - leftArmKick * 0.08 * strokeScale + leftArmTurn * 0.12 - armClose * 0.18;
+    const rightArmLower = rightArmUpper - forearmOffset + rightArmKick * 0.08 * strokeScale - rightArmTurn * 0.12 + armClose * 0.18;
 
     renderCtx.save();
     renderCtx.translate(x + driftX, y + driftY);

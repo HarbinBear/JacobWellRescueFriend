@@ -435,6 +435,7 @@ export function draw() {
 
     // 绘制玩家
     let hasTank = !state.story.flags.tankDamaged;
+    const isAutoSwim = !CONFIG.manualDrive.enabled;
     drawDiver(ctx, player.x, player.y, player.angle, null, {
         animTime: player.animTime,
         hasTank,
@@ -452,6 +453,7 @@ export function draw() {
         turnVisual: state.manualDrive.turnVisual,
         kickDrive: state.manualDrive.kickDrive,
         id: 'player',
+        autoSwim: isAutoSwim,
     });
 
     // 生命探知仪：玩家身上的 LED 灯（与节拍同步闪烁）

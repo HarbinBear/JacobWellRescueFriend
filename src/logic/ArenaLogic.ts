@@ -3,7 +3,7 @@ import { state, player, input, resetState } from '../core/state';
 import { generateArenaMap } from '../world/map';
 import { updateParticles, updateSplashes } from './Particle';
 import { updateAllFishEnemies, createFishEnemy, findSafeSpawnPosition } from './FishEnemy';
-import { processManualDrive } from './ManualDrive';
+import { processManualDrive, updateAutoDriveVisual } from './ManualDrive';
 import { checkCollision } from './Collision';
 import { triggerSilt } from './Particle';
 import { updateCameraSpringArm, snapCameraToPlayer, getAdaptiveZoom } from './CameraLogic';
@@ -204,6 +204,9 @@ function updateArenaPlayer() {
         }
         player.vx *= CONFIG.waterDrag;
         player.vy *= CONFIG.waterDrag;
+
+        // 自动挡动作视觉：写入转向/前进信号，让 drawDiver 能呈现转向身体侧倾与手臂动作
+        updateAutoDriveVisual(angleDiff * CONFIG.turnSpeed, input.move > 0);
     }
 
     // 碰撞检测

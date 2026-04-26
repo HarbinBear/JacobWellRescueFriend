@@ -26,7 +26,7 @@ export const CONFIG = {
     ambient: 0.01,        // 环境光亮度
     lightRange: 650,      // 手电筒距离 (竖屏视野长，稍微增加距离)
     fov: 65,              // 视野角度 (竖屏稍微增加视野)
-    moveSpeed: 14,         // 移动速度
+    moveSpeed: 20,         // 移动速度（自动挡基准，主线/竞技场）
     siltFactor: 1.0,      // 扬尘产生倍率
     rayCount: 360,        // 射线数量（越高光锥边缘越平滑）
     siltLife: 1,         // 扬尘生命周期
@@ -255,8 +255,8 @@ export const CONFIG = {
         tileSize: 120,          // 格子大小（像素），放大一倍让空间更宽敞
         wallThickness: 5,       // 外围岩石厚度（格子数），加厚防止看到地图外空白
 
-        // 迷宫模式移动速度（比主线慢）
-        moveSpeed: 10,          // 迷宫模式基础移动速度（主线14）
+        // 迷宫模式移动速度
+        moveSpeed: 17,          // 迷宫模式自动挡基础移动速度
 
         // 玩家碰撞半径（迷宫格子120px，通道宽3格=360px，12px半径合适）
         playerRadius: 12,
@@ -564,8 +564,8 @@ export const CONFIG = {
         finShapeRootRatio: 0.1,    // 鞋套段占比
         finShapeBellyRatio: 0.65,   // 叶片最宽处位置占比
         // ---- 自动鞘腿时钟（两腿同相位钟差π交替）----
-        legAutoFreqBase: 0.012,       // 脚腿相位时钟在静止状态下的基础推进速度（弱惯性尾动）
-        legAutoFreqBoost: 0.08,       // kickDrive=1 时额外推进速度（实际频率 = base + drive*boost，放慢了）
+        legAutoFreqBase: 0.006,       // 脚腿相位时钟在静止状态下的基础推进速度（弱惯性尾动；整体放慢一倍）
+        legAutoFreqBoost: 0.04,       // kickDrive=1 时额外推进速度（实际频率 = base + drive*boost，整体放慢一倍）
         legKickStopThreshold: 0.03,   // kickDrive 低于此值时相位时钟缓慢停摆
         // ---- 俯视 2D 模拟上下打水：腿前后伸缩 + 脚踼长度脉动 + 脚踼挥拍 ----
         kickStretchAmp: 1,            // 腿沿身体前后轴的伸缩幅度（踢到底时腿伸直，抓水时腿收）
