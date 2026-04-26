@@ -175,6 +175,30 @@ export const TABS: GMTab[] = [
             { type: 'number', label: '滑行额外开合', path: 'diver.finSpreadSwim', min: 0, max: 3, step: 0.1, precision: 1 },
             { type: 'number', label: '踢水额外开合', path: 'diver.finSpreadStroke', min: 0, max: 3, step: 0.1, precision: 1 },
             { type: 'number', label: '转向蛙鞋偏转', path: 'diver.finTurnSkew', min: 0, max: 1, step: 0.02, precision: 2 },
+            // ---- 新版腿部造型 ----
+            { type: 'number', label: '大腿长度', path: 'diver.thighLength', min: 3, max: 18, step: 0.5, precision: 1 },
+            { type: 'number', label: '小腿长度', path: 'diver.calfLength', min: 3, max: 16, step: 0.5, precision: 1 },
+            { type: 'number', label: '大腿髋端宽', path: 'diver.thighWidthHip', min: 2, max: 12, step: 0.2, precision: 1 },
+            { type: 'number', label: '大腿膝端宽', path: 'diver.thighWidthKnee', min: 2, max: 9, step: 0.2, precision: 1 },
+            { type: 'number', label: '小腿膝端宽', path: 'diver.calfWidthKnee', min: 1, max: 9, step: 0.2, precision: 1 },
+            { type: 'number', label: '小腿踝端宽', path: 'diver.calfWidthAnkle', min: 1, max: 7, step: 0.2, precision: 1 },
+            { type: 'number', label: '膝盖圆半径', path: 'diver.kneeCapRadius', min: 0, max: 5, step: 0.2, precision: 1 },
+            // ---- 鞭状踢水 ----
+            { type: 'number', label: '膝相位滞后', path: 'diver.kickPhaseLagKnee', min: 0, max: 0.4, step: 0.02, precision: 2 },
+            { type: 'number', label: '踝相位滞后', path: 'diver.kickPhaseLagAnkle', min: 0, max: 0.5, step: 0.02, precision: 2 },
+            { type: 'number', label: '髋鞭摆幅度', path: 'diver.kickAmpHip', min: 0, max: 5, step: 0.1, precision: 1 },
+            { type: 'number', label: '膝鞭摆幅度', path: 'diver.kickAmpKnee', min: 0, max: 8, step: 0.1, precision: 1 },
+            { type: 'number', label: '踝鞭摆幅度', path: 'diver.kickAmpAnkle', min: 0, max: 12, step: 0.1, precision: 1 },
+            { type: 'number', label: '腿部基础张开', path: 'diver.kickBaseSpread', min: 0, max: 8, step: 0.2, precision: 1 },
+            { type: 'number', label: '蛙鞋柔性反弹', path: 'diver.finWhipAmp', min: 0, max: 1.2, step: 0.05, precision: 2 },
+            // ---- 蛙鞋剪影 ----
+            { type: 'number', label: '蛙鞋总长', path: 'diver.finShapeLength', min: 0, max: 24, step: 0.5, precision: 1 },
+            { type: 'number', label: '鞋套根部宽', path: 'diver.finShapeRootWidth', min: 0, max: 10, step: 0.2, precision: 1 },
+            { type: 'number', label: '颈部宽度', path: 'diver.finShapeNeckWidth', min: 0, max: 9, step: 0.2, precision: 1 },
+            { type: 'number', label: '叶片最宽处', path: 'diver.finShapeBellyWidth', min: 0, max: 18, step: 0.2, precision: 1 },
+            { type: 'number', label: '叶片尖端宽', path: 'diver.finShapeTipWidth', min: 0, max: 12, step: 0.2, precision: 1 },
+            { type: 'number', label: '鞋套段占比', path: 'diver.finShapeRootRatio', min: 0.0, max: 0.4, step: 0.02, precision: 2 },
+            { type: 'number', label: '腹部位置占比', path: 'diver.finShapeBellyRatio', min: 0.0, max: 0.85, step: 0.02, precision: 2 },
         ]
     },
     {

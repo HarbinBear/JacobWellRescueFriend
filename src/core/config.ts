@@ -533,6 +533,30 @@ export const CONFIG = {
         finSpreadSwim: 0.55,        // 轻微滑行时的额外开合
         finSpreadStroke: 1.0,       // 输入踢水期间的额外开合
         finTurnSkew: 0.28,          // 拐弯时蛙鞋的偏转量
+        // ---- 新版腿部造型与鞭状踢水参数 ----
+        thighLength: 6,            // 大腿长度（髋到膝）
+        calfLength: 6,             // 小腿长度（膝到踝）
+        thighWidthHip: 4.4,         // 大腿根部宽度
+        thighWidthKnee: 4.2,        // 大腿膝端宽度
+        calfWidthKnee: 3.8,         // 小腿膝端宽度
+        calfWidthAnkle: 3.4,        // 小腿踝端宽度（接脚蹼处）
+        kneeCapRadius: 0.5,         // 膝盖关节小圆半径
+        // 鞭状踢水（相位从髋→膝→踝依次滞后）
+        kickPhaseLagKnee: 0.18,     // 膝相对髋的相位滞后（0~1）
+        kickPhaseLagAnkle: 0.36,    // 踝相对髋的相位滞后（0~1）
+        kickAmpHip: 1.4,            // 髋关节侧向鞭摆幅度
+        kickAmpKnee: 3.2,           // 膝关节侧向鞭摆幅度
+        kickAmpAnkle: 5.4,          // 踝关节侧向鞭摆幅度
+        kickBaseSpread: 0,        // 腿部基础张开（髋点外侧的自然站位）
+        finWhipAmp: 0.55,           // 蛙鞋柔性反弹角度（踝→蛙鞋尾端的相位差驱动）
+        // 脚蹼剪影（现代开趾蛙鞋）
+        finShapeLength: 13.5,         // 蛙鞋总长
+        finShapeRootWidth: 5,     // 鞋套根部宽度
+        finShapeNeckWidth: 5.8,     // 颈部收束宽度（鞋套与叶片交界）
+        finShapeBellyWidth: 8.8,   // 叶片最宽处宽度
+        finShapeTipWidth: 7.6,      // 叶片尖端宽度
+        finShapeRootRatio: 0.1,    // 鞋套段占比
+        finShapeBellyRatio: 0.65,   // 叶片最宽处位置占比
     },
 
     // ===== 相机系统（弹簧臂 + 水中摇曳）配置 =====

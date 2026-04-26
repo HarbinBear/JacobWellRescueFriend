@@ -106,52 +106,281 @@ function drawLegAndFin(
     colors: DiverColors,
 ) {
     const cfg = CONFIG.diver;
-    const kickEase = easeStroke(kickProgress) * kickStrength;
+
+    // ===== 鞭状踢水相位：从髋→膝→踝依次滞后，形成自由泳踢腿的 S 形鞭打 =====
+    // 一个踢水周期的相位取值为 0~1，sin(phase·π) 得到 0→1→0 的发力波形
+    // 输入侧 kickProgress 是"主动踢水"的相位推进，swimCycle 是漂浮/滑行时的低频自摆
+    const activeStrength = kickStrength; // 主动踢水强度
+    const idlePhaseWave = swimCycle;     // 漂浮时的低频摆动（-1~1）
+
+    // 相位滞后：让髋-膝-踝在时间上错开，形成鞭状传导
+    const hipPhase = kickProgress;
+    const kneePhase = clamp(kickProgress - cfg.kickPhaseLagKnee, 0, 1);
+    const anklePhase = clamp(kickProgress - cfg.kickPhaseLagAnkle, 0, 1);
+
+    const hipWave = Math.sin(hipPhase * Math.PI) * activeStrength;
+    const kneeWave = Math.sin(kneePhase * Math.PI) * activeStrength;
+    const ankleWave = Math.sin(anklePhase * Math.PI) * activeStrength;
+
+    // 转向修正（拐弯时整条腿外摆一点）
     const turnEase = easeStroke(turnProgress) * turnStrength;
-    const idleLift = swimCycle * cfg.legKickAmplitude;
     const turnOffset = turnEase * cfg.turnLegOffset;
-    const bodyWave = (kickEase * 2 - 1) * cfg.kickBodyWave;
 
-    const thighDrive = -cfg.kickRecoverLength + kickEase * (cfg.kickDriveLength + cfg.kickRecoverLength);
-    const finDrive = cfg.finRecoverLength - kickEase * (cfg.finDriveLength + cfg.finRecoverLength);
+    // 身体传导扭动（让腿在发力峰值时随躯干左右传导一点）
+    const bodyWave = (Math.sin(hipPhase * Math.PI) * 2 - 1) * activeStrength * cfg.kickBodyWave * 0.25;
 
-    const kneeX = hipX + thighDrive - turnOffset - bodyWave * 0.22;
-    const kneeY = hipY + side * (idleLift * 2.1 + turnOffset * 0.58 + bodyWave * 0.18 + bodyYaw * 0.45);
-    const ankleX = kneeX + finDrive - bodyWave * 0.4;
-    const ankleY = kneeY + side * (idleLift * 1.35 + turnOffset * 0.24 + bodyWave * 0.3);
+    // ===== 关键点坐标（局部坐标系：+x 为角色朝向，+y 为身体右侧） =====
+    // 注意当前角色朝向 +x，腿往 -x 方向长出；因此 y 方向的侧向鞭摆由 side（-1/+1）决定左右
+    const baseSpread = cfg.kickBaseSpread;
 
-    renderCtx.strokeStyle = colors.suit;
-    renderCtx.lineCap = 'round';
-    renderCtx.lineJoin = 'round';
-    renderCtx.lineWidth = 5.2;
+    // 髋点：小幅度鞭摆 + 漂浮自摆
+    const hipSwayY = side * (hipWave * cfg.kickAmpHip + idlePhaseWave * cfg.legKickAmplitude * 6)
+                   + bodyYaw * 0.35 + turnOffset * 0.25;
+    const hipPX = hipX;
+    const hipPY = hipY + hipSwayY;
+
+    // 膝点：沿 -x 延伸 thighLength，并做相位滞后的侧向鞭摆
+    // 少量前后位移（大腿根驱动）保留一点"推水"感，但不主导
+    const kneeForward = -cfg.thighLength + hipWave * 0.6;
+    const kneeLateral = side * (kneeWave * cfg.kickAmpKnee + idlePhaseWave * cfg.legKickAmplitude * 10)
+                      + turnOffset * 0.75 + bodyWave * 0.4
+                      + side * baseSpread; // 自然张开
+    const kneePX = hipPX + kneeForward;
+    const kneePY = hipPY + kneeLateral;
+
+    // 踝点：从膝再延伸 calfLength，更强的鞭摆滞后（小腿尾随）
+    const ankleForward = -cfg.calfLength + kneeWave * 0.4;
+    const ankleLateral = side * (ankleWave * cfg.kickAmpAnkle + idlePhaseWave * cfg.legKickAmplitude * 6)
+                       + turnOffset * 0.3;
+    const anklePX = kneePX + ankleForward;
+    const anklePY = kneePY + ankleLateral;
+
+    // ===== 绘制大腿（锥形填充：髋端粗，膝端略细） =====
+    drawTaperedLimb(renderCtx, hipPX, hipPY, kneePX, kneePY,
+        cfg.thighWidthHip, cfg.thighWidthKnee, colors.suit, '#1c262c');
+
+    // ===== 绘制小腿（锥形填充：膝端略粗，踝端最细） =====
+    drawTaperedLimb(renderCtx, kneePX, kneePY, anklePX, anklePY,
+        cfg.calfWidthKnee, cfg.calfWidthAnkle, colors.suit, '#1c262c');
+
+    // ===== 膝盖关节小圆（表现屈伸） =====
+    renderCtx.fillStyle = '#1c262c';
     renderCtx.beginPath();
-    renderCtx.moveTo(hipX, hipY);
-    renderCtx.lineTo(kneeX, kneeY);
-    renderCtx.lineTo(ankleX, ankleY);
-    renderCtx.stroke();
+    renderCtx.arc(kneePX, kneePY, cfg.kneeCapRadius, 0, Math.PI * 2);
+    renderCtx.fill();
 
-    const finLen = 13.5 + kickEase * 1.6;
-    const finSpread = cfg.finSpreadBase + kickEase * cfg.finSpreadStroke + Math.abs(swimCycle) * cfg.finSpreadSwim;
-    const finAngle = side * (0.08 + idleLift * 0.12 + turnEase * cfg.finTurnSkew + bodyWave * 0.035);
+    // ===== 绘制蛙鞋（现代开趾蛙鞋剪影 + 柔性反弹） =====
+    // 脚蹼的"根部方向"由小腿朝向决定（踝→膝的反向量是脚后跟方向，脚蹼往反向即 -x 继续延伸）
+    const calfDX = anklePX - kneePX;
+    const calfDY = anklePY - kneePY;
+    const calfLen = Math.hypot(calfDX, calfDY) || 1;
+    // 脚背朝向（沿小腿延长线）
+    const footDirX = calfDX / calfLen;
+    const footDirY = calfDY / calfLen;
 
-    const tipX = ankleX + finDrive - finLen;
-    const tipY = ankleY + side * finAngle * finLen * 0.42;
-    const baseUpX = ankleX + 1.1;
-    const baseUpY = ankleY - finSpread * 0.42;
-    const baseDownX = ankleX + 1.1;
-    const baseDownY = ankleY + finSpread * 0.42;
-    const splitX = ankleX + finDrive * 0.45 - finLen * 0.72;
-    const splitY = ankleY + side * finAngle * finLen * 0.26;
+    // 蛙鞋尾端的柔性鞭打：用 ankleWave 与 kneeWave 的差分作为"材质滞后于骨骼"的反弹
+    const whipSignal = (ankleWave - kneeWave);
+    // 加上转向偏转与漂浮自摆，让蛙鞋末端有一个小角度偏摆
+    const finTipAngle = side * (cfg.finWhipAmp * whipSignal
+                              + idlePhaseWave * cfg.legKickAmplitude * 0.8
+                              + turnEase * cfg.finTurnSkew);
 
-    renderCtx.fillStyle = colors.fin;
+    // 蛙鞋额外基础开合（保留老参数做微调）
+    const extraSpread = cfg.finSpreadBase
+                     + Math.abs(idlePhaseWave) * cfg.finSpreadSwim
+                     + activeStrength * cfg.finSpreadStroke * 0.5;
+
+    drawSwimFin(renderCtx, anklePX, anklePY, footDirX, footDirY, finTipAngle, extraSpread, colors, cfg);
+
+    // ===== 脚踝接点（蛙鞋与小腿之间的小圆，掩盖拼接边） =====
+    renderCtx.fillStyle = colors.suit;
     renderCtx.beginPath();
-    renderCtx.moveTo(baseUpX, baseUpY);
-    renderCtx.lineTo(tipX, tipY);
-    renderCtx.lineTo(splitX, splitY + 1.6);
-    renderCtx.lineTo(baseDownX, baseDownY);
-    renderCtx.lineTo(splitX, splitY - 1.6);
+    renderCtx.arc(anklePX, anklePY, Math.max(1.8, cfg.calfWidthAnkle * 0.55), 0, Math.PI * 2);
+    renderCtx.fill();
+}
+
+// 绘制锥形四边形肢段（两端粗细不同的实心条带，带侧边暗色描线）
+function drawTaperedLimb(
+    renderCtx: CanvasRenderingContext2D,
+    ax: number, ay: number,
+    bx: number, by: number,
+    widthA: number, widthB: number,
+    fillColor: string,
+    edgeColor: string,
+) {
+    const dx = bx - ax;
+    const dy = by - ay;
+    const len = Math.hypot(dx, dy) || 1;
+    // 法线方向（垂直于肢段）
+    const nx = -dy / len;
+    const ny = dx / len;
+
+    const halfA = widthA * 0.5;
+    const halfB = widthB * 0.5;
+
+    const p1x = ax + nx * halfA, p1y = ay + ny * halfA;
+    const p2x = bx + nx * halfB, p2y = by + ny * halfB;
+    const p3x = bx - nx * halfB, p3y = by - ny * halfB;
+    const p4x = ax - nx * halfA, p4y = ay - ny * halfA;
+
+    // 主体填充
+    renderCtx.fillStyle = fillColor;
+    renderCtx.beginPath();
+    renderCtx.moveTo(p1x, p1y);
+    renderCtx.lineTo(p2x, p2y);
+    renderCtx.lineTo(p3x, p3y);
+    renderCtx.lineTo(p4x, p4y);
     renderCtx.closePath();
     renderCtx.fill();
+
+    // 两端圆头（避免肢段交接处露出锐角）
+    renderCtx.beginPath();
+    renderCtx.arc(ax, ay, halfA, 0, Math.PI * 2);
+    renderCtx.arc(bx, by, halfB, 0, Math.PI * 2);
+    renderCtx.fill();
+
+    // 侧边暗色勾边，增强轮廓
+    renderCtx.strokeStyle = edgeColor;
+    renderCtx.lineWidth = 1;
+    renderCtx.beginPath();
+    renderCtx.moveTo(p1x, p1y);
+    renderCtx.lineTo(p2x, p2y);
+    renderCtx.moveTo(p4x, p4y);
+    renderCtx.lineTo(p3x, p3y);
+    renderCtx.stroke();
+}
+
+// 绘制现代开趾蛙鞋：根部鞋套 → 颈部收束 → 叶片外扩 → 尖端圆润
+// 参数：ankleX/Y 为踝点（蛙鞋根部中心）；dirX/dirY 为脚背朝向（沿小腿延长线，单位向量）
+// tipAngle 为末端柔性偏摆角（弧度，相对脚背方向）
+function drawSwimFin(
+    renderCtx: CanvasRenderingContext2D,
+    ankleX: number, ankleY: number,
+    dirX: number, dirY: number,
+    tipAngle: number,
+    extraSpread: number,
+    colors: DiverColors,
+    cfg: typeof CONFIG.diver,
+) {
+    const totalLen = cfg.finShapeLength;
+    const rootLen = totalLen * cfg.finShapeRootRatio;
+    const bellyLen = totalLen * cfg.finShapeBellyRatio;
+
+    // 宽度（叠加 extraSpread 作为小幅调整，避免完全相同的蛙鞋剪影）
+    const rootHalf = (cfg.finShapeRootWidth + extraSpread * 0.25) * 0.5;
+    const neckHalf = cfg.finShapeNeckWidth * 0.5;
+    const bellyHalf = (cfg.finShapeBellyWidth + extraSpread * 0.35) * 0.5;
+    const tipHalf = cfg.finShapeTipWidth * 0.5;
+
+    // 根部方向（沿 dir，即小腿延长线，蛙鞋往脚趾方向延伸）
+    const fx = dirX, fy = dirY;
+    // 法线（蛙鞋宽度方向）
+    const nx = -dirY, ny = dirX;
+
+    // 柔性偏摆：让"颈部之后"的段沿 tipAngle 做一个小角度偏转
+    // 用 cos/sin 构造偏转向量（以脚背方向为 0 角）
+    const cosA = Math.cos(tipAngle);
+    const sinA = Math.sin(tipAngle);
+    const bentFx = fx * cosA + nx * sinA;
+    const bentFy = fy * cosA + ny * sinA;
+    const bentNx = -bentFy;
+    const bentNy = bentFx;
+
+    // 关键中轴点
+    // 根：鞋套后缘（踝点稍微往脚跟方向一点，避免被小腿圆盖住）
+    const rootCX = ankleX - fx * 1.0;
+    const rootCY = ankleY - fy * 1.0;
+    // 颈：鞋套前缘/叶片起点
+    const neckCX = ankleX + fx * rootLen;
+    const neckCY = ankleY + fy * rootLen;
+    // 腹：叶片最宽处（已进入弯折段）
+    const bellyCX = ankleX + fx * rootLen + bentFx * (bellyLen - rootLen);
+    const bellyCY = ankleY + fy * rootLen + bentFy * (bellyLen - rootLen);
+    // 尖：叶片末端
+    const tipCX = ankleX + fx * rootLen + bentFx * (totalLen - rootLen);
+    const tipCY = ankleY + fy * rootLen + bentFy * (totalLen - rootLen);
+
+    // 剪影左右边线（四段点：root / neck / belly / tip，每点一对 ±half）
+    const rootLX = rootCX + nx * rootHalf, rootLY = rootCY + ny * rootHalf;
+    const rootRX = rootCX - nx * rootHalf, rootRY = rootCY - ny * rootHalf;
+    const neckLX = neckCX + nx * neckHalf, neckLY = neckCY + ny * neckHalf;
+    const neckRX = neckCX - nx * neckHalf, neckRY = neckCY - ny * neckHalf;
+    const bellyLX = bellyCX + bentNx * bellyHalf, bellyLY = bellyCY + bentNy * bellyHalf;
+    const bellyRX = bellyCX - bentNx * bellyHalf, bellyRY = bellyCY - bentNy * bellyHalf;
+    const tipLX = tipCX + bentNx * tipHalf, tipLY = tipCY + bentNy * tipHalf;
+    const tipRX = tipCX - bentNx * tipHalf, tipRY = tipCY - bentNy * tipHalf;
+
+    // ===== 先画叶片（fin 颜色） =====
+    renderCtx.fillStyle = colors.fin;
+    renderCtx.beginPath();
+    // 左边：root → neck → belly → tip（用曲线圆滑过渡）
+    renderCtx.moveTo(rootLX, rootLY);
+    renderCtx.lineTo(neckLX, neckLY);
+    renderCtx.quadraticCurveTo(
+        (neckLX + bellyLX) * 0.5 + bentNx * 1.2,
+        (neckLY + bellyLY) * 0.5 + bentNy * 1.2,
+        bellyLX, bellyLY
+    );
+    renderCtx.quadraticCurveTo(
+        (bellyLX + tipLX) * 0.5 + bentNx * 0.6,
+        (bellyLY + tipLY) * 0.5 + bentNy * 0.6,
+        tipLX, tipLY
+    );
+    // 尖端圆弧
+    renderCtx.quadraticCurveTo(
+        tipCX + bentFx * tipHalf * 0.9, tipCY + bentFy * tipHalf * 0.9,
+        tipRX, tipRY
+    );
+    // 右边：tip → belly → neck → root
+    renderCtx.quadraticCurveTo(
+        (bellyRX + tipRX) * 0.5 - bentNx * 0.6,
+        (bellyRY + tipRY) * 0.5 - bentNy * 0.6,
+        bellyRX, bellyRY
+    );
+    renderCtx.quadraticCurveTo(
+        (neckRX + bellyRX) * 0.5 - bentNx * 1.2,
+        (neckRY + bellyRY) * 0.5 - bentNy * 1.2,
+        neckRX, neckRY
+    );
+    renderCtx.lineTo(rootRX, rootRY);
+    // 后缘回根
+    renderCtx.quadraticCurveTo(
+        rootCX - fx * rootHalf * 0.8, rootCY - fy * rootHalf * 0.8,
+        rootLX, rootLY
+    );
+    renderCtx.closePath();
+    renderCtx.fill();
+
+    // ===== 中轴筋条（深色中线，增加蛙鞋识别度） =====
+    renderCtx.strokeStyle = 'rgba(0,0,0,0.35)';
+    renderCtx.lineWidth = 1.3;
+    renderCtx.beginPath();
+    renderCtx.moveTo(neckCX, neckCY);
+    renderCtx.quadraticCurveTo(bellyCX, bellyCY, tipCX - bentFx * 1.5, tipCY - bentFy * 1.5);
+    renderCtx.stroke();
+
+    // ===== 鞋套（根部橡胶包裹，颜色比叶片更深，表现脚背被蛙鞋包住） =====
+    const bootColor = colors.suit;
+    renderCtx.fillStyle = bootColor;
+    renderCtx.beginPath();
+    renderCtx.moveTo(rootLX, rootLY);
+    renderCtx.lineTo(neckLX, neckLY);
+    renderCtx.quadraticCurveTo(neckCX, neckCY, neckRX, neckRY);
+    renderCtx.lineTo(rootRX, rootRY);
+    renderCtx.quadraticCurveTo(
+        rootCX - fx * rootHalf * 0.8, rootCY - fy * rootHalf * 0.8,
+        rootLX, rootLY
+    );
+    renderCtx.closePath();
+    renderCtx.fill();
+
+    // 鞋套与叶片的过渡高光
+    renderCtx.strokeStyle = 'rgba(255,255,255,0.08)';
+    renderCtx.lineWidth = 1;
+    renderCtx.beginPath();
+    renderCtx.moveTo(neckLX, neckLY);
+    renderCtx.quadraticCurveTo(neckCX, neckCY, neckRX, neckRY);
+    renderCtx.stroke();
 }
 
 export function drawDiver(
