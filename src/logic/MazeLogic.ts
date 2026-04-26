@@ -11,6 +11,7 @@ import { updateCameraSpringArm, snapCameraToPlayer, getAdaptiveZoom } from './Ca
 import { updateMarkers, updateWheelButtonVisibility } from './Marker';
 import { createFishEnemy, findMazeFishSpawnPosition, updateAllFishEnemies, generateFishDens } from './FishEnemy';
 import { buildOxygenTanksForMaze, updateOxygenTanks, createOxygenFeedback } from './OxygenTank';
+import { updateLifeDetector, resetLifeDetector } from './LifeDetector';
 import { playSFX } from '../audio/AudioManager';
 import { loadMazeProgress, saveMazeProgress, clearMazeSave } from './MazeSave';
 import { setActiveSeededRandom, clearActiveSeededRandom } from '../core/SeededRandom';
@@ -294,6 +295,9 @@ export function startMazeDive(diveType: string) {
 
     // 入水气泡音效：入水动作本身，声音应盖在 diving_in 动画（约 1.5 秒）上
     playSFX('diveSplash');
+
+    // 重置生命探知仪运行态（每次新下潜重新开始）
+    resetLifeDetector();
 
     // 设置下潜类型（不区分scout/rescue，统一为scout，发现NPC后自动可绑绳）
     maze.diveType = diveType;
@@ -769,6 +773,9 @@ export function updateMaze() {
 
     // --- 氧气瓶系统（进度/飞瓶/气泡爆发/屏幕辉光动画） ---
     updateOxygenTanks();
+
+    // --- 生命探知仪（未发现NPC时以节拍提示距离）---
+    updateLifeDetector();
 
     // --- 轮盘展开动画 ---
     if (state.wheel && state.wheel.open) {

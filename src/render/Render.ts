@@ -12,8 +12,8 @@ import { drawWheelButton, drawWheel } from './RenderWheel';
 import { drawAllFishEnemies, drawFishBiteEffect } from './RenderFishEnemy';
 import { drawMazeWallShape, getMazeParticleColorByWorld, getMazeThemeColorByCell, drawMazeShallowSky, drawMazeShallowWaterTint, drawMazeShallowCaustics, getMazeShallowMaskAlpha, drawFishDenSkulls } from './RenderMazeScene';
 import { drawOxygenTanksWorld, drawOxygenFeedbackWorld } from './RenderOxygenTank';
+import { getLifeDetectorRuntime } from '../logic/LifeDetector';
 import { drawGMButton, drawGMPanel } from '../gm/GMPanel';
-import { drawAudioToggle } from './RenderAudioToggle';
 import { updateDustTime, drawDustDarkLayer, drawDustLitLayer } from './DustMotes';
 
 // 向后兼容，重新导出 canvas 和 ctx
@@ -450,6 +450,9 @@ export function draw() {
         forwardVisual: state.manualDrive.forwardVisual,
         turnVisual: state.manualDrive.turnVisual,
     });
+
+    // 生命探知仪：玩家身上的 LED 灯（与节拍同步闪烁）
+    drawLifeDetectorLED(ctx);
 
     // --- 绘制 NPC 呼救表现（气泡、挥手、闪光圈，仅迷宫未被救时）---
     drawNPCDistressWorld(ctx);
@@ -1032,8 +1035,53 @@ export function draw() {
         }
     }
 
-    // 5. GM工具面板 + 全局音频开关按钮（最顶层，始终绘制）
-    drawAudioToggle(ctx);
+    // 5. GM 工具面板（最顶层）
+    // 全局音频开关按钮已由左上角 HUD 管理器（HUDTopLeft）接管，此处不再独立绘制
     drawGMButton(ctx);
     drawGMPanel(ctx);
+}
+
+// 生命探知仪：玩家身上的小 LED 灯
+// 在世界坐标系下绘制（调用方已应用相机变换），位置略贴在玩家身体右肩位置
+// 仅在迷宫模式未发现 NPC 时显示；静默时不画，有脉冲时亮
+function drawLifeDetectorLED(renderCtx: CanvasRenderingContext2D) {
+    if (state.screen !== 'mazeRescue') return;
+    const cfg = (CONFIG as any).lifeDetector;
+    if (!cfg || !cfg.enabled || !cfg.ledOnDiver) return;
+    const rt = getLifeDetectorRuntime();
+    if (!rt.active && rt.pulseT <= 0) return;
+
+    // LED 位置：沿玩家朝向前方偏移（肩前方，仿佛仪器挂在胸口靠上）
+    const offAhead = 2;   // 沿身体朝向前的偏移
+    const offSide = 6;    // 身体右侧偏移
+    const cosA = Math.cos(player.angle);
+    const sinA = Math.sin(player.angle);
+    const lx = player.x + cosA * offAhead - sinA * offSide;
+    const ly = player.y + sinA * offAhead + cosA * offSide;
+
+    const baseR = cfg.ledRadiusBase || 2;
+    const peakR = cfg.ledRadiusPulse || 5;
+    const t = Math.max(0, Math.min(1, rt.pulseT));
+    const r = baseR + (peakR - baseR) * t;
+    const color = (rt.active && t > 0.1)
+        ? (cfg.ledColorPulse || 'rgba(200,255,240,1.0)')
+        : (cfg.ledColorIdle || 'rgba(120,200,220,0.5)');
+
+    renderCtx.save();
+    // 发光晕
+    if (t > 0.05) {
+        const glowR = peakR * 3;
+        const grd = renderCtx.createRadialGradient(lx, ly, 0, lx, ly, glowR);
+        grd.addColorStop(0, `rgba(200,255,240,${0.55 * t})`);
+        grd.addColorStop(1, 'rgba(200,255,240,0)');
+        renderCtx.fillStyle = grd;
+        renderCtx.beginPath();
+        renderCtx.arc(lx, ly, glowR, 0, Math.PI * 2);
+        renderCtx.fill();
+    }
+    renderCtx.fillStyle = color;
+    renderCtx.beginPath();
+    renderCtx.arc(lx, ly, r, 0, Math.PI * 2);
+    renderCtx.fill();
+    renderCtx.restore();
 }

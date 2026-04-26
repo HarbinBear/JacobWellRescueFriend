@@ -587,6 +587,42 @@ export const CONFIG = {
         },
     },
 
+    // ===== 生命探知仪（迷宫模式未发现 NPC 时，以盖革式"嘀嘀"提示距离）=====
+    // 玩家身上携带一个声纳仪器，检测到 NPC 在探知范围内就开始播放两音节拍（#D + F）
+    // 越靠近 NPC，两音组之间的间隔越短，同时 HUD 脉冲点与角色 LED 闪烁越快
+    // npcFound 或 npcRescued 后自动关闭
+    lifeDetector: {
+        enabled: true,              // 总开关
+        // 探知范围（以 npcRescueRange 为基准的倍数；外圈=静默，内圈=最快节奏）
+        rangeMultiplier: 50,         // 最大探知半径 = npcRescueRange × 此值（默认 80 × 4 = 320 像素 ——见下：实际是 320 再乘）
+        // 注意：上面 rangeMultiplier 实际解释为"以 npcRescueRange 为最内圈强度=1，乘 rangeMultiplier 得到最外圈强度=0"
+        // 节奏
+        gapMaxMs: 3000,             // 最远处两组"嘀嘀"之间的间隔（ms）
+        gapMinMs: 80,               // 最近处两组"嘀嘀"之间的间隔（ms，几乎连成一片）
+        beepIntervalMs: 140,        // 一组内 #D 与 F 之间的间隔（ms）
+        curvePower: 0.6,            // 节奏强度曲线指数（<1=远处变化慢、近处变化快；=1=线性）
+        // 音频参数
+        freqLow: 622.25,            // #D5 频率 (Hz)
+        freqHigh: 698.46,           // F5 频率 (Hz)
+        beepDuration: 0.12,         // 单音时长（秒）
+        volume: 0.28,               // 峰值音量 (0~1)
+        // HUD 视觉（右上角脉冲雷达点）
+        hudVisible: true,
+        hudXFromRight: 36,          // HUD 雷达点距右边距（像素）
+        hudY: 48,                   // HUD 雷达点 Y 坐标
+        hudBaseRadius: 6,           // 静态基础半径
+        hudPulseRadius: 14,         // 脉冲峰值半径
+        hudColorIdle: 'rgba(120,200,220,0.55)',    // 静态基础色（探知激活但未脉冲时）
+        hudColorPulse: 'rgba(180,255,230,1.0)',    // 脉冲峰值色
+        hudRingColor: 'rgba(60,120,140,0.8)',      // 外框圈色
+        // 角色身上 LED 闪光
+        ledOnDiver: true,
+        ledRadiusBase: 2,           // LED 基础大小
+        ledRadiusPulse: 5,          // 脉冲峰值大小
+        ledColorIdle: 'rgba(120,200,220,0.5)',
+        ledColorPulse: 'rgba(200,255,240,1.0)',
+    },
+
     // ===== 玩家攻击（挥氧气瓶）配置 =====
     attack: {
         // 攻击范围

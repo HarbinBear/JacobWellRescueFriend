@@ -3,6 +3,15 @@ import { state, player } from '../core/state';
 import { ctx, logicW, logicH } from './Canvas';
 import { getMazeMainThemeConfig } from '../world/mazeScene';
 import { drawOxygenScreenGlow } from './RenderOxygenTank';
+import { drawHUDTopLeft, initMazeHUDTopLeft } from './HUDTopLeft';
+
+// 确保迷宫模式 HUD 管理器已初始化（仅初始化一次，跨会话也只初始化一次）
+let _mazeHUDInitialized = false;
+function ensureMazeHUDInitialized() {
+    if (_mazeHUDInitialized) return;
+    initMazeHUDTopLeft();
+    _mazeHUDInitialized = true;
+}
 
 // 兼容微信小游戏的圆角矩形
 function rrect(c, x, y, w, h, r) {
@@ -66,225 +75,31 @@ export function drawMazeHUD() {
     // 氧气拾取拾取后的全屏绿色辉光（在所有 HUD 之前绘制，不遮挖 HUD）
     drawOxygenScreenGlow(ctx, cw, ch);
 
-    // --- 左上角：深度 + 圆形氧气环 + 按住展开详情 + 手动挡开关 ---
-    // 氧气环显示值走动画值（拾取时平滑上涨），在 oxygenFeedback 存在时使用，否则回落到 player.o2
-    const o2DisplayRaw = (state.mazeRescue && state.mazeRescue.oxygenFeedback && typeof state.mazeRescue.oxygenFeedback.o2DisplayAnim === 'number')
-        ? state.mazeRescue.oxygenFeedback.o2DisplayAnim
-        : player.o2;
-    const o2Ratio = Math.max(0, Math.min(1, o2DisplayRaw / 100));
-    const depth = Math.max(0, Math.floor(player.y / maze.mazeTileSize));
+    // --- 左上角 HUD（氧气环 / 手动挡 / 音频 / 生命探知仪，统一由 HUDTopLeft 管理） ---
+    // 在 HUDTopLeft.ts 中实现竖向布局、入场动效、统一tip、长短按交互
+    ensureMazeHUDInitialized();
+    drawHUDTopLeft(time);
 
-    // 入场动效：前 40 帧从左侧滑入 + 淡入
-    if (!maze._hudEntryTimer) maze._hudEntryTimer = 0;
-    if (maze._hudEntryTimer < 40) maze._hudEntryTimer++;
-    const hudEntry = Math.min(1, maze._hudEntryTimer / 40);
-    const hudEase = 1 - Math.pow(1 - hudEntry, 3);
-    const hudSlideX = -50 * (1 - hudEase);
-    const hudAlpha = hudEase;
-
-    // HUD详情展开动画（平滑过渡）
-    const hudDetailSpeed = 0.08;
-    if (maze._hudDetailHolding) {
-        maze._hudDetailOpen = Math.min(1, (maze._hudDetailOpen || 0) + hudDetailSpeed);
-    } else {
-        maze._hudDetailOpen = Math.max(0, (maze._hudDetailOpen || 0) - hudDetailSpeed);
-    }
-    const detailOpen = maze._hudDetailOpen || 0;
-    const detailEase = detailOpen * detailOpen * (3 - 2 * detailOpen); // smoothstep
-
-    // 圆形氧气环参数（加padding，远离屏幕边缘）
-    const ringCX = 46 + hudSlideX;
-    const ringCY = 48;
-    const ringR = 22;
-    const ringW = 3.5;
-
-    // 氧气颜色
-    const o2Color = o2Ratio > 0.5 ? 'rgba(80,210,255,0.9)' :
-                    o2Ratio > 0.25 ? 'rgba(255,200,80,0.9)' : 'rgba(255,80,80,0.9)';
-    const o2ColorDim = o2Ratio > 0.5 ? 'rgba(80,210,255,0.15)' :
-                       o2Ratio > 0.25 ? 'rgba(255,200,80,0.15)' : 'rgba(255,80,80,0.15)';
-
-    // 展开时的详情面板背景（从圆环右侧展开）
-    if (detailEase > 0.01) {
-        const panelW = 110 * detailEase;
-        const panelH = 70 * detailEase;
-        const panelX = ringCX + ringR + 8;
-        const panelY = ringCY - panelH / 2;
-        ctx.globalAlpha = hudAlpha * 0.85 * detailEase;
-        ctx.fillStyle = 'rgba(8,20,35,0.88)';
-        ctx.beginPath();
-        rrect(ctx, panelX, panelY, panelW, panelH, 10 * detailEase);
-        ctx.fill();
-        ctx.strokeStyle = 'rgba(80,160,220,0.2)';
-        ctx.lineWidth = 0.5;
-        ctx.beginPath();
-        rrect(ctx, panelX, panelY, panelW, panelH, 10 * detailEase);
-        ctx.stroke();
-
-        // 详情内容
-        if (detailEase > 0.5) {
-            const contentAlpha = (detailEase - 0.5) * 2;
-            ctx.globalAlpha = hudAlpha * 0.9 * contentAlpha;
-            ctx.textAlign = 'left';
-            // 氧气标签+数值
-            ctx.fillStyle = o2Color;
-            ctx.font = 'bold 11px Arial';
-            ctx.fillText('O₂', panelX + 8, panelY + 18);
-            ctx.fillStyle = 'rgba(220,240,255,0.9)';
-            ctx.font = '11px Arial';
-            ctx.fillText(`${Math.ceil(player.o2)}%`, panelX + 30, panelY + 18);
-            // 深度标签+数值
-            ctx.fillStyle = 'rgba(140,190,220,0.7)';
-            ctx.font = 'bold 11px Arial';
-            ctx.fillText('深度', panelX + 8, panelY + 36);
-            ctx.fillStyle = 'rgba(220,240,255,0.9)';
-            ctx.font = '11px Arial';
-            ctx.fillText(`${depth}m`, panelX + 38, panelY + 36);
-            // 手动/自动挡状态
-            const isManual = CONFIG.manualDrive.enabled;
-            ctx.fillStyle = 'rgba(140,190,220,0.7)';
-            ctx.font = 'bold 11px Arial';
-            ctx.fillText('操控', panelX + 8, panelY + 54);
-            ctx.fillStyle = isManual ? 'rgba(80,255,200,0.9)' : 'rgba(200,200,220,0.9)';
-            ctx.font = '11px Arial';
-            ctx.fillText(isManual ? '手动' : '自动', panelX + 38, panelY + 54);
-        }
-    }
-
-    // 背景环（暗色轨道）
-    ctx.globalAlpha = hudAlpha * 0.4;
-    ctx.strokeStyle = o2ColorDim;
-    ctx.lineWidth = ringW;
-    ctx.beginPath();
-    ctx.arc(ringCX, ringCY, ringR, 0, Math.PI * 2);
-    ctx.stroke();
-
-    // 氧气进度环（从顶部顺时针）
-    ctx.globalAlpha = hudAlpha * 0.9;
-    ctx.strokeStyle = o2Color;
-    ctx.lineWidth = ringW;
-    ctx.lineCap = 'round';
-    const o2StartAngle = -Math.PI / 2;
-    const o2EndAngle = o2StartAngle + Math.PI * 2 * o2Ratio;
-    if (o2Ratio > 0.005) {
-        ctx.beginPath();
-        ctx.arc(ringCX, ringCY, ringR, o2StartAngle, o2EndAngle);
-        ctx.stroke();
-    }
-    ctx.lineCap = 'butt';
-
-    // 低氧脉冲光晕
-    if (o2Ratio <= 0.25) {
-        const pulse = 0.3 + 0.2 * Math.sin(time * 5);
-        ctx.globalAlpha = hudAlpha * pulse;
-        ctx.strokeStyle = 'rgba(255,60,60,0.4)';
-        ctx.lineWidth = 8;
-        ctx.beginPath();
-        ctx.arc(ringCX, ringCY, ringR + 2, o2StartAngle, o2EndAngle);
-        ctx.stroke();
-        ctx.lineWidth = ringW;
-    }
-
-    // 氧气拾取脉冲（绿色放大环 + 跳字）：在 oxygenFeedback.o2RingPulse > 0 时显示
-    const o2RingPulseT = (maze.oxygenFeedback && maze.oxygenFeedback.o2RingPulse) || 0;
-    if (o2RingPulseT > 0) {
-        const p = o2RingPulseT; // 1→0
-        // 向外扩散的绿色光环
-        const expandR = ringR + 4 + (1 - p) * 22;
-        const ringAlpha = p * 0.9;
-        ctx.save();
-        ctx.globalAlpha = hudAlpha * ringAlpha;
-        ctx.strokeStyle = 'rgba(120, 255, 180, 0.85)';
-        ctx.lineWidth = 3 * p + 1;
-        ctx.beginPath();
-        ctx.arc(ringCX, ringCY, expandR, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.restore();
-    }
-    // "+X%" 跳字：在氧气环右侧向上飘
+    // 仅保留"氧气拾取后屏幕级别的 +X% 飘字"（HUDTopLeft 内部不负责这个世界级飘字）
+    // 氧气环拾取脉冲由 HUDTopLeft 内部处理，此处只绘制向上飘动的 "+X%" 文本
     if (maze.oxygenFeedback && maze.oxygenFeedback.floatText) {
         const ft = maze.oxygenFeedback.floatText;
         const ftT = Math.max(0, Math.min(1, ft.timer));
-        const floatY = ringCY - 8 - (1 - ftT) * 28;
+        const floatY = 48 - 8 - (1 - ftT) * 28;
         ctx.save();
-        ctx.globalAlpha = hudAlpha * ftT * 0.95;
+        ctx.globalAlpha = ftT * 0.95;
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
         ctx.shadowColor = 'rgba(0,0,0,0.6)';
         ctx.shadowBlur = 6;
         ctx.fillStyle = 'rgba(160, 255, 200, 1)';
         ctx.font = 'bold 18px Arial';
-        ctx.fillText(ft.text, ringCX + ringR + 10, floatY);
+        ctx.fillText(ft.text, 46 + 22 + 10, floatY);
         ctx.shadowBlur = 0;
         ctx.textBaseline = 'alphabetic';
         ctx.restore();
     }
 
-    // 圆环中心：深度数字
-    ctx.globalAlpha = hudAlpha * 0.95;
-    ctx.shadowColor = 'rgba(0,0,0,0.5)';
-    ctx.shadowBlur = 4;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = 'rgba(220,240,255,0.95)';
-    ctx.font = 'bold 18px Arial';
-    ctx.fillText(`${depth}`, ringCX, ringCY - 2);
-    ctx.fillStyle = 'rgba(140,190,220,0.55)';
-    ctx.font = '9px Arial';
-    ctx.fillText('m', ringCX, ringCY + 12);
-    ctx.shadowBlur = 0;
-    ctx.textBaseline = 'alphabetic';
-
-    // --- 手动/自动挡开关（圆环下方，加大间距） ---
-    const driveToggleY = ringCY + ringR + 28;
-    const driveToggleX = ringCX;
-    const isManualDrive = CONFIG.manualDrive.enabled;
-
-    // 开关圆形按钮（加大，手动挡橙红色，自动挡绿色）
-    const driveR = 14;
-    ctx.globalAlpha = hudAlpha * 0.8;
-    ctx.fillStyle = isManualDrive ? 'rgba(240,120,50,0.75)' : 'rgba(60,200,120,0.65)';
-    ctx.beginPath();
-    ctx.arc(driveToggleX, driveToggleY, driveR, 0, Math.PI * 2);
-    ctx.fill();
-    // 外圈细线
-    ctx.globalAlpha = hudAlpha * 0.5;
-    ctx.strokeStyle = isManualDrive ? 'rgba(255,160,80,0.5)' : 'rgba(80,220,140,0.4)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.arc(driveToggleX, driveToggleY, driveR, 0, Math.PI * 2);
-    ctx.stroke();
-    // 图标（M=手动，A=自动）
-    ctx.globalAlpha = hudAlpha * 0.95;
-    ctx.fillStyle = 'rgba(255,255,255,0.95)';
-    ctx.font = 'bold 12px Arial';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(isManualDrive ? 'M' : 'A', driveToggleX, driveToggleY);
-    ctx.textBaseline = 'alphabetic';
-
-    // 手动/自动挡切换tip提示（切换时短暂显示）
-    if (maze._driveSwitchTip && maze._driveSwitchTip > 0) {
-        maze._driveSwitchTip = Math.max(0, maze._driveSwitchTip - 1);
-        const tipAlpha = Math.min(1, maze._driveSwitchTip / 30);
-        if (tipAlpha > 0.01) {
-            ctx.globalAlpha = hudAlpha * 0.9 * tipAlpha;
-            ctx.fillStyle = 'rgba(8,20,35,0.85)';
-            const tipText = isManualDrive ? '已切换到手动挡' : '已切换到自动挡';
-            const tipW = 120;
-            const tipH = 28;
-            const tipX = driveToggleX + driveR + 8;
-            const tipY = driveToggleY - tipH / 2;
-            ctx.beginPath();
-            rrect(ctx, tipX, tipY, tipW, tipH, 10);
-            ctx.fill();
-            ctx.globalAlpha = hudAlpha * tipAlpha;
-            ctx.fillStyle = isManualDrive ? 'rgba(240,160,80,0.95)' : 'rgba(80,220,140,0.95)';
-            ctx.font = 'bold 11px Arial';
-            ctx.textAlign = 'left';
-            ctx.fillText(tipText, tipX + 10, tipY + tipH / 2 + 4);
-        }
-    }
 
     // NPC 救援提示（靠近NPC时显示，发现后即可绑绳）
     if (!maze.npcRescued && state.npc.active) {
@@ -430,9 +245,9 @@ export function drawMazeHUD() {
     if (CONFIG.debug) {
         drawMazeMinimap(maze, cw, ch, time);
     }
-
     ctx.restore();
 }
+
 
 // 迷宫小地图绘制
 function drawMazeMinimap(maze: any, cw: number, ch: number, time: number) {

@@ -3,8 +3,7 @@ import { state, input, touches, player } from './state';
 import { createFishEnemy, triggerPlayerAttack, findSafeSpawnPosition } from '../logic/FishEnemy';
 import { DEBUG_FISH_BTN, ATTACK_BTN, FLASHLIGHT_BTN } from '../render/RenderUI';
 import { isGMOpen, handleGMTouchStart, handleGMTouchMove, handleGMTouchEnd } from '../gm/GMPanel';
-import { hitAudioButton } from '../render/RenderAudioToggle';
-import { toggleMuted } from '../audio/AudioManager';
+import { handleHUDTouchStart, handleHUDTouchMove, handleHUDTouchEnd } from '../render/HUDTopLeft';
 import { buildWheelSectors, executeWheelAction } from '../logic/Marker';
 import { getWheelBtnPos } from '../render/RenderWheel';
 
@@ -182,19 +181,22 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
     }
 
     wx.onTouchStart((res) => {
-        // 全局音频开关按钮优先消费（在 GM 按钮左侧）
-        const audioTouch = res.touches[res.touches.length - 1];
-        if (audioTouch && hitAudioButton(audioTouch.clientX, audioTouch.clientY)) {
-            toggleMuted();
-            return;
-        }
-        // GM面板优先消费触摸事件
+        // GM 面板优先消费触摸事件（GM 按钮在屏幕顶部中央）
         const gmTouch = res.touches[res.touches.length - 1];
         if (gmTouch && handleGMTouchStart(gmTouch.clientX, gmTouch.clientY)) {
             return;
         }
-        // GM面板打开时拦截所有游戏输入
+        // GM 面板打开时拦截所有游戏输入
         if (isGMOpen()) return;
+
+        // 左上角 HUD 管理器优先消费（迷宫模式下的氧气环/手动挡/音频/探知仪四个按钮）
+        // 只在迷宫 play 阶段启用；岸上/入水/结算阶段不启用，这些阶段有自己的 UI
+        if (state.screen === 'mazeRescue' && state.mazeRescue && state.mazeRescue.phase === 'play') {
+            const hudTouch = res.changedTouches && res.changedTouches.length > 0 ? res.changedTouches[0] : res.touches[res.touches.length - 1];
+            if (hudTouch && handleHUDTouchStart(hudTouch.identifier, hudTouch.clientX, hudTouch.clientY)) {
+                return;
+            }
+        }
 
         if(state.screen === 'menu') {
             const touch = res.touches[0];
@@ -397,17 +399,8 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                     }
                 }
 
-                // HUD详情按住检测（左上角圆环区域）
-                if (Math.hypot(t.clientX - 46, t.clientY - 48) <= 30) {
-                    maze._hudDetailHolding = true;
-                    continue;
-                }
-
-                // 手动/自动挡开关点击检测（圆环下方圆形按钮）
-                const driveToggleY = 48 + 22 + 28; // ringCY + ringR + 28
-                if (Math.hypot(t.clientX - 46, t.clientY - driveToggleY) <= 20) {
-                    CONFIG.manualDrive.enabled = !CONFIG.manualDrive.enabled;
-                    maze._driveSwitchTip = 60; // 60帧tip显示
+                // 左上角 HUD 按住检测：由 HUDTopLeft 管理器统一接管（氧气环长按展开、手动挡/音频/探知仪短按）
+                if (handleHUDTouchStart(t.identifier, t.clientX, t.clientY)) {
                     continue;
                 }
             }
@@ -464,6 +457,13 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
             const t = res.touches[0];
             if (t) handleGMTouchMove(t.clientX, t.clientY);
             return;
+        }
+
+        // 左上角 HUD 管理器接收移动事件（用于长按阈值判定）
+        if (state.screen === 'mazeRescue' && state.mazeRescue && state.mazeRescue.phase === 'play') {
+            for (const t of res.touches) {
+                handleHUDTouchMove(t.identifier, t.clientX, t.clientY);
+            }
         }
 
         // 放弃按钮长按计时（在 update 循环中处理，这里不需要）
@@ -929,10 +929,8 @@ function handleTouchEnd(changedTouches) {
                 state.mazeRescue.retreatTouchId = null;
             }
         }
-        // 迷宫HUD详情松手
-        if (state.mazeRescue) {
-            state.mazeRescue._hudDetailHolding = false;
-        }
+        // 左上角 HUD 触点松手（氧气环长按结束、tip 触发等）
+        handleHUDTouchEnd(t.identifier, t.clientX, t.clientY);
         // 放弃按钮松手
         if(t.identifier === abandonTouchId) {
             abandonTouchId = null;

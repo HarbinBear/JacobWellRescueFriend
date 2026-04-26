@@ -272,6 +272,23 @@ export const TABS: GMTab[] = [
         ]
     },
     {
+        name: '探知仪',
+        items: [
+            { type: 'bool', label: '启用', path: 'lifeDetector.enabled' },
+            { type: 'number', label: '范围倍数', path: 'lifeDetector.rangeMultiplier', min: 1, max: 8, step: 0.5, precision: 1 },
+            { type: 'number', label: '最远间隔ms', path: 'lifeDetector.gapMaxMs', min: 400, max: 3000, step: 50 },
+            { type: 'number', label: '最近间隔ms', path: 'lifeDetector.gapMinMs', min: 40, max: 400, step: 10 },
+            { type: 'number', label: '两音间隔ms', path: 'lifeDetector.beepIntervalMs', min: 60, max: 400, step: 10 },
+            { type: 'number', label: '节奏曲线指数', path: 'lifeDetector.curvePower', min: 0.2, max: 3, step: 0.1, precision: 1 },
+            { type: 'number', label: '低音频率Hz', path: 'lifeDetector.freqLow', min: 200, max: 1200, step: 5, precision: 1 },
+            { type: 'number', label: '高音频率Hz', path: 'lifeDetector.freqHigh', min: 200, max: 1500, step: 5, precision: 1 },
+            { type: 'number', label: '单音时长s', path: 'lifeDetector.beepDuration', min: 0.04, max: 0.4, step: 0.01, precision: 2 },
+            { type: 'number', label: '音量', path: 'lifeDetector.volume', min: 0, max: 1, step: 0.02, precision: 2 },
+            { type: 'bool', label: 'HUD可见', path: 'lifeDetector.hudVisible' },
+            { type: 'bool', label: '角色LED', path: 'lifeDetector.ledOnDiver' },
+        ]
+    },
+    {
         name: '迷宫鱼',
         items: [
             { type: 'bool', label: '启用食人鱼', path: 'maze.fishEnabled' },
