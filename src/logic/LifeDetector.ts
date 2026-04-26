@@ -101,10 +101,14 @@ export function updateLifeDetector(): void {
     runtime.currentIntensity = tCurve;
     runtime.active = true;
 
-    // 节奏映射：组间隔从 gapMaxMs 降到 gapMinMs
+    // 节奏映射：组间隔从 gapMaxMs 降到 gapMinMs；两音间隔从 beepIntervalMaxMs 降到 beepIntervalMinMs
     const gapMax = cfg.gapMaxMs || 1400;
     const gapMin = cfg.gapMinMs || 80;
     const groupGap = gapMax - (gapMax - gapMin) * tCurve;
+    // 两音间隔同样随强度渐进：远处 #D 和 F 听感像"嘀—嘀"（150ms），近处几乎黏成一个音（80ms）
+    const beepMax = cfg.beepIntervalMaxMs || 150;
+    const beepMin = cfg.beepIntervalMinMs || 80;
+    const beepInterval = beepMax - (beepMax - beepMin) * tCurve;
     const now = Date.now();
 
     // 延迟播 F：到时才播
@@ -120,7 +124,7 @@ export function updateLifeDetector(): void {
         playSonarLow();
         runtime.pulseT = 1;
         runtime.pulseIsHigh = false;
-        runtime.pendingHighAt = now + (cfg.beepIntervalMs || 140);
+        runtime.pendingHighAt = now + beepInterval;
         runtime.nextGroupAt = now + groupGap;
     }
 

@@ -399,7 +399,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                     }
                 }
 
-                // 左上角 HUD 按住检测：由 HUDTopLeft 管理器统一接管（氧气环长按展开、手动挡/音频/探知仪短按）
+                // 左上角 HUD 按住检测：由 HUDTopLeft 管理器统一接管（四项按钮全部采用短按=主操作+弹 tip）
                 if (handleHUDTouchStart(t.identifier, t.clientX, t.clientY)) {
                     continue;
                 }

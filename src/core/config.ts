@@ -599,7 +599,9 @@ export const CONFIG = {
         // 节奏
         gapMaxMs: 3000,             // 最远处两组"嘀嘀"之间的间隔（ms）
         gapMinMs: 80,               // 最近处两组"嘀嘀"之间的间隔（ms，几乎连成一片）
-        beepIntervalMs: 140,        // 一组内 #D 与 F 之间的间隔（ms）
+        // 一组内 #D 与 F 之间的间隔也需要渐进：远时两音间隔大（更像独立的双音），近时间隔小（更紧凑）
+        beepIntervalMaxMs: 150,     // 远处两音间隔（ms）
+        beepIntervalMinMs: 80,      // 近处两音间隔（ms）
         curvePower: 0.6,            // 节奏强度曲线指数（<1=远处变化慢、近处变化快；=1=线性）
         // 音频参数
         freqLow: 622.25,            // #D5 频率 (Hz)

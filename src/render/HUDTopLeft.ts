@@ -355,26 +355,19 @@ function drawRRect(c: CanvasRenderingContext2D, x: number, y: number, w: number,
 export function initMazeHUDTopLeft(): void {
     clearHUDItems();
 
-    // 1. 氧气环（支持长按展开详情）
+    // 1. 氧气环（短按弹 tip，不支持长按）
     registerHUDItem({
         id: 'oxygen',
         visible: () => true,
         iconDraw: drawOxygenIcon,
-        supportsLongPress: true,
+        supportsLongPress: false,
         onShortTap: () => { /* 无副作用；只弹tip */ },
         tipText: () => {
             const o2 = Math.ceil(player.o2);
             const maze = state.mazeRescue;
             const depth = maze ? Math.max(0, Math.floor(player.y / (maze.mazeTileSize || 40))) : 0;
-            return `氧气：${o2}%\n深度：${depth}m\n长按可展开详情`;
+            return `氧气：${o2}%\n深度：${depth}m`;
         },
-        onLongHoldStart: () => {
-            if (state.mazeRescue) state.mazeRescue._hudDetailHolding = true;
-        },
-        onLongHoldEnd: () => {
-            if (state.mazeRescue) state.mazeRescue._hudDetailHolding = false;
-        },
-        longHoldDraw: drawOxygenDetailPanel,
     });
 
     // 2. 手动/自动挡切换（短按切换）
@@ -500,70 +493,22 @@ function drawOxygenIcon(c: CanvasRenderingContext2D, cx: number, cy: number, siz
         c.globalAlpha = 1;
     }
 
-    // 中心小液滴符号（代替数字显示，更简洁）
-    // 一个小水滴形状，颜色跟随氧气状态
-    c.fillStyle = o2Color;
-    c.beginPath();
-    const dropW = 5, dropH = 8;
-    c.moveTo(cx, cy - dropH);
-    c.bezierCurveTo(cx - dropW, cy - dropH / 3, cx - dropW, cy + dropH / 2, cx, cy + dropH / 2);
-    c.bezierCurveTo(cx + dropW, cy + dropH / 2, cx + dropW, cy - dropH / 3, cx, cy - dropH);
-    c.closePath();
-    c.fill();
-
-    c.restore();
-}
-
-// 氧气环长按时展开的详情面板（和原实现保持语义一致：显示氧气百分比/深度/操控模式）
-function drawOxygenDetailPanel(c: CanvasRenderingContext2D, cx: number, cy: number, size: number, progress: number): void {
-    const maze = state.mazeRescue;
-    if (!maze) return;
-    const depth = Math.max(0, Math.floor(player.y / (maze.mazeTileSize || 40)));
-    const ease = progress * progress * (3 - 2 * progress);
-    const panelW = 120 * ease;
-    const panelH = 74 * ease;
-    const panelX = cx + size / 2 + 6;
-    const panelY = cy - panelH / 2;
-
+    // 中心显示"O₂"字样（O 是正常大小，2 是右下角小脚标），颜色跟随氧气状态
     c.save();
-    c.globalAlpha = 0.88 * ease;
-    c.fillStyle = 'rgba(8,20,35,0.88)';
-    drawRRect(c, panelX, panelY, panelW, panelH, 8 * ease);
-    c.fill();
-    c.strokeStyle = 'rgba(80,160,220,0.22)';
-    c.lineWidth = 0.6;
-    drawRRect(c, panelX, panelY, panelW, panelH, 8 * ease);
-    c.stroke();
+    c.fillStyle = o2Color;
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    // 主字符"O"
+    c.font = 'bold 13px Arial';
+    // 使 O 和脚标 2 作为一个整体视觉居中：O 的几何中心稍微左移，给脚标让位
+    const oOffsetX = -2.5;
+    c.fillText('O', cx + oOffsetX, cy);
+    // 脚标"2"：小字号，位置右下
+    c.font = 'bold 9px Arial';
+    c.textBaseline = 'alphabetic';
+    c.fillText('2', cx + oOffsetX + 6, cy + 5);
+    c.restore();
 
-    if (ease > 0.5) {
-        const contentAlpha = (ease - 0.5) * 2;
-        c.globalAlpha = 0.92 * contentAlpha;
-        c.textAlign = 'left';
-        c.textBaseline = 'alphabetic';
-        const o2 = Math.ceil(player.o2);
-        const o2Color = o2 > 50 ? 'rgba(80,210,255,0.95)' : o2 > 25 ? 'rgba(255,200,80,0.95)' : 'rgba(255,80,80,0.95)';
-        c.fillStyle = o2Color;
-        c.font = 'bold 11px Arial';
-        c.fillText('O₂', panelX + 8, panelY + 18);
-        c.fillStyle = 'rgba(220,240,255,0.9)';
-        c.font = '11px Arial';
-        c.fillText(`${o2}%`, panelX + 30, panelY + 18);
-
-        c.fillStyle = 'rgba(140,190,220,0.75)';
-        c.font = 'bold 11px Arial';
-        c.fillText('深度', panelX + 8, panelY + 36);
-        c.fillStyle = 'rgba(220,240,255,0.9)';
-        c.font = '11px Arial';
-        c.fillText(`${depth}m`, panelX + 38, panelY + 36);
-
-        const isManual = CONFIG.manualDrive.enabled;
-        c.fillStyle = 'rgba(140,190,220,0.75)';
-        c.font = 'bold 11px Arial';
-        c.fillText('操控', panelX + 8, panelY + 54);
-        c.fillStyle = isManual ? 'rgba(80,255,200,0.95)' : 'rgba(200,200,220,0.9)';
-        c.font = '11px Arial';
-        c.fillText(isManual ? '手动' : '自动', panelX + 38, panelY + 54);
-    }
     c.restore();
 }
 
@@ -599,117 +544,133 @@ function drawAudioIconWrapper(c: CanvasRenderingContext2D, cx: number, cy: numbe
     drawAudioIcon(c, cx, cy, size);
 }
 
-// 生命探知仪图标：重新设计视觉 —— 像潜艇声纳：底圆 + 扇形扫描臂 + 脉冲波纹
-// 当有目标时扫描臂顺时针旋转；脉冲强度驱动波纹扩散
-function drawLifeDetectorIcon(c: CanvasRenderingContext2D, cx: number, cy: number, size: number, time: number): void {
+// 生命探知仪图标：同心圆脉冲波纹设计
+// 视觉语义：仪表盘底 + 中心信号源点 + 每次"嘀"响时从中心向外扩散一圈波纹
+// 波纹队列化：每次检测到脉冲触发（pulseT 从低跳到 1 的上升沿），push 一个新波纹
+// 波纹自身会随时间扩张半径 + 淡出透明度，淡出后自动从队列移除
+//
+// 为什么这样设计：
+// - 信号越近，"嘀"响越密集 → 波纹队列里同时存在的波纹也越多 → 视觉上环越密
+// - 静默时只有中心一个暗点，画面非常干净
+// - 没有任何持续旋转的元素，不会产生"狂转"的视觉噪音
+
+interface DetectorWave {
+    birth: number;   // 出生时间戳（ms）
+    life: number;    // 波纹持续时长（ms）
+    strength: number; // 诞生时的强度（0~1），决定初始不透明度
+}
+const detectorWaves: DetectorWave[] = [];
+let lastDetectorPulse = 0;  // 上一帧的 pulseT，用于检测上升沿
+
+function drawLifeDetectorIcon(c: CanvasRenderingContext2D, cx: number, cy: number, size: number, _time: number): void {
     const cfg = (CONFIG as any).lifeDetector;
     const rt = getLifeDetectorRuntime();
     const r = size / 2 - 2;
+    const now = Date.now();
+
+    // === 波纹触发检测（上升沿：上一帧<0.5 本帧>=0.95 视为一次新脉冲） ===
+    if (rt.active && lastDetectorPulse < 0.5 && rt.pulseT >= 0.95) {
+        // 波纹寿命：信号越强，扩散越快（寿命越短）；保证密集脉冲时视觉追得上
+        const life = 360 + (1 - rt.currentIntensity) * 420;  // 360ms ~ 780ms
+        detectorWaves.push({ birth: now, life, strength: 0.5 + rt.currentIntensity * 0.5 });
+        // 限制同时存在的波纹数量，防止极近时波纹堆积过多
+        if (detectorWaves.length > 6) detectorWaves.shift();
+    }
+    lastDetectorPulse = rt.pulseT;
+
+    // 清理已淡出的波纹
+    for (let i = detectorWaves.length - 1; i >= 0; i--) {
+        if (now - detectorWaves[i].birth > detectorWaves[i].life) {
+            detectorWaves.splice(i, 1);
+        }
+    }
 
     c.save();
 
-    // 底圆（深色仪表盘感）
+    // === 底圆（深色仪表盘） ===
     const grd = c.createRadialGradient(cx, cy, 0, cx, cy, r);
-    grd.addColorStop(0, 'rgba(20, 50, 60, 0.9)');
-    grd.addColorStop(1, 'rgba(5, 15, 22, 0.85)');
+    grd.addColorStop(0, 'rgba(20, 50, 60, 0.92)');
+    grd.addColorStop(1, 'rgba(5, 15, 22, 0.88)');
     c.fillStyle = grd;
     c.beginPath();
     c.arc(cx, cy, r, 0, Math.PI * 2);
     c.fill();
 
-    // 外环（仪表边框）
+    // === 外环（仪表边框） ===
     c.strokeStyle = 'rgba(120, 200, 220, 0.6)';
     c.lineWidth = 1.2;
     c.beginPath();
     c.arc(cx, cy, r, 0, Math.PI * 2);
     c.stroke();
 
-    // 内部刻度线（仪表感）
-    c.strokeStyle = 'rgba(80, 160, 180, 0.35)';
-    c.lineWidth = 0.6;
-    for (let i = 0; i < 8; i++) {
-        const a = i * Math.PI / 4;
+    // === 刻度点（12 个小圆点替代原来的刻度线，更像仪表表盘） ===
+    c.fillStyle = 'rgba(80, 160, 180, 0.45)';
+    for (let i = 0; i < 12; i++) {
+        const a = i * Math.PI / 6;
+        const px = cx + Math.cos(a) * (r - 3);
+        const py = cy + Math.sin(a) * (r - 3);
         c.beginPath();
-        c.moveTo(cx + Math.cos(a) * (r - 4), cy + Math.sin(a) * (r - 4));
-        c.lineTo(cx + Math.cos(a) * (r - 1), cy + Math.sin(a) * (r - 1));
-        c.stroke();
+        c.arc(px, py, 0.7, 0, Math.PI * 2);
+        c.fill();
     }
 
-    // 内圆（刻度盘面，有目标时脉冲放大）
-    const pulseT = Math.max(0, Math.min(1, rt.pulseT));
-    const innerR = r * 0.55 + pulseT * 3;
-    c.strokeStyle = 'rgba(120, 200, 220, 0.3)';
-    c.lineWidth = 0.6;
+    // === 同心圆波纹（核心视觉） ===
+    // 裁剪在仪表内部，防止波纹画到外环外
+    c.save();
     c.beginPath();
-    c.arc(cx, cy, innerR, 0, Math.PI * 2);
-    c.stroke();
+    c.arc(cx, cy, r - 1, 0, Math.PI * 2);
+    c.clip();
 
-    // 如果探知仪激活：绘制旋转扫描臂 + 脉冲波纹
+    const maxWaveR = r - 2;
+    for (const w of detectorWaves) {
+        const age = now - w.birth;
+        const t = Math.min(1, Math.max(0, age / w.life));  // 0=刚诞生  1=即将消失
+        const waveR = 2 + t * (maxWaveR - 2);
+        // 透明度：先涨后落（正弦峰），但总体受 strength 控制
+        const fade = Math.sin(t * Math.PI) * w.strength;
+        if (fade <= 0.02) continue;
+        // 波纹主体（亮青绿色细线）
+        c.strokeStyle = `rgba(160, 255, 220, ${(0.75 * fade).toFixed(3)})`;
+        c.lineWidth = 1.2;
+        c.beginPath();
+        c.arc(cx, cy, waveR, 0, Math.PI * 2);
+        c.stroke();
+        // 内部柔和辉光（让波纹更像"有厚度的光环"）
+        c.strokeStyle = `rgba(140, 230, 200, ${(0.25 * fade).toFixed(3)})`;
+        c.lineWidth = 2.6;
+        c.stroke();
+    }
+    c.restore();
+
+    // === 中心信号源 ===
+    // 激活时亮青绿色；脉冲瞬间放大；静默时暗蓝灰色
+    const pulseT = Math.max(0, Math.min(1, rt.pulseT));
     if (rt.active) {
-        // 扫描臂：旋转速度与信号强度正相关
-        const sweepSpeed = 1.0 + rt.currentIntensity * 3.0;
-        const sweepAngle = (time * sweepSpeed) % (Math.PI * 2);
-
-        // 扫描扇（渐变尾巴）
-        const sweepGrd = c.createRadialGradient(cx, cy, 0, cx, cy, r - 2);
-        sweepGrd.addColorStop(0, 'rgba(150, 255, 210, 0.0)');
-        sweepGrd.addColorStop(1, 'rgba(150, 255, 210, 0.35)');
-        c.fillStyle = sweepGrd;
+        const coreR = 2.2 + pulseT * 2.4 + rt.currentIntensity * 1.4;
+        // 辉光
+        const coreGlow = c.createRadialGradient(cx, cy, 0, cx, cy, coreR * 2.4);
+        coreGlow.addColorStop(0, `rgba(200, 255, 240, ${(0.55 * (0.4 + 0.6 * pulseT)).toFixed(3)})`);
+        coreGlow.addColorStop(1, 'rgba(200, 255, 240, 0)');
+        c.fillStyle = coreGlow;
         c.beginPath();
-        c.moveTo(cx, cy);
-        c.arc(cx, cy, r - 2, sweepAngle - Math.PI / 3, sweepAngle);
-        c.closePath();
+        c.arc(cx, cy, coreR * 2.4, 0, Math.PI * 2);
         c.fill();
-
-        // 扫描臂（亮线）
-        c.strokeStyle = 'rgba(180, 255, 220, 0.9)';
-        c.lineWidth = 1.4;
+        // 核心点
+        c.fillStyle = cfg && cfg.hudColorPulse ? cfg.hudColorPulse : 'rgba(200, 255, 240, 1.0)';
         c.beginPath();
-        c.moveTo(cx, cy);
-        c.lineTo(cx + Math.cos(sweepAngle) * (r - 2), cy + Math.sin(sweepAngle) * (r - 2));
-        c.stroke();
-
-        // 目标光点（随脉冲闪烁，位于信号强度对应的半径处）
-        if (pulseT > 0.05) {
-            const blipR = (r - 4) * rt.currentIntensity;
-            const blipAngle = sweepAngle - 0.2;
-            const blipX = cx + Math.cos(blipAngle) * blipR;
-            const blipY = cy + Math.sin(blipAngle) * blipR;
-            // 发光晕
-            const glowR = 4 + pulseT * 4;
-            const blipGlow = c.createRadialGradient(blipX, blipY, 0, blipX, blipY, glowR);
-            blipGlow.addColorStop(0, `rgba(200,255,240,${0.6 * pulseT})`);
-            blipGlow.addColorStop(1, 'rgba(200,255,240,0)');
-            c.fillStyle = blipGlow;
-            c.beginPath();
-            c.arc(blipX, blipY, glowR, 0, Math.PI * 2);
-            c.fill();
-            // 光点
-            c.fillStyle = cfg.hudColorPulse || 'rgba(200, 255, 240, 1.0)';
-            c.beginPath();
-            c.arc(blipX, blipY, 1.6 + pulseT * 1.4, 0, Math.PI * 2);
-            c.fill();
-        }
-
-        // 脉冲扩散波纹（从中心向外，每次播音触发）
-        if (pulseT > 0.05) {
-            const waveR = innerR + (1 - pulseT) * (r - innerR - 2);
-            c.strokeStyle = `rgba(150, 255, 210, ${0.6 * pulseT})`;
-            c.lineWidth = 1.2;
-            c.beginPath();
-            c.arc(cx, cy, waveR, 0, Math.PI * 2);
-            c.stroke();
-        }
+        c.arc(cx, cy, coreR, 0, Math.PI * 2);
+        c.fill();
     } else {
-        // 静默状态：一个暗色十字瞄准线
-        c.strokeStyle = 'rgba(80, 140, 160, 0.4)';
-        c.lineWidth = 0.7;
+        // 静默：中心一个暗点 + 一圈静态瞄准圈，暗示仪器在待机
+        c.strokeStyle = 'rgba(80, 140, 160, 0.35)';
+        c.lineWidth = 0.6;
         c.beginPath();
-        c.moveTo(cx - r + 4, cy);
-        c.lineTo(cx + r - 4, cy);
-        c.moveTo(cx, cy - r + 4);
-        c.lineTo(cx, cy + r - 4);
+        c.arc(cx, cy, r * 0.45, 0, Math.PI * 2);
         c.stroke();
+        c.fillStyle = 'rgba(100, 170, 190, 0.45)';
+        c.beginPath();
+        c.arc(cx, cy, 1.6, 0, Math.PI * 2);
+        c.fill();
     }
 
     c.restore();
