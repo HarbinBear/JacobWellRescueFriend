@@ -300,10 +300,11 @@ export function updateAutoDriveVisual(angleDiff: number, isThrust: boolean): voi
     const speedRef = Math.max(0.1, cfg.maxSpeed);
     const speedNorm = Math.max(0, Math.min(1, speed / speedRef));
 
-    // 转向信号：angleDiff 越大身体侧倾/手臂划转越夸张；经过 0.6 弧度（约 34°）就接近满量
-    const turnAbs = Math.min(1, Math.abs(angleDiff) / 0.6);
+    // 转向信号：angleDiff 越大身体侧倾/手臂划转越夸张；约 0.22 弧度（约 12°）就接近满量
+    // 正常巡游的小转向也能驱动出明显视觉——关键是让转向时身体动画明显加强
+    const turnAbs = Math.min(1, Math.abs(angleDiff) / 0.22);
     // turnVisual 带符号：正值 = 向左侧倾/左手内收，负值 = 向右侧倾/右手内收
-    const turnVisualTarget = Math.max(-1, Math.min(1, angleDiff / 0.6));
+    const turnVisualTarget = Math.max(-1, Math.min(1, angleDiff / 0.22));
     // 左右 turn 强度同时抬高（自动挡没有"左右腿独立"概念），让两侧手臂对称参与转向修正
     const turnStrengthTarget = turnAbs;
     const turnProgressTarget = turnAbs;

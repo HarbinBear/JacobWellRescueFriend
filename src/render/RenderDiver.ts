@@ -39,6 +39,11 @@ type DiverMotion = {
 // phase 取值 0~1，freq 为单帧推进比例
 const legClocks: Map<string, { phase: number }> = new Map();
 
+// 模块级"躯干波动相位时钟"：驱动全身扭动（yaw / roll / compress / 手臂常驻摆动）
+// 与腿部时钟分开，因为 idle 时腿停摆但身体仍需微幅呼吸
+// bodyPhase ∈ [0,1)，idle 时低速推进、forward 时与腿部时钟同频推进
+const bodyClocks: Map<string, { phase: number }> = new Map();
+
 function clamp(value: number, min: number, max: number) {
     return Math.max(min, Math.min(max, value));
 }
@@ -451,21 +456,81 @@ export function drawDiver(
     const forwardVisual = clamp(motion.forwardVisual ?? 0, 0, 1);
     const turnVisual = clamp(motion.turnVisual ?? 0, -1, 1);
 
+    // ===== 躯干波动相位时钟（全身动画统一驱动源） =====
+    // 三种状态叠加推进：
+    //   idle：低频常驻（漂浮呼吸）
+    //   forward：随腿部速度同频推进（身体扭动带动踢水）
+    //   turn：附加高频小扰动（转向时肌肉紧张）
+    const clockId = motion.id ?? 'anon';
+    let bodyClock = bodyClocks.get(clockId);
+    if (!bodyClock) {
+        bodyClock = { phase: 0 };
+        bodyClocks.set(clockId, bodyClock);
+    }
+    const speedRefMaxForBody = 6;
+    const speedNormForBody = clamp(speed / speedRefMaxForBody, 0, 1);
+    const turnAbsVisual = Math.abs(turnVisual);
+    // 身体扭动频率：idle 慢 + forward 随速度加快 + turn 再加一点
+    const bodyFreq = cfg.bodyWaveIdleFreq
+                   + speedNormForBody * cfg.bodyWaveForwardFreq
+                   + turnAbsVisual * cfg.bodyWaveTurnFreq;
+    bodyClock.phase = (bodyClock.phase + bodyFreq) % 1;
+    // 主波形（-1→+1 正弦），以及相位领先量（供头部做蛇形传导）
+    const bodyWave = Math.sin(bodyClock.phase * Math.PI * 2);
+    const bodyWaveHead = Math.sin((bodyClock.phase + cfg.bodyWaveHeadLead) * Math.PI * 2);
+    // 二次谐波：让 compress / roll 呈现"踢两次身体起伏一次"的自然节奏
+    const bodyWave2 = Math.sin(bodyClock.phase * Math.PI * 4);
+
+    // 身体扭动幅度：三种场景加权
+    // - idle 幅度小且常驻
+    // - forward 幅度中等，与速度成比例
+    // - turn 幅度最大
+    const bodySwayAmp = cfg.bodyWaveIdleAmp * idleBlend
+                      + cfg.bodyWaveForwardAmp * speedNormForBody
+                      + cfg.bodyWaveTurnAmp * turnAbsVisual;
+
     let turnAmount = 0;
     if (speed > 0.18) {
         const velAngle = Math.atan2(vy, vx);
         turnAmount = clamp(normalizeAngle(velAngle - angle) / (Math.PI * 0.5), -1, 1);
     }
 
-    const driftX = Math.sin(time * cfg.idleDriftSpeed) * 1.2 * idleBlend + Math.sin(time * (cfg.idleDriftSpeed * 1.8)) * 0.12;
-    const driftY = Math.cos(time * (cfg.idleDriftSpeed * 0.82)) * 0.8 * idleBlend;
+    // idle 下的漂浮位移（原有逻辑保留，但加一个与躯干波同步的呼吸轻漂）
+    const driftX = Math.sin(time * cfg.idleDriftSpeed) * 1.2 * idleBlend + Math.sin(time * (cfg.idleDriftSpeed * 1.8)) * 0.12
+                 + bodyWave2 * cfg.bodyIdleDriftAmp * idleBlend;
+    const driftY = Math.cos(time * (cfg.idleDriftSpeed * 0.82)) * 0.8 * idleBlend
+                 + bodyWave * cfg.bodyIdleDriftAmp * 0.6 * idleBlend;
+
     const leftKickWave = easeStroke(leftKickProgress) * leftKickStrength;
     const rightKickWave = easeStroke(rightKickProgress) * rightKickStrength;
     const kickWave = leftKickWave - rightKickWave;
-    const bodyRoll = turnAmount * 0.12 + turnVisual * 0.08 + kickWave * 0.035 + Math.sin(time * (cfg.idleDriftSpeed * 0.95)) * 0.02 * idleBlend;
-    const bodyYaw = turnAmount * 1.2 + turnVisual * 0.65 + kickWave * 0.28;
-    const torsoCompress = 1 - forwardVisual * 0.035;
+
+    // ===== 身体 roll（绕前进轴的侧倾，用垂直缩放模拟） =====
+    // 转向时大幅侧倾（向转向内侧），前进时小幅摇摆，idle 时只有微弱呼吸
+    const bodyRoll = turnVisual * cfg.rollTurnFactor
+                   + turnAmount * 0.08
+                   + bodyWave * bodySwayAmp * cfg.rollWaveFactor
+                   + kickWave * 0.02;
+
+    // ===== 身体 yaw（俯视下的左右扭动，驱动 S 型曲线） =====
+    // 转向时强烈偏向输入侧，前进时周期性左右扭动，idle 时低频漂动
+    const bodyYaw = turnAmount * 1.0
+                  + turnVisual * cfg.yawTurnFactor
+                  + bodyWave * bodySwayAmp * cfg.yawWaveFactor
+                  + kickWave * 0.22;
+
+    // ===== 躯干前后呼吸压缩 =====
+    // forward 时随腿部相位做呼吸，idle 时随 bodyWave2 轻微起伏
+    const compressWave = bodyWave2 * cfg.compressWaveAmp * (idleBlend * 0.5 + speedNormForBody);
+    const torsoCompress = 1 - forwardVisual * 0.035 + compressWave;
+
+    // ===== 头部相对躯干的相位领先（蛇形传导：头先动、身后跟） =====
+    // headYawLead 表示头部额外的 yaw 偏移（世界坐标下头比身体更早完成扭动）
+    const headYawLead = bodyWaveHead * bodySwayAmp * cfg.headLeadFactor
+                      + turnVisual * cfg.headTurnLead;
+
     const swimCycle = Math.sin(time * cfg.legKickFrequency);
+    void swimCycle; // 保留符号防未来引用
 
     const leftArmKick = leftKickWave;
     const rightArmKick = rightKickWave;
@@ -473,21 +538,38 @@ export function drawDiver(
     const rightArmTurn = easeStroke(rightTurnProgress) * rightTurnStrength;
     const armClose = swimBlend * cfg.armCloseBySpeed;
 
-    // 自动挡巡航：双手完全收起贴身（身体局部坐标下 +x 为身体朋向，手臂从肩部向 -x 伸向后方 = 角度 π）
-    // blend 用 swimBlend 控制渐变：静止时手张开滋浮，移动时逐渐收拢为贴身姿态
+    // 自动挡巡航：双手完全收起贴身（身体局部坐标下 +x 为身体朝向，手臂从肩部向 -x 伸向后方 = 角度 π）
+    // blend 用 swimBlend 控制渐变：静止时手张开漂浮，移动时逐渐收拢为贴身姿态
     const autoBlend = autoSwim ? swimBlend : 0;
-    // 自动挡下的目标角度（完全沿 -x 贴身）与原展开姿态按 autoBlend 插值
     const baseOpenL = Math.PI + 0.68 - armClose;
     const baseOpenR = Math.PI - 0.68 + armClose;
-    const baseTuckL = Math.PI + 0.28; // 左手贴身但保留肩宽张开，沿身体后方自然下垂
+    const baseTuckL = Math.PI + 0.28;
     const baseTuckR = Math.PI - 0.28;
     const baseL = baseOpenL * (1 - autoBlend) + baseTuckL * autoBlend;
     const baseR = baseOpenR * (1 - autoBlend) + baseTuckR * autoBlend;
-    // 划水晃动幅度在巡航姿态下衰减，避免贴身时还在接收划水信号抽动
     const strokeScale = 1 - autoBlend * 0.9;
 
-    const leftArmUpper = baseL + Math.sin(time * cfg.armIdleFrequency) * cfg.armIdleAmplitude * idleBlend + leftArmKick * cfg.armKickSwing * strokeScale - leftArmTurn * cfg.armTurnSwing + turnVisual * 0.08;
-    const rightArmUpper = baseR - Math.sin(time * cfg.armIdleFrequency) * cfg.armIdleAmplitude * idleBlend - rightArmKick * cfg.armKickSwing * strokeScale + rightArmTurn * cfg.armTurnSwing + turnVisual * 0.08;
+    // ===== 手臂常驻动画：idle + forward 都要有 =====
+    // - idle 时靠 armIdleAmplitude * idleBlend 做低频轻摆（原有）
+    // - forward 时（即使 autoSwim 贴身），让手臂随身体波 bodyWave 做轻微反相摆动
+    //   左右反相：一侧外展时另一侧内收，模拟流体阻力带来的自然抖动
+    //   幅度用 armBodyWaveAmp 控制，autoSwim 下不完全收死（保留 40%）
+    const armBodySway = bodyWave * cfg.armBodyWaveAmp
+                      * (1 - autoBlend * 0.6)  // 贴身姿态下衰减但不归零
+                      * (idleBlend * 0.6 + speedNormForBody);
+
+    const leftArmUpper = baseL
+        + Math.sin(time * cfg.armIdleFrequency) * cfg.armIdleAmplitude * idleBlend
+        + armBodySway
+        + leftArmKick * cfg.armKickSwing * strokeScale
+        - leftArmTurn * cfg.armTurnSwing
+        + turnVisual * cfg.armTurnLeanFactor;
+    const rightArmUpper = baseR
+        - Math.sin(time * cfg.armIdleFrequency) * cfg.armIdleAmplitude * idleBlend
+        - armBodySway
+        - rightArmKick * cfg.armKickSwing * strokeScale
+        + rightArmTurn * cfg.armTurnSwing
+        + turnVisual * cfg.armTurnLeanFactor;
     // 前臂在巡航姿态下也贴身伸直：把原本的 ±0.22 偏转衰减掉
     const forearmOffset = 0.22 * (1 - autoBlend * 0.85);
     const leftArmLower = leftArmUpper + forearmOffset - leftArmKick * 0.08 * strokeScale + leftArmTurn * 0.12 - armClose * 0.18;
@@ -496,6 +578,11 @@ export function drawDiver(
     renderCtx.save();
     renderCtx.translate(x + driftX, y + driftY);
     renderCtx.rotate(angle + bodyRoll);
+    // 用 Y 轴压缩模拟 3D 侧倾（roll）：bodyRoll 越大身体越"侧过去"，Y 方向被压扁
+    // rollSquash 是额外的 Y 缩放因子，最多 cfg.rollSquashMax 的压缩量
+    const rollSquash = 1 - Math.abs(bodyRoll) * cfg.rollSquashFactor;
+    const rollSquashClamped = Math.max(1 - cfg.rollSquashMax, rollSquash);
+    renderCtx.scale(1, rollSquashClamped);
 
     // ===== 腿部相位时钟：完全由速度 + kickDrive boost 自驱（渲染侧自持） =====
     // 速度归一化：玩家手动挡 maxSpeed=11，自动挡/NPC 一般 4~6，这里用 6 做归一化让两种模式都能进入高频段
@@ -507,26 +594,30 @@ export function drawDiver(
     const freq = cfg.legAutoFreqBase
                + speedNorm * cfg.legAutoFreqBoost
                + kickDriveVal * cfg.legAutoFreqBoost * 0.3;
-    // 幅度：由速度主导（静止时=0 → 腿不动），kickDrive 给加速瞬间的额外鞭打
-    const ampNorm = clamp(speedNorm + kickDriveVal * 0.5, 0, 1);
+    // 幅度：由速度主导（静止时=低幅常驻呼吸，不再归零） + kickDrive 给加速瞬间的额外鞭打
+    // idle 也给一点微幅（cfg.legIdleAmpNorm），让双腿在静止漂浮时做呼吸式抽动
+    const idleLegAmp = cfg.legIdleAmpNorm * idleBlend;
+    const ampNorm = clamp(speedNorm + kickDriveVal * 0.5 + idleLegAmp, 0, 1);
 
     // 取/建本角色的相位时钟
-    const clockId = motion.id ?? 'anon';
     let clock = legClocks.get(clockId);
     if (!clock) {
         clock = { phase: 0 };
         legClocks.set(clockId, clock);
     }
-    // 速度极低时让相位缓慢归到 0（腿收起停住），避免"停下时腿还半弯"
+    // 速度极低且无 idle 幅度时才让相位归零；只要 idle 下还保留微幅，就让相位持续推进（维持呼吸感）
     if (ampNorm < 0.02) {
-        // 距离 0 或 1 谁近就往哪收（相位是周期的，0 和 1 视作同一收腿姿态）
         const distTo0 = Math.min(clock.phase, 1 - clock.phase);
         if (distTo0 > 0.005) {
             clock.phase += (clock.phase < 0.5 ? -1 : 1) * 0.02;
             clock.phase = ((clock.phase % 1) + 1) % 1;
         }
     } else {
-        clock.phase = (clock.phase + freq) % 1;
+        // idle 时用较低频率（bodyClock 节奏一致），前进时沿用原频率
+        const effectiveFreq = idleLegAmp > 0 && speedNorm < 0.05
+            ? cfg.legAutoFreqBase * cfg.legIdleFreqFactor
+            : freq;
+        clock.phase = (clock.phase + effectiveFreq) % 1;
     }
     const legPhaseVal = clock.phase;
 
@@ -587,9 +678,11 @@ export function drawDiver(
     drawArm(renderCtx, 4.3, -6.2, leftArmUpper, leftArmLower, c);
     drawArm(renderCtx, 4.3, 6.2, rightArmUpper, rightArmLower, c);
 
+    // 头部：加入蛇形传导偏移（头先转、身后跟）
+    // headYawLead 是沿身体 y 轴的微小偏移，让头颈看起来像先扭动
     renderCtx.fillStyle = c.suit;
     renderCtx.beginPath();
-    renderCtx.arc(15.8, 0, 6.5, 0, Math.PI * 2);
+    renderCtx.arc(15.8, headYawLead * cfg.headOffsetScale, 6.5, 0, Math.PI * 2);
     renderCtx.fill();
 
     renderCtx.restore();

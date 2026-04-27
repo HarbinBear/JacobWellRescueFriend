@@ -571,6 +571,34 @@ export const CONFIG = {
         kickStretchAmp: 1,            // 腿沿身体前后轴的伸缩幅度（踢到底时腿伸直，抓水时腿收）
         finLengthPulse: 0.3,          // 脚踼长度脉动比例（1.0 ± pulse 之间，踢到底时最长）
         finSweepAmp: 3.1,             // 脚踼沿身体前后轴的挥拍位移（踢到底时脚踼整体往后甸一段）
+        // ---- 全身动画：躯干波动相位时钟 ----
+        // 三种频率分量：idle（漂浮呼吸）/ forward（前进扭动）/ turn（转向紧张）
+        bodyWaveIdleFreq: 0.006,      // idle 时相位时钟基础推进速度（常驻漂浮）
+        bodyWaveForwardFreq: 0.02,    // 前进时随速度额外推进速度（speedNorm=1 时加此量）
+        bodyWaveTurnFreq: 0.008,      // 转向时额外推进速度（|turnVisual|=1 时加此量）
+        bodyWaveIdleAmp: 0.28,        // idle 时躯干波幅度基数（低幅常驻）
+        bodyWaveForwardAmp: 0.55,     // 前进时躯干波幅度基数（随速度成比例）
+        bodyWaveTurnAmp: 1.1,         // 转向时躯干波幅度基数（随 |turnVisual| 成比例）
+        // 波幅 → yaw（左右扭）/ roll（侧倾）/ compress（呼吸压缩）的映射系数
+        yawWaveFactor: 0.6,           // 躯干波映射到 yaw 的系数
+        yawTurnFactor: 0.95,          // turnVisual 直接映射到 yaw 的系数（转向侧扭）
+        rollWaveFactor: 0.08,         // 躯干波映射到 roll 的系数（前进/idle 下的侧滚）
+        rollTurnFactor: 0.28,         // turnVisual 映射到 roll 的系数（转向时明显侧倾，约 16°满量）
+        rollSquashFactor: 0.35,       // roll 通过 Y 轴缩放模拟 3D 倾斜的强度（压扁量 = |roll|×此值）
+        rollSquashMax: 0.22,          // Y 轴最大压扁比例（防止过度扁平）
+        compressWaveAmp: 0.035,       // 躯干呼吸压缩幅度（二次谐波驱动）
+        // 手臂常驻漂摆与转向倾斜
+        armBodyWaveAmp: 0.14,         // 手臂跟随躯干波的反相摆动幅度（idle + forward 都有）
+        armTurnLeanFactor: 0.22,      // turnVisual 让两臂同向偏移的幅度（表现"掌舵"）
+        // 头部蛇形传导
+        bodyWaveHeadLead: 0.08,       // 头部波相对身体波的相位领先量（0~0.2，越大头越早动）
+        headLeadFactor: 0.35,         // 头部波幅系数（× bodySwayAmp → 头部 yaw 领先量）
+        headTurnLead: 1.1,            // turnVisual 直接让头部额外偏移的系数（头先转）
+        headOffsetScale: 2.8,         // 头部 yaw 换算成 Y 方向像素偏移的缩放系数
+        // idle 状态下腿部呼吸动作
+        legIdleAmpNorm: 0.08,         // idle 时腿部保留的最低幅度（0=完全静止，越大呼吸感越强）
+        legIdleFreqFactor: 1.8,       // idle 时相位时钟相对 legAutoFreqBase 的倍率（呼吸节奏）
+        bodyIdleDriftAmp: 0.45,       // idle 时身体整体呼吸漂移像素（与躯干波同步）
     },
 
     // ===== 相机系统（弹簧臂 + 水中摇曳）配置 =====
