@@ -697,3 +697,70 @@ i: APP-SERVICE-SDK:setStorageSync:fail:entry size limit reached
 - 微信小游戏 Android 端 `wx.setStorageSync` 单 key 上限远低于官方标注的 1MB（实测 ~512KB），且超限时是**抛异常不是返回失败码**，必须 try/catch 才能拿到错误；否则调用方完全感知不到，只会观察到"老存档读回来缺一部分数据"的诡异现象
 - 大 boolean 矩阵 + 嵌套对象引用是 JSON 序列化体积炸弹的主要来源，遇到类似结构（迷宫 explored / 覆盖图 / 遮挡图）直接用位图 + base64，压缩比 20~40 倍
 - `mazeMap` 这种"既是空间索引又是对象容器"的双重语义结构，存档时应该**只存一侧语义**（位图 / 索引），读档时从另一侧（对象列表）重建引用关系
+
+```
+
+## 更新的代码片段
+
+在归档文件末尾追加一个新章节，记录 P3 呼吸系统本轮完整实现。
+```markdown
+// ... existing code ...
+
+**关键教训**：
+- 微信小游戏 Android 端 `wx.setStorageSync` 单 key 上限远低于官方标注的 1MB（实测 ~512KB），且超限时是**抛异常不是返回失败码**，必须 try/catch 才能拿到错误；否则调用方完全感知不到，只会观察到"老存档读回来缺一部分数据"的诡异现象
+- 大 boolean 矩阵 + 嵌套对象引用是 JSON 序列化体积炸弹的主要来源，遇到类似结构（迷宫 explored / 覆盖图 / 遮挡图）直接用位图 + base64，压缩比 20~40 倍
+- `mazeMap` 这种"既是空间索引又是对象容器"的双重语义结构，存档时应该**只存一侧语义**（位图 / 索引），读档时从另一侧（对象列表）重建引用关系
+
+## P3 呼吸系统：间歇吐气气泡 + 循环呼吸音（2026-04-28）
+
+**设计目标**：
+为潜水员增加**呼吸气泡粒子 + 循环呼吸音**表现，气泡从嘴部真实向上漂浮；呼吸节奏、音量、气泡数量要和运动量关联：静止时低频少量、全速时高频密集；必须是**间歇吐气**（exhale → pause → exhale），不是持续吐气；仅在水下可操作阶段激活，岸上/菜单/过场全部静默。
+
+**关键决策**：
+
+- 呼吸采用**相位机**（`exhale / pause / idle`）而非连续振荡器；每个相位时长由当前运动量 intensity（0~1）决定，相位切换时重新采样。
+- 气泡**独立粒子系统**，不混入 `particles` 数组（避免与 silt/bubble 类型判断冲突）；挂在 `BreathSystem` 模块内部运行态，通过 `getBreathBubbles()` 暴露给渲染层。
+- 气泡起点精确对应 `RenderDiver` 头部前端（局部坐标 15.8 + 6.5 = 22px），沿身体朝向前向偏移得到世界坐标。
+- 气泡物理：真实向上（-Y）浮力 + 侧向正弦摆动 + 半径缓慢变大 1.4~1.9x + 末 30% 生命淡出 + 超出玩家 260px 加速消散 + 180 粒上限保护。
+- **气泡绘制必须在光照之前**（`drawDustDarkLayer` 之后、世界 transform `ctx.restore` 之前），这样气泡和岩石/绳索/鱼一样被光照遮罩统一压暗，黑暗区不会发亮。第一版错误地放到了 silt 层（光照之后），被用户指出并修复。
+- 音频走**新增的 SFX-Loop 通道**（区别于一次性 SFX 和 BGM）：支持运行时 `setSFXLoopParams({ targetVolume, playbackRate })`，吐气阶段音量拉起（含 attack/release 包络）、停顿阶段降到 0；每帧 `updateSFXLoops()` 线性逼近目标音量。
+
+**运动量映射表**（线性插值，静止 ↔ 全速）：
+
+| 参数 | 静止 | 全速 |
+|---|---|---|
+| 吐气时长 | 1.0s | 0.7s ~ 1.5s（可调） |
+| 停顿时长 | 3.0s | 0.2s ~ 0.8s（可调） |
+| 气泡速率 | 5 粒/秒 | 14 粒/秒 |
+| 音量峰值 | 0.35 | 0.8 |
+| 播放速率 | 0.85 | 1.2 |
+| 气泡大小 | 7px | 9px |
+
+**修改文件**：
+
+- `src/logic/BreathSystem.ts`（新建）：呼吸系统核心模块。`updateBreathSystem()` / `getBreathBubbles()` / `resetBreathSystem()` 三个对外接口；内部相位机 + 运动量计算 + 嘴部坐标推导 + 气泡生成与更新 + 音频参数驱动。
+- `src/render/RenderBreath.ts`（新建）：世界空间气泡绘制。半透明蓝白主体 + 薄描边 + 左上高光点；视椎剔除；生命末尾淡出。
+- `src/audio/AudioManager.ts`：新增 `SFXLoopKey` / `SFXLoopEntry` / `SFX_LOOP_ENTRIES`；新增 `_createSFXLoopContext` / `_resolveAndApplySFXLoopCloudURL` / `_actuallyPlaySFXLoop` / `_updateSFXLoops`；对外导出 `playSFXLoop / stopSFXLoop / setSFXLoopParams / updateSFXLoops` 四个接口。静音时所有 SFX-Loop 目标音量强制 0。
+- `src/core/config.ts`：新增 `CONFIG.breath` 配置（27 项参数：运动量、静止/全速双端点、嘴部偏移、浮力、摆动、寿命、视觉、粒子上限等）；`CONFIG.audio.cloud.fileIDs` 新增 `breathLoop` 云存储路径。
+- `src/logic/Logic.ts`：主线 `update()` 末尾调用 `updateBreathSystem()`；`resetGameLogic()` 调 `resetBreathSystem()`。
+- `src/logic/MazeLogic.ts`：`updateMaze()` 在粒子更新后调用 `updateBreathSystem()`；`startMazeDive()` / `returnToShore()` 调 `resetBreathSystem()`。
+- `src/render/Render.ts`：在 `drawDustDarkLayer()` 之后、世界 transform `ctx.restore()` 之前插入 `drawBreathBubblesWorld()` 调用，确保气泡被光照遮罩统一压暗。
+- `game.ts`：主循环 `updateAudio()` 之后调用 `updateSFXLoops()`。
+- `src/gm/GMConfig.ts`：新增"呼吸"Tab 共 27 项可调参数（enabled 开关 + 运动量 + 静止端点 + 全速端点 + 嘴部 + 物理 + 寿命 + 粒子上限）。
+- `ToDo.md`：补充 breathLoop 接入记录。
+- `.codebuddy/rules/devplan.md`：P3 总表从"⬜ 未开始"改为"🟡 部分完成"；T3.2/T3.3/T3.4/T3.5 全部打勾。
+- `.codebuddy/rules/code/04-render-subsystems.md`：新增 1.6c 呼吸系统章节，"修改渲染时的优先落点"列表追加呼吸条目。
+- `.codebuddy/rules/code/05-common-tasks-pitfalls.md`：新增 1.5d 改呼吸系统条目。
+
+**关键教训**：
+
+- **绘制层顺序决定一切**：第一版我把气泡放到了迷宫模式 silt 绘制之后（原 L893），导致黑暗区气泡还是亮的。用户一针见血："气泡也是像场景里的绳子啊岩石啊鱼啊一样是有照明的"。修复方法是把气泡挪到 `drawDustDarkLayer` 之后、世界 transform `ctx.restore` 之前，这是"光照前的最后一层世界物体"标准落点，岩石/绳索/鱼都在这一层。主线与迷宫共用同一个绘制位置，不要再在各自分支重复调用。
+- **间歇 vs 连续**：最初版本做成了持续吐气，被用户直接批评"呼吸当然是间歇的吐气"。相位机（exhale→pause）比连续振荡器更符合真实观感，也让运动量映射更有表现力（静止时停顿长、全速时停顿短）。
+- **SFX-Loop 与一次性 SFX 应分开设计**：一次性 SFX 触发即播、不做淡入淡出；SFX-Loop 需要常驻循环、运行时调整音量/速率、静音时淡到 0 而非立刻停。两者在 AudioManager 里走独立的 ENTRIES 和更新路径，共用 `CONFIG.audio.sfxVolume` 做上限裁剪。
+- **playbackRate 手机端不一定生效**：微信 `InnerAudioContext.playbackRate` 在真机上是只读的；浏览器 HTMLAudioElement 支持。写代码时用 `'playbackRate' in ctx` 兜底，try/catch 忽略失败。用户真机听到的只是音量变化、没有音调变化是正常的。
+- **模式切换必须重置**：虽然 `updateBreathSystem()` 内部会判断 `shouldBeActive()` 自动停音频，但气泡粒子还是会继续飘完。显式在 `resetGameLogic()` / `startMazeDive()` / `returnToShore()` 调 `resetBreathSystem()` 清空气泡 + 停音频，避免岸上/菜单看到残留气泡。
+- **云存储新资源权限**：新上传的 `BreathBubble.mp3` 必须在云开发控制台把权限改为"所有用户可读"，否则运行时报 `STORAGE_EXCEED_AUTHORITY`（这是项目级通用教训，已在 devplan.md 注意事项里强调过）。
+
+```
+
+请输出合并后完整的代码。

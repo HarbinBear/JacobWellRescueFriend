@@ -96,6 +96,24 @@ type: always
 - 氧气瓶生成必须包裹在派生 seed 的 `setActiveSeededRandom()` / `clearActiveSeededRandom()` 中，否则同 seed 下布局会漂移
 - `consumedTankIds` 在换新地图（`replayMazeLogic`）时要清空，否则新地图会继承老瓶子的"已消耗"状态
 
+### 1.5d 改呼吸系统（间歇吐气气泡 + 循环呼吸音）
+
+优先检查：
+
+- `src/logic/BreathSystem.ts`（相位机、运动量映射、气泡生成、音频参数联动）
+- `src/render/RenderBreath.ts`（气泡世界空间绘制）
+- `src/audio/AudioManager.ts` 中 SFX-Loop 通道（`playSFXLoop / stopSFXLoop / setSFXLoopParams / updateSFXLoops`）
+- `src/core/config.ts` 中的 `breath` 配置
+- `src/gm/GMConfig.ts` 中的"呼吸"Tab
+
+常见陷阱：
+
+- **气泡绘制层顺序**：必须插在 `drawDustDarkLayer()` 之后、世界 transform 的 `ctx.restore()` 之前（光照之前），才能被光照遮罩统一压暗。放到泥沙 silt 同层（光照之后）会导致黑暗区气泡一样亮。
+- **呼吸是间歇的**：不要写成持续吐气。相位机必须是 `exhale → pause → exhale → ...`，不能把 pause 去掉。
+- **SFX-Loop 生命周期**：`playSFXLoop()` 启动后，要在 `resetGameLogic()` / `startMazeDive()` / `returnToShore()` 等模式切换入口调用 `resetBreathSystem()` 清理，避免气泡残留到岸上或菜单。
+- **playbackRate 兼容性**：微信 `InnerAudioContext.playbackRate` 在手机端不一定生效；浏览器兜底路径（HTMLAudioElement）支持。调参时观察手机端可能只有音量变化、没有音调变化，属正常。
+- **云存储新资源权限**：上传新音频后必须去云开发控制台把文件权限改为"所有用户可读"，否则 `getTempFileURL` 会报 `STORAGE_EXCEED_AUTHORITY`。
+
 ### 1.6 改凶猛鱼行为或攻击判定
 
 优先检查：

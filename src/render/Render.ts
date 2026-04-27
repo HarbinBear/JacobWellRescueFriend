@@ -345,9 +345,6 @@ export function draw() {
         }
     }
 
-    // 呼吸气泡（间歇吐气，从嘴部涌出，向上漂浮，侧向摆动）
-    drawBreathBubblesWorld(ctx, viewL, viewR, viewT, viewB);
-
     // 绘制废弃潜水服
     if(state.landmarks && state.landmarks.suit) {
         let s = state.landmarks.suit;
@@ -469,6 +466,9 @@ export function draw() {
     // 绘制暗色悬浮尘埃（光照前，作为移动参照物）
     updateDustTime(1 / 60);
     drawDustDarkLayer(ctx, viewL, viewR, viewT, viewB, zoom);
+
+    // 呼吸气泡（光照前，与岩石/绳索/鱼一样被光照遮罩压暗，黑暗区气泡不会发亮）
+    drawBreathBubblesWorld(ctx, viewL, viewR, viewT, viewB);
 
     ctx.restore();
 
@@ -883,14 +883,6 @@ export function draw() {
         ctx.fillStyle = `rgba(120, 100, 80, ${siltAlpha})`;
         ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); ctx.fill();
     }
-    ctx.restore();
-
-    // 呼吸气泡（世界空间，迷宫与主线共用；内部会根据 screen 自动决定是否有粒子可画）
-    ctx.save();
-    ctx.translate(logicW/2 + shakeX, logicH/2 + shakeY);
-    ctx.scale(zoom, zoom);
-    ctx.translate(-camX, -camY);
-    drawBreathBubblesWorld(ctx, viewL, viewR, viewT, viewB);
     ctx.restore();
 
     // 黑屏过渡

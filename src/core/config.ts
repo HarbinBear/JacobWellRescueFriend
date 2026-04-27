@@ -696,8 +696,8 @@ export const CONFIG = {
         wobbleAmpMax: 0.35,
 
         // 寿命与消散
-        lifeMinSec: 1.5,                // 单个气泡最短寿命（秒）
-        lifeMaxSec: 2.6,                // 单个气泡最长寿命（秒）
+        lifeMinSec: 2.5,                // 单个气泡最短寿命（秒）
+        lifeMaxSec: 5,                // 单个气泡最长寿命（秒）
         despawnUpDist: 260,             // 上升超过玩家这么远就加速淡出（避免远处残留）
 
         // 粒子上限（避免极端情况下无限堆积）
