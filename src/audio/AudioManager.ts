@@ -19,6 +19,8 @@ import { state } from '../core/state';
 
 type AudioKey = 'menuBGM';
 type SFXKey = 'diveSplash';
+// SFX-Loop：常驻循环、可实时调整音量与播放速率（呼吸气泡等）
+type SFXLoopKey = 'breathLoop';
 
 interface AudioEntry {
     path: string;              // 本地降级路径（云存储不可用时兜底）
@@ -40,6 +42,21 @@ interface SFXEntry {
     srcReady: boolean;
     urlResolving: boolean;
     pendingPlay: boolean;      // URL 还没回来时挂起的播放请求（到了立刻播一次）
+}
+
+// SFX-Loop 条目：常驻循环音频，支持运行时调音量与播放速率；与 BGM 一样做每帧音量逼近
+interface SFXLoopEntry {
+    path: string;
+    ctx: any | null;
+    srcReady: boolean;
+    urlResolving: boolean;
+    playing: boolean;          // 是否已 play
+    pendingPlay: boolean;      // URL 还没就绪时挂起的 play 请求
+    currentVolume: number;     // 当前实时音量
+    targetVolume: number;      // 目标音量（外部通过 setSFXLoopParams 指定）
+    desiredPlay: boolean;      // 外部是否希望这条 loop 处于播放状态（playSFXLoop/stopSFXLoop 设定）
+    playbackRate: number;      // 播放速率（0.5~2.0）
+    fadeStep: number;          // 音量逼近步长
 }
 
 // 音频资源清单
@@ -66,6 +83,23 @@ const SFX_ENTRIES: Record<SFXKey, SFXEntry> = {
         srcReady: false,
         urlResolving: false,
         pendingPlay: false,
+    },
+};
+
+// SFX-Loop 清单（循环音效，可实时调整）
+const SFX_LOOP_ENTRIES: Record<SFXLoopKey, SFXLoopEntry> = {
+    breathLoop: {
+        path: 'audio/BreathBubble.mp3',
+        ctx: null,
+        srcReady: false,
+        urlResolving: false,
+        playing: false,
+        pendingPlay: false,
+        currentVolume: 0,
+        targetVolume: 0,
+        desiredPlay: false,
+        playbackRate: 1,
+        fadeStep: 0.08,
     },
 };
 
@@ -98,6 +132,14 @@ export function initAudio(): void {
         _createSFXContext(key);
         if (_cloudInited) {
             _resolveAndApplySFXCloudURL(key);
+        }
+    }
+
+    // 创建所有 SFX-Loop 上下文并预拉取云 URL
+    for (const key of Object.keys(SFX_LOOP_ENTRIES) as SFXLoopKey[]) {
+        _createSFXLoopContext(key);
+        if (_cloudInited) {
+            _resolveAndApplySFXLoopCloudURL(key);
         }
     }
 }
@@ -482,6 +524,191 @@ function _computeDesiredBGM(): AudioKey | null {
         return 'menuBGM';
     }
     return null;
+}
+
+// ===== SFX-Loop 上下文创建与云 URL 解析 =====
+
+function _createSFXLoopContext(key: SFXLoopKey): void {
+    const entry = SFX_LOOP_ENTRIES[key];
+    try {
+        const wxAny = (typeof wx !== 'undefined') ? (wx as any) : null;
+        if (wxAny && typeof wxAny.createInnerAudioContext === 'function') {
+            const ctx = wxAny.createInnerAudioContext();
+            ctx.loop = true;
+            ctx.autoplay = false;
+            ctx.volume = 0;
+            if (!_cloudInited) {
+                ctx.src = entry.path;
+                entry.srcReady = true;
+            }
+            ctx.onError((err: any) => {
+                const code = err && (err.errCode || err.code);
+                console.warn('[Audio] SFX-Loop ' + key + ' 播放错误:', err);
+                if (_cloudInited && (code === 10002 || code === -1 || code === undefined)) {
+                    entry.srcReady = false;
+                    if (entry.desiredPlay) entry.pendingPlay = true;
+                    _resolveAndApplySFXLoopCloudURL(key);
+                }
+            });
+            entry.ctx = ctx;
+        } else if (typeof (globalThis as any).Audio !== 'undefined') {
+            const ctx = new (globalThis as any).Audio(entry.path);
+            ctx.loop = true;
+            ctx.volume = 0;
+            entry.ctx = ctx;
+            entry.srcReady = true;
+        }
+    } catch (e) {
+        console.warn('[Audio] 创建 SFX-Loop 上下文失败:', e);
+    }
+}
+
+function _resolveAndApplySFXLoopCloudURL(key: SFXLoopKey): void {
+    const entry = SFX_LOOP_ENTRIES[key];
+    if (!entry || !entry.ctx) return;
+    if (!_cloudInited) return;
+    if (entry.urlResolving) return;
+
+    const fileID = (CONFIG.audio.cloud.fileIDs as Record<string, string>)[key];
+    if (!fileID) {
+        try { entry.ctx.src = entry.path; entry.srcReady = true; } catch (e) { /* 忽略 */ }
+        return;
+    }
+
+    const wxAny = (typeof wx !== 'undefined') ? (wx as any) : null;
+    if (!wxAny || !wxAny.cloud || typeof wxAny.cloud.getTempFileURL !== 'function') {
+        try { entry.ctx.src = entry.path; entry.srcReady = true; } catch (e) { /* 忽略 */ }
+        return;
+    }
+
+    entry.urlResolving = true;
+    wxAny.cloud.getTempFileURL({
+        fileList: [fileID],
+        success: (res: any) => {
+            entry.urlResolving = false;
+            const item = res && res.fileList && res.fileList[0];
+            if (item && item.tempFileURL && (!item.status || item.status === 0)) {
+                try {
+                    entry.ctx.src = item.tempFileURL;
+                    entry.srcReady = true;
+                    if (entry.pendingPlay) {
+                        entry.pendingPlay = false;
+                        _actuallyPlaySFXLoop(key);
+                    }
+                } catch (e) {
+                    console.warn('[Audio] SFX-Loop 写入临时 URL 失败:', e);
+                }
+            } else {
+                console.warn('[Audio] SFX-Loop getTempFileURL 返回异常，降级到本地:', item);
+                try { entry.ctx.src = entry.path; entry.srcReady = true; } catch (e) { /* 忽略 */ }
+            }
+        },
+        fail: (err: any) => {
+            entry.urlResolving = false;
+            console.warn('[Audio] SFX-Loop getTempFileURL 请求失败，降级到本地:', err);
+            try { entry.ctx.src = entry.path; entry.srcReady = true; } catch (e) { /* 忽略 */ }
+        },
+    });
+}
+
+function _actuallyPlaySFXLoop(key: SFXLoopKey): void {
+    const entry = SFX_LOOP_ENTRIES[key];
+    if (!entry || !entry.ctx || !entry.srcReady) return;
+    if (entry.playing) return;
+    try {
+        entry.ctx.volume = 0;
+        entry.ctx.play();
+        entry.playing = true;
+    } catch (e) {
+        console.warn('[Audio] SFX-Loop 播放失败:', e);
+    }
+}
+
+// 请求循环音频进入激活状态（已激活时不重复触发）；真实音量由 setSFXLoopParams 驱动
+export function playSFXLoop(key: SFXLoopKey): void {
+    const entry = SFX_LOOP_ENTRIES[key];
+    if (!entry || !entry.ctx) return;
+    entry.desiredPlay = true;
+    if (!entry.srcReady) {
+        entry.pendingPlay = true;
+        if (_cloudInited && !entry.urlResolving) {
+            _resolveAndApplySFXLoopCloudURL(key);
+        }
+        return;
+    }
+    _actuallyPlaySFXLoop(key);
+}
+
+// 请求循环音频淡出并最终暂停（音量淡到 0 后在 updateAudio 中 pause）
+export function stopSFXLoop(key: SFXLoopKey): void {
+    const entry = SFX_LOOP_ENTRIES[key];
+    if (!entry) return;
+    entry.desiredPlay = false;
+    entry.pendingPlay = false;
+    // 目标音量清零，由 updateAudio 的逐帧逼近完成淡出
+    entry.targetVolume = 0;
+}
+
+// 动态设置 SFX-Loop 的目标音量与播放速率
+// - targetVolume：0~1，按主配置的 sfxVolume 做上限裁剪
+// - playbackRate：0.5~2.0，控制呼吸节奏（吐气快慢 / 音调轻微变化）
+export function setSFXLoopParams(
+    key: SFXLoopKey,
+    params: { targetVolume?: number; playbackRate?: number }
+): void {
+    const entry = SFX_LOOP_ENTRIES[key];
+    if (!entry) return;
+    if (params.targetVolume !== undefined) {
+        const upper = Math.max(0, Math.min(1, CONFIG.audio.sfxVolume));
+        entry.targetVolume = Math.max(0, Math.min(upper, params.targetVolume));
+    }
+    if (params.playbackRate !== undefined) {
+        entry.playbackRate = Math.max(0.5, Math.min(2.0, params.playbackRate));
+    }
+}
+
+// 每帧推进 SFX-Loop 的音量逼近与播放速率应用（由 updateAudio 最后阶段调用）
+function _updateSFXLoops(): void {
+    for (const key of Object.keys(SFX_LOOP_ENTRIES) as SFXLoopKey[]) {
+        const entry = SFX_LOOP_ENTRIES[key];
+        if (!entry.ctx) continue;
+
+        // 静音状态：所有 SFX-Loop 目标音量强制 0
+        let actualTarget = entry.targetVolume;
+        if (state.audio.muted) actualTarget = 0;
+        // 外部 stopSFXLoop 会把 desiredPlay 置 false；此时也要往 0 走
+        if (!entry.desiredPlay) actualTarget = 0;
+
+        // 逐帧线性逼近
+        if (entry.currentVolume < actualTarget) {
+            entry.currentVolume = Math.min(actualTarget, entry.currentVolume + entry.fadeStep);
+        } else if (entry.currentVolume > actualTarget) {
+            entry.currentVolume = Math.max(actualTarget, entry.currentVolume - entry.fadeStep);
+        }
+
+        // 写回上下文
+        try {
+            entry.ctx.volume = Math.max(0, Math.min(1, entry.currentVolume));
+            // playbackRate：微信 InnerAudioContext 是只读的，不一定生效；浏览器 Audio 支持
+            if ('playbackRate' in entry.ctx) {
+                try { entry.ctx.playbackRate = entry.playbackRate; } catch (e) { /* 忽略 */ }
+            }
+        } catch (e) { /* 忽略 */ }
+
+        // 音量已降到 0 且外部不再希望播放：真正 pause 以省资源
+        if (!entry.desiredPlay && entry.playing && entry.currentVolume <= 0.001) {
+            try { entry.ctx.pause(); } catch (e) { /* 忽略 */ }
+            entry.playing = false;
+            entry.pendingPlay = false;
+        }
+    }
+}
+
+// 单独导出：由 game.ts 主循环在 updateAudio 之后调用一次
+// 说明：SFX-Loop 的淡入淡出与播放速率应用独立于 BGM，放在 updateAudio 之后保证
+// 在同一帧内所有音频目标音量都已写回上下文
+export function updateSFXLoops(): void {
+    _updateSFXLoops();
 }
 
 // ===== 调试辅助 =====

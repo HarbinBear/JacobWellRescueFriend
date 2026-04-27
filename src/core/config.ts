@@ -649,8 +649,64 @@ export const CONFIG = {
             fileIDs: {
                 menuBGM: 'cloud://cloud1-d8gh6fpnh6d0928e8.636c-cloud1-d8gh6fpnh6d0928e8-1424920608/audio/Echoes_of_the_Sunken_Grotto_2026-04-22T150024.mp3',
                 diveSplash: 'cloud://cloud1-d8gh6fpnh6d0928e8.636c-cloud1-d8gh6fpnh6d0928e8-1424920608/audio/ElevenLabs_A_diver_jumps_into_the_.mp3',
+                breathLoop: 'cloud://cloud1-d8gh6fpnh6d0928e8.636c-cloud1-d8gh6fpnh6d0928e8-1424920608/audio/BreathBubble.mp3',
             } as Record<string, string>,
         },
+    },
+
+    // ===== 呼吸系统（潜水员吐气气泡 + 呼吸音）=====
+    // 运行规则：
+    // - 呼吸是间歇的：吐气（exhale）→ 停顿（pause）→ 吐气 → 停顿 ...（不是一直吐）
+    // - 运动量越大：吐气越频繁 / 停顿越短 / 气泡数量越多 / 音量越大 / 播放速率略快
+    // - 气泡从潜水员嘴部位置喷出，随时间真实向上浮（-Y），带侧向摆动 + 变大 + 淡出
+    // - 仅在水下可操作阶段激活（迷宫 play / 主线 play），其他阶段静默
+    breath: {
+        enabled: true,                  // 总开关
+        // 运动量参考：当前速度除以此值得到 intensity（0~1）
+        refSpeed: 4.0,                  // 约对应手动挡满速
+        intensitySmooth: 0.08,          // 运动量平滑系数（每帧向目标逼近）
+
+        // 静止（intensity=0）下的参数
+        exhaleDurationStatic: 1.0,      // 吐气时长（秒）
+        pauseDurationStatic: 3.0,       // 停顿时长（秒）
+        bubbleRateStatic: 5,            // 吐气阶段气泡生成速率（粒/秒）
+        volumeStatic: 0.35,             // 峰值音量（0~1，将被 sfxVolume 上限裁剪）
+        playbackRateStatic: 0.85,       // 播放速率（0.5~2.0）
+        bubbleSizeStatic: 7,          // 基础气泡半径（像素）
+
+        // 全速（intensity=1）下的参数
+        exhaleDurationPeak: 0.7,        // 吐气时长（秒）
+        pauseDurationPeak: 0.8,         // 停顿时长（秒，几乎连续吐）
+        bubbleRatePeak: 14,             // 吐气阶段气泡生成速率（粒/秒）
+        volumePeak: 0.8,                // 峰值音量
+        playbackRatePeak: 1.2,          // 播放速率
+        bubbleSizePeak: 9,            // 基础气泡半径
+
+        // 嘴部位置：沿身体朝向前方偏移（像素，RenderDiver 头部直径约 13，取 22 是嘴部前端）
+        mouthOffsetForward: 22,
+        spawnJitter: 2,                 // 生成位置随机抖动半径（像素）
+
+        // 气泡物理
+        buoyancyMin: 0.9,               // 向上速度下限（像素/帧）
+        buoyancyMax: 1.6,               // 向上速度上限
+        sideInitSpeed: 0.4,             // 侧向初速度幅度
+        wobbleFreqMin: 0.06,            // 侧向摆动频率（弧度/帧）
+        wobbleFreqMax: 0.12,
+        wobbleAmpMin: 0.15,             // 侧向摆动幅度（像素/帧）
+        wobbleAmpMax: 0.35,
+
+        // 寿命与消散
+        lifeMinSec: 1.5,                // 单个气泡最短寿命（秒）
+        lifeMaxSec: 2.6,                // 单个气泡最长寿命（秒）
+        despawnUpDist: 260,             // 上升超过玩家这么远就加速淡出（避免远处残留）
+
+        // 粒子上限（避免极端情况下无限堆积）
+        maxBubbles: 180,
+
+        // 视觉
+        colorCore: 'rgba(220, 245, 255, 0.95)',   // 气泡高光色
+        colorBody: 'rgba(180, 220, 240, 0.55)',   // 气泡主体色
+        outlineAlpha: 0.45,              // 边缘描边透明度
     },
 
     // ===== 生命探知仪（迷宫模式未发现 NPC 时，以盖革式"嘀嘀"提示距离）=====

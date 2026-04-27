@@ -3,6 +3,7 @@ import { state, player, particles, input, resetState } from '../core/state';
 import { generateMap } from '../world/map';
 import { StoryManager } from '../story/StoryManager';
 import { Particle, createSplash, updateSplashes, triggerSilt, updateParticles } from './Particle';
+import { updateBreathSystem, resetBreathSystem } from './BreathSystem';
 import { updateRopeSystem, findNearestWall } from './Rope';
 import { updateAllFishEnemies, createFishEnemy, findSafeSpawnPosition, findMazeFishSpawnPosition } from './FishEnemy';
 import { processManualDrive, updateAutoDriveVisual } from './ManualDrive';
@@ -290,6 +291,7 @@ export function resetGameLogic(startStage, startPlay) {
     if(startStage === undefined) startStage = 1;
     if(startPlay === undefined) startPlay = true;
     resetState();
+    resetBreathSystem();
     generateMap();
     
     state.story.stage = startStage;
@@ -995,6 +997,9 @@ export function update() {
     }
 
     updateParticles();
+
+    // 呼吸系统：仅在主线 play 阶段有效（内部会自己判断 screen/stage）
+    updateBreathSystem();
 
     // 更新凶猛鱼敌人
     updateAllFishEnemies(1);

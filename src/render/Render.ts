@@ -12,6 +12,7 @@ import { drawWheelButton, drawWheel } from './RenderWheel';
 import { drawAllFishEnemies, drawFishBiteEffect } from './RenderFishEnemy';
 import { drawMazeWallShape, getMazeParticleColorByWorld, getMazeThemeColorByCell, drawMazeShallowSky, drawMazeShallowWaterTint, drawMazeShallowCaustics, getMazeShallowMaskAlpha, drawFishDenSkulls } from './RenderMazeScene';
 import { drawOxygenTanksWorld, drawOxygenFeedbackWorld } from './RenderOxygenTank';
+import { drawBreathBubblesWorld } from './RenderBreath';
 import { getLifeDetectorRuntime } from '../logic/LifeDetector';
 import { drawGMButton, drawGMPanel } from '../gm/GMPanel';
 import { updateDustTime, drawDustDarkLayer, drawDustLitLayer } from './DustMotes';
@@ -343,6 +344,9 @@ export function draw() {
             ctx.restore();
         }
     }
+
+    // 呼吸气泡（间歇吐气，从嘴部涌出，向上漂浮，侧向摆动）
+    drawBreathBubblesWorld(ctx, viewL, viewR, viewT, viewB);
 
     // 绘制废弃潜水服
     if(state.landmarks && state.landmarks.suit) {
@@ -879,6 +883,14 @@ export function draw() {
         ctx.fillStyle = `rgba(120, 100, 80, ${siltAlpha})`;
         ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); ctx.fill();
     }
+    ctx.restore();
+
+    // 呼吸气泡（世界空间，迷宫与主线共用；内部会根据 screen 自动决定是否有粒子可画）
+    ctx.save();
+    ctx.translate(logicW/2 + shakeX, logicH/2 + shakeY);
+    ctx.scale(zoom, zoom);
+    ctx.translate(-camX, -camY);
+    drawBreathBubblesWorld(ctx, viewL, viewR, viewT, viewB);
     ctx.restore();
 
     // 黑屏过渡

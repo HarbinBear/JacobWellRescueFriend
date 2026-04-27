@@ -1,7 +1,7 @@
 import { initTextures, draw } from './src/render/Render';
 import { resetGameLogic, update, resetArenaLogic, updateArena, resetMazeLogic, replayMazeLogic, updateMaze, startMazeDive, returnToShore } from './src/logic/Logic';
 import { initInput } from './src/core/input';
-import { initAudio, updateAudio } from './src/audio/AudioManager';
+import { initAudio, updateAudio, updateSFXLoops } from './src/audio/AudioManager';
 
 // 初始化纹理
 initTextures();
@@ -28,6 +28,7 @@ function gameLoop() {
     updateArena();
     updateMaze();
     updateAudio();
+    updateSFXLoops();
     draw();
     requestAnimationFrame(gameLoop);
 }

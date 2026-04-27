@@ -4,6 +4,7 @@ import { generateMazeMap } from '../world/map';
 import { getMazeMainThemeConfig, getMazeSceneThemeKeyByIndex } from '../world/mazeScene';
 import { StoryManager } from '../story/StoryManager';
 import { triggerSilt, updateParticles, updateSplashes } from './Particle';
+import { updateBreathSystem, resetBreathSystem } from './BreathSystem';
 import { updateRopeSystem } from './Rope';
 import { processManualDrive, updateAutoDriveVisual } from './ManualDrive';
 import { checkMazeCollision } from './Collision';
@@ -296,6 +297,9 @@ export function startMazeDive(diveType: string) {
     // 入水气泡音效：入水动作本身，声音应盖在 diving_in 动画（约 1.5 秒）上
     playSFX('diveSplash');
 
+    // 重置呼吸系统运行态（清除残留气泡与音频状态）
+    resetBreathSystem();
+
     // 重置生命探知仪运行态（每次新下潜重新开始）
     resetLifeDetector();
 
@@ -584,6 +588,9 @@ export function returnToShore() {
     maze.resultTimer = 0;
     // 停用NPC
     state.npc.active = false;
+
+    // 强制清理呼吸系统：岸上不该有气泡，也不该继续播放呼吸音
+    resetBreathSystem();
 
     // 回到岸上时再保存一次：虽然 finishMazeDive 已经落过盘，但从 debrief 切回 shore 时
     // phase 字段发生变化，再存一次更稳妥。
@@ -1022,6 +1029,9 @@ export function updateMaze() {
     // --- 更新粒子 ---
     updateParticles();
     updateSplashes();
+
+    // --- 呼吸系统：气泡 + 音效，根据运动量调节节奏 ---
+    updateBreathSystem();
 
     // --- 更新凶猛鱼 ---
     updateAllFishEnemies(1);

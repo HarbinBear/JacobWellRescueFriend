@@ -376,6 +376,42 @@ export const TABS: GMTab[] = [
             { type: 'action', label: '🧹 清除所有食人鱼', actionId: 'removeAllFish' },
         ]
     },
+    {
+        name: '呼吸',
+        items: [
+            { type: 'bool', label: '启用', path: 'breath.enabled' },
+            { type: 'number', label: '满速参考', path: 'breath.refSpeed', min: 1, max: 10, step: 0.5, precision: 1 },
+            { type: 'number', label: '强度平滑', path: 'breath.intensitySmooth', min: 0.02, max: 0.3, step: 0.02, precision: 2 },
+            // 静止参数
+            { type: 'number', label: '静·吐气时长', path: 'breath.exhaleDurationStatic', min: 0.3, max: 3, step: 0.1, precision: 1 },
+            { type: 'number', label: '静·停顿时长', path: 'breath.pauseDurationStatic', min: 0.5, max: 6, step: 0.2, precision: 1 },
+            { type: 'number', label: '静·气泡/秒', path: 'breath.bubbleRateStatic', min: 1, max: 20, step: 1 },
+            { type: 'number', label: '静·音量', path: 'breath.volumeStatic', min: 0, max: 1, step: 0.05, precision: 2 },
+            { type: 'number', label: '静·播放速率', path: 'breath.playbackRateStatic', min: 0.5, max: 2, step: 0.05, precision: 2 },
+            { type: 'number', label: '静·气泡大小', path: 'breath.bubbleSizeStatic', min: 1, max: 6, step: 0.25, precision: 2 },
+            // 全速参数
+            { type: 'number', label: '满·吐气时长', path: 'breath.exhaleDurationPeak', min: 0.3, max: 3, step: 0.1, precision: 1 },
+            { type: 'number', label: '满·停顿时长', path: 'breath.pauseDurationPeak', min: 0.05, max: 3, step: 0.1, precision: 2 },
+            { type: 'number', label: '满·气泡/秒', path: 'breath.bubbleRatePeak', min: 2, max: 30, step: 1 },
+            { type: 'number', label: '满·音量', path: 'breath.volumePeak', min: 0, max: 1, step: 0.05, precision: 2 },
+            { type: 'number', label: '满·播放速率', path: 'breath.playbackRatePeak', min: 0.5, max: 2, step: 0.05, precision: 2 },
+            { type: 'number', label: '满·气泡大小', path: 'breath.bubbleSizePeak', min: 1, max: 8, step: 0.25, precision: 2 },
+            // 位置与物理
+            { type: 'number', label: '嘴部前偏移', path: 'breath.mouthOffsetForward', min: 8, max: 40, step: 1 },
+            { type: 'number', label: '生成抖动', path: 'breath.spawnJitter', min: 0, max: 10, step: 0.5, precision: 1 },
+            { type: 'number', label: '浮力下限', path: 'breath.buoyancyMin', min: 0.2, max: 3, step: 0.1, precision: 2 },
+            { type: 'number', label: '浮力上限', path: 'breath.buoyancyMax', min: 0.3, max: 4, step: 0.1, precision: 2 },
+            { type: 'number', label: '侧向初速', path: 'breath.sideInitSpeed', min: 0, max: 2, step: 0.05, precision: 2 },
+            { type: 'number', label: '摆动频率↓', path: 'breath.wobbleFreqMin', min: 0.02, max: 0.4, step: 0.01, precision: 2 },
+            { type: 'number', label: '摆动频率↑', path: 'breath.wobbleFreqMax', min: 0.02, max: 0.5, step: 0.01, precision: 2 },
+            { type: 'number', label: '摆动幅度↓', path: 'breath.wobbleAmpMin', min: 0.05, max: 1, step: 0.05, precision: 2 },
+            { type: 'number', label: '摆动幅度↑', path: 'breath.wobbleAmpMax', min: 0.05, max: 1.5, step: 0.05, precision: 2 },
+            { type: 'number', label: '寿命最短(秒)', path: 'breath.lifeMinSec', min: 0.5, max: 5, step: 0.1, precision: 1 },
+            { type: 'number', label: '寿命最长(秒)', path: 'breath.lifeMaxSec', min: 0.5, max: 6, step: 0.1, precision: 1 },
+            { type: 'number', label: '消散距离', path: 'breath.despawnUpDist', min: 100, max: 600, step: 20 },
+            { type: 'number', label: '粒子上限', path: 'breath.maxBubbles', min: 40, max: 400, step: 20 },
+        ]
+    },
 ];
 
 // ============ 面板布局常量 ============
