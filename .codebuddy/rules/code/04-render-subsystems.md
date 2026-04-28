@@ -133,6 +133,7 @@ type: always
 - `updateBreathSystem()`：每帧由 `MazeLogic.updateMaze()` 和 `Logic.update()` 调用。内部先判断是否应激活（`shouldBeActive()`），然后推进呼吸相位机、生成气泡、驱动音频参数。
 - `getBreathBubbles()`：供 `RenderBreath.ts` 读取当前气泡列表。
 - `resetBreathSystem()`：清理气泡 + 停音频。在 `resetGameLogic()` / `startMazeDive()` / `returnToShore()` 三处入口调用。
+- `spawnImpactBurst(cx, cy, strength)`：**撞击气泡爆发入口**（供 `CollisionImpact.ts` 调用）。从撞击点爆发一次大量气泡，数量/半径/寿命/散射速度等由 `CONFIG.collisionImpact.impactBubble*` 参数控制，默认 30→120 粒线性映射、半径 1.6 倍放大、四周扇形散射、寿命 0.55 倍缩短。共享 `bubbles` 渲染列表，因此 `RenderBreath.drawBreathBubblesWorld()` 会一并画出。
 
 核心设计：
 
@@ -160,6 +161,26 @@ type: always
 - 云存储接入：`CONFIG.audio.cloud.fileIDs.breathLoop` 指向云存储路径，首次启动时预拉取临时 URL，过期时（10002）自动重拉。
 
 配置参数集中在 `CONFIG.breath` 子对象（27 项），GM 面板有独立的"呼吸"Tab。
+
+### 1.6d 撞击反馈系统 `src/logic/CollisionImpact.ts`
+
+撞击反馈系统负责潜水员撞到岩石时的**多通道反馈**（音效 + 气泡 + 耗氧 + 氧气条红色损失弧），采用**全线性强度映射**（不分档），由 `Logic.ts` 主线碰撞分支和 `MazeLogic.ts` 迷宫碰撞分支共同调用。
+
+对外接口：
+
+- `triggerCollisionImpact(preVx, preVy, x, y)`：撞击反馈入口。在碰撞分支中 `player.vx *= -0.5` **反弹前**采样 preVx / preVy 传入。当 `|v| < speedThreshold` 视为擦蹭直接忽略；否则计算 `strength = clamp((|v| - threshold) / range, 0, 1)` 作为 0~1 强度，所有反馈参数按此线性插值。
+- `resetCollisionImpact()`：清空触发冷却时间戳。在 `resetGameLogic()` / `startMazeDive()` 等模式切换入口调用，避免跨场景被旧冷却误挡。
+
+核心设计：
+
+- **全线性映射**：音量 `volumeMin→volumeMax`、播放速率 `playbackRateMin→playbackRateMax`（撞击音区间 0.55~0.75，比呼吸 0.85~1.2 更闷重）、气泡数 `impactBubbleCountMin→Max`（默认 30~120）、氧气损失 `o2LossMin→Max`（默认 0.8%~4.5%）全部按 strength 线性插值。
+- **双音效并发**：`playSFX('collisionRock', {volume, playbackRate})` 播撞岩石闷响（HitRock.mp3），同时 `playSFX('collisionBreath', {...})` 播一次性"撞击吐气"（独立 SFX 实例复用 BreathBubble.mp3，避免与呼吸 SFX-Loop 互相干扰）。HitRock 资源未到位时后者也能提供明显的撞击音反馈。
+- **气泡走 BreathSystem**：气泡不再走泥沙颗粒（`triggerSilt`），而是调 `BreathSystem.spawnImpactBurst(x, y, strength)`。与呼吸气泡共用渲染管线，但数量更多（30~120 vs 5~14）、半径更大（×1.6）、初速度向撞击点四周扇形散射（呼吸只朝嘴前）、寿命更短（×0.55，爆发式消散）。
+- **氧气环红色损失弧**：扣氧后调 `OxygenTank.triggerO2LossFlash(fromO2, toO2)`，`RenderMazeUI` 的氧气环会额外绘制一段红色弧从 fromRatio 衰减到 toRatio（1s 衰减）。多次撞击连续触发时 fromRatio 取较大值，保证红条"越撞越显眼"。
+- **冷却去重**：同一撞击 `cooldownMs`（默认 400ms）内不重复触发，避免 X/Y 双轴同帧命中时被触发两次。
+- **debug / infiniteO2 兼容**：`infiniteO2` 模式下不扣氧但仍保留红条动画，方便调试视觉反馈。
+
+配置参数集中在 `CONFIG.collisionImpact` 子对象（14 项），GM 面板有独立的"撞击"Tab。
 
 ### 1.3 敌鱼系统 `src/logic/FishEnemy.ts`
 

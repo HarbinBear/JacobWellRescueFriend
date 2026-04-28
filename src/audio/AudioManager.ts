@@ -18,7 +18,7 @@ import { CONFIG } from '../core/config';
 import { state } from '../core/state';
 
 type AudioKey = 'menuBGM';
-type SFXKey = 'diveSplash' | 'collisionRock';
+type SFXKey = 'diveSplash' | 'collisionRock' | 'collisionBreath';
 // SFX-Loop：常驻循环、可实时调整音量与播放速率（呼吸气泡等）
 type SFXLoopKey = 'breathLoop';
 
@@ -86,6 +86,15 @@ const SFX_ENTRIES: Record<SFXKey, SFXEntry> = {
     },
     collisionRock: {
         path: 'audio/HitRock.mp3',
+        ctx: null,
+        srcReady: false,
+        urlResolving: false,
+        pendingPlay: false,
+    },
+    // 撞击暂时复用 breathLoop（吐气泡）做一次性音效，独立 SFX 上下文避免与呼吸 loop 干扰
+    // playbackRate 在调用时压到 0.55~0.75 区间，听感比呼吸更钝更闷，足够区分
+    collisionBreath: {
+        path: 'audio/BreathBubble.mp3',
         ctx: null,
         srcReady: false,
         urlResolving: false,

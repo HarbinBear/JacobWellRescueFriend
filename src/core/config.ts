@@ -651,6 +651,7 @@ export const CONFIG = {
                 diveSplash: 'cloud://cloud1-d8gh6fpnh6d0928e8.636c-cloud1-d8gh6fpnh6d0928e8-1424920608/audio/ElevenLabs_A_diver_jumps_into_the_.mp3',
                 breathLoop: 'cloud://cloud1-d8gh6fpnh6d0928e8.636c-cloud1-d8gh6fpnh6d0928e8-1424920608/audio/BreathBubble.mp3',
                 collisionRock: 'cloud://cloud1-d8gh6fpnh6d0928e8.636c-cloud1-d8gh6fpnh6d0928e8-1424920608/audio/HitRock.mp3',
+                collisionBreath: 'cloud://cloud1-d8gh6fpnh6d0928e8.636c-cloud1-d8gh6fpnh6d0928e8-1424920608/audio/BreathBubble.mp3',
             } as Record<string, string>,
         },
     },
@@ -722,15 +723,19 @@ export const CONFIG = {
         speedRange: 5.0,                // 强度映射范围：(|v| - threshold) / range 作为 0~1 强度
         cooldownMs: 400,                // 同一次撞击冷却（毫秒）
 
-        // 音效
-        volumeMin: 0.35,                // 最小强度对应音量
-        volumeMax: 1.0,                 // 最大强度对应音量
-        playbackRateMin: 1.1,           // 轻撞播放速率（更清脆）
-        playbackRateMax: 0.85,          // 重撞播放速率（更低沉）
+        // 音效（复用 breathLoop 作一次性 SFX）
+        // 比呼吸音更闷更重：playbackRate 降到 0.55~0.75 区间（呼吸是 0.85~1.2）
+        volumeMin: 1,                 // 最小强度对应音量
+        volumeMax: 2,                 // 最大强度对应音量
+        playbackRateMin: 0.75,          // 轻撞播放速率（比呼吸稍快，仍显钝重）
+        playbackRateMax: 0.55,          // 重撞播放速率（更低沉更重）
 
-        // 气泡（走 triggerSilt 等价的密集粒子爆发，复用现有泥沙粒子）
-        bubbleCountMin: 6,              // 轻撞气泡数
-        bubbleCountMax: 30,             // 重撞气泡数
+        // 气泡（接入 BreathSystem.spawnImpactBurst；和呼吸气泡同渲染管线但数量/大小/寿命不同）
+        impactBubbleCountMin: 5,       // 轻撞气泡数（比呼吸一次吐气 5~14 粒多很多）
+        impactBubbleCountMax: 20,      // 重撞气泡数（明显爆发感）
+        impactBubbleSizeMul: 1.6,       // 气泡半径相对呼吸气泡的倍数（更大）
+        impactBubbleSpreadSpeed: 2.4,   // 撞击点向外散射的初速度（像素/帧）
+        impactBubbleLifeMul: 0.55,      // 寿命相对呼吸气泡的倍数（更短，爆发式消散）
 
         // 氧气损失
         o2LossMin: 0.8,                 // 轻撞氧气损失（%）

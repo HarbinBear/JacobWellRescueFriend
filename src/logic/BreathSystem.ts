@@ -303,6 +303,66 @@ export function updateBreathSystem() {
 }
 
 // =============================================
+// 撞击气泡爆发（撞岩石时调用）
+// 与呼吸气泡复用同一条渲染通道，但数量更多、初速度向四周散射、半径更大、寿命更短
+// 参数：
+//   cx, cy：撞击点世界坐标（一般传 player.x / player.y）
+//   strength：撞击强度 0~1（由 CollisionImpact 线性映射而来）
+// =============================================
+export function spawnImpactBurst(cx: number, cy: number, strength: number): void {
+    const cfg = CONFIG.breath;
+    // 从 CONFIG.collisionImpact.bubble* 取撞击气泡参数，缺省时用默认值
+    const impactCfg = (CONFIG as any).collisionImpact || {};
+    const countMin: number = impactCfg.impactBubbleCountMin ?? 30;
+    const countMax: number = impactCfg.impactBubbleCountMax ?? 120;
+    const sizeMul: number = impactCfg.impactBubbleSizeMul ?? 1.6;
+    const spreadSpeed: number = impactCfg.impactBubbleSpreadSpeed ?? 2.4;
+    const lifeMul: number = impactCfg.impactBubbleLifeMul ?? 0.55;
+
+    const t = Math.max(0, Math.min(1, strength));
+    const count = Math.round(countMin + (countMax - countMin) * t);
+
+    for (let i = 0; i < count; i++) {
+        // 位置：撞击点 +/- 少量抖动
+        const px = cx + (Math.random() - 0.5) * 12;
+        const py = cy + (Math.random() - 0.5) * 12;
+        // 初速度：四周扇形散射（不局限于朝前），略偏向上（-Y）模拟气泡被撞出又快速浮起
+        const dirAngle = Math.random() * Math.PI * 2;
+        // 稍微压低向下的分量（让 vy < 0 概率大一点，气泡整体偏向上浮）
+        const speedScale = 0.4 + Math.random() * 0.6;
+        const initSpeed = spreadSpeed * speedScale * (0.5 + t * 0.5);
+        const vx = Math.cos(dirAngle) * initSpeed;
+        const vy = Math.sin(dirAngle) * initSpeed - (cfg.buoyancyMin + Math.random() * (cfg.buoyancyMax - cfg.buoyancyMin)) * 0.6;
+        // 半径：比呼吸气泡更大（sizeMul 倍放大）
+        const baseR = (cfg.bubbleSizeStatic + (cfg.bubbleSizePeak - cfg.bubbleSizeStatic) * t) * sizeMul;
+        const radius = baseR * (0.7 + Math.random() * 0.8);
+        const maxRadius = radius * (1.3 + Math.random() * 0.5);
+        // 寿命：比呼吸气泡更短（lifeMul 倍缩短，爆发式消散）
+        const lifeSec = (cfg.lifeMinSec + Math.random() * (cfg.lifeMaxSec - cfg.lifeMinSec)) * lifeMul;
+        const fadeRate = 1 / (lifeSec * 60);
+        runtime.bubbles.push({
+            x: px,
+            y: py,
+            vx,
+            vy,
+            wobblePhase: Math.random() * Math.PI * 2,
+            wobbleFreq: cfg.wobbleFreqMin + Math.random() * (cfg.wobbleFreqMax - cfg.wobbleFreqMin),
+            wobbleAmp: cfg.wobbleAmpMin + Math.random() * (cfg.wobbleAmpMax - cfg.wobbleAmpMin),
+            radius,
+            growRate: (maxRadius - radius) / (lifeSec * 60),
+            life: 1,
+            fadeRate,
+            maxRadius,
+        });
+    }
+
+    // 溢出保护：共享呼吸气泡的上限，避免极端情况下无限堆积
+    if (runtime.bubbles.length > cfg.maxBubbles) {
+        runtime.bubbles.splice(0, runtime.bubbles.length - cfg.maxBubbles);
+    }
+}
+
+// =============================================
 // 对外获取气泡列表（供 Render 绘制）
 // =============================================
 export function getBreathBubbles(): BreathBubble[] {

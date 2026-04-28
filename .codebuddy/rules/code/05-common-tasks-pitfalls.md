@@ -114,6 +114,28 @@ type: always
 - **playbackRate 兼容性**：微信 `InnerAudioContext.playbackRate` 在手机端不一定生效；浏览器兜底路径（HTMLAudioElement）支持。调参时观察手机端可能只有音量变化、没有音调变化，属正常。
 - **云存储新资源权限**：上传新音频后必须去云开发控制台把文件权限改为"所有用户可读"，否则 `getTempFileURL` 会报 `STORAGE_EXCEED_AUTHORITY`。
 
+### 1.5e 改撞击反馈系统（撞岩石音效 + 气泡爆发 + 耗氧 + 氧气条红条）
+
+优先检查：
+
+- `src/logic/CollisionImpact.ts`（触发入口、线性强度映射、冷却去重、双音效并发、扣氧与红条触发）
+- `src/logic/BreathSystem.ts` 中 `spawnImpactBurst(cx, cy, strength)`（撞击气泡爆发，与呼吸气泡共用渲染）
+- `src/logic/OxygenTank.ts` 中 `triggerO2LossFlash(fromO2, toO2)`（氧气环红色损失弧动画）
+- `src/render/RenderMazeUI.ts` 中氧气环红条绘制段落
+- `src/audio/AudioManager.ts` 中 `SFXKey`：`collisionRock` 和 `collisionBreath`
+- `src/logic/Logic.ts` / `src/logic/MazeLogic.ts` 中的碰撞分支（必须在 `player.vx *= -0.5` 反弹前采样 preVx / preVy）
+- `src/core/config.ts` 中 `collisionImpact` 配置
+- `src/gm/GMConfig.ts` 中的"撞击"Tab
+
+常见陷阱：
+
+- **preVx/preVy 采样时机**：碰撞分支里把反弹（`player.vx *= -0.5`）之前的速度传进 `triggerCollisionImpact`，否则强度就是反弹后的一半，手感全乱。
+- **气泡不要走 `triggerSilt`**：那是泥沙颗粒不是气泡；撞击气泡必须走 `spawnImpactBurst`，与呼吸气泡共用 `bubbles` 列表由 `RenderBreath` 统一绘制。
+- **冷却不重置会跨场景误挡**：模式切换（`resetGameLogic / startMazeDive`）时必须调 `resetCollisionImpact()`，否则切图后第一下撞击可能被老冷却挡住。
+- **两个音效是独立 SFX 实例**：`collisionRock` 和 `collisionBreath` 在 `CONFIG.audio.cloud.fileIDs` 里各自有 FileID（即便 collisionBreath 复用 BreathBubble.mp3 也必须单独注册 key），这样才能并发播放而不会互相打断呼吸 SFX-Loop。
+- **`triggerO2LossFlash` 只在迷宫 play 阶段触发**：主线模式不走 `oxygenFeedback`，函数内部已判断；新增调用点时不要假设主线也有红条反馈。
+- **`infiniteO2` 模式下仍走红条**：为了方便调试，无限氧气时 `CollisionImpact` 仍然触发红条动画（只是不真扣氧）；改动扣氧逻辑时要保留这个调试路径。
+
 ### 1.6 改凶猛鱼行为或攻击判定
 
 优先检查：
