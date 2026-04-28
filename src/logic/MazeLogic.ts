@@ -14,6 +14,7 @@ import { createFishEnemy, findMazeFishSpawnPosition, updateAllFishEnemies, gener
 import { buildOxygenTanksForMaze, updateOxygenTanks, createOxygenFeedback } from './OxygenTank';
 import { updateLifeDetector, resetLifeDetector } from './LifeDetector';
 import { playSFX } from '../audio/AudioManager';
+import { triggerCollisionImpact, resetCollisionImpact } from './CollisionImpact';
 import { loadMazeProgress, saveMazeProgress, clearMazeSave } from './MazeSave';
 import { setActiveSeededRandom, clearActiveSeededRandom } from '../core/SeededRandom';
 
@@ -302,6 +303,9 @@ export function startMazeDive(diveType: string) {
 
     // 重置生命探知仪运行态（每次新下潜重新开始）
     resetLifeDetector();
+
+    // 重置撞击反馈冷却（避免跨场景冷却误挡第一次撞击）
+    resetCollisionImpact();
 
     // 设置下潜类型（不区分scout/rescue，统一为scout，发现NPC后自动可绑绳）
     maze.diveType = diveType;
@@ -737,10 +741,20 @@ export function updateMaze() {
     // 碰撞检测（使用迷宫专属地图）
     const nextX = player.x + player.vx;
     const nextY = player.y + player.vy;
+    // 记录撞前速度，用于撞击强度判定（必须在 vx/vy 反弹衰减前采样）
+    const preVx = player.vx;
+    const preVy = player.vy;
+    let hitX = false;
+    let hitY = false;
     if (!checkMazeCollision(nextX, player.y, maze)) player.x = nextX;
-    else { player.vx *= -0.5; triggerSilt(player.x, player.y, 10); }
+    else { player.vx *= -0.5; triggerSilt(player.x, player.y, 10); hitX = true; }
     if (!checkMazeCollision(player.x, nextY, maze)) player.y = nextY;
-    else { player.vy *= -0.5; triggerSilt(player.x, player.y, 10); }
+    else { player.vy *= -0.5; triggerSilt(player.x, player.y, 10); hitY = true; }
+
+    // 撞击反馈（音效 + 气泡 + 氧气损失 + 氧气环红条）：只要任一轴命中即触发
+    if (hitX || hitY) {
+        triggerCollisionImpact(preVx, preVy, player.x, player.y);
+    }
 
     // 顶部边界：不能游出迷宫
     if (player.y < maze.mazeTileSize / 2) {

@@ -18,7 +18,7 @@ import { CONFIG } from '../core/config';
 import { state } from '../core/state';
 
 type AudioKey = 'menuBGM';
-type SFXKey = 'diveSplash';
+type SFXKey = 'diveSplash' | 'collisionRock';
 // SFX-Loop：常驻循环、可实时调整音量与播放速率（呼吸气泡等）
 type SFXLoopKey = 'breathLoop';
 
@@ -79,6 +79,13 @@ const ENTRIES: Record<AudioKey, AudioEntry> = {
 const SFX_ENTRIES: Record<SFXKey, SFXEntry> = {
     diveSplash: {
         path: 'audio/ElevenLabs_A_diver_jumps_into_the_.mp3',
+        ctx: null,
+        srcReady: false,
+        urlResolving: false,
+        pendingPlay: false,
+    },
+    collisionRock: {
+        path: 'audio/HitRock.mp3',
         ctx: null,
         srcReady: false,
         urlResolving: false,
@@ -358,13 +365,20 @@ function _resolveAndApplySFXCloudURL(key: SFXKey): void {
 }
 
 // 内部：真正执行 SFX 播放（stop -> seek(0) -> play）
-function _actuallyPlaySFX(key: SFXKey): void {
+// options 可选地覆盖音量（0~1，会与 CONFIG.audio.sfxVolume 相乘）与播放速率（0.5~2.0）
+function _actuallyPlaySFX(key: SFXKey, options?: { volume?: number; playbackRate?: number }): void {
     const entry = SFX_ENTRIES[key];
     if (!entry || !entry.ctx || !entry.srcReady) return;
     try {
         // 音量：受全局静音开关控制；静音时直接不播
         if (state.audio.muted) return;
-        entry.ctx.volume = Math.max(0, Math.min(1, CONFIG.audio.sfxVolume));
+        const volScale = options && typeof options.volume === 'number' ? Math.max(0, Math.min(1, options.volume)) : 1;
+        entry.ctx.volume = Math.max(0, Math.min(1, CONFIG.audio.sfxVolume * volScale));
+        // 播放速率（InnerAudioContext 手机端可能不生效，浏览器兜底路径生效）
+        if (options && typeof options.playbackRate === 'number') {
+            const rate = Math.max(0.5, Math.min(2.0, options.playbackRate));
+            try { entry.ctx.playbackRate = rate; } catch (e) { /* 忽略不支持的路径 */ }
+        }
         // 尝试把播放头拉回起点：InnerAudioContext 支持 stop()/seek(0)
         try { entry.ctx.stop(); } catch (e) { /* 忽略 */ }
         try { if (typeof entry.ctx.seek === 'function') entry.ctx.seek(0); } catch (e) { /* 忽略 */ }
@@ -408,19 +422,21 @@ export function stopBGM(): void {
 }
 
 // 播放一次性音效（SFX）。静音时直接跳过；云 URL 未就绪时挂起，就绪后立刻触发一次。
-export function playSFX(key: SFXKey): void {
+// options 可选：volume（0~1，最终音量 = sfxVolume * volume）、playbackRate（0.5~2.0）
+// 若 URL 还没就绪，仅在"首次触发"时挂起 pending（不带动态参数），避免后续动态参数丢失
+export function playSFX(key: SFXKey, options?: { volume?: number; playbackRate?: number }): void {
     if (state.audio.muted) return;
     const entry = SFX_ENTRIES[key];
     if (!entry || !entry.ctx) return;
     if (!entry.srcReady) {
-        // URL 还没回来：挂一个 pendingPlay，URL 回来时立刻播
+        // URL 还没回来：挂一个 pendingPlay，URL 回来时立刻播（不带动态参数）
         entry.pendingPlay = true;
         if (_cloudInited && !entry.urlResolving) {
             _resolveAndApplySFXCloudURL(key);
         }
         return;
     }
-    _actuallyPlaySFX(key);
+    _actuallyPlaySFX(key, options);
 }
 
 // 切换全局静音开关（true=静音，false=恢复）

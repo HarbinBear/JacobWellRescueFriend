@@ -650,6 +650,7 @@ export const CONFIG = {
                 menuBGM: 'cloud://cloud1-d8gh6fpnh6d0928e8.636c-cloud1-d8gh6fpnh6d0928e8-1424920608/audio/Echoes_of_the_Sunken_Grotto_2026-04-22T150024.mp3',
                 diveSplash: 'cloud://cloud1-d8gh6fpnh6d0928e8.636c-cloud1-d8gh6fpnh6d0928e8-1424920608/audio/ElevenLabs_A_diver_jumps_into_the_.mp3',
                 breathLoop: 'cloud://cloud1-d8gh6fpnh6d0928e8.636c-cloud1-d8gh6fpnh6d0928e8-1424920608/audio/BreathBubble.mp3',
+                collisionRock: 'cloud://cloud1-d8gh6fpnh6d0928e8.636c-cloud1-d8gh6fpnh6d0928e8-1424920608/audio/HitRock.mp3',
             } as Record<string, string>,
         },
     },
@@ -707,6 +708,33 @@ export const CONFIG = {
         colorCore: 'rgba(220, 245, 255, 0.95)',   // 气泡高光色
         colorBody: 'rgba(180, 220, 240, 0.55)',   // 气泡主体色
         outlineAlpha: 0.45,              // 边缘描边透明度
+    },
+
+    // ===== 撞击岩石反馈系统 =====
+    // 运行规则（全线性映射，不分档）：
+    // - 碰撞瞬间读取撞击前的速度 |v|；若 |v| >= speedThreshold 判定为"撞"（低速擦蹭不算）
+    // - 强度 strength = clamp((|v| - speedThreshold) / speedRange, 0, 1)
+    // - 所有表现参数按 strength 线性插值到 Peak（音量、播放速率、气泡数、氧气损失）
+    // - 同一次撞击 cooldownMs 内不重复触发
+    collisionImpact: {
+        enabled: true,
+        speedThreshold: 2.0,            // 触发阈值：撞击瞬间 |v| 小于此值视为擦蹭，不触发
+        speedRange: 5.0,                // 强度映射范围：(|v| - threshold) / range 作为 0~1 强度
+        cooldownMs: 400,                // 同一次撞击冷却（毫秒）
+
+        // 音效
+        volumeMin: 0.35,                // 最小强度对应音量
+        volumeMax: 1.0,                 // 最大强度对应音量
+        playbackRateMin: 1.1,           // 轻撞播放速率（更清脆）
+        playbackRateMax: 0.85,          // 重撞播放速率（更低沉）
+
+        // 气泡（走 triggerSilt 等价的密集粒子爆发，复用现有泥沙粒子）
+        bubbleCountMin: 6,              // 轻撞气泡数
+        bubbleCountMax: 30,             // 重撞气泡数
+
+        // 氧气损失
+        o2LossMin: 0.8,                 // 轻撞氧气损失（%）
+        o2LossMax: 4.5,                 // 重撞氧气损失（%）
     },
 
     // ===== 生命探知仪（迷宫模式未发现 NPC 时，以盖革式"嘀嘀"提示距离）=====

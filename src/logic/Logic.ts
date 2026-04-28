@@ -11,6 +11,7 @@ import { checkCollision, getNearestWallDist, checkMazeCollision } from './Collis
 
 import { updateCameraSpringArm, snapCameraToPlayer, getAdaptiveZoom } from './CameraLogic';
 import { updateMarkers, updateWheelButtonVisibility } from './Marker';
+import { triggerCollisionImpact, resetCollisionImpact } from './CollisionImpact';
 
 // 从拆分模块重新导出，保持外部导入路径不变
 export { resetArenaLogic, updateArena } from './ArenaLogic';
@@ -292,6 +293,7 @@ export function resetGameLogic(startStage, startPlay) {
     if(startPlay === undefined) startPlay = true;
     resetState();
     resetBreathSystem();
+    resetCollisionImpact();
     generateMap();
     
     state.story.stage = startStage;
@@ -655,6 +657,10 @@ export function update() {
     let nextX = player.x + player.vx;
     let nextY = player.y + player.vy;
     
+    // 记录撞前速度，用于撞击强度判定
+    const preVx = player.vx;
+    const preVy = player.vy;
+
     let hitX = checkCollision(nextX, player.y, true);
     if(!hitX) player.x = nextX;
     else { player.vx *= -0.5; if(Math.abs(player.vx)>1) triggerSilt(player.x, player.y, 20); } 
@@ -662,6 +668,11 @@ export function update() {
     let hitY = checkCollision(player.x, nextY, true);
     if(!hitY) player.y = nextY;
     else { player.vy *= -0.5; if(Math.abs(player.vy)>1) triggerSilt(player.x, player.y, 20); }
+
+    // 撞击反馈（音效 + 气泡 + 氧气损失）：主线任一轴命中即触发
+    if (hitX || hitY) {
+        triggerCollisionImpact(preVx, preVy, player.x, player.y);
+    }
 
     if(player.y < 0) {
         player.y = 0;

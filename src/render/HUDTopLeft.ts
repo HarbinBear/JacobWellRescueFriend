@@ -467,6 +467,37 @@ function drawOxygenIcon(c: CanvasRenderingContext2D, cx: number, cy: number, siz
     }
     c.lineCap = 'butt';
 
+    // 撞岩石损失红色弧：从 o2LossToRatio（撞后位置）到 o2LossFromRatio（撞前位置）
+    // 表示"这一波损失的这一段氧气"，1s 内迅速衰减消失
+    const lossT = (maze && maze.oxygenFeedback && maze.oxygenFeedback.o2LossTimer) || 0;
+    if (lossT > 0) {
+        const fromRatio = Math.max(0, Math.min(1, maze!.oxygenFeedback!.o2LossFromRatio));
+        const toRatio = Math.max(0, Math.min(1, maze!.oxygenFeedback!.o2LossToRatio));
+        if (fromRatio > toRatio + 0.002) {
+            const lossStart = start + Math.PI * 2 * toRatio;
+            const lossEnd = start + Math.PI * 2 * fromRatio;
+            // 透明度随时间从 0.95 快速衰减到 0
+            const lossAlpha = lossT * 0.95;
+            c.save();
+            c.globalAlpha = lossAlpha;
+            c.strokeStyle = 'rgba(255, 60, 60, 1)';
+            c.lineWidth = ringW + 1.5;
+            c.lineCap = 'round';
+            c.beginPath();
+            c.arc(cx, cy, ringR, lossStart, lossEnd);
+            c.stroke();
+            // 附加一层柔光（更强的视觉冲击）
+            c.globalAlpha = lossAlpha * 0.5;
+            c.strokeStyle = 'rgba(255, 120, 120, 1)';
+            c.lineWidth = ringW + 4;
+            c.beginPath();
+            c.arc(cx, cy, ringR, lossStart, lossEnd);
+            c.stroke();
+            c.lineCap = 'butt';
+            c.restore();
+        }
+    }
+
     // 低氧脉冲
     if (o2Ratio <= 0.25) {
         const pulse = 0.3 + 0.2 * Math.sin(time * 5);

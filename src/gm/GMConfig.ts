@@ -412,6 +412,23 @@ export const TABS: GMTab[] = [
             { type: 'number', label: '粒子上限', path: 'breath.maxBubbles', min: 40, max: 400, step: 20 },
         ]
     },
+    {
+        name: '撞击',
+        items: [
+            { type: 'bool', label: '启用撞击反馈', path: 'collisionImpact.enabled' },
+            { type: 'number', label: '触发阈值 |v|', path: 'collisionImpact.speedThreshold', min: 0.5, max: 6, step: 0.25, precision: 2 },
+            { type: 'number', label: '强度映射范围', path: 'collisionImpact.speedRange', min: 1, max: 12, step: 0.5, precision: 1 },
+            { type: 'number', label: '冷却时间(ms)', path: 'collisionImpact.cooldownMs', min: 100, max: 1500, step: 50 },
+            { type: 'number', label: '音量 轻→重', path: 'collisionImpact.volumeMin', min: 0, max: 1, step: 0.05, precision: 2 },
+            { type: 'number', label: '音量 峰值', path: 'collisionImpact.volumeMax', min: 0, max: 1, step: 0.05, precision: 2 },
+            { type: 'number', label: '播放速率 轻', path: 'collisionImpact.playbackRateMin', min: 0.5, max: 2, step: 0.05, precision: 2 },
+            { type: 'number', label: '播放速率 重', path: 'collisionImpact.playbackRateMax', min: 0.5, max: 2, step: 0.05, precision: 2 },
+            { type: 'number', label: '气泡数 轻', path: 'collisionImpact.bubbleCountMin', min: 0, max: 40, step: 1 },
+            { type: 'number', label: '气泡数 重', path: 'collisionImpact.bubbleCountMax', min: 1, max: 80, step: 1 },
+            { type: 'number', label: 'O₂损失 轻(%)', path: 'collisionImpact.o2LossMin', min: 0, max: 5, step: 0.1, precision: 2 },
+            { type: 'number', label: 'O₂损失 重(%)', path: 'collisionImpact.o2LossMax', min: 0.5, max: 15, step: 0.1, precision: 2 },
+        ]
+    },
 ];
 
 // ============ 面板布局常量 ============

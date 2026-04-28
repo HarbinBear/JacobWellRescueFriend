@@ -89,6 +89,10 @@ export interface OxygenFeedback {
     } | null;
     o2RingPulse: number;       // 0~1 递减，氧气环放大脉冲
     o2DisplayAnim: number;     // UI 上显示的氧气值（用于渐增动画，追 player.o2）
+    // 撞击损失红条动画（撞岩石扣氧时在氧气环上叠加一段红色弧，1s 内迅速衰减消失）
+    o2LossTimer: number;       // 0~1 递减，>0 期间绘制红色损失弧
+    o2LossFromRatio: number;   // 损失前的氧气比例（0~1，红色弧起点位置）
+    o2LossToRatio: number;     // 损失后的氧气比例（0~1，红色弧终点位置）
     // 世界层
     bubbleBurst: {             // 玩家周围气泡爆发
         x: number;
@@ -377,6 +381,9 @@ export function createOxygenFeedback(): OxygenFeedback {
         floatText: null,
         o2RingPulse: 0,
         o2DisplayAnim: 100,
+        o2LossTimer: 0,
+        o2LossFromRatio: 0,
+        o2LossToRatio: 0,
         bubbleBurst: [],
         flyingTanks: [],
     };
@@ -532,6 +539,34 @@ export function updateOxygenTanks() {
     } else {
         fb.o2DisplayAnim += (player.o2 - fb.o2DisplayAnim) * 0.08;
     }
+
+    // === 撞击损失红条衰减（1s 内从 1 衰减到 0） ===
+    if (fb.o2LossTimer > 0) {
+        fb.o2LossTimer = Math.max(0, fb.o2LossTimer - 1 / 60);
+    }
+}
+
+// =============================================
+// 撞岩石扣氧时触发氧气环上的红色损失弧动画
+// - fromO2 / toO2 为 0~100 的原始氧气数值
+// - 累加规则：如果前一次动画还没衰减完，且新损失跟前一次损失相接，直接把 fromRatio 取更高的那个（表现为"损失条持续向右延伸"）
+// =============================================
+export function triggerO2LossFlash(fromO2: number, toO2: number): void {
+    const maze = state.mazeRescue;
+    if (!maze) return;
+    if (!maze.oxygenFeedback) maze.oxygenFeedback = createOxygenFeedback();
+    const fb: OxygenFeedback = maze.oxygenFeedback;
+    const newFrom = Math.max(0, Math.min(1, fromO2 / 100));
+    const newTo = Math.max(0, Math.min(1, toO2 / 100));
+    if (fb.o2LossTimer > 0) {
+        // 累加：fromRatio 取两者最大，toRatio 取当前最新的 toRatio（本次损失终点）
+        fb.o2LossFromRatio = Math.max(fb.o2LossFromRatio, newFrom);
+        fb.o2LossToRatio = newTo;
+    } else {
+        fb.o2LossFromRatio = newFrom;
+        fb.o2LossToRatio = newTo;
+    }
+    fb.o2LossTimer = 1;
 }
 
 /** 安装完成：把瓶子标记为已消耗，启动飞瓶动画；真正加氧气在飞瓶到达时做 */
