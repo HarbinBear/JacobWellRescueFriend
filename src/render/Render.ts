@@ -542,6 +542,8 @@ export function draw() {
 
     if (_useWebGL && isWebGLAvailable()) {
         // WebGL 路径：CPU 端计算射线碰撞和泥沙，上传到 GPU，一个 draw call 完成所有光照
+        // --- light.cpu: CPU 端射线投射 + 泥沙采样 + 三次纹理上传（poly / silt / VPL） ---
+        profileBegin('light.cpu');
         let poly = playerFlashlightActive ? getLightPolygon(player.x, player.y, player.angle, rayDist, CONFIG.fov) : [];
         let siltData = null;
         let hasSilt = false;
@@ -559,8 +561,10 @@ export function draw() {
         uploadPolyData(poly, rayDist);
         uploadSiltData(siltData);
         let vplCount = uploadVPLData(poly, rayDist) || 0;
+        profileEnd('light.cpu');
         
-        // 渲染体积光（screen 模式叠加到主画布）
+        // --- light.volPass: 体积光 WebGL draw call ---
+        profileBegin('light.volPass');
         renderVolumetricLight({
             playerX: player.x, playerY: player.y,
             cameraX: camX, cameraY: camY,
@@ -570,14 +574,18 @@ export function draw() {
             npcX, npcY, npcAngle, npcDist: vRayDist * 0.5, npcActive,
             polyCount: poly.length, vplCount
         });
+        profileEnd('light.volPass');
         
-        // 将体积光合成到主画布（screen 模式）
+        // --- light.volCompose: 体积光 drawImage 合成（screen 模式） ---
+        profileBegin('light.volCompose');
         ctx.save();
         ctx.globalCompositeOperation = 'screen';
         ctx.drawImage(getGLCanvas() as unknown as CanvasImageSource, 0, 0, canvas.width, canvas.height, 0, 0, logicW, logicH);
         ctx.restore();
+        profileEnd('light.volCompose');
         
-        // 渲染光照遮罩
+        // --- light.maskPass: 遮罩层 WebGL draw call ---
+        profileBegin('light.maskPass');
         renderLightMask({
             playerX: player.x, playerY: player.y,
             cameraX: camX, cameraY: camY,
@@ -589,9 +597,12 @@ export function draw() {
             npcX, npcY, npcAngle, npcDist: rayDist * 0.9, npcActive,
             polyCount: poly.length, vplCount
         });
+        profileEnd('light.maskPass');
         
-        // 将遮罩合成到主画布
+        // --- light.maskCompose: 遮罩 drawImage 合成 ---
+        profileBegin('light.maskCompose');
         ctx.drawImage(getGLCanvas() as unknown as CanvasImageSource, 0, 0, canvas.width, canvas.height, 0, 0, logicW, logicH);
+        profileEnd('light.maskCompose');
     } else {
         // WebGL 不可用的紧急 fallback（不应该走到这里）
         // 在控制台输出醒目警告
