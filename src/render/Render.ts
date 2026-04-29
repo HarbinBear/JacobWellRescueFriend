@@ -16,6 +16,7 @@ import { drawBreathBubblesWorld } from './RenderBreath';
 import { getLifeDetectorRuntime } from '../logic/LifeDetector';
 import { drawGMButton, drawGMPanel } from '../gm/GMPanel';
 import { updateDustTime, drawDustDarkLayer, drawDustLitLayer } from './DustMotes';
+import { profileBegin, profileEnd, drawPerfHUD } from '../debug/PerfHUD';
 
 // 向后兼容，重新导出 canvas 和 ctx
 export { canvas, ctx };
@@ -60,6 +61,7 @@ function drawSplashes() {
 
 // --- 主渲染函数 ---
 export function draw() {
+    profileBegin('draw.sky');
     // 每帧开始时确保dpr缩放生效
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     
@@ -176,9 +178,19 @@ export function draw() {
     // 迷宫岸上阶段、入水动效和结算阶段：跳过水下场景渲染，只渲染UI
     if (isMazeMode && (state.mazeRescue.phase === 'shore' || state.mazeRescue.phase === 'diving_in' || state.mazeRescue.phase === 'debrief' || state.mazeRescue.phase === 'rescued')) {
         ctx.restore();
+        profileEnd('draw.sky');
+        profileBegin('draw.ui');
         drawUI();
+        profileEnd('draw.ui');
+        profileBegin('draw.gm');
+        drawGMButton(ctx);
+        drawGMPanel(ctx);
+        drawPerfHUD(ctx);
+        profileEnd('draw.gm');
         return;
     }
+    profileEnd('draw.sky');
+    profileBegin('draw.scene');
 
     const renderMap = isMazeMode ? state.mazeRescue.mazeMap : state.map;
     const renderWalls = isMazeMode ? state.mazeRescue.mazeWalls : state.walls;
@@ -364,6 +376,8 @@ export function draw() {
         }
     }
 
+    profileEnd('draw.scene');
+    profileBegin('draw.worldObjects');
     // --- 绘制绳索（世界空间，在角色之前）---
     drawRopesWorld();
 
@@ -412,6 +426,8 @@ export function draw() {
     let npcY = state.npc ? state.npc.y : 0;
     let npcAngle = state.npc ? state.npc.angle : 0;
 
+    profileEnd('draw.worldObjects');
+    profileBegin('draw.diver');
     // --- 绘制角色 ---
 
     // 绘制 NPC
@@ -463,15 +479,21 @@ export function draw() {
     // --- 绘制 NPC 呼救表现（气泡、挥手、闪光圈，仅迷宫未被救时）---
     drawNPCDistressWorld(ctx);
 
+    profileEnd('draw.diver');
+    profileBegin('draw.dustDark');
     // 绘制暗色悬浮尘埃（光照前，作为移动参照物）
     updateDustTime(1 / 60);
     drawDustDarkLayer(ctx, viewL, viewR, viewT, viewB, zoom);
+    profileEnd('draw.dustDark');
 
+    profileBegin('draw.breathBubbles');
     // 呼吸气泡（光照前，与岩石/绳索/鱼一样被光照遮罩压暗，黑暗区气泡不会发亮）
     drawBreathBubblesWorld(ctx, viewL, viewR, viewT, viewB);
+    profileEnd('draw.breathBubbles');
 
     ctx.restore();
 
+    profileBegin('draw.lighting');
     // 2. 光照遮罩计算（WebGL）
     let depthFactor = 0;
     if (isMazeMode) {
@@ -583,6 +605,8 @@ export function draw() {
         ctx.fillRect(0, 0, logicW, logicH);
     }
 
+    profileEnd('draw.lighting');
+    profileBegin('draw.overlay');
     // 绘制灰色物体（氧气罐造型）
     // 鱼眼出现前：模糊隐约；鱼眼出现后：清晰可见
     if(state.story.stage === 7 && state.story.flags.flashlightBroken) {
@@ -902,6 +926,8 @@ export function draw() {
         ctx.fillRect(0, 0, logicW, logicH);
     }
 
+    profileEnd('draw.overlay');
+    profileBegin('draw.ui');
     // 3. 绘制 UI
     drawUI();
     drawControls();
@@ -930,6 +956,8 @@ export function draw() {
     // 绘制凶猛鱼被咬特效（在 UI 之上，屏幕空间）
     drawFishBiteEffect(ctx, logicW, logicH);
 
+    profileEnd('draw.ui');
+    profileBegin('draw.transition');
     // 4. 过渡动画
     if(state.transition && state.transition.active) {
         ctx.save();
@@ -1044,10 +1072,14 @@ export function draw() {
         }
     }
 
+    profileEnd('draw.transition');
+    profileBegin('draw.gm');
     // 5. GM 工具面板（最顶层）
     // 全局音频开关按钮已由左上角 HUD 管理器（HUDTopLeft）接管，此处不再独立绘制
     drawGMButton(ctx);
     drawGMPanel(ctx);
+    drawPerfHUD(ctx);
+    profileEnd('draw.gm');
 }
 
 // 生命探知仪：玩家身上的小 LED 灯

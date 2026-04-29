@@ -801,4 +801,13 @@ export const CONFIG = {
         btnXRatio: 0.82,            // 按钮X位置比例
         btnYRatio: 0.88,            // 按钮Y位置比例（比布线按钮更靠下，避免重叠）
     },
+
+    // ===== 性能分析 HUD（临时调试用）=====
+    // 开启后：主循环各 phase 计时并在屏幕中央以纯文字显示 FPS / 帧时 / 各段耗时
+    // 默认关闭，由 GM 面板"性能"Tab 切换
+    perfHUD: {
+        enabled: false,        // 总开关：开启后才产生计时 + 绘制 HUD
+        enableMarks: false,    // 是否同时产生 performance.mark / measure（录 Chrome Performance 火焰图时开）
+        fontSize: 11,          // HUD 文字字号
+    },
 };

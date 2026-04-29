@@ -432,6 +432,14 @@ export const TABS: GMTab[] = [
             { type: 'number', label: 'O₂损失 重(%)', path: 'collisionImpact.o2LossMax', min: 0.5, max: 15, step: 0.1, precision: 2 },
         ]
     },
+    {
+        name: '性能',
+        items: [
+            { type: 'bool', label: '性能HUD(中央文字)', path: 'perfHUD.enabled' },
+            { type: 'bool', label: 'mark/measure(火焰图带名)', path: 'perfHUD.enableMarks' },
+            { type: 'number', label: 'HUD字号', path: 'perfHUD.fontSize', min: 8, max: 20, step: 1 },
+        ]
+    },
 ];
 
 // ============ 面板布局常量 ============

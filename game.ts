@@ -2,6 +2,7 @@ import { initTextures, draw } from './src/render/Render';
 import { resetGameLogic, update, resetArenaLogic, updateArena, resetMazeLogic, replayMazeLogic, updateMaze, startMazeDive, returnToShore } from './src/logic/Logic';
 import { initInput } from './src/core/input';
 import { initAudio, updateAudio, updateSFXLoops } from './src/audio/AudioManager';
+import { perfFrameBegin, perfFrameEnd, profileBegin, profileEnd } from './src/debug/PerfHUD';
 
 // 初始化纹理
 initTextures();
@@ -24,12 +25,14 @@ resetGameLogic(1, false);
 
 // 游戏主循环
 function gameLoop() {
-    update();
-    updateArena();
-    updateMaze();
-    updateAudio();
-    updateSFXLoops();
-    draw();
+    perfFrameBegin();
+    profileBegin('update');        update();         profileEnd('update');
+    profileBegin('updateArena');   updateArena();    profileEnd('updateArena');
+    profileBegin('updateMaze');    updateMaze();     profileEnd('updateMaze');
+    profileBegin('updateAudio');   updateAudio();    profileEnd('updateAudio');
+    profileBegin('updateSFXLoops');updateSFXLoops(); profileEnd('updateSFXLoops');
+    profileBegin('draw');          draw();           profileEnd('draw');
+    perfFrameEnd();
     requestAnimationFrame(gameLoop);
 }
 

@@ -8,7 +8,7 @@
     "urlCheck": true,
     "es6": true,
     "postcss": true,
-    "minified": true,
+    "minified": false,
     "newFeature": true,
     "autoCompile": true,
     "compileWorklet": false,
@@ -21,7 +21,9 @@
     "minifyWXML": true,
     "localPlugins": false,
     "disableUseStrict": false,
-    "useCompilerPlugins": ["typescript"],
+    "useCompilerPlugins": [
+      "typescript"
+    ],
     "condition": false,
     "swc": false,
     "disableSWC": true,
