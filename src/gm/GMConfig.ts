@@ -464,6 +464,19 @@ export const TABS: GMTab[] = [
     },
 ];
 
+// 把 Debug / 性能 两个 Tab 置顶（用户偏好：调试和画质入口放最前面，避免每次都要左滑一堆 Tab）
+// 用后置重排的方式实现，不用搬动上面的大段字面量，未来新增 Tab 只要不叫这俩名字都不受影响
+(() => {
+    const topOrder = ['性能', 'Debug']; // 倒序 unshift，结果是 Debug 在第 0 位、性能在第 1 位
+    for (const name of topOrder) {
+        const idx = TABS.findIndex(t => t.name === name);
+        if (idx > 0) {
+            const [tab] = TABS.splice(idx, 1);
+            TABS.unshift(tab);
+        }
+    }
+})();
+
 // ============ 面板布局常量 ============
 // GMPanel 和 GMRender 都从这里导入，避免循环依赖
 

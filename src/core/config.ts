@@ -2,7 +2,7 @@ const systemInfo = wx.getSystemInfoSync();
 
 export const CONFIG = {
     // 版本信息
-    version: 'v1.0.9',
+    version: 'v1.0.13',
 
     // 画布设置 (竖屏适配)
     screenWidth: systemInfo.windowWidth,
@@ -474,7 +474,7 @@ export const CONFIG = {
         } as Record<string, { scale: number; rayCount: number; vplMax: number; enableScatter: boolean; enableNpcVol: boolean; skipOcclusion: boolean }>,
 
         // ---- FPS 自适应 ----
-        auto: false,                   // 是否自动根据 FPS 升降档（默认关，等稳定后再开）
+        auto: true,                   // 是否自动根据 FPS 升降档（默认关，等稳定后再开）
         autoMaxLevel: 3,               // auto 能升到的最高档索引（0=low,1=med,2=high,3=ultra）
         initialAutoLevel: 2,           // auto 启动时的初始档位索引
         fpsWindowFrames: 60,           // 每个统计窗口多少帧
