@@ -445,6 +445,29 @@ export const CONFIG = {
         scatterRadiusRatio: 0.8,     // 漫散射半径占 maxDist 比例
     },
 
+    // ===== 画质分档 / 自适应（FPS 自适应光照性能） =====
+    // 核心手段：降低 WebGL 光照 canvas 的分辨率 + 压低 VPL 上限 + 低档关闭漫散射 / NPC 体积光
+    // 档位：0=low / 1=medium / 2=high / 3=ultra
+    quality: {
+        auto: true,                    // 是否自动根据 FPS 升降档
+        manualLevel: 2,                // 手动挡位（auto=false 时生效）：0~3
+        initialAutoLevel: 2,           // auto 启动时的初始档位（建议 2=high）
+        autoMaxLevel: 2,               // auto 能升到的最高档（避免自动切到 ultra）
+        fpsWindowFrames: 60,           // 每个统计窗口多少帧
+        fpsDownThreshold: 45,          // 平均 FPS 低于此值触发降档候选
+        fpsUpThreshold: 55,            // 平均 FPS 高于此值触发升档候选
+        downWindows: 2,                // 连续多少个窗口低于阈值才降档
+        upWindows: 3,                  // 连续多少个窗口高于阈值才升档
+        switchCooldownMs: 2000,        // 档位切换冷却（防震荡）
+        // 各档参数表（label 仅供日志）
+        levels: [
+            { scale: 0.25, vplMax: 16,  enableScatter: false, enableNpcVol: false, label: "low" },
+            { scale: 0.50, vplMax: 48,  enableScatter: true,  enableNpcVol: true,  label: "medium" },
+            { scale: 0.75, vplMax: 96,  enableScatter: true,  enableNpcVol: true,  label: "high" },
+            { scale: 1.00, vplMax: 128, enableScatter: true,  enableNpcVol: true,  label: "ultra" },
+        ],
+    },
+
     // ===== 后处理（曝光 + Tone Mapping）配置 =====
     postProcess: {
         // 手动曝光

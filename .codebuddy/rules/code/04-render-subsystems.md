@@ -437,6 +437,42 @@ WebGL canvas 在微信小游戏手机端有两个必须遵守的兼容性约束�
 
 2. **每次 `drawArrays` 后必须调用 `gl.flush()`**。手机 GPU 的 `drawArrays` 只是把命令提交到命令队列，不保证立即执行完毕。如果紧接着用 `ctx.drawImage(glCanvas)` 读取，GPU 可能还没渲染完。`gl.flush()` 确保命令队列被提交执行。
 
+#### 画质分档 + FPS 自适应（P12）
+
+光照系统 `light.volPass` / `light.maskPass` 是整帧最贵的 GPU 工作，因为 fragment shader 每像素都要跑一次遮挡查询 + VPL 循环（最多 128 次）。为了适配低端机，P12 阶段引入**四档画质 + FPS 自适应**，主入口在 `src/render/QualityManager.ts`。
+
+核心手段：
+
+- **分辨率缩放（收益最大）**：动态调整 `glCanvas.width/height = canvas.width/height × scale`，由于 fragment shader 工作量与像素数线性相关，从 1.0 缩到 0.5 直接省掉 75% 片元计算。合成阶段的 `drawImage` 由 `getGLCanvasPixelSize()` 提供实际源 rect，再放大回主画布尺寸，视觉上只表现为轻微模糊（对洞穴氛围反而更契合）。
+- **VPL 点数上限**：`uploadVPLData()` 按档位读取 `CONFIG.quality.levels[level].vplMax`，低档上传点数更少，shader 内 `for (i = 0; i < u_vplCount; i++)` 的 early-break 会更早退出。
+- **低档关闭漫散射 / NPC 体积光**：通过 uniform 门控（`u_scatterIntensity *= scatterGate`、体积光 pass 强制 `u_npcActive = 0`），不需要编译多份 shader；NPC 遮罩层仍保留，避免完全看不到 NPC。
+
+档位参数（`CONFIG.quality.levels`）：
+
+| 档位 | scale | vplMax | scatter | NPC 体积光 |
+|---|---|---|---|---|
+| 0 low | 0.25 | 16 | 关 | 关 |
+| 1 medium | 0.50 | 48 | 开 | 开 |
+| 2 high | 0.75 | 96 | 开 | 开 |
+| 3 ultra | 1.00 | 128 | 开 | 开 |
+
+自适应策略：
+
+- 每 60 帧一个窗口统计平均 FPS（由 `game.ts` 主循环把 wall-clock 帧间隔传入 `qualityOnFrame()`）
+- FPS < 45 连续 2 个窗口 → 降一档
+- FPS > 55 连续 3 个窗口 → 升一档（不会自动升到 ultra，ultra 只能手动选）
+- 档位切换有 2s 冷却，避免震荡
+- auto 默认首次启动从 high (level=2) 起步
+
+关键接入点：
+
+- `src/render/WebGLLight.ts::applyQualityScale()` / `getGLCanvasPixelSize()` / `setCommonUniforms()` 里的 `scatterGate / npcVolGate`
+- `src/render/Render.ts` 中两处 `drawImage(getGLCanvas(), 0, 0, glSize.w, glSize.h, 0, 0, logicW, logicH)` 必须用 `getGLCanvasPixelSize()` 返回的实际像素尺寸作为源 rect
+- `src/render/QualityManager.ts::onQualitySwitch()` 回调在 `initWebGLLight()` 成功后注册
+- `game.ts::initQualityManager()` 必须在 `initWebGLLight()` 之前或之后都行，但每帧 `qualityOnFrame(frameDtMs)` 必须在 `perfFrameEnd()` 之后、`requestAnimationFrame` 之前调用
+
+GM 面板"性能"Tab 暴露了全部关键参数：`quality.auto / manualLevel / initialAutoLevel / autoMaxLevel / fpsDownThreshold / fpsUpThreshold / fpsWindowFrames / switchCooldownMs`。
+
 此外还建议设置 `premultipliedAlpha: false` 避免预乘 alpha 导致颜色混合异常。
 
 ### 2.5 修改渲染时的优先落点

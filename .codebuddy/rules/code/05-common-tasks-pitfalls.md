@@ -153,6 +153,29 @@ type: always
 - `src/core/config.ts` 中的 `fishArena`
 - `src/render/RenderUI.ts`
 
+### 1.7b 改画质分档 / FPS 自适应 / 光照性能
+
+优先检查：
+
+- `src/render/QualityManager.ts`（档位状态、FPS 采样窗口、自适应升降档策略、`onQualitySwitch` 回调注册）
+- `src/render/WebGLLight.ts` 中：
+  - `applyQualityScale()` / `getGLCanvasPixelSize()`：glCanvas 分辨率缩放
+  - `uploadVPLData()` 里按 `getLevelParams().vplMax` 限制上传数量
+  - `setCommonUniforms()` 里的 `scatterGate / npcVolGate` 门控
+  - `renderVolumetricLight()` 里对 NPC 体积光的强制压 0
+- `src/render/Render.ts` 中两处 `drawImage(getGLCanvas(), ...)` 必须用 `getGLCanvasPixelSize()` 返回的实际源 rect
+- `src/core/config.ts` 中 `quality` 配置块
+- `src/gm/GMConfig.ts` 中"性能"Tab
+- `game.ts` 中 `initQualityManager()` 初始化 + 主循环每帧 `qualityOnFrame(frameDtMs)`
+
+常见陷阱：
+
+- **drawImage 源 rect 不能写死 canvas.width/height**：glCanvas 降分辨率后仍用主画布全尺寸作为源 rect，会把越界部分当透明，画面全屏花。必须用 `getGLCanvasPixelSize()` 给出的实时尺寸。
+- **VPL shader 循环上限是 128 常量**：WebGL 1.0 规定 for 循环上限必须是常量，不能直接改。控制 VPL 数量只能通过 `u_vplCount` + `if (i >= u_vplCount) break;`，所以档位只控制 CPU 端上传点数。
+- **NPC 遮罩层不要关**：低档只关 NPC 的体积光（手电泛光部分），遮罩层保留，否则 NPC 在黑暗中完全消失。
+- **分辨率缩到 0.25 后看清光锥边缘会有明显锯齿**：这是预期行为，是画面"柔化"换 75% 片元性能的代价；调参时可通过 `flashlight.edgeFadeRatio` 略微加宽边缘羽化来缓解。
+- **切档冷却别调太短**：低于 1 秒时自适应会在临界 FPS 附近来回跳档，体感更糟。默认 2000ms 是权衡过的。
+
 ### 1.8 改 GM 调参面板
 
 优先检查：

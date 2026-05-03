@@ -7,11 +7,31 @@ import { canvas, dpr, logicW, logicH } from './Canvas';
 import { VERT_SRC } from './shaders/vert.glsl';
 import { MASK_FRAG_SRC } from './shaders/maskFrag.glsl';
 import { VOLUMETRIC_FRAG_SRC } from './shaders/volumetricFrag.glsl';
+import { getLevelParams, onQualitySwitch } from './QualityManager';
 
 // ============ WebGL 画布与上下文 ============
 const glCanvas = wx.createCanvas();
+// 当前 WebGL 画布相对主画布的分辨率缩放（画质档位控制）
+let _currentScale = 1.0;
 glCanvas.width = canvas.width;
 glCanvas.height = canvas.height;
+
+// 根据画质档位调整 WebGL canvas 的实际像素尺寸
+// scale 取 0~1，越小渲染负担越轻，drawImage 合成时自动放大回主画布尺寸
+function applyQualityScale(scale: number): void {
+    if (scale <= 0) scale = 0.25;
+    if (scale > 1) scale = 1;
+    _currentScale = scale;
+    const w = Math.max(2, Math.floor(canvas.width * scale));
+    const h = Math.max(2, Math.floor(canvas.height * scale));
+    if (glCanvas.width !== w) glCanvas.width = w;
+    if (glCanvas.height !== h) glCanvas.height = h;
+}
+
+// 导出：合成阶段（Render.ts 的 drawImage）需要知道当前 glCanvas 实际像素尺寸
+export function getGLCanvasPixelSize(): { w: number, h: number } {
+    return { w: glCanvas.width, h: glCanvas.height };
+}
 
 let gl: WebGLRenderingContext | null = null;
 let program: WebGLProgram | null = null;
@@ -245,6 +265,17 @@ export function initWebGLLight(): boolean {
         
         console.log('[WebGL] 光照初始化成功，画布尺寸:', glCanvas.width, 'x', glCanvas.height, 'float纹理:', _useFloatTex);
         console.log('[WebGL] GL_RENDERER:', gl.getParameter(gl.RENDERER), 'GL_VERSION:', gl.getParameter(gl.VERSION));
+
+        // 注册画质档位切换回调：档位变化时同步 glCanvas 分辨率
+        onQualitySwitch((_level, params) => {
+            applyQualityScale(params.scale);
+        });
+        // 初始化时按当前档位立即调整一次
+        try {
+            const initParams = getLevelParams();
+            applyQualityScale(initParams.scale);
+        } catch (e) { /* ignore */ }
+
         return true;
     } catch (e) {
         console.error('WebGL 初始化异常:', e, '回退到 Canvas 2D');
@@ -318,14 +349,23 @@ export function uploadSiltData(siltData: any) {
     }
 }
 
-// 将 VPL 数据编码到纹理
+// 将 VPL 数据编码到纹理（受画质档位 vplMax 限制：低档上传更少点，少跑 shader 内循环）
 export function uploadVPLData(poly: any[], maxDist: number, getWallColor?: (r: number, c: number) => { r: number, g: number, b: number }) {
     if (!gl || !vplTexture || !vplTexData) return;
     
     vplTexData.fill(0);
     
+    // 根据当前画质档位读取 VPL 上限（不超过 MAX_VPL_POINTS）
+    let vplCap = MAX_VPL_POINTS;
+    try {
+        const qp = getLevelParams();
+        if (qp && qp.vplMax && qp.vplMax > 0) {
+            vplCap = Math.min(MAX_VPL_POINTS, Math.floor(qp.vplMax));
+        }
+    } catch (e) { /* ignore */ }
+    
     let vplIdx = 0;
-    for (let i = 0; i < poly.length && vplIdx < MAX_VPL_POINTS; i++) {
+    for (let i = 0; i < poly.length && vplIdx < vplCap; i++) {
         let p = poly[i];
         // 只取打在墙上的射线（距离 < 95% 最大距离）
         if (p.dist > maxDist * 0.95) continue;
@@ -454,13 +494,23 @@ function setCommonUniforms(u: Record<string, WebGLUniformLocation | null>, param
     
     // 手电筒参数化
     const fl = CONFIG.flashlight;
+    // 按画质档位可能关闭漫散射（低档）
+    let scatterGate = 1.0;
+    let npcVolGate = 1.0;
+    try {
+        const qp = getLevelParams();
+        if (qp) {
+            scatterGate = qp.enableScatter ? 1.0 : 0.0;
+            npcVolGate = qp.enableNpcVol ? 1.0 : 0.0;
+        }
+    } catch (e) { /* ignore */ }
     gl.uniform1f(u['u_flatRatio']!, fl.flatRatio);
     gl.uniform1f(u['u_edgeFadeRatio']!, fl.edgeFadeRatio);
     gl.uniform1f(u['u_maskPow']!, fl.maskPow);
     gl.uniform1f(u['u_maskMinAlpha']!, fl.maskMinAlpha);
     gl.uniform1f(u['u_vplRadius']!, fl.vplRadius);
     gl.uniform1f(u['u_vplMaskStrength']!, fl.vplMaskStrength);
-    gl.uniform1f(u['u_scatterIntensity']!, fl.scatterIntensity);
+    gl.uniform1f(u['u_scatterIntensity']!, fl.scatterIntensity * scatterGate);
     gl.uniform1f(u['u_scatterDistRatio']!, fl.scatterDistRatio);
     gl.uniform1f(u['u_scatterRadiusRatio']!, fl.scatterRadiusRatio);
     // 体积光参数化
@@ -469,6 +519,8 @@ function setCommonUniforms(u: Record<string, WebGLUniformLocation | null>, param
     gl.uniform3f(u['u_volOuterColor']!, fl.volOuterColor[0], fl.volOuterColor[1], fl.volOuterColor[2]);
     gl.uniform3f(u['u_volCenterColor']!, fl.volCenterColor[0], fl.volCenterColor[1], fl.volCenterColor[2]);
     gl.uniform1f(u['u_vplVolStrength']!, fl.vplVolStrength);
+    // 缓存 npcVolGate 供体积光程序在 renderVolumetricLight 里使用
+    (gl as any)._npcVolGate = npcVolGate;
 
     // 后处理参数
     const pp = CONFIG.postProcess;
@@ -560,7 +612,13 @@ export function renderVolumetricLight(params: {
     
     setupProgram(_volProgram, _volUniforms);
     setCommonUniforms(_volUniforms, params);
-    
+
+    // 画质档位：低档关闭 NPC 体积光（遮罩仍保留，避免完全看不到 NPC）
+    const npcVolGate = (gl as any)._npcVolGate;
+    if (npcVolGate === 0) {
+        gl.uniform1f(_volUniforms['u_npcActive']!, 0.0);
+    }
+
     bindTextures(_volUniforms);
     
     gl.drawArrays(gl.TRIANGLES, 0, 6);

@@ -435,6 +435,14 @@ export const TABS: GMTab[] = [
     {
         name: '性能',
         items: [
+            { type: 'bool', label: '画质-自适应(auto)', path: 'quality.auto' },
+            { type: 'number', label: '手动档位 0低/1中/2高/3极', path: 'quality.manualLevel', min: 0, max: 3, step: 1 },
+            { type: 'number', label: 'auto起步档位', path: 'quality.initialAutoLevel', min: 0, max: 3, step: 1 },
+            { type: 'number', label: 'auto最高档位', path: 'quality.autoMaxLevel', min: 0, max: 3, step: 1 },
+            { type: 'number', label: 'FPS降档阈值', path: 'quality.fpsDownThreshold', min: 20, max: 60, step: 1 },
+            { type: 'number', label: 'FPS升档阈值', path: 'quality.fpsUpThreshold', min: 30, max: 60, step: 1 },
+            { type: 'number', label: '采样窗口(帧)', path: 'quality.fpsWindowFrames', min: 20, max: 240, step: 10 },
+            { type: 'number', label: '切档冷却(ms)', path: 'quality.switchCooldownMs', min: 500, max: 8000, step: 250 },
             { type: 'bool', label: '性能HUD(中央文字)', path: 'perfHUD.enabled' },
             { type: 'bool', label: 'mark/measure(火焰图带名)', path: 'perfHUD.enableMarks' },
             { type: 'number', label: 'HUD字号', path: 'perfHUD.fontSize', min: 8, max: 20, step: 1 },

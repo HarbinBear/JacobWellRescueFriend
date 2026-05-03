@@ -3,12 +3,16 @@ import { resetGameLogic, update, resetArenaLogic, updateArena, resetMazeLogic, r
 import { initInput } from './src/core/input';
 import { initAudio, updateAudio, updateSFXLoops } from './src/audio/AudioManager';
 import { perfFrameBegin, perfFrameEnd, profileBegin, profileEnd } from './src/debug/PerfHUD';
+import { initQualityManager, onFrame as qualityOnFrame } from './src/render/QualityManager';
 
 // 初始化纹理
 initTextures();
 
 // 初始化音频系统（创建 BGM 上下文）
 initAudio();
+
+// 初始化画质档位管理器（WebGL 光照的分辨率/VPL/漫散射会跟着它走）
+initQualityManager();
 
 // 初始化输入监听，传入重置回调（支持从指定关卡开始）
 initInput(
@@ -24,6 +28,7 @@ initInput(
 resetGameLogic(1, false);
 
 // 游戏主循环
+let _lastFrameT = 0;
 function gameLoop() {
     perfFrameBegin();
     profileBegin('update');        update();         profileEnd('update');
@@ -33,6 +38,12 @@ function gameLoop() {
     profileBegin('updateSFXLoops');updateSFXLoops(); profileEnd('updateSFXLoops');
     profileBegin('draw');          draw();           profileEnd('draw');
     perfFrameEnd();
+    // 画质自适应：用 wall-clock 帧间隔喂 FPS 采样
+    const t1 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+    if (_lastFrameT > 0) {
+        qualityOnFrame(t1 - _lastFrameT);
+    }
+    _lastFrameT = t1;
     requestAnimationFrame(gameLoop);
 }
 

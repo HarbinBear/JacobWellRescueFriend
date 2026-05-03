@@ -2,7 +2,7 @@ import { CONFIG } from '../core/config';
 import { state, player, particles, touches } from '../core/state';
 import { canvas, ctx, dpr, logicW, logicH } from './Canvas';
 import { computeSiltAttenuation, isLineOfSight, getLightPolygon } from './RenderLight';
-import { initWebGLLight, isWebGLAvailable, uploadPolyData, uploadSiltData, uploadVPLData, renderLightMask, renderVolumetricLight, getGLCanvas } from './WebGLLight';
+import { initWebGLLight, isWebGLAvailable, uploadPolyData, uploadSiltData, uploadVPLData, renderLightMask, renderVolumetricLight, getGLCanvas, getGLCanvasPixelSize } from './WebGLLight';
 import { drawDiver } from './RenderDiver';
 import { drawUI, drawControls, drawSlashEffect } from './RenderUI';
 import { drawRopesWorld, drawRopeButton } from './RenderRope';
@@ -576,14 +576,16 @@ export function draw() {
         });
         profileEnd('light.volPass');
         
-        // --- light.volCompose: 体积光 drawImage 合成（screen 模式） ---
+        // --- light.volCompose: 体积光 drawImage 合成（screen 模式）---
         profileBegin('light.volCompose');
         ctx.save();
         ctx.globalCompositeOperation = 'screen';
-        ctx.drawImage(getGLCanvas() as unknown as CanvasImageSource, 0, 0, canvas.width, canvas.height, 0, 0, logicW, logicH);
+        {
+            const glSize = getGLCanvasPixelSize();
+            ctx.drawImage(getGLCanvas() as unknown as CanvasImageSource, 0, 0, glSize.w, glSize.h, 0, 0, logicW, logicH);
+        }
         ctx.restore();
-        profileEnd('light.volCompose');
-        
+        profileEnd('light.volCompose');        
         // --- light.maskPass: 遮罩层 WebGL draw call ---
         profileBegin('light.maskPass');
         renderLightMask({
@@ -601,7 +603,10 @@ export function draw() {
         
         // --- light.maskCompose: 遮罩 drawImage 合成 ---
         profileBegin('light.maskCompose');
-        ctx.drawImage(getGLCanvas() as unknown as CanvasImageSource, 0, 0, canvas.width, canvas.height, 0, 0, logicW, logicH);
+        {
+            const glSize = getGLCanvasPixelSize();
+            ctx.drawImage(getGLCanvas() as unknown as CanvasImageSource, 0, 0, glSize.w, glSize.h, 0, 0, logicW, logicH);
+        }
         profileEnd('light.maskCompose');
     } else {
         // WebGL 不可用的紧急 fallback（不应该走到这里）
