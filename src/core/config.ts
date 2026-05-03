@@ -438,6 +438,12 @@ export const CONFIG = {
         vplRadius: 20.0,             // VPL 影响半径（像素）
         vplMaskStrength: 1.2,        // VPL 在遮罩层的亮度系数
         vplVolStrength: 0.2,         // VPL 在体积光层的亮度系数
+        // VPL 光锥角度权重：让靠光锥中心的 VPL 更亮、靠边缘的 VPL 更暗，
+        // 消除 "VPL 强度均匀、手电边缘却已经很弱" 导致的观感突兀。
+        // 公式：t = candidateI/rays*2 - 1 (-1~1)；w = (1 - |t|^pow)^exp；最后再和 edgeFloor 取 max。
+        vplConeFalloffPow: 1.6,      // 中心平台宽度（<1 更尖峰、>1 更平，推荐 1~2）
+        vplConeFalloffExp: 2.0,      // 边缘下跌速度（越大边缘越暗，推荐 1.5~3）
+        vplConeEdgeFloor: 0.15,      // 光锥边缘最低保留亮度（0 会死黑，推荐 0.1~0.2）
 
         // 漫散射
         scatterIntensity: 0.16,      // 漫散射强度

@@ -364,31 +364,67 @@ export function uploadVPLData(poly: any[], maxDist: number, getWallColor?: (r: n
         }
     } catch (e) { /* ignore */ }
     
+    // 第一遍：收集所有"打到墙上"的候选射线索引
+    // 之所以两遍走，是因为旧实现用 `i % 2 === 0 && vplIdx < vplCap` 从 i=0 线性填到上限就停，
+    // 在 vplCap < 候选总数/2 的档位（low/medium/high 都会触发）下，VPL 只会覆盖光锥"起始半边"
+    // （即 angle - fovRad/2 那一侧），导致 VPL 亮堆和手电主轴看起来有固定角度偏移。
+    // 现在改成先收集候选，再按均匀步长抽样覆盖整个光锥，保证左右对称。
+    let candidates: number[] = [];
+    const distThreshold = maxDist * 0.95;
+    for (let i = 0; i < poly.length; i++) {
+        if (poly[i].dist <= distThreshold) candidates.push(i);
+    }
+    
+    // 光锥角度权重参数：让靠光锥中心的 VPL 更亮、靠边缘的 VPL 更暗，
+    // 这样 VPL 亮度分布和手电主光锥（径向 flatRatio + 角度 edgeFadeRatio 衰减）在感知上一致，
+    // 不会出现"光柱边缘已经很弱，但 VPL 反弹点还很亮"的突兀感。
+    // poly 的索引范围为 0 ~ rayCount，中心索引 = rayCount/2。
+    const rayCount = Math.max(1, poly.length - 1);
+    const rayHalf = rayCount * 0.5;
+    const conePow = CONFIG.flashlight.vplConeFalloffPow;
+    const coneExp = CONFIG.flashlight.vplConeFalloffExp;
+    const coneFloor = CONFIG.flashlight.vplConeEdgeFloor;
+    
     let vplIdx = 0;
-    for (let i = 0; i < poly.length && vplIdx < vplCap; i++) {
-        let p = poly[i];
-        // 只取打在墙上的射线（距离 < 95% 最大距离）
-        if (p.dist > maxDist * 0.95) continue;
-        // 每隔2条射线采样一个 VPL 点，128 点足够覆盖整个光锥
-        if (i % 2 !== 0) continue;
+    const candN = candidates.length;
+    if (candN > 0 && vplCap > 0) {
+        // 均匀步长覆盖整段候选：若候选数 <= 上限则全部采，否则等间距抽样
+        const takeN = Math.min(candN, vplCap);
+        // 用浮点步长避免整除带来的左右不对称；起始偏移居中，防止始终偏向某一端
+        const stride = candN / takeN;
+        const startOffset = stride * 0.5;
         
-        let distRatio = p.dist / maxDist;
-        // 衰减：近处反弹强，远处弱
-        let distFade = Math.max(0, 1 - distRatio * distRatio); // 平方衰减
-        let bounceAlpha = CONFIG.flashlight.vplBounceBase * distFade;
-        
-        // 获取墙壁颜色亮度
-        let colorBrightness = 0.6; // 默认
-        if (getWallColor) {
-            // 这里简化处理，不查颜色了，用默认值
-            colorBrightness = 0.6;
+        for (let k = 0; k < takeN; k++) {
+            const ci = Math.min(candN - 1, Math.floor(startOffset + k * stride));
+            const rayI = candidates[ci];
+            const p = poly[rayI];
+            
+            // 径向衰减：近处反弹强、远处弱（平方衰减）
+            const distRatio = p.dist / maxDist;
+            const distFade = Math.max(0, 1 - distRatio * distRatio);
+            
+            // 角度（光锥内）衰减：中心=1、边缘→coneFloor
+            // t = (rayI - rayHalf) / rayHalf，范围 -1 ~ 1；|t|^pow 控制平台宽度，(...)^exp 控制边缘下跌
+            const t = (rayI - rayHalf) / rayHalf;
+            const absT = Math.min(1, Math.abs(t));
+            const coneRaw = Math.pow(Math.max(0, 1 - Math.pow(absT, conePow)), coneExp);
+            const coneWeight = Math.max(coneFloor, coneRaw);
+            
+            let bounceAlpha = CONFIG.flashlight.vplBounceBase * distFade * coneWeight;
+            
+            // 墙壁颜色亮度：默认值（暂未接入按墙体取色）
+            let colorBrightness = 0.6;
+            if (getWallColor) {
+                // 这里简化处理，不查颜色了，用默认值
+                colorBrightness = 0.6;
+            }
+            
+            vplTexData[vplIdx * 4] = p.x;                 // R: 世界X
+            vplTexData[vplIdx * 4 + 1] = p.y;             // G: 世界Y
+            vplTexData[vplIdx * 4 + 2] = colorBrightness; // B: 颜色亮度
+            vplTexData[vplIdx * 4 + 3] = bounceAlpha;     // A: alpha
+            vplIdx++;
         }
-        
-        vplTexData[vplIdx * 4] = p.x;         // R: 世界X
-        vplTexData[vplIdx * 4 + 1] = p.y;     // G: 世界Y
-        vplTexData[vplIdx * 4 + 2] = colorBrightness; // B: 颜色亮度
-        vplTexData[vplIdx * 4 + 3] = bounceAlpha;     // A: alpha
-        vplIdx++;
     }
     
     gl.bindTexture(gl.TEXTURE_2D, vplTexture);
