@@ -5,6 +5,14 @@ import { initAudio, updateAudio, updateSFXLoops } from './src/audio/AudioManager
 import { perfFrameBegin, perfFrameEnd, profileBegin, profileEnd } from './src/debug/PerfHUD';
 import { initQualityManager, onFrame as qualityOnFrame } from './src/render/QualityManager';
 
+// 调试期：解锁到设备上限（iPad 120Hz / 部分 Android 120Hz），便于真机观察各画质档位的真实压力
+// 设备不支持 120Hz 时会自动回落 60，不会报错
+try {
+    if (typeof wx !== 'undefined' && (wx as any).setPreferredFramesPerSecond) {
+        (wx as any).setPreferredFramesPerSecond(120);
+    }
+} catch (e) { /* 忽略：非微信环境或老基础库 */ }
+
 // 初始化纹理
 initTextures();
 

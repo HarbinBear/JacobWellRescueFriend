@@ -66,10 +66,6 @@ export const CONFIG = {
     ambientPerceptionRadius: 80,   // 周围环境感知半径（非手电筒方向也能微弱看到近距离东西）
     ambientPerceptionIntensity: 0.35, // 周围环境感知强度 (0-1)
 
-    // 泥沙光线遮挡参数（线性截断 + 逐粒子射线投影）
-    siltSampleSteps: 16,            // 每条射线沿距离方向的采样步数（越多越精细）
-    siltAbsorptionCoeff: 0.8,       // 泥沙吸收强度（线性截断：τ≥1完全遮挡，推荐0.3~1.5）
-    siltInfluenceRadius: 10,        // 每个泥沙粒子对射线的横向影响半径（像素）
     siltSpawnMaxWallDist: 80,       // 生成泥沙的最大岩壁距离（像素）
 
     // 绳索系统参数
@@ -455,23 +451,37 @@ export const CONFIG = {
     // 核心手段：降低 WebGL 光照 canvas 的分辨率 + 压低 VPL 上限 + 低档关闭漫散射 / NPC 体积光
     // 档位：0=low / 1=medium / 2=high / 3=ultra
     quality: {
+        // ===== 画质预设系统（PC 游戏式） =====
+        // preset: 当前预设名（'low'|'medium'|'high'|'ultra'|'custom'）
+        // 选预设 → 下方小项同步刷新；手动改小项 → preset 自动变 custom
+        // auto 开启 → preset 变 custom，小项被 FPS 自适应实时改写
+        preset: 'high' as string,
+
+        // ---- 运行时小项（可被预设覆写，也可被用户/auto 手动改） ----
+        scale: 0.75,                   // WebGL canvas 分辨率缩放（0~1）
+        rayCount: 180,                 // 射线数量（光锥精度，越高边缘越平滑）
+        vplMax: 96,                    // VPL 上传点数上限
+        enableScatter: true,           // 是否启用漫散射
+        enableNpcVol: true,            // 是否启用 NPC 体积光
+
+        // ---- 预设参数模板 ----
+        presets: {
+            low:    { scale: 0.25, rayCount: 10,  vplMax: 3,   enableScatter: false, enableNpcVol: false },
+            medium: { scale: 0.50, rayCount: 60,  vplMax: 32,  enableScatter: true,  enableNpcVol: true  },
+            high:   { scale: 0.75, rayCount: 180, vplMax: 96,  enableScatter: true,  enableNpcVol: true  },
+            ultra:  { scale: 1.00, rayCount: 360, vplMax: 128, enableScatter: true,  enableNpcVol: true  },
+        } as Record<string, { scale: number; rayCount: number; vplMax: number; enableScatter: boolean; enableNpcVol: boolean }>,
+
+        // ---- FPS 自适应 ----
         auto: true,                    // 是否自动根据 FPS 升降档
-        manualLevel: 2,                // 手动挡位（auto=false 时生效）：0~3
-        initialAutoLevel: 2,           // auto 启动时的初始档位（建议 2=high）
-        autoMaxLevel: 2,               // auto 能升到的最高档（避免自动切到 ultra）
+        autoMaxLevel: 2,               // auto 能升到的最高档索引（0=low,1=med,2=high,3=ultra）
+        initialAutoLevel: 2,           // auto 启动时的初始档位索引
         fpsWindowFrames: 60,           // 每个统计窗口多少帧
         fpsDownThreshold: 45,          // 平均 FPS 低于此值触发降档候选
         fpsUpThreshold: 55,            // 平均 FPS 高于此值触发升档候选
         downWindows: 2,                // 连续多少个窗口低于阈值才降档
         upWindows: 3,                  // 连续多少个窗口高于阈值才升档
         switchCooldownMs: 2000,        // 档位切换冷却（防震荡）
-        // 各档参数表（label 仅供日志）
-        levels: [
-            { scale: 0.25, vplMax: 16,  enableScatter: false, enableNpcVol: false, label: "low" },
-            { scale: 0.50, vplMax: 48,  enableScatter: true,  enableNpcVol: true,  label: "medium" },
-            { scale: 0.75, vplMax: 96,  enableScatter: true,  enableNpcVol: true,  label: "high" },
-            { scale: 1.00, vplMax: 128, enableScatter: true,  enableNpcVol: true,  label: "ultra" },
-        ],
     },
 
     // ===== 后处理（曝光 + Tone Mapping）配置 =====

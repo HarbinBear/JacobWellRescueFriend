@@ -181,15 +181,14 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
     }
 
     wx.onTouchStart((res) => {
-        // GM 面板优先消费触摸事件（GM 按钮在屏幕顶部中央）
+        // GM 面板优先消费触摸事件（面板本身或 HUD 栏的 GM 齿轮按钮）
         const gmTouch = res.touches[res.touches.length - 1];
         if (gmTouch && handleGMTouchStart(gmTouch.clientX, gmTouch.clientY)) {
             return;
         }
-        // GM 面板打开时拦截所有游戏输入
-        if (isGMOpen()) return;
 
-        // 左上角 HUD 管理器优先消费（迷宫模式下的氧气环/手动挡/音频/探知仪四个按钮）
+        // 左上角 HUD 栏始终优先（即使 GM 开着也允许交互）
+        // 这样 GM 开启后可以再点齿轮图标关闭，也保留切音频/手动挡等能力
         // 只在迷宫 play 阶段启用；岸上/入水/结算阶段不启用，这些阶段有自己的 UI
         if (state.screen === 'mazeRescue' && state.mazeRescue && state.mazeRescue.phase === 'play') {
             const hudTouch = res.changedTouches && res.changedTouches.length > 0 ? res.changedTouches[0] : res.touches[res.touches.length - 1];
@@ -197,6 +196,9 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                 return;
             }
         }
+
+        // GM 面板打开时拦截剩余所有游戏输入（HUD 栏已在上面优先处理完）
+        if (isGMOpen()) return;
 
         if(state.screen === 'menu') {
             const touch = res.touches[0];
@@ -452,18 +454,19 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
     });
 
     wx.onTouchMove((res) => {
-        // GM面板优先消费滑动事件
-        if (isGMOpen()) {
-            const t = res.touches[0];
-            if (t) handleGMTouchMove(t.clientX, t.clientY);
-            return;
-        }
-
-        // 左上角 HUD 管理器接收移动事件（用于长按阈值判定）
+        // HUD 栏优先处理自己跟踪的触点（即使 GM 开着也要让 HUD 长按阐值继续生效）
+        // HUD 只处理一开始注册过的 identifier，其他触点会被它忽略，不会误吃 GM 拖动
         if (state.screen === 'mazeRescue' && state.mazeRescue && state.mazeRescue.phase === 'play') {
             for (const t of res.touches) {
                 handleHUDTouchMove(t.identifier, t.clientX, t.clientY);
             }
+        }
+
+        // GM面板消费拖动事件（包括面板自身拖动和 Tab 滑动）
+        if (isGMOpen()) {
+            const t = res.touches[0];
+            if (t) handleGMTouchMove(t.clientX, t.clientY);
+            return;
         }
 
         // 放弃按钮长按计时（在 update 循环中处理，这里不需要）
@@ -597,7 +600,19 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
     });
 
     wx.onTouchEnd((res) => {
-        // GM面板优先消费触摸结束事件
+        // HUD 栏优先处理自己跟踪的触点释放（即使 GM 开着，点齿轮关 GM 也走这条路）
+        // HUD 只处理它自己注册过的 identifier，其他触点会被忽略，不会误吃 GM 面板事件
+        if (state.screen === 'mazeRescue' && state.mazeRescue && state.mazeRescue.phase === 'play') {
+            for (const t of res.changedTouches) {
+                // HUD 如果消费了（返回 true），不进一步走其他分支；未消费就继续向下
+                if (handleHUDTouchEnd(t.identifier, t.clientX, t.clientY)) {
+                    // 查看是否仍有其他未处理触点；这里简单处理成 early return，大多数场景下一次只有一个 changedTouch
+                    return;
+                }
+            }
+        }
+
+        // GM面板消费触摸结束事件
         if (isGMOpen()) {
             const t = res.changedTouches[0];
             if (t) handleGMTouchEnd(t.clientX, t.clientY);

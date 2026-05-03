@@ -55,10 +55,7 @@ uniform float u_scatterRadiusRatio;  // 漫散射半径占 maxDist 比例
 uniform sampler2D u_polyTex;
 uniform float u_polyCount;
 
-// 泥沙衰减纹理
-uniform sampler2D u_siltTex;
-uniform float u_hasSilt;
-uniform float u_siltSteps;
+
 
 // VPL 纹理
 uniform sampler2D u_vplTex;
@@ -105,19 +102,7 @@ float queryOcclusionDist(float fragAngle, float lightAngle, float fov) {
     return s.r * u_maxDist;
 }
 
-// 查询泥沙透射率
-float querySiltTransmittance(float fragAngle, float lightAngle, float fov, float dist) {
-    if (u_hasSilt < 0.5) return 1.0;
-    float halfFov = fov * 0.5;
-    float da = fragAngle - lightAngle;
-    da = da - floor(da / 6.2831853 + 0.5) * 6.2831853;
-    float rayT = (da + halfFov) / fov;
-    if (rayT < 0.0 || rayT > 1.0) return 1.0;
-    float texU = (rayT * u_polyCount + 0.5) / POLY_TEX_SIZE;
-    float stepT = clamp(dist / u_maxDist, 0.0, 1.0);
-    vec4 s = texture2D(u_siltTex, vec2(texU, stepT));
-    return s.r;
-}
+
 
 // 计算手电筒光源的亮度贡献
 // 均匀铺光模型：中间一大段全亮，到边缘迅速但平滑地变暗
@@ -159,13 +144,7 @@ float computeFlashlight(vec2 worldPos, vec2 lightPos, float lightAngle, float ma
         radialFade = 1.0 - smoothFade(t);
     }
     
-    // 泥沙衰减（仅主光源）
-    float siltFade = 1.0;
-    if (isPrimary) {
-        siltFade = querySiltTransmittance(fragAngle, lightAngle, fov, dist);
-    }
-    
-    float brightness = angularFade * radialFade * occFade * siltFade;
+    float brightness = angularFade * radialFade * occFade;
     
     return clamp(brightness, 0.0, 1.0);
 }

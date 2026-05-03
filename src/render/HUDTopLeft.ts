@@ -28,6 +28,7 @@ import { state, player } from '../core/state';
 import { ctx } from './Canvas';
 import { drawAudioIcon, toggleMuted as audioToggleMuted } from './RenderAudioToggle';
 import { getLifeDetectorRuntime } from '../logic/LifeDetector';
+import { toggleGMOpen, isGMOpen } from '../gm/GMPanel';
 
 // ========== 布局常量 ==========
 // 起点 X/Y，每项尺寸、间距（垂直排列）
@@ -417,6 +418,22 @@ export function initMazeHUDTopLeft(): void {
             return `生命探知仪\n信号强度：${pct}%\n越近节奏越快`;
         },
     });
+
+    // 5. GM 面板切换（调试工具，放在最后）
+    // 旧的屏幕顶部独立 GM 按钮已下线，统一收缩到左上 HUD 栏
+    // 方案 A：仅迷宫模式可切 GM 面板，菜单 / 主线 / 竞技场不提供入口
+    registerHUDItem({
+        id: 'gm',
+        visible: () => true,
+        iconDraw: drawGMIcon,
+        supportsLongPress: false,
+        onShortTap: () => {
+            toggleGMOpen();
+        },
+        tipText: () => {
+            return isGMOpen() ? 'GM 面板：已打开' : 'GM 面板：已关闭';
+        },
+    });
 }
 
 // ========== 图标绘制函数 ==========
@@ -702,6 +719,73 @@ function drawLifeDetectorIcon(c: CanvasRenderingContext2D, cx: number, cy: numbe
         c.beginPath();
         c.arc(cx, cy, 1.6, 0, Math.PI * 2);
         c.fill();
+    }
+
+    c.restore();
+}
+
+// GM 面板切换图标：橙色齿轮样式，打开时变亮并有轻微旋转
+// 旧的 GM 按钮是屏幕顶部中央的 "GM" 文字圆；迁入 HUD 栏后换一个工具型图标，避免和其他 HUD 项冲突
+function drawGMIcon(c: CanvasRenderingContext2D, cx: number, cy: number, size: number, time: number): void {
+    const open = isGMOpen();
+    const r = size / 2 - 2;
+
+    c.save();
+
+    // 底圆（打开时橙色，关闭时暗灰）
+    c.fillStyle = open ? 'rgba(255, 136, 0, 0.65)' : 'rgba(60, 60, 60, 0.55)';
+    c.beginPath();
+    c.arc(cx, cy, r, 0, Math.PI * 2);
+    c.fill();
+
+    // 外框
+    c.strokeStyle = open ? 'rgba(255, 180, 80, 0.7)' : 'rgba(180, 180, 180, 0.4)';
+    c.lineWidth = 1;
+    c.beginPath();
+    c.arc(cx, cy, r, 0, Math.PI * 2);
+    c.stroke();
+
+    // 齿轮主体
+    c.save();
+    c.translate(cx, cy);
+    // 打开时缓慢旋转
+    const rot = open ? (time * 0.4) : 0;
+    c.rotate(rot);
+
+    const teeth = 8;
+    const outerR = r * 0.70;
+    const innerR = r * 0.50;
+    const toothDepth = r * 0.16;
+
+    c.fillStyle = open ? 'rgba(255, 255, 255, 0.95)' : 'rgba(200, 200, 200, 0.85)';
+    c.beginPath();
+    for (let i = 0; i < teeth * 2; i++) {
+        const a = (i / (teeth * 2)) * Math.PI * 2;
+        const rad = i % 2 === 0 ? outerR + toothDepth : outerR;
+        const px = Math.cos(a) * rad;
+        const py = Math.sin(a) * rad;
+        if (i === 0) c.moveTo(px, py);
+        else c.lineTo(px, py);
+    }
+    c.closePath();
+    c.fill();
+
+    // 中心孔
+    c.globalCompositeOperation = 'destination-out';
+    c.beginPath();
+    c.arc(0, 0, innerR * 0.55, 0, Math.PI * 2);
+    c.fill();
+    c.globalCompositeOperation = 'source-over';
+
+    c.restore();
+
+    // 打开时底部显示 "ON" 小字
+    if (open) {
+        c.fillStyle = 'rgba(255, 255, 255, 0.85)';
+        c.font = 'bold 7px Arial';
+        c.textAlign = 'center';
+        c.textBaseline = 'middle';
+        c.fillText('ON', cx, cy + r * 0.78);
     }
 
     c.restore();

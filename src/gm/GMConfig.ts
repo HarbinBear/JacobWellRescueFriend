@@ -19,13 +19,20 @@ export interface GMBoolItem {
     path: string;
 }
 
+export interface GMSelectItem {
+    type: 'select';
+    label: string;
+    path: string;
+    options: string[];       // 可选值列表（左右箭头切换）
+}
+
 export interface GMActionItem {
     type: 'action';
     label: string;
     actionId: string;    // 操作标识符，由 GMPanel 中的回调处理
 }
 
-export type GMItem = GMNumberItem | GMBoolItem | GMActionItem;
+export type GMItem = GMNumberItem | GMBoolItem | GMSelectItem | GMActionItem;
 
 export interface GMTab {
     name: string;
@@ -62,7 +69,6 @@ export const TABS: GMTab[] = [
             { type: 'number', label: 'ambient(环境光)', path: 'ambient', min: 0, max: 1, step: 0.01, precision: 3 },
             { type: 'number', label: 'lightRange(手电距离)', path: 'lightRange', min: 50, max: 1000, step: 10 },
             { type: 'number', label: 'fov(视野角度)', path: 'fov', min: 10, max: 180, step: 5 },
-            { type: 'number', label: 'rayCount(射线数)', path: 'rayCount', min: 30, max: 720, step: 30 },
             { type: 'number', label: 'ambientLightSurface(水面光)', path: 'ambientLightSurface', min: 0, max: 1, step: 0.05, precision: 2 },
             { type: 'number', label: 'ambientLightDeep(深层光)', path: 'ambientLightDeep', min: 0, max: 0.5, step: 0.005, precision: 3 },
             { type: 'number', label: 'darknessStartDepth(变暗深度)', path: 'darknessStartDepth', min: 500, max: 5000, step: 100 },
@@ -72,9 +78,6 @@ export const TABS: GMTab[] = [
             { type: 'number', label: 'lightEdgeFeather(边缘羽化)', path: 'lightEdgeFeather', min: 10, max: 300, step: 10 },
             { type: 'number', label: 'ambientPerceptionRadius(感知半径)', path: 'ambientPerceptionRadius', min: 10, max: 300, step: 10 },
             { type: 'number', label: 'ambientPerceptionIntensity(感知强度)', path: 'ambientPerceptionIntensity', min: 0, max: 1, step: 0.05, precision: 2 },
-            { type: 'number', label: 'siltSampleSteps(泥沙采样步数)', path: 'siltSampleSteps', min: 4, max: 64, step: 4 },
-            { type: 'number', label: 'siltAbsorptionCoeff(泥沙吸收)', path: 'siltAbsorptionCoeff', min: 0, max: 3, step: 0.1, precision: 1 },
-            { type: 'number', label: 'siltInfluenceRadius(泥沙影响半径)', path: 'siltInfluenceRadius', min: 1, max: 50, step: 1 },
         ]
     },
     {
@@ -438,10 +441,18 @@ export const TABS: GMTab[] = [
     {
         name: '性能',
         items: [
-            { type: 'bool', label: '画质-自适应(auto)', path: 'quality.auto' },
-            { type: 'number', label: '手动档位 0低/1中/2高/3极', path: 'quality.manualLevel', min: 0, max: 3, step: 1 },
-            { type: 'number', label: 'auto起步档位', path: 'quality.initialAutoLevel', min: 0, max: 3, step: 1 },
-            { type: 'number', label: 'auto最高档位', path: 'quality.autoMaxLevel', min: 0, max: 3, step: 1 },
+            { type: 'select', label: '画质预设', path: 'quality.preset', options: ['low', 'medium', 'high', 'ultra', 'custom'] },
+            { type: 'bool', label: '自适应(auto)', path: 'quality.auto' },
+            // ---- 小项（预设切换时同步刷新，手动改则 preset 变 custom） ----
+            { type: 'number', label: '分辨率缩放', path: 'quality.scale', min: 0.1, max: 1, step: 0.05, precision: 2 },
+            { type: 'number', label: '射线数量', path: 'quality.rayCount', min: 4, max: 720, step: 10 },
+            { type: 'number', label: 'VPL上限', path: 'quality.vplMax', min: 0, max: 128, step: 4 },
+            { type: 'bool', label: '漫散射', path: 'quality.enableScatter' },
+            { type: 'bool', label: 'NPC体积光', path: 'quality.enableNpcVol' },
+            { type: 'bool', label: '跳过遮挡(穿墙)', path: 'quality.skipOcclusion' },
+            // ---- 自适应参数 ----
+            { type: 'number', label: 'auto起步档(0~3)', path: 'quality.initialAutoLevel', min: 0, max: 3, step: 1 },
+            { type: 'number', label: 'auto最高档(0~3)', path: 'quality.autoMaxLevel', min: 0, max: 3, step: 1 },
             { type: 'number', label: 'FPS降档阈值', path: 'quality.fpsDownThreshold', min: 20, max: 60, step: 1 },
             { type: 'number', label: 'FPS升档阈值', path: 'quality.fpsUpThreshold', min: 30, max: 60, step: 1 },
             { type: 'number', label: '采样窗口(帧)', path: 'quality.fpsWindowFrames', min: 20, max: 240, step: 10 },
@@ -458,9 +469,11 @@ export const TABS: GMTab[] = [
 
 import { logicW, logicH } from '../render/Canvas';
 
-export const BTN_RADIUS = 18;       // GM按钮半径
-export const BTN_X = logicW / 2;    // 按钮X（屏幕顶部中央）
-export const BTN_Y = 18;             // 按钮Y
+export const BTN_RADIUS = 18;       // GM按钮半径（保留给兼容引用，左上角 HUD 栏统一管理位置）
+// 兼容保留：旧版 GM 独立按钮位置常量，已不再用于绘制或点击判定
+// 保留导出以免 import 断裂；值无实际意义，设为 -999 避免任何残留点击命中
+export const BTN_X = -999;
+export const BTN_Y = -999;
 
 // 面板默认位置（运行时可通过拖动改变）
 export const PANEL_DEFAULT_X = 10;

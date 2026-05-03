@@ -2,8 +2,7 @@
 // 负责GM按钮和面板的所有渲染逻辑
 
 import {
-    TABS, GMNumberItem,
-    BTN_RADIUS, BTN_X, BTN_Y,
+    TABS, GMNumberItem, GMSelectItem,
     PANEL_W, PANEL_H,
     DRAG_BAR_H, TAB_H, TAB_FIXED_W,
     ITEM_H, ITEM_PAD, LABEL_W_RATIO, INPUT_H,
@@ -12,24 +11,10 @@ import { getGMState, getConfigValue } from './GMPanel';
 
 // ============ 绘制 ============
 
-export function drawGMButton(ctx: CanvasRenderingContext2D): void {
-    const { open } = getGMState();
-    ctx.save();
-    ctx.globalAlpha = open ? 0.9 : 0.5;
-    ctx.fillStyle = open ? '#f80' : '#555';
-    ctx.beginPath();
-    ctx.arc(BTN_X, BTN_Y, BTN_RADIUS, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 11px Arial';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('GM', BTN_X, BTN_Y);
-    ctx.globalAlpha = 1;
-    ctx.restore();
+// GM 按钮绘制已迁移到左上角 HUD 栏（HUDTopLeft.ts 的 'gm' 项）
+// 保留空实现为了兼容 Render.ts 旧调用点，后续可删
+export function drawGMButton(_ctx: CanvasRenderingContext2D): void {
+    // no-op：旧的屏幕顶部独立 GM 按钮已被 HUD 栏统一接管
 }
 
 export function drawGMPanel(ctx: CanvasRenderingContext2D): void {
@@ -222,6 +207,48 @@ export function drawGMPanel(ctx: CanvasRenderingContext2D): void {
                 ctx.lineTo(checkX + 19, checkY + 6);
                 ctx.stroke();
             }
+        } else if (item.type === 'select') {
+            // select 类型：左右箭头切换
+            const selItem = item as GMSelectItem;
+            const currentVal = String(getConfigValue(selItem.path) ?? '');
+
+            const leftBtnX = valueX;
+            const leftBtnW = 24;
+            const rightBtnX = valueX + valueW - 24;
+            const rightBtnW = 24;
+            const displayX = leftBtnX + leftBtnW + 2;
+            const displayW = valueW - leftBtnW * 2 - 4;
+
+            // 左箭头
+            ctx.fillStyle = 'rgba(80, 80, 80, 0.8)';
+            ctx.fillRect(leftBtnX, iy + (ITEM_H - INPUT_H) / 2, leftBtnW, INPUT_H);
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 14px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('<', leftBtnX + leftBtnW / 2, iy + ITEM_H / 2);
+
+            // 当前值显示
+            ctx.fillStyle = 'rgba(50, 50, 50, 0.8)';
+            ctx.fillRect(displayX, iy + (ITEM_H - INPUT_H) / 2, displayW, INPUT_H);
+            ctx.strokeStyle = '#f80';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(displayX, iy + (ITEM_H - INPUT_H) / 2, displayW, INPUT_H);
+            ctx.fillStyle = '#ff8';
+            ctx.font = '12px Consolas, monospace';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(currentVal, displayX + displayW / 2, iy + ITEM_H / 2);
+
+            // 右箭头
+            ctx.fillStyle = 'rgba(80, 80, 80, 0.8)';
+            ctx.fillRect(rightBtnX, iy + (ITEM_H - INPUT_H) / 2, rightBtnW, INPUT_H);
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 14px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('>', rightBtnX + rightBtnW / 2, iy + ITEM_H / 2);
+
         } else if (item.type === 'action') {
             // 操作按钮
             const btnX = valueX;

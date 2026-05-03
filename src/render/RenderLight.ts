@@ -100,90 +100,30 @@ export function sampleBlueNoise(u: number, v: number): number {
     return tex[iy * size + ix];
 }
 
-// ============ 逐射线逐步长泥沙衰减 ============
-export function computeSiltAttenuation(sx: number, sy: number, angle: number, maxDist: number, fovDeg: number, particles: any[]): any {
-    _blueNoiseFrame++;
-    let fovRad = fovDeg * Math.PI / 180;
-    let startAngle = angle - fovRad / 2;
-    let rays = CONFIG.rayCount;
-    let rayStep = fovRad / rays;
-    let steps = CONFIG.siltSampleSteps || 12;
-    let stepDist = maxDist / steps;
-    let absorptionCoeff = CONFIG.siltAbsorptionCoeff || 3.0;
-    let influenceRadius = CONFIG.siltInfluenceRadius || 30;
-    let maxRangeSq = (maxDist + influenceRadius) * (maxDist + influenceRadius);
-    let minOccludeDistSq = (influenceRadius * 2) * (influenceRadius * 2);
-    let lightDirX = Math.cos(angle), lightDirY = Math.sin(angle);
-    let cosHalfFov = Math.cos(fovRad / 2 + 0.15);
-    let siltList: any[] = [];
-    for (let p of particles) {
-        if (p.type !== 'silt') continue;
-        let conc = p.alpha * p.life;
-        if (conc <= 0.005) continue;
-        let dx = p.x-sx, dy = p.y-sy;
-        let distSq = dx*dx + dy*dy;
-        if (distSq > maxRangeSq || distSq < minOccludeDistSq) continue;
-        let dist = Math.sqrt(distSq);
-        if ((dx*lightDirX + dy*lightDirY) / dist < cosHalfFov) continue;
-        siltList.push(p);
-    }
-    if (siltList.length === 0) return null;
-
-    let stride = steps + 1;
-    let opticalDepth = new Float32Array((rays + 1) * stride);
-    let rayDirs = new Float32Array((rays + 1) * 2);
-    let rayStartOffset = new Float32Array(rays + 1);
-    for (let i = 0; i <= rays; i++) {
-        let bn = sampleBlueNoise(i, 0);
-        let a = startAngle + i*rayStep + (bn-0.5)*rayStep*0.4;
-        rayDirs[i*2]=Math.cos(a); rayDirs[i*2+1]=Math.sin(a);
-        rayStartOffset[i] = (sampleBlueNoise(i, 32) - 0.5) * stepDist * 0.5;
-    }
-    for (let p of siltList) {
-        let relX=p.x-sx, relY=p.y-sy;
-        let concentration = p.alpha * p.life;
-        let effectiveRadius = p.size*0.5 + influenceRadius*0.3;
-        let pDist = Math.sqrt(relX*relX + relY*relY);
-        if (pDist < 1) continue;
-        let angularExtent = Math.atan2(effectiveRadius, pDist);
-        let midAngle = startAngle + fovRad/2;
-        let da = p.x===sx&&p.y===sy ? 0 : Math.atan2(relY,relX) - midAngle;
-        da = da - Math.round(da/(2*Math.PI))*2*Math.PI;
-        let wrappedAngle = midAngle + da;
-        let iMin = Math.max(0, Math.floor((wrappedAngle-angularExtent-startAngle)/rayStep)-1);
-        let iMax = Math.min(rays, Math.ceil((wrappedAngle+angularExtent-startAngle)/rayStep)+1);
-        for (let i = iMin; i <= iMax; i++) {
-            let cosA=rayDirs[i*2], sinA=rayDirs[i*2+1];
-            let projT = relX*cosA + relY*sinA;
-            if (projT<0||projT>maxDist) continue;
-            let perpX=relX-projT*cosA, perpY=relY-projT*sinA;
-            let perpDistSq = perpX*perpX + perpY*perpY;
-            if (perpDistSq >= effectiveRadius*effectiveRadius) continue;
-            let lateralFalloff = 1.0 - perpDistSq/(effectiveRadius*effectiveRadius);
-            let contribution = concentration * lateralFalloff * (p.size/15.0) * absorptionCoeff;
-            let stepIdx = Math.max(1, Math.min(steps, Math.floor((projT-rayStartOffset[i])/stepDist)));
-            opticalDepth[i*stride + stepIdx] += contribution;
-        }
-    }
-    let perStep = new Float32Array((rays + 1) * stride);
-    for (let i = 0; i <= rays; i++) {
-        let base = i*stride;
-        let tau = 0;
-        perStep[base] = 1.0;
-        for (let s = 1; s <= steps; s++) {
-            tau += opticalDepth[base+s];
-            perStep[base+s] = Math.max(0, 1.0-tau);
-        }
-    }
-    return { perStep, rays, steps, stride, stepDist };
-}
-
+// ============ 射线碰撞检测 ============
 export function getLightPolygon(sx: number, sy: number, angle: number, maxDist: number, fovDeg: number = CONFIG.fov): any[] {
     let points: any[] = [];
     let fovRad = fovDeg * Math.PI / 180;
     let startAngle = angle - fovRad/2;
-    let rays = CONFIG.rayCount;
+    let rays = (CONFIG as any).quality?.rayCount ?? CONFIG.rayCount ?? 360;
     let step = fovRad / rays;
+
+    // ---- 低档跳过遮挡计算（low 档位最贵的 CPU 段：每条射线对所有障碍物的求交循环）----
+    // 启用后光锥不受岩壁遮挡直接延伸到 maxDist，视觉上手电会"穿墙"，但 CPU 端几乎零成本
+    // 适合低端机极限省电；shader 端逻辑完全不用改，VPL 反弹点自动落在 maxDist 处
+    if ((CONFIG as any).quality?.skipOcclusion) {
+        for (let i = 0; i <= rays; i++) {
+            let a = startAngle + i * step;
+            points.push({
+                x: sx + Math.cos(a) * maxDist,
+                y: sy + Math.sin(a) * maxDist,
+                dist: maxDist,
+                angle: a
+            });
+        }
+        return points;
+    }
+
     const active = getActiveMapContext();
     const tileSize = active.tileSize;
     const halfTile = tileSize / 2;
@@ -285,134 +225,14 @@ function angleDiff(a: number, b: number): number {
     return Math.abs(d);
 }
 
-// 统一的手电筒绘制函数
-// siltData: 可选的泥沙衰减数据（来自 computeSiltAttenuation），null 表示无泥沙
-export function drawFlashlight(renderCtx: CanvasRenderingContext2D, x: number, y: number, angle: number, rayDist: number, mode: string = 'mask', siltData: any = null) {
+// 统一的手电筒绘制函数（Canvas 2D fallback）
+export function drawFlashlight(renderCtx: CanvasRenderingContext2D, x: number, y: number, angle: number, rayDist: number, mode: string = 'mask') {
     renderCtx.save();
 
     let poly = getCachedLightPolygon(x, y, angle, rayDist, CONFIG.fov);
 
     if (mode === 'mask') {
-        if (siltData) {
-            let { perStep, rays, steps, stride, stepDist } = siltData;
-            let fovRad = CONFIG.fov * Math.PI / 180;
-            let halfFov = fovRad / 2;
-            let edgeFadeRatio = 0.3;
-            let fadeStartAngle = halfFov * (1 - edgeFadeRatio);
-
-            let calcBrightness = (dr: number) => {
-                if (dr < 0.5) return 1.0;
-                if (dr < 0.85) return 1.0 - (dr - 0.5) / 0.35 * 0.4;
-                return 0.6 * (1 - (dr - 0.85) / 0.15);
-            };
-
-            for (let i = 0; i < poly.length - 1; i++) {
-                let p0 = poly[i];
-                let p1 = poly[i + 1];
-                let dx0 = p0.x - x, dy0 = p0.y - y;
-                let len0 = Math.hypot(dx0, dy0) || 1;
-                let dx1 = p1.x - x, dy1 = p1.y - y;
-                let len1 = Math.hypot(dx1, dy1) || 1;
-                let maxLen = Math.max(len0, len1);
-
-                // 计算角度淡出（使用稳健的角度差）
-                let a0 = Math.atan2(dy0, dx0);
-                let a1 = Math.atan2(dy1, dx1);
-                let da0 = angleDiff(a0, angle);
-                let da1 = angleDiff(a1, angle);
-                let fade0 = da0 < fadeStartAngle ? 1.0 : Math.max(0, 1 - (da0 - fadeStartAngle) / (halfFov * edgeFadeRatio));
-                let fade1 = da1 < fadeStartAngle ? 1.0 : Math.max(0, 1 - (da1 - fadeStartAngle) / (halfFov * edgeFadeRatio));
-                let avgFade = (fade0 + fade1) / 2;
-                if (avgFade < 0.01) continue;
-
-                for (let s = 0; s < steps; s++) {
-                    let nearDist = s * stepDist;
-                    let farDist = Math.min((s + 1) * stepDist, maxLen);
-                    if (nearDist >= maxLen) break;
-
-                    let nearTrans0 = perStep[i * stride + s];
-                    let nearTrans1 = perStep[Math.min(i + 1, rays) * stride + s];
-                    let nearTransAvg = (nearTrans0 + nearTrans1) / 2;
-                    let farS = Math.min(s + 1, steps);
-                    let farTrans0 = perStep[i * stride + farS];
-                    let farTrans1 = perStep[Math.min(i + 1, rays) * stride + farS];
-                    let farTransAvg = (farTrans0 + farTrans1) / 2;
-
-                    if (nearTransAvg < 0.01 && farTransAvg < 0.01) continue;
-
-                    let nearRatio0 = Math.min(nearDist / len0, 1);
-                    let farRatio0 = Math.min(farDist / len0, 1);
-                    let nearRatio1 = Math.min(nearDist / len1, 1);
-                    let farRatio1 = Math.min(farDist / len1, 1);
-
-                    let nx0 = x + dx0 * nearRatio0, ny0 = y + dy0 * nearRatio0;
-                    let fx0 = x + dx0 * farRatio0,  fy0 = y + dy0 * farRatio0;
-                    let nx1 = x + dx1 * nearRatio1, ny1 = y + dy1 * nearRatio1;
-                    let fx1 = x + dx1 * farRatio1,  fy1 = y + dy1 * farRatio1;
-
-                    let nearAlpha = calcBrightness(nearDist / rayDist) * nearTransAvg * avgFade;
-                    let farAlpha  = calcBrightness(farDist  / rayDist) * farTransAvg * avgFade;
-                    if (nearAlpha < 0.005 && farAlpha < 0.005) continue;
-
-                    let grad = renderCtx.createLinearGradient(
-                        (nx0+nx1)/2, (ny0+ny1)/2, (fx0+fx1)/2, (fy0+fy1)/2
-                    );
-                    grad.addColorStop(0, `rgba(255,255,255,${nearAlpha})`);
-                    grad.addColorStop(1, `rgba(255,255,255,${farAlpha})`);
-                    renderCtx.fillStyle = grad;
-                    renderCtx.beginPath();
-                    renderCtx.moveTo(nx0, ny0);
-                    renderCtx.lineTo(fx0, fy0);
-                    renderCtx.lineTo(fx1, fy1);
-                    renderCtx.lineTo(nx1, ny1);
-                    renderCtx.closePath();
-                    renderCtx.fill();
-                }
-            }
-
-            // 边缘缺口处理：只在射线被墙壁截断时羽化，光锥自然末端不额外延伸
-            let featherDist = CONFIG.lightEdgeFeather || 25;
-            for (let i = 0; i < poly.length - 1; i++) {
-                let finalTrans = (perStep[i * stride + steps] + perStep[Math.min(i+1,rays) * stride + steps]) / 2;
-                if (finalTrans < 0.05) continue;
-                let p0 = poly[i], p1 = poly[i+1];
-                // 只有射线被墙壁截断（距离明显小于最大距离）时才做羽化
-                let avgDist = (p0.dist + p1.dist) / 2;
-                if (avgDist > rayDist * 0.92) continue;
-                let dx0 = p0.x-x, dy0 = p0.y-y, len0 = Math.hypot(dx0,dy0)||1;
-                let dx1 = p1.x-x, dy1 = p1.y-y, len1 = Math.hypot(dx1,dy1)||1;
-                // 角度淡出也应用到羽化（使用稳健的角度差）
-                let a0 = Math.atan2(dy0, dx0);
-                let a1 = Math.atan2(dy1, dx1);
-                let da0 = angleDiff(a0, angle);
-                let da1 = angleDiff(a1, angle);
-                let fade0 = da0 < fadeStartAngle ? 1.0 : Math.max(0, 1 - (da0 - fadeStartAngle) / (halfFov * edgeFadeRatio));
-                let fade1 = da1 < fadeStartAngle ? 1.0 : Math.max(0, 1 - (da1 - fadeStartAngle) / (halfFov * edgeFadeRatio));
-                let avgFade = (fade0 + fade1) / 2;
-                if (avgFade < 0.05) continue;
-
-                // 羽化alpha从墙壁处的亮度开始，向外渐变到0
-                let wallBrightness = calcBrightness(avgDist / rayDist);
-                let featherBaseAlpha = finalTrans * wallBrightness * 0.5 * avgFade;
-                if (featherBaseAlpha < 0.01) continue;
-                let grad = renderCtx.createLinearGradient(
-                    (p0.x+p1.x)/2, (p0.y+p1.y)/2,
-                    (p0.x+p1.x)/2+(dx0/len0+dx1/len1)*0.5*featherDist,
-                    (p0.y+p1.y)/2+(dy0/len0+dy1/len1)*0.5*featherDist
-                );
-                grad.addColorStop(0, `rgba(255,255,255,${featherBaseAlpha})`);
-                grad.addColorStop(1, 'rgba(255,255,255,0)');
-                renderCtx.fillStyle = grad;
-                renderCtx.beginPath();
-                renderCtx.moveTo(p0.x, p0.y);
-                renderCtx.lineTo(p0.x+(dx0/len0)*featherDist, p0.y+(dy0/len0)*featherDist);
-                renderCtx.lineTo(p1.x+(dx1/len1)*featherDist, p1.y+(dy1/len1)*featherDist);
-                renderCtx.lineTo(p1.x, p1.y);
-                renderCtx.closePath();
-                renderCtx.fill();
-            }
-        } else {
-            // 无泥沙：逐扇区绘制，加入角度淡出让光锥边缘柔和
+            // 逐扇区绘制，加入角度淡出让光锥边缘柔和
             let fovRad = CONFIG.fov * Math.PI / 180;
             let halfFov = fovRad / 2;
             let edgeFadeRatio = 0.3;
@@ -519,7 +339,6 @@ export function drawFlashlight(renderCtx: CanvasRenderingContext2D, x: number, y
                 renderCtx.closePath();
                 renderCtx.fill();
             }
-        }
     } else if (mode === 'volumetric') {
         renderCtx.globalCompositeOperation = 'screen';
         let fovRad = CONFIG.fov * Math.PI / 180;

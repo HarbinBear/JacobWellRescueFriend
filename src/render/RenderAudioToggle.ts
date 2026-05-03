@@ -13,13 +13,13 @@ import { state } from '../core/state';
 import { CONFIG } from '../core/config';
 import { toggleMuted as audioMgrToggleMuted } from '../audio/AudioManager';
 
-// 与 GM 按钮同规格，位置在 GM 按钮左边
-import { BTN_RADIUS, BTN_X, BTN_Y } from '../gm/GMConfig';
+// 与 GM 按钮同规格（常量保留给老代码兜底，实际位置由 HUDTopLeft 管理）
+import { BTN_RADIUS } from '../gm/GMConfig';
 
 export const AUDIO_BTN_RADIUS = BTN_RADIUS;
-// 位于 GM 按钮左侧，之间留 12px 间距（已废弃，仅保留常量）
-export const AUDIO_BTN_X = BTN_X - (BTN_RADIUS * 2) - 12;
-export const AUDIO_BTN_Y = BTN_Y;
+// 位置已废弃（HUD 栏统一管理），保留常量避免其他模块 import 断裂
+export const AUDIO_BTN_X = -999;
+export const AUDIO_BTN_Y = -999;
 
 // 击中检测（已废弃；左上角HUD管理器统一接管）
 export function hitAudioButton(_tx: number, _ty: number): boolean {

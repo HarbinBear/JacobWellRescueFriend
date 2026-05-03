@@ -1,6 +1,6 @@
 // WebGL 光照渲染器
 // 用一个 WebGL canvas 替代 Canvas 2D lightLayer，将光照计算移到 GPU
-// CPU 端仍负责射线碰撞和泥沙计算，结果通过纹理传给 shader
+// CPU 端仍负责射线碰撞，结果通过纹理传给 shader
 
 import { CONFIG } from '../core/config';
 import { canvas, dpr, logicW, logicH } from './Canvas';
@@ -41,11 +41,6 @@ let posBuffer: WebGLBuffer | null = null;
 let polyTexture: WebGLTexture | null = null;
 let polyTexData: Float32Array | null = null;
 const POLY_TEX_WIDTH = 512; // 光锥角度分辨率，越高光锥边缘越平滑
-
-// 泥沙衰减纹理
-let siltTexture: WebGLTexture | null = null;
-let siltTexData: Float32Array | null = null;
-const SILT_TEX_HEIGHT = 32; // 最多32步
 
 // VPL 点纹理（存储反弹光位置和颜色）
 let vplTexture: WebGLTexture | null = null;
@@ -192,7 +187,6 @@ export function initWebGLLight(): boolean {
             'u_centerFov', 'u_selfGlowRadius', 'u_selfGlowIntensity',
             'u_ambientRadius', 'u_ambientIntensity', 'u_maskAlpha',
             'u_polyTex', 'u_polyCount',
-            'u_siltTex', 'u_hasSilt', 'u_siltSteps',
             'u_vplTex', 'u_vplCount',
             'u_npcPos', 'u_npcAngle', 'u_npcDist', 'u_npcActive',
             // 手电筒参数化
@@ -213,10 +207,6 @@ export function initWebGLLight(): boolean {
         const polyResult = createDataTexture(gl, POLY_TEX_WIDTH, 1);
         polyTexture = polyResult.texture;
         polyTexData = polyResult.data;
-        
-        const siltResult = createDataTexture(gl, POLY_TEX_WIDTH, SILT_TEX_HEIGHT);
-        siltTexture = siltResult.texture;
-        siltTexData = siltResult.data;
         
         const vplResult = createDataTexture(gl, MAX_VPL_POINTS, 1);
         vplTexture = vplResult.texture;
@@ -242,17 +232,13 @@ export function initWebGLLight(): boolean {
         if (_maskUniforms['u_playerPos']) gl.uniform2f(_maskUniforms['u_playerPos']!, 0, 0);
         if (_maskUniforms['u_cameraPos']) gl.uniform2f(_maskUniforms['u_cameraPos']!, 0, 0);
         if (_maskUniforms['u_shake']) gl.uniform2f(_maskUniforms['u_shake']!, 0, 0);
-        if (_maskUniforms['u_hasSilt']) gl.uniform1f(_maskUniforms['u_hasSilt']!, 0.0);
         // 绑定纹理
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, polyTexture);
         if (_maskUniforms['u_polyTex']) gl.uniform1i(_maskUniforms['u_polyTex']!, 0);
         gl.activeTexture(gl.TEXTURE1);
-        gl.bindTexture(gl.TEXTURE_2D, siltTexture);
-        if (_maskUniforms['u_siltTex']) gl.uniform1i(_maskUniforms['u_siltTex']!, 1);
-        gl.activeTexture(gl.TEXTURE2);
         gl.bindTexture(gl.TEXTURE_2D, vplTexture);
-        if (_maskUniforms['u_vplTex']) gl.uniform1i(_maskUniforms['u_vplTex']!, 2);
+        if (_maskUniforms['u_vplTex']) gl.uniform1i(_maskUniforms['u_vplTex']!, 1);
         
         gl.drawArrays(gl.TRIANGLES, 0, 6);
         
@@ -267,7 +253,7 @@ export function initWebGLLight(): boolean {
         console.log('[WebGL] GL_RENDERER:', gl.getParameter(gl.RENDERER), 'GL_VERSION:', gl.getParameter(gl.VERSION));
 
         // 注册画质档位切换回调：档位变化时同步 glCanvas 分辨率
-        onQualitySwitch((_level, params) => {
+        onQualitySwitch((_label, params) => {
             applyQualityScale(params.scale);
         });
         // 初始化时按当前档位立即调整一次
@@ -316,36 +302,6 @@ export function uploadPolyData(poly: any[], maxDist: number) {
             byteData[i * 4 + 3] = 255;
         }
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, POLY_TEX_WIDTH, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, byteData);
-    }
-}
-
-// 将泥沙衰减数据编码到纹理
-export function uploadSiltData(siltData: any) {
-    if (!gl || !siltTexture || !siltTexData) return;
-    
-    siltTexData.fill(0);
-    
-    if (!siltData) return;
-    
-    const { perStep, rays, steps, stride } = siltData;
-    for (let i = 0; i <= rays && i < POLY_TEX_WIDTH; i++) {
-        for (let s = 0; s <= steps && s < SILT_TEX_HEIGHT; s++) {
-            let idx = (s * POLY_TEX_WIDTH + i) * 4;
-            siltTexData[idx] = perStep[i * stride + s]; // R: 透射率
-            siltTexData[idx + 3] = 1;
-        }
-    }
-    
-    gl.bindTexture(gl.TEXTURE_2D, siltTexture);
-    if (_useFloatTex) {
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, POLY_TEX_WIDTH, SILT_TEX_HEIGHT, 0, gl.RGBA, gl.FLOAT, siltTexData);
-    } else {
-        const byteData = new Uint8Array(POLY_TEX_WIDTH * SILT_TEX_HEIGHT * 4);
-        for (let i = 0; i < POLY_TEX_WIDTH * SILT_TEX_HEIGHT; i++) {
-            byteData[i * 4] = Math.min(255, Math.floor(siltTexData[i * 4] * 255));
-            byteData[i * 4 + 3] = 255;
-        }
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, POLY_TEX_WIDTH, SILT_TEX_HEIGHT, 0, gl.RGBA, gl.UNSIGNED_BYTE, byteData);
     }
 }
 
@@ -575,15 +531,10 @@ function bindTextures(u: Record<string, WebGLUniformLocation | null>) {
     gl.bindTexture(gl.TEXTURE_2D, polyTexture);
     gl.uniform1i(u['u_polyTex']!, 0);
     
-    // 纹理单元 1: 泥沙
+    // 纹理单元 1: VPL
     gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_2D, siltTexture);
-    gl.uniform1i(u['u_siltTex']!, 1);
-    
-    // 纹理单元 2: VPL
-    gl.activeTexture(gl.TEXTURE2);
     gl.bindTexture(gl.TEXTURE_2D, vplTexture);
-    gl.uniform1i(u['u_vplTex']!, 2);
+    gl.uniform1i(u['u_vplTex']!, 1);
 }
 
 // 渲染光照遮罩层（替代 Canvas 2D lightLayer）
@@ -594,7 +545,6 @@ export function renderLightMask(params: {
     angle: number, maxDist: number,
     flashlightActive: boolean,
     maskAlpha: number,
-    hasSilt: boolean, siltSteps: number,
     npcX: number, npcY: number, npcAngle: number, npcDist: number, npcActive: boolean,
     polyCount: number, vplCount: number
 }) {
@@ -616,8 +566,6 @@ export function renderLightMask(params: {
     gl.uniform1f(_maskUniforms['u_ambientRadius']!, CONFIG.ambientPerceptionRadius || 80);
     gl.uniform1f(_maskUniforms['u_ambientIntensity']!, CONFIG.ambientPerceptionIntensity || 0.35);
     gl.uniform1f(_maskUniforms['u_maskAlpha']!, params.maskAlpha);
-    gl.uniform1f(_maskUniforms['u_hasSilt']!, params.hasSilt ? 1.0 : 0.0);
-    gl.uniform1f(_maskUniforms['u_siltSteps']!, params.siltSteps);
     
     bindTextures(_maskUniforms);
     

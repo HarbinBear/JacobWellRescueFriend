@@ -1,8 +1,8 @@
 import { CONFIG } from '../core/config';
 import { state, player, particles, touches } from '../core/state';
 import { canvas, ctx, dpr, logicW, logicH } from './Canvas';
-import { computeSiltAttenuation, isLineOfSight, getLightPolygon } from './RenderLight';
-import { initWebGLLight, isWebGLAvailable, uploadPolyData, uploadSiltData, uploadVPLData, renderLightMask, renderVolumetricLight, getGLCanvas, getGLCanvasPixelSize } from './WebGLLight';
+import { isLineOfSight, getLightPolygon } from './RenderLight';
+import { initWebGLLight, isWebGLAvailable, uploadPolyData, uploadVPLData, renderLightMask, renderVolumetricLight, getGLCanvas, getGLCanvasPixelSize } from './WebGLLight';
 import { drawDiver } from './RenderDiver';
 import { drawUI, drawControls, drawSlashEffect } from './RenderUI';
 import { drawRopesWorld, drawRopeButton } from './RenderRope';
@@ -542,24 +542,12 @@ export function draw() {
 
     if (_useWebGL && isWebGLAvailable()) {
         // WebGL 路径：CPU 端计算射线碰撞和泥沙，上传到 GPU，一个 draw call 完成所有光照
-        // --- light.cpu: CPU 端射线投射 + 泥沙采样 + 三次纹理上传（poly / silt / VPL） ---
+        // --- light.cpu: CPU 端射线投射 + 纹理上传（poly / VPL） ---
         profileBegin('light.cpu');
         let poly = playerFlashlightActive ? getLightPolygon(player.x, player.y, player.angle, rayDist, CONFIG.fov) : [];
-        let siltData = null;
-        let hasSilt = false;
-        let siltSteps = 0;
-        
-        if (playerFlashlightActive && player.silt > 0) {
-            siltData = computeSiltAttenuation(player.x, player.y, player.angle, rayDist, CONFIG.fov, particles);
-            if (siltData) {
-                hasSilt = true;
-                siltSteps = siltData.steps;
-            }
-        }
         
         // 上传数据到 GPU 纹理
         uploadPolyData(poly, rayDist);
-        uploadSiltData(siltData);
         let vplCount = uploadVPLData(poly, rayDist) || 0;
         profileEnd('light.cpu');
         
@@ -595,7 +583,6 @@ export function draw() {
             angle: player.angle, maxDist: rayDist,
             flashlightActive: playerFlashlightActive,
             maskAlpha,
-            hasSilt, siltSteps,
             npcX, npcY, npcAngle, npcDist: rayDist * 0.9, npcActive,
             polyCount: poly.length, vplCount
         });

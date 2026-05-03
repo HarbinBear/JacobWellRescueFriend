@@ -4,15 +4,14 @@
 
 import { CONFIG } from '../core/config';
 import {
-    TABS, GMNumberItem, GMActionItem,
-    BTN_RADIUS, BTN_X, BTN_Y,
+    TABS, GMNumberItem, GMActionItem, GMSelectItem,
     PANEL_DEFAULT_X, PANEL_DEFAULT_Y, PANEL_W, PANEL_H,
     DRAG_BAR_H, TAB_H, TAB_FIXED_W,
     ITEM_H, ITEM_PAD, LABEL_W_RATIO, INPUT_H,
 } from './GMConfig';
-import { logicW, logicH } from '../render/Canvas';
 import { state, player } from '../core/state';
 import { createFishEnemy, findMazeFishSpawnPosition, findSafeSpawnPosition } from '../logic/FishEnemy';
+import { setPreset, onItemEdited as qualityOnItemEdited, setAuto as qualitySetAuto } from '../render/QualityManager';
 
 // 重新导出绘制函数，保持外部引用不变
 export { drawGMButton, drawGMPanel } from './GMRender';
@@ -91,18 +90,21 @@ export function isGMEditing(): boolean {
     return _editingItem !== null;
 }
 
+// 对外：HUD 栏 GM 图标短按触发的统一切换入口
+// 取代旧的屏幕顶部独立 GM 按钮 hit-test
+export function toggleGMOpen(): void {
+    _open = !_open;
+    _editingItem = null;
+    _editingValue = '';
+    _scrollY = 0;
+}
+
 // ============ 触摸处理 ============
 
 // 返回 true 表示事件被GM面板消费，不应传递给游戏
 export function handleGMTouchStart(tx: number, ty: number): boolean {
-    // 检测GM按钮点击
-    if (Math.hypot(tx - BTN_X, ty - BTN_Y) <= BTN_RADIUS + 5) {
-        _open = !_open;
-        _editingItem = null;
-        _editingValue = '';
-        _scrollY = 0;
-        return true;
-    }
+    // 旧的独立 GM 按钮 hit-test 已废弃；现在 HUD 栏打包第五个 HUD 项，
+    // 由 HUDTopLeft 在 onShortTap 里直接调 toggleGMOpen()。此处不再做按钮判定。
 
     if (!_open) return false;
 
@@ -180,6 +182,7 @@ export function handleGMTouchStart(tx: number, ty: number): boolean {
                         const precision = numItem.precision ?? 0;
                         val = parseFloat(val.toFixed(precision));
                         setConfigValue(numItem.path, val);
+                        _notifyQualityItemEdit(numItem.path);
                     }
                     _editingItem = null;
                     return true;
@@ -194,6 +197,7 @@ export function handleGMTouchStart(tx: number, ty: number): boolean {
                         const precision = numItem.precision ?? 0;
                         val = parseFloat(val.toFixed(precision));
                         setConfigValue(numItem.path, val);
+                        _notifyQualityItemEdit(numItem.path);
                     }
                     _editingItem = null;
                     return true;
@@ -217,6 +221,33 @@ export function handleGMTouchStart(tx: number, ty: number): boolean {
                 // 切换bool值
                 const currentVal = !!getConfigValue(item.path);
                 setConfigValue(item.path, !currentVal);
+                _notifyQualityItemEdit(item.path);
+                return true;
+            } else if (item.type === 'select') {
+                // select 类型：左右箭头切换
+                const selItem = item as GMSelectItem;
+                const currentVal = String(getConfigValue(selItem.path) ?? '');
+                const idx = selItem.options.indexOf(currentVal);
+                const leftBtnX = valueX;
+                const leftBtnW = 24;
+                const rightBtnX = valueX + valueW - 24;
+                const rightBtnW = 24;
+                if (tx >= leftBtnX && tx <= leftBtnX + leftBtnW) {
+                    // 左箭头：上一个
+                    const newIdx = idx > 0 ? idx - 1 : selItem.options.length - 1;
+                    const newVal = selItem.options[newIdx];
+                    setConfigValue(selItem.path, newVal);
+                    _notifyQualitySelectChange(selItem.path, newVal);
+                    return true;
+                }
+                if (tx >= rightBtnX && tx <= rightBtnX + rightBtnW) {
+                    // 右箭头：下一个
+                    const newIdx = idx < selItem.options.length - 1 ? idx + 1 : 0;
+                    const newVal = selItem.options[newIdx];
+                    setConfigValue(selItem.path, newVal);
+                    _notifyQualitySelectChange(selItem.path, newVal);
+                    return true;
+                }
                 return true;
             } else if (item.type === 'action') {
                 // 执行 action 操作
@@ -235,13 +266,9 @@ export function handleGMTouchMove(tx: number, ty: number): boolean {
 
     // 拖动面板
     if (_dragging) {
-        let newX = tx - _dragOffsetX;
-        let newY = ty - _dragOffsetY;
-        // 限制面板不超出屏幕
-        newX = Math.max(0, Math.min(logicW - PANEL_W, newX));
-        newY = Math.max(0, Math.min(logicH - PANEL_H, newY));
-        _panelX = newX;
-        _panelY = newY;
+        // 完全放开屏幕边界限制：面板可被拖出屏幕外（便于调试时让出画面不遮挡）
+        _panelX = tx - _dragOffsetX;
+        _panelY = ty - _dragOffsetY;
         return true;
     }
 
@@ -340,6 +367,7 @@ function _applyEditingValue(item: GMNumberItem): void {
             const precision = item.precision ?? 0;
             finalVal = parseFloat(finalVal.toFixed(precision));
             setConfigValue(_editingItem, finalVal);
+            _notifyQualityItemEdit(_editingItem);
         }
     }
     _editingItem = null;
@@ -396,5 +424,28 @@ function _executeAction(actionId: string): void {
         }
         default:
             console.log(`[GM] 未知操作: ${actionId}`);
+    }
+}
+
+// ============ 画质预设联动辅助 ============
+
+// 画质小项路径前缀
+const _qualityItemPaths = ['quality.scale', 'quality.rayCount', 'quality.vplMax', 'quality.enableScatter', 'quality.enableNpcVol', 'quality.skipOcclusion'];
+
+// 当 GM 面板手动改了画质小项时，通知 QualityManager 把 preset 置为 custom
+function _notifyQualityItemEdit(path: string): void {
+    if (_qualityItemPaths.includes(path)) {
+        qualityOnItemEdited();
+    }
+    // auto 开关特殊处理
+    if (path === 'quality.auto') {
+        qualitySetAuto(!!getConfigValue('quality.auto'));
+    }
+}
+
+// 当 GM 面板改了 select 类型的画质预设时，通知 QualityManager 同步小项
+function _notifyQualitySelectChange(path: string, newVal: string): void {
+    if (path === 'quality.preset') {
+        setPreset(newVal);
     }
 }
