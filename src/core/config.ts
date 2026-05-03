@@ -463,18 +463,19 @@ export const CONFIG = {
         vplMax: 96,                    // VPL 上传点数上限
         enableScatter: true,           // 是否启用漫散射
         enableNpcVol: true,            // 是否启用 NPC 体积光
+        skipOcclusion: false,          // 跳过射线遮挡计算（CPU 端最贵的循环，low 档启用；开启后光锥会“穿墙”）
 
         // ---- 预设参数模板 ----
         presets: {
-            low:    { scale: 0.25, rayCount: 10,  vplMax: 3,   enableScatter: false, enableNpcVol: false },
-            medium: { scale: 0.50, rayCount: 60,  vplMax: 32,  enableScatter: true,  enableNpcVol: true  },
-            high:   { scale: 0.75, rayCount: 180, vplMax: 96,  enableScatter: true,  enableNpcVol: true  },
-            ultra:  { scale: 1.00, rayCount: 360, vplMax: 128, enableScatter: true,  enableNpcVol: true  },
-        } as Record<string, { scale: number; rayCount: number; vplMax: number; enableScatter: boolean; enableNpcVol: boolean }>,
+            low:    { scale: 0.25, rayCount: 10,  vplMax: 3,   enableScatter: false, enableNpcVol: false, skipOcclusion: true  },
+            medium: { scale: 0.50, rayCount: 60,  vplMax: 32,  enableScatter: true,  enableNpcVol: true,  skipOcclusion: false },
+            high:   { scale: 0.75, rayCount: 180, vplMax: 96,  enableScatter: true,  enableNpcVol: true,  skipOcclusion: false },
+            ultra:  { scale: 1.00, rayCount: 360, vplMax: 128, enableScatter: true,  enableNpcVol: true,  skipOcclusion: false },
+        } as Record<string, { scale: number; rayCount: number; vplMax: number; enableScatter: boolean; enableNpcVol: boolean; skipOcclusion: boolean }>,
 
         // ---- FPS 自适应 ----
-        auto: true,                    // 是否自动根据 FPS 升降档
-        autoMaxLevel: 2,               // auto 能升到的最高档索引（0=low,1=med,2=high,3=ultra）
+        auto: false,                   // 是否自动根据 FPS 升降档（默认关，等稳定后再开）
+        autoMaxLevel: 3,               // auto 能升到的最高档索引（0=low,1=med,2=high,3=ultra）
         initialAutoLevel: 2,           // auto 启动时的初始档位索引
         fpsWindowFrames: 60,           // 每个统计窗口多少帧
         fpsDownThreshold: 45,          // 平均 FPS 低于此值触发降档候选
@@ -482,6 +483,16 @@ export const CONFIG = {
         downWindows: 2,                // 连续多少个窗口低于阈值才降档
         upWindows: 3,                  // 连续多少个窗口高于阈值才升档
         switchCooldownMs: 2000,        // 档位切换冷却（防震荡）
+    },
+
+    // ===== 性能 HUD（帧时 / 各段耗时屏幕中央文字） =====
+    // 读取方：src/debug/PerfHUD.ts
+    // GM 面板「性能」Tab 里的 perfHUD.* 三项都依赖这里的默认值存在；
+    // 如果这个对象缺失，GM 面板的勾选框和数字框会因为 setConfigValue 找不到父对象而静默失败。
+    perfHUD: {
+        enabled: false,                // 是否显示屏幕中央文字 HUD（FPS/各段耗时）
+        enableMarks: false,            // 是否调用 performance.mark/measure（录火焰图时开，平时关）
+        fontSize: 11,                  // HUD 字号
     },
 
     // ===== 后处理（曝光 + Tone Mapping）配置 =====
@@ -764,8 +775,8 @@ export const CONFIG = {
 
         // 音效（复用 breathLoop 作一次性 SFX）
         // 比呼吸音更闷更重：playbackRate 降到 0.55~0.75 区间（呼吸是 0.85~1.2）
-        volumeMin: 1,                 // 最小强度对应音量
-        volumeMax: 2,                 // 最大强度对应音量
+        volumeMin: 0.5,                 // 最小强度对应音量
+        volumeMax: 1.0,                 // 最大强度对应音量
         playbackRateMin: 0.75,          // 轻撞播放速率（比呼吸稍快，仍显钝重）
         playbackRateMax: 0.55,          // 重撞播放速率（更低沉更重）
 
@@ -839,14 +850,5 @@ export const CONFIG = {
         btnRadius: 38,              // 攻击按钮半径
         btnXRatio: 0.82,            // 按钮X位置比例
         btnYRatio: 0.88,            // 按钮Y位置比例（比布线按钮更靠下，避免重叠）
-    },
-
-    // ===== 性能分析 HUD（临时调试用）=====
-    // 开启后：主循环各 phase 计时并在屏幕中央以纯文字显示 FPS / 帧时 / 各段耗时
-    // 默认关闭，由 GM 面板"性能"Tab 切换
-    perfHUD: {
-        enabled: false,        // 总开关：开启后才产生计时 + 绘制 HUD
-        enableMarks: false,    // 是否同时产生 performance.mark / measure（录 Chrome Performance 火焰图时开）
-        fontSize: 11,          // HUD 文字字号
     },
 };
