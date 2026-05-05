@@ -6,6 +6,13 @@ import { isGMOpen, handleGMTouchStart, handleGMTouchMove, handleGMTouchEnd } fro
 import { handleHUDTouchStart, handleHUDTouchMove, handleHUDTouchEnd } from '../render/HUDTopLeft';
 import { buildWheelSectors, executeWheelAction } from '../logic/Marker';
 import { getWheelBtnPos } from '../render/RenderWheel';
+import {
+    getBriefingAcceptBtnRect,
+    getAbandonBtnRect,
+    getResolvedIdleNewCaseBtnRect,
+    getResolvedBtnRects,
+    getAbandonedAcceptBtnRect,
+} from '../render/RenderMazeUI';
 
 // 章节页滑动状态
 let chapterTouchStartY = 0;
@@ -58,7 +65,7 @@ function consumeNextManualStrokeSide() {
     return side;
 }
 
-export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?, onReturnToShore?) {
+export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?, onReturnToShore?, onAbandonCase?, onAcceptNewCase?, onStayInResolvedCase?, onMarkBriefingShown?, onEnterResolved?) {
     // PC 调试键盘支持 
     if (typeof window !== 'undefined' && window.addEventListener) {
         const keys = { w: false, a: false, s: false, d: false, shift: false };
@@ -224,6 +231,39 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
         if(state.screen !== 'play') {
             // 迷宫模式：岸上阶段只记录触摸起始位置
             if (state.screen === 'mazeRescue' && state.mazeRescue && state.mazeRescue.phase === 'shore') {
+                const touch = res.touches[0];
+                const tx = touch.clientX;
+                const ty = touch.clientY;
+                shoreTouchStartX = tx;
+                shoreTouchStartY = ty;
+                const maze: any = state.mazeRescue;
+                const cw = CONFIG.screenWidth;
+                const ch = CONFIG.screenHeight;
+                // 警情通报页打开时：吃掉所有点击，touchEnd 再处理"接受任务"
+                if (!maze.briefingShown && !maze.shoreMapOpen) {
+                    return;
+                }
+                // "放弃救援"按钮按下 → 启动长按计时
+                if (!maze.shoreMapOpen && maze.briefingShown) {
+                    const ar = getAbandonBtnRect(cw, ch);
+                    if (tx >= ar.x && tx <= ar.x + ar.w && ty >= ar.y && ty <= ar.y + ar.h) {
+                        maze.abandonHolding = true;
+                        maze.abandonHoldStart = Date.now();
+                        maze.abandonTouchId = touch.identifier;
+                    }
+                }
+                return;
+            }
+            // 迷宫模式：结案后"留在此处"阶段：与 shore 共用记录起点，touchEnd 再做按钮分发
+            if (state.screen === 'mazeRescue' && state.mazeRescue && state.mazeRescue.phase === 'resolved_idle') {
+                const touch = res.touches[0];
+                shoreTouchStartX = touch.clientX;
+                shoreTouchStartY = touch.clientY;
+                return;
+            }
+            // 迷宫模式：救援结案（resolved）/搜寻终止（abandoned）全屏叙事页：只记录起点
+            if (state.screen === 'mazeRescue' && state.mazeRescue &&
+                (state.mazeRescue.phase === 'resolved' || state.mazeRescue.phase === 'abandoned')) {
                 const touch = res.touches[0];
                 shoreTouchStartX = touch.clientX;
                 shoreTouchStartY = touch.clientY;
@@ -462,6 +502,36 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
             }
         }
 
+        // 放弃救援长按：岸上持续按在按钮上 2s 触发 abandonCase；手指离开按钮则立即取消
+        if (state.screen === 'mazeRescue' && state.mazeRescue && state.mazeRescue.phase === 'shore') {
+            const maze: any = state.mazeRescue;
+            if (maze.abandonHolding && maze.abandonTouchId !== null) {
+                // 找到对应触点
+                let stillOnBtn = false;
+                const ar = getAbandonBtnRect(CONFIG.screenWidth, CONFIG.screenHeight);
+                for (const t of res.touches) {
+                    if (t.identifier === maze.abandonTouchId) {
+                        const tx = t.clientX, ty = t.clientY;
+                        if (tx >= ar.x && tx <= ar.x + ar.w && ty >= ar.y && ty <= ar.y + ar.h) {
+                            stillOnBtn = true;
+                        }
+                        break;
+                    }
+                }
+                if (!stillOnBtn) {
+                    maze.abandonHolding = false;
+                    maze.abandonHoldStart = 0;
+                    maze.abandonTouchId = null;
+                } else if (Date.now() - maze.abandonHoldStart >= 2000) {
+                    // 长按完成 → 进入结案页
+                    maze.abandonHolding = false;
+                    maze.abandonHoldStart = 0;
+                    maze.abandonTouchId = null;
+                    if (onAbandonCase) onAbandonCase();
+                }
+            }
+        }
+
         // GM面板消费拖动事件（包括面板自身拖动和 Tab 滑动）
         if (isGMOpen()) {
             const t = res.touches[0];
@@ -612,6 +682,97 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
             }
         }
 
+        // 放弃救援长按松手：未到 2s 就算取消（到 2s 的情况已在 touchMove 里直接触发并清空了）
+        if (state.screen === 'mazeRescue' && state.mazeRescue && state.mazeRescue.phase === 'shore') {
+            const maze: any = state.mazeRescue;
+            if (maze.abandonHolding) {
+                for (const t of res.changedTouches) {
+                    if (t.identifier === maze.abandonTouchId) {
+                        maze.abandonHolding = false;
+                        maze.abandonHoldStart = 0;
+                        maze.abandonTouchId = null;
+                        return; // 松手即取消，不继续走其它点击分发
+                    }
+                }
+            }
+            // 警情通报页打开时：吃掉所有其它点击，只允许点"接受任务"按钮
+            if (!maze.briefingShown && !maze.shoreMapOpen) {
+                const touch = res.changedTouches[0];
+                if (!touch) return;
+                const tx = touch.clientX, ty = touch.clientY;
+                const cw = CONFIG.screenWidth, ch = CONFIG.screenHeight;
+                const br = getBriefingAcceptBtnRect(cw, ch);
+                if (tx >= br.x && tx <= br.x + br.w && ty >= br.y && ty <= br.y + br.h) {
+                    if (onMarkBriefingShown) onMarkBriefingShown();
+                }
+                return;
+            }
+        }
+
+        // resolved_idle 阶段：右上角"接受新的任务"按钮
+        if (state.screen === 'mazeRescue' && state.mazeRescue && state.mazeRescue.phase === 'resolved_idle') {
+            const maze: any = state.mazeRescue;
+            const touch = res.changedTouches[0];
+            if (!touch) return;
+            const tx = touch.clientX, ty = touch.clientY;
+            const cw = CONFIG.screenWidth, ch = CONFIG.screenHeight;
+            // 全屏地图打开时：复用 shore 的全屏地图分发（直接掉到下面岸上分支）
+            if (!maze.shoreMapOpen) {
+                const nr = getResolvedIdleNewCaseBtnRect(cw, ch);
+                if (tx >= nr.x && tx <= nr.x + nr.w && ty >= nr.y && ty <= nr.y + nr.h) {
+                    if (onAcceptNewCase) onAcceptNewCase();
+                    return;
+                }
+                // 点击"本案已结案"水面入口：不响应下潜（什么也不做，提示文字已经在 UI 上）
+                const poolX = cw * 0.5, poolY = ch * 0.44;
+                const distToPool = Math.hypot(tx - poolX, ty - poolY);
+                if (distToPool < 110) {
+                    return;
+                }
+            }
+            // 其它点击（信息卡片、下潜记录、全屏地图）：让 shore 分支统一处理（复用一份岸上交互代码）
+            // 伪造一次 shore-like 分发：直接把 phase 暂时当 shore 处理
+            // 简单做法：下面 shore 分支会检查 maze.phase === 'shore'，这里改为手动调用一次
+            // 最稳的方法：下面 shore 分支的 hit-test 代码直接把 phase 条件放宽
+        }
+
+        // resolved 结案页：双按钮
+        if (state.screen === 'mazeRescue' && state.mazeRescue && state.mazeRescue.phase === 'resolved') {
+            const maze: any = state.mazeRescue;
+            if ((maze.caseResultTimer || 0) < 60) return; // 未到可点击时间
+            const touch = res.changedTouches[0];
+            if (!touch) return;
+            const tx = touch.clientX, ty = touch.clientY;
+            const cw = CONFIG.screenWidth, ch = CONFIG.screenHeight;
+            const br = getResolvedBtnRects(cw, ch);
+            // 留在此处（左）
+            if (tx >= br.stayX && tx <= br.stayX + br.w && ty >= br.y && ty <= br.y + br.h) {
+                if (onStayInResolvedCase) onStayInResolvedCase();
+                return;
+            }
+            // 接受新的任务（右）
+            if (tx >= br.newX && tx <= br.newX + br.w && ty >= br.y && ty <= br.y + br.h) {
+                if (onAcceptNewCase) onAcceptNewCase();
+                return;
+            }
+            return;
+        }
+
+        // abandoned 搜寻终止结案页：单按钮"接受新的任务"
+        if (state.screen === 'mazeRescue' && state.mazeRescue && state.mazeRescue.phase === 'abandoned') {
+            const maze: any = state.mazeRescue;
+            if ((maze.caseResultTimer || 0) < 60) return;
+            const touch = res.changedTouches[0];
+            if (!touch) return;
+            const tx = touch.clientX, ty = touch.clientY;
+            const cw = CONFIG.screenWidth, ch = CONFIG.screenHeight;
+            const ar = getAbandonedAcceptBtnRect(cw, ch);
+            if (tx >= ar.x && tx <= ar.x + ar.w && ty >= ar.y && ty <= ar.y + ar.h) {
+                if (onAcceptNewCase) onAcceptNewCase();
+            }
+            return;
+        }
+
         // GM面板消费触摸结束事件
         if (isGMOpen()) {
             const t = res.changedTouches[0];
@@ -619,8 +780,9 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
             return;
         }
 
-        // 迷宫模式：岸上阶段点击处理
-        if (state.screen === 'mazeRescue' && state.mazeRescue && state.mazeRescue.phase === 'shore') {
+        // 迷宫模式：岸上阶段点击处理（shore 和 resolved_idle 共用此分支）
+        if (state.screen === 'mazeRescue' && state.mazeRescue &&
+            (state.mazeRescue.phase === 'shore' || state.mazeRescue.phase === 'resolved_idle')) {
             const touch = res.changedTouches[0];
             const tx = touch.clientX;
             const ty = touch.clientY;
@@ -719,6 +881,10 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                 const poolH = 40;
                 const distToPool = Math.hypot(tx - poolX, ty - poolY);
                 if (distToPool < Math.max(poolW, poolH) + 10) {
+                    // resolved_idle 状态：本案已结案，不允许再下潜
+                    if (maze.phase === 'resolved_idle') {
+                        return;
+                    }
                     // 根据是否已发现NPC自动决定下潜类型
                     const diveType = maze.npcFound ? 'rescue' : 'scout';
                     if (onMazeDive) onMazeDive(diveType);
@@ -761,24 +927,21 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
             const cw = CONFIG.screenWidth;
             const ch = CONFIG.screenHeight;
 
-            // 救援成功结算页
+            // 救援成功结算页（数据页 rescued）：继续按钮 → 进入叙事结案页 resolved
             if (state.mazeRescue.phase === 'rescued') {
-                // "下一局"按钮（底部居中）
+                // "继续 ▶"按钮（底部居中，与 drawMazeDebrief 里定义的布局一致）
                 const nextBtnW = cw * 0.55;
                 const nextBtnH = 44;
                 const nextBtnX = (cw - nextBtnW) / 2;
                 const nextBtnY = ch - 50;
                 if (tx >= nextBtnX && tx <= nextBtnX + nextBtnW &&
                     ty >= nextBtnY - nextBtnH / 2 && ty <= nextBtnY + nextBtnH / 2) {
-                    // 下一局：清空本地存档并生成全新地图
-                    if (onMazeReplay) onMazeReplay();
-                    else if (onMaze) onMaze();
+                    // 进入叙事结案页：切 phase 到 resolved，caseResultTimer 归零
+                    if (onEnterResolved) onEnterResolved();
                     return;
                 }
-                // 点击其他区域返回主菜单
-                state.screen = 'menu';
-                state.menuScreen = 'main';
-                state.mazeRescue = null;
+                // 其他区域点击在这个新流程里不再直接返回主菜单（容易误触）
+                // 什么也不做，让玩家明确点"继续"
                 return;
             }
 

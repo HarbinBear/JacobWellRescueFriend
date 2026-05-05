@@ -22,6 +22,22 @@ import { setActiveSeededRandom, clearActiveSeededRandom } from '../core/SeededRa
 const storyManager = new StoryManager();
 
 // =============================================
+// 救援概念包装：从 seed 派生 6 位案件编号
+// 形如 'JWR-128473'：J=Jacob's Well（雅各布井）R=Rescue；数字是 seed 的低 24 位
+// 取模 1e6 再左侧补零至 6 位，保证同 seed 下编号完全确定
+// =============================================
+function padLeft(s: string, width: number, ch: string): string {
+    let out = s;
+    while (out.length < width) out = ch + out;
+    return out;
+}
+
+function buildCaseNumberFromSeed(seed: number): string {
+    const n = padLeft(((seed >>> 0) % 1000000).toString(), 6, '0');
+    return 'JWR-' + n;
+}
+
+// =============================================
 // 迷宫多次下潜闭环：初始化
 // 默认行为：优先尝试读取本地存档；读档成功则直接恢复到岸上阶段，不生成新地图。
 // 读档失败（无存档/版本不兼容/数据损坏）才走原来的流程生成新地图。
@@ -93,6 +109,18 @@ export function resetMazeLogic() {
             if (!Array.isArray(state.mazeRescue.consumedTankIds)) state.mazeRescue.consumedTankIds = [];
             state.mazeRescue.oxygenFeedback = createOxygenFeedback();
         }
+
+        // 救援概念包装：老存档缺失字段时兜底（seed 已经有了，caseNumber 随 seed 固定）
+        const mr: any = state.mazeRescue as any;
+        if (!mr.caseNumber) mr.caseNumber = buildCaseNumberFromSeed(mr.seed || 0);
+        if (typeof mr.briefingShown !== 'boolean') mr.briefingShown = false;
+        // 放弃长按运行态每次进场都重置
+        mr.abandonHolding = false;
+        mr.abandonHoldStart = 0;
+        mr.abandonTouchId = null;
+        if (typeof mr.caseResultTimer !== 'number') mr.caseResultTimer = 0;
+        // phase 在读档时被强制为 'shore'；但如果老档存了 resolved / abandoned / resolved_idle
+        // 这些非游戏中的状态，读档也会被 MazeSave.loadMazeProgress 覆写成 'shore'，所以这里不需特判
 
         // 切换到迷宫模式
         state.screen = 'mazeRescue';
@@ -201,6 +229,13 @@ export function resetMazeLogic() {
         _driveToggleOpen: 0,
         _driveToggleHolding: false,
         _driveSwitchTip: 0,
+        // 救援概念包装：案件编号从 seed 派生（取低 24 位再补 6 位十进制，纯叙事用）
+        caseNumber: buildCaseNumberFromSeed(mazeData.seed),
+        briefingShown: false,          // 新地图首次进岸上时会弹警情通报
+        abandonHolding: false,
+        abandonHoldStart: 0,
+        abandonTouchId: null,
+        caseResultTimer: 0,
         seed: mazeData.seed,
         mazeMap: mazeData.mazeMap,
         mazeWalls: mazeData.mazeWalls,
@@ -612,6 +647,62 @@ export function replayMazeLogic() {
 }
 
 // =============================================
+// 救援概念包装：标记警情通报页已展示
+// 入口：玩家点击警情通报页的"接受任务"按钮
+// =============================================
+export function markBriefingShown() {
+    const maze = state.mazeRescue;
+    if (!maze) return;
+    (maze as any).briefingShown = true;
+    saveMazeProgress();
+}
+
+// =============================================
+// 救援概念包装：放弃救援 → 进入"搜寻终止"结案页（全屏）
+// 入口：岸上长按"放弃救援"按钮完成后触发
+// 动作：切 phase 到 'abandoned'，重置计时器；重置本次放弃长按运行态
+//       diveHistory 保留，作为结案页的"行动记录"展示
+// 注意：此时不清存档，保证玩家从 abandoned 页退出小游戏再回来还能看到这张失败档案；
+//       玩家点"接受新任务"时，由 acceptNewCase() 真正清档 + 生成新地图
+// =============================================
+export function abandonCase() {
+    const maze: any = state.mazeRescue;
+    if (!maze) return;
+    maze.phase = 'abandoned';
+    maze.caseResultTimer = 0;
+    maze.abandonHolding = false;
+    maze.abandonHoldStart = 0;
+    maze.abandonTouchId = null;
+    saveMazeProgress();
+}
+
+// =============================================
+// 救援概念包装：接受新任务 → 清档 + 生成全新案件
+// 入口：resolved / abandoned 结案页的"接受新任务"按钮
+// 等价于 replayMazeLogic，但语义上是叙事动作而非重玩按钮
+// =============================================
+export function acceptNewCase() {
+    clearMazeSave();
+    resetMazeLogic();
+}
+
+// =============================================
+// 救援概念包装：留在此处（成功结案后）→ 切 phase 到 resolved_idle
+// 入口：resolved 结案页的"留在此处"按钮
+// 等价于岸上阶段，但水面入口置灰、不可再下潜；仍可查看下潜记录
+// =============================================
+export function stayInResolvedCase() {
+    const maze: any = state.mazeRescue;
+    if (!maze) return;
+    maze.phase = 'resolved_idle';
+    maze.resultTimer = 0;
+    maze.caseResultTimer = 0;
+    state.npc.active = false;
+    resetBreathSystem();
+    saveMazeProgress();
+}
+
+// =============================================
 // 迷宫多次下潜闭环：每帧更新
 // =============================================
 export function updateMaze() {
@@ -621,6 +712,18 @@ export function updateMaze() {
 
     // === 岸上阶段：不需要更新游戏逻辑 ===
     if (maze.phase === 'shore') {
+        return;
+    }
+
+    // === 结案后"留在此处"状态：等同岸上，不需要游戏逻辑 ===
+    if (maze.phase === 'resolved_idle') {
+        return;
+    }
+
+    // === 救援成功结案页 / 搜寻终止结案页：只推进叙事计时器 ===
+    if (maze.phase === 'resolved' || maze.phase === 'abandoned') {
+        if (typeof (maze as any).caseResultTimer !== 'number') (maze as any).caseResultTimer = 0;
+        (maze as any).caseResultTimer++;
         return;
     }
 

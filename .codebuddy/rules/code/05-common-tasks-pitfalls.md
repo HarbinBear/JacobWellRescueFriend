@@ -136,6 +136,26 @@ type: always
 - **`triggerO2LossFlash` 只在迷宫 play 阶段触发**：主线模式不走 `oxygenFeedback`，函数内部已判断；新增调用点时不要假设主线也有红条反馈。
 - **`infiniteO2` 模式下仍走红条**：为了方便调试，无限氧气时 `CollisionImpact` 仍然触发红条动画（只是不真扣氧）；改动扣氧逻辑时要保留这个调试路径。
 
+### 1.5f 改迷宫救援叙事包装（警情通报 / 放弃救援 / 救援结案 / 留本关）
+
+优先检查：
+
+- `src/logic/MazeLogic.ts`（四个对外函数：`abandonCase / acceptNewCase / stayInResolvedCase / markBriefingShown`；`updateMaze` 中 `resolved / abandoned` 推进 `caseResultTimer`；`resolved_idle` 与 shore 同路径；新建地图分支写入 `caseNumber / briefingShown` 初值）
+- `src/logic/MazeSave.ts`（`loadMazeProgress` 恢复 phase 时保留 `resolved_idle`，其它一律强制 `shore`）
+- `src/logic/Logic.ts`（从 MazeLogic 转导出四个新函数）
+- `src/render/RenderMazeUI.ts`（三个全屏页 + 两个按钮绘制：`drawCaseBriefing / drawCaseResolved / drawCaseAbandoned / drawAbandonBtn / drawResolvedIdleNewCaseBtn`；五个按钮矩形导出：`getBriefingAcceptBtnRect / getAbandonBtnRect / getResolvedIdleNewCaseBtnRect / getResolvedBtnRects / getAbandonedAcceptBtnRect`；`drawMazeHUD` 在 shore/resolved_idle/resolved/abandoned 四个 phase 分发）
+- `src/core/input.ts`（`initInput` 新增 5 个回调；shore touchStart 检测放弃按钮按下；touchMove 持续判定长按 2s 完成 + 移出按钮自动取消；touchEnd 松手取消 + briefing/resolved_idle/resolved/abandoned 四个新 phase 按钮 hit-test；rescued 页"继续"按钮改为触发 `onEnterResolved`；shore 点击下潜前先判 resolved_idle 屏蔽）
+- `game.ts`（接线 5 个新回调：`abandonCase / acceptNewCase / stayInResolvedCase / markBriefingShown / onEnterResolved`）
+- `src/core/state.ts`（`mazeRescue` 的字段扩展：`caseNumber / briefingShown / abandonHolding / abandonHoldStart / abandonTouchId / caseResultTimer`）
+
+常见陷阱：
+
+- **TS target 是 ES2016**：`String.padStart` 不可用；用手写 `padLeft` / `padL2` 补零。
+- **rescued phase 的保留**：`finishMazeDive` 会把 phase 强制覆写成 `debrief`，救援成功路径要紧接着再 `maze.phase = 'rescued'` 一次（原有代码已有，不要删）。
+- **存档里不要把 abandon 运行态存进去**：`abandonHolding / abandonHoldStart / abandonTouchId` 走 `MazeSave.rest` 会自动进存档；本来也没必要跨 session 保留，但每次读档后要强制清零（已在读档分支兜底）。
+- **resolved_idle 的水面入口**：只靠绘制层盖一层遮罩并不足以阻止下潜，必须在 `input.ts` 的点击下潜分支里额外 `if (maze.phase === 'resolved_idle') return;`，否则玩家仍能点出隐藏的下潜触发。
+- **案件编号要来自 seed**：`buildCaseNumberFromSeed` 只取 seed 低 6 位十进制；严禁用 `Date.now()` 或 `Math.random()`，否则好友分享时同种子下案件号不一致，叙事元数据失真。
+
 ### 1.6 改凶猛鱼行为或攻击判定
 
 优先检查：

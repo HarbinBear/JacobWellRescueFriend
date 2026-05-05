@@ -526,7 +526,9 @@ export function loadMazeProgress(): boolean {
     maze.diveHistory = realHistory;
 
     // 强制回到岸上
-    maze.phase = 'shore';
+    // 例外：如果老档里是 'resolved_idle'（成功救援后选择留在本关），保留该状态，岸上禁用下潜
+    const restoredPhase = (maze && maze.phase === 'resolved_idle') ? 'resolved_idle' : 'shore';
+    maze.phase = restoredPhase;
     maze.resultTimer = 0;
     maze.divingInTimer = 0;
     maze._hudEntryTimer = 0;

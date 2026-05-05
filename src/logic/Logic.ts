@@ -15,7 +15,7 @@ import { triggerCollisionImpact, resetCollisionImpact } from './CollisionImpact'
 
 // 从拆分模块重新导出，保持外部导入路径不变
 export { resetArenaLogic, updateArena } from './ArenaLogic';
-export { resetMazeLogic, startMazeDive, returnToShore, replayMazeLogic, updateMaze } from './MazeLogic';
+export { resetMazeLogic, startMazeDive, returnToShore, replayMazeLogic, updateMaze, abandonCase, acceptNewCase, stayInResolvedCase, markBriefingShown } from './MazeLogic';
 export { checkCollision, getNearestWallDist, checkMazeCollision } from './Collision';
 export { updateCameraSpringArm, snapCameraToPlayer, getAdaptiveZoom, resetAdaptiveZoom, getOpenness } from './CameraLogic';
 export { findNearestWall };

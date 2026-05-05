@@ -229,6 +229,24 @@ export const state = {
         _driveToggleHolding: boolean; // 手动/自动挡详情是否正在按住
         _driveSwitchTip: number;    // 手动/自动挡切换tip倒计时（帧）
 
+        // === 救援概念包装（警情通报 / 放弃救援 / 救援结案） ===
+        // 案件编号：由 seed 派生出来的 6 位伪随机数，只做叙事展示用
+        // 坐标 / 接警时间等其它叙事字段都在渲染层从 seed + 常量派生，不再单独存状态
+        caseNumber: string;          // 形如 'JWR-128473'（J=Jacob's Well R=Rescue）
+        briefingShown: boolean;      // 本张地图的警情通报页是否已展示过（首次进入显示，之后不再弹）
+        // 岸上"放弃救援"长按运行态（不跨 session，每次进岸上都会重置）
+        abandonHolding: boolean;     // 是否正在长按放弃
+        abandonHoldStart: number;    // 放弃长按开始时间戳（ms）
+        abandonTouchId: number | null; // 放弃长按触点ID
+        // 结案页计时器：phase === 'resolved' 或 'abandoned' 时推进，用于渐显动画
+        // 注：phase 取值扩展为 'shore' | 'play' | 'surfacing' | 'diving_in' | 'debrief'
+        //     | 'rescued'（救援成功瞬间，旧状态保留兼容）
+        //     | 'resolved'（全屏"成功营救"结案页；玩家在此页选择下一关或留在本关）
+        //     | 'abandoned'（全屏"搜寻终止"结案页；玩家点击后进入下一关）
+        //     | 'resolved_idle'（留在本关的状态；岸上复用 shore 画面，但水面入口置灰、不可再下潜）
+        // caseResultTimer 独立于 resultTimer，避免和下潜结算的 resultTimer 相互干扰
+        caseResultTimer: number;
+
         // === 迷宫种子（P4 地形序列化） ===
         // uint32 范围的种子，用于通过确定性 PRNG 完全重建 mazeMap / mazeWalls / 场景数据
         // 生成地图时记录，存档读档时恢复

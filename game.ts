@@ -1,5 +1,6 @@
 import { initTextures, draw } from './src/render/Render';
-import { resetGameLogic, update, resetArenaLogic, updateArena, resetMazeLogic, replayMazeLogic, updateMaze, startMazeDive, returnToShore } from './src/logic/Logic';
+import { resetGameLogic, update, resetArenaLogic, updateArena, resetMazeLogic, replayMazeLogic, updateMaze, startMazeDive, returnToShore, abandonCase, acceptNewCase, stayInResolvedCase, markBriefingShown } from './src/logic/Logic';
+import { state } from './src/core/state';
 import { initInput } from './src/core/input';
 import { initAudio, updateAudio, updateSFXLoops } from './src/audio/AudioManager';
 import { perfFrameBegin, perfFrameEnd, profileBegin, profileEnd } from './src/debug/PerfHUD';
@@ -29,7 +30,20 @@ initInput(
     () => resetMazeLogic(),
     () => replayMazeLogic(),
     (diveType: string) => startMazeDive(diveType),
-    () => returnToShore()
+    () => returnToShore(),
+    // 救援概念包装回调：放弃救援 / 接受新任务 / 留在本案 / 确认警情通报 / 进入救援结案叙事页
+    () => abandonCase(),
+    () => acceptNewCase(),
+    () => stayInResolvedCase(),
+    () => markBriefingShown(),
+    () => {
+        // 进入 resolved 叙事页：切 phase + 归零 caseResultTimer
+        const maze: any = state.mazeRescue;
+        if (maze && maze.phase === 'rescued') {
+            maze.phase = 'resolved';
+            maze.caseResultTimer = 0;
+        }
+    }
 );
 
 // 启动游戏 (初始化但不开始)

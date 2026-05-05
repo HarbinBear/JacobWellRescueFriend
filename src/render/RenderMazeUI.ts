@@ -41,6 +41,57 @@ export function drawMazeHUD() {
     // === 岸上阶段 ===
     if (maze.phase === 'shore') {
         drawMazeShore(maze, cw, ch, time);
+        // 放弃救援按钮（仅在岸上主界面显示，全屏地图与通报覆盖时不显示）
+        if (!maze.shoreMapOpen && maze.briefingShown) {
+            const hp = (maze.abandonHolding && maze.abandonHoldStart > 0)
+                ? Math.min(1, (Date.now() - maze.abandonHoldStart) / 2000)
+                : 0;
+            drawAbandonBtn(cw, ch, time, hp);
+        }
+        // 警情通报 overlay（首次进入新地图时出现，点击"接受任务"后消失）
+        // 放在按钮之后，确保通报页覆盖其它 UI
+        if (!maze.briefingShown && !maze.shoreMapOpen) {
+            drawCaseBriefing(maze, cw, ch, time);
+        }
+        ctx.restore();
+        return;
+    }
+
+    // === 结案后"留在此处"状态：岸上画面但水面入口置灰 ===
+    if (maze.phase === 'resolved_idle') {
+        drawMazeShore(maze, cw, ch, time);
+        if (!maze.shoreMapOpen) {
+            // 水面入口上盖一层"本案已结案"半透明遮罩
+            ctx.fillStyle = 'rgba(0,0,0,0.45)';
+            const poolX = cw * 0.5, poolY = ch * 0.44;
+            const poolW = 100, poolH = 52;
+            ctx.beginPath();
+            ctx.ellipse(poolX, poolY, poolW, poolH, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = 'rgba(220,255,230,0.85)';
+            ctx.font = 'bold 13px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('本案已结案', poolX, poolY);
+            ctx.font = '10px Arial';
+            ctx.fillStyle = 'rgba(200,220,210,0.65)';
+            ctx.fillText('可查看记录，不能再下潜', poolX, poolY + 16);
+            // 右上角"接受新任务"按钮
+            drawResolvedIdleNewCaseBtn(cw, ch, time);
+        }
+        ctx.restore();
+        return;
+    }
+
+    // === 救援成功结案页（全屏叙事） ===
+    if (maze.phase === 'resolved') {
+        drawCaseResolved(maze, cw, ch, time);
+        ctx.restore();
+        return;
+    }
+
+    // === 搜寻终止结案页（放弃救援全屏叙事） ===
+    if (maze.phase === 'abandoned') {
+        drawCaseAbandoned(maze, cw, ch, time);
         ctx.restore();
         return;
     }
@@ -2082,15 +2133,16 @@ function drawMazeDebrief(maze: any, cw: number, ch: number, time: number) {
             ctx.fillStyle = 'rgba(120,255,200,0.95)';
             ctx.font = 'bold 15px Arial';
             ctx.textBaseline = 'middle';
-            ctx.fillText('下一局', cw / 2, btnY);
+            // 概念包装：rescued 数据页是"行动报告"，点击进入叙事结案页（resolved）
+            ctx.fillText('继续 ▶', cw / 2, btnY);
             ctx.textBaseline = 'alphabetic';
 
-            // 返回主菜单提示
+            // 提示文字
             const tapAlpha = 0.4 + Math.sin(time * 2.5) * 0.3;
             ctx.globalAlpha = showAlpha * btnAlpha * tapAlpha;
             ctx.fillStyle = 'rgba(120,160,180,0.6)';
             ctx.font = '11px Arial';
-            ctx.fillText('点击其他区域返回主菜单', cw / 2, ch - 14);
+            ctx.fillText('点击继续查看案件结案', cw / 2, ch - 14);
         } else {
             const btnGrad = ctx.createLinearGradient(btnX, btnY - btnH / 2, btnX + btnW, btnY - btnH / 2);
             btnGrad.addColorStop(0, 'rgba(20,70,140,0.85)');
@@ -2106,4 +2158,526 @@ function drawMazeDebrief(maze: any, cw: number, ch: number, time: number) {
             ctx.textBaseline = 'alphabetic';
         }
     }
+}
+
+// =============================================
+// 救援概念包装：3 个全屏叙事页（警情通报 / 成功结案 / 搜寻终止）
+// 以及岸上"放弃救援"按钮
+// 它们都属于 RenderMazeUI 的"叙事包装层"，样式力求克制、偏纪实
+// =============================================
+
+// 工具函数：把数字左侧补零至指定宽度（兼容低版本 TS target，不依赖 padStart）
+function padL2(n: number): string {
+    return n < 10 ? '0' + n : '' + n;
+}
+
+// 工具函数：从 seed 派生稳定的"伪 GPS 坐标"叙事字符串
+// 例如 seed=128473 → 'N 8°42'15" E 99°17'31"'，纯展示用
+function seedToPseudoCoord(seed: number): string {
+    const s = (seed >>> 0);
+    // 纬度 0~20（泰国南部纬度带），经度 95~105（泰国经度带）
+    const lat = (s % 20000) / 1000; // 0.000 ~ 19.999
+    const lon = 95 + ((s >> 8) % 10000) / 1000; // 95.000 ~ 104.999
+    const latD = Math.floor(lat);
+    const latM = Math.floor((lat - latD) * 60);
+    const latS = Math.floor(((lat - latD) * 60 - latM) * 60);
+    const lonD = Math.floor(lon);
+    const lonM = Math.floor((lon - lonD) * 60);
+    const lonS = Math.floor(((lon - lonD) * 60 - lonM) * 60);
+    return `N ${latD}°${padL2(latM)}'${padL2(latS)}\"  E ${lonD}°${padL2(lonM)}'${padL2(lonS)}\"`;
+}
+
+// 工具函数：从 seed 派生"接警时间"（HH:MM，稳定再生）
+function seedToAlertTime(seed: number): string {
+    const s = (seed >>> 0);
+    const h = (s % 18) + 4; // 04~21 时，避开深夜凌晨
+    const m = (s >> 5) % 60;
+    return `${padL2(h)}:${padL2(m)}`;
+}
+
+// ---------------------------------------------
+// A. 警情通报页（岸上首次进入新地图时覆盖层）
+// ---------------------------------------------
+// 设计：暗墨绿底（对讲机屏幕感）+ 顶部红色 ALERT 条 + 打字机效果逐字现文字
+// 布局：标题 / 案件编号 / 地点（伪 GPS）/ 接警时间 / 情况描述 / 任务指令 / 底部按钮
+// 按钮：[ 接受任务，前往现场 ]
+// 关闭：在 input.ts 里对应按钮 hit-test 触发 markBriefingShown()
+function drawCaseBriefing(maze: any, cw: number, ch: number, time: number) {
+    const seed = (maze && typeof maze.seed === 'number') ? (maze.seed >>> 0) : 0;
+
+    // 背景：深墨绿 + 细扫描线
+    ctx.globalAlpha = 1;
+    const bg = ctx.createLinearGradient(0, 0, 0, ch);
+    bg.addColorStop(0, 'rgba(8,18,12,0.97)');
+    bg.addColorStop(1, 'rgba(4,10,8,0.99)');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, cw, ch);
+    // 扫描线
+    ctx.globalAlpha = 0.06;
+    ctx.fillStyle = '#6ef0a0';
+    for (let y = 0; y < ch; y += 3) {
+        ctx.fillRect(0, y, cw, 1);
+    }
+    ctx.globalAlpha = 1;
+
+    // 顶部红色 ALERT 条（闪烁）
+    const blink = 0.65 + Math.abs(Math.sin(time * 3)) * 0.35;
+    const barY = ch * 0.08;
+    ctx.fillStyle = `rgba(220,60,40,${0.25 + blink * 0.15})`;
+    ctx.fillRect(0, barY - 24, cw, 44);
+    ctx.fillStyle = `rgba(255,200,180,${blink})`;
+    ctx.font = 'bold 18px Consolas, Menlo, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('⚠  EMERGENCY  ALERT  ⚠', cw / 2, barY);
+    ctx.textBaseline = 'alphabetic';
+
+    // 副标题
+    ctx.fillStyle = 'rgba(180,230,200,0.85)';
+    ctx.font = '12px Consolas, Menlo, monospace';
+    ctx.fillText('CAVE  RESCUE  DISPATCH  CENTER  /  紧急救援调度中心', cw / 2, barY + 34);
+
+    // 案件信息（打字机效果：每帧揭一个字）
+    const lines: {label: string, value: string, color?: string}[] = [
+        { label: '案件编号', value: maze.caseNumber || 'JWR-000000', color: 'rgba(180,240,200,0.95)' },
+        { label: '接警时间', value: seedToAlertTime(seed), color: 'rgba(200,220,200,0.9)' },
+        { label: '事发地点', value: '雅各布井支洞  ' + seedToPseudoCoord(seed), color: 'rgba(200,220,200,0.9)' },
+        { label: '情  况', value: '1 名潜水员失联，氧气存量未知', color: 'rgba(255,220,180,0.95)' },
+        { label: '任  务', value: '深入洞穴，找到被困者并将其带回水面', color: 'rgba(255,255,220,0.95)' },
+    ];
+
+    // 打字机：briefing 出现后 caseResultTimer 可能未推进（只在 resolved/abandoned 推进）
+    // 这里直接用 time 做稳定动画：打开瞬间的时间由外部不保存，所以只用 sin 波做常驻呼吸即可
+    const typeProgress = 1; // 简化：全显示（如需打字机，后续可以在 maze 上加 briefingTypeTimer）
+
+    let infoY = ch * 0.28;
+    const labelX = cw * 0.18;
+    const valueX = cw * 0.38;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    for (let i = 0; i < lines.length; i++) {
+        const ln = lines[i];
+        // 标签
+        ctx.fillStyle = 'rgba(140,200,160,0.7)';
+        ctx.font = '12px Consolas, Menlo, monospace';
+        ctx.fillText(ln.label, labelX, infoY);
+        // 值
+        ctx.fillStyle = ln.color || '#cfe';
+        ctx.font = 'bold 14px Consolas, Menlo, monospace';
+        const visText = ln.value; // typeProgress==1 全显示
+        ctx.fillText(visText, valueX, infoY);
+        infoY += 34;
+    }
+    ctx.textBaseline = 'alphabetic';
+
+    // 底部说明：你是当地救援者
+    ctx.fillStyle = 'rgba(180,220,190,0.55)';
+    ctx.font = 'italic 12px Georgia, serif';
+    ctx.textAlign = 'center';
+    const narrY = ch * 0.68;
+    ctx.fillText('你是本地洞穴救援队的一员。对讲机里的声音很急，却尽量保持克制。', cw / 2, narrY);
+    ctx.fillText('你收起咖啡杯，走向岸上已经架好的气瓶和面镜。', cw / 2, narrY + 20);
+
+    // 底部"接受任务"按钮
+    const btnW = Math.min(260, cw * 0.7);
+    const btnH = 46;
+    const btnX = (cw - btnW) / 2;
+    const btnY = ch - 74;
+    const pulse = 0.85 + Math.sin(time * 2) * 0.1;
+    const btnGrad = ctx.createLinearGradient(btnX, btnY, btnX + btnW, btnY);
+    btnGrad.addColorStop(0, `rgba(30,90,60,${pulse})`);
+    btnGrad.addColorStop(1, `rgba(50,140,90,${pulse})`);
+    ctx.fillStyle = btnGrad;
+    ctx.beginPath();
+    rrect(ctx, btnX, btnY, btnW, btnH, 23);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(180,255,210,0.5)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    rrect(ctx, btnX, btnY, btnW, btnH, 23);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(220,255,230,0.98)';
+    ctx.font = 'bold 15px Arial';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('接受任务，前往现场', cw / 2, btnY + btnH / 2);
+    ctx.textBaseline = 'alphabetic';
+
+    ctx.textAlign = 'left';
+}
+
+// ---------------------------------------------
+// B. 救援成功结案页（救援数据结算 rescued 之后显示）
+// ---------------------------------------------
+// 设计：暖色调（晨光）+ 顶部绿色盖章"成功营救" + 行动报告 + 叙事段 + 双按钮
+// 按钮：[ 留在此处 · 查看记录 ]   [ 接受新的任务 ]
+function drawCaseResolved(maze: any, cw: number, ch: number, time: number) {
+    const timer = (maze as any).caseResultTimer || 0;
+    const showAlpha = Math.min(1, timer / 30);
+    const seed = (maze && typeof maze.seed === 'number') ? (maze.seed >>> 0) : 0;
+
+    // 背景：晨光暖渐变
+    ctx.globalAlpha = showAlpha;
+    const bg = ctx.createLinearGradient(0, 0, 0, ch);
+    bg.addColorStop(0, 'rgba(52,42,28,0.97)');
+    bg.addColorStop(0.5, 'rgba(80,60,36,0.97)');
+    bg.addColorStop(1, 'rgba(30,24,14,0.99)');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, cw, ch);
+
+    // 顶部光晕（模拟阳光）
+    const haloR = Math.min(cw, ch) * 0.7;
+    const haloG = ctx.createRadialGradient(cw * 0.78, ch * 0.1, 10, cw * 0.78, ch * 0.1, haloR);
+    haloG.addColorStop(0, 'rgba(255,220,160,0.35)');
+    haloG.addColorStop(1, 'rgba(255,200,130,0)');
+    ctx.fillStyle = haloG;
+    ctx.fillRect(0, 0, cw, ch);
+
+    // 顶部绿色"盖章"标题
+    ctx.globalAlpha = showAlpha;
+    ctx.textAlign = 'center';
+    const stampY = ch * 0.13;
+    ctx.save();
+    ctx.translate(cw / 2, stampY);
+    ctx.rotate(-0.05);
+    ctx.strokeStyle = 'rgba(120,220,170,0.9)';
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    rrect(ctx, -120, -22, 240, 44, 8);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(150,240,190,0.95)';
+    ctx.font = 'bold 20px Arial';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('案件结案 · 成功营救', 0, 0);
+    ctx.textBaseline = 'alphabetic';
+    ctx.restore();
+
+    // 副标题：案件编号
+    ctx.fillStyle = 'rgba(240,220,180,0.75)';
+    ctx.font = '13px Consolas, Menlo, monospace';
+    ctx.fillText(maze.caseNumber || 'JWR-------', cw / 2, stampY + 44);
+
+    // 行动报告（类似 rescued 页，但文字叙事化）
+    const reportY = ch * 0.32;
+    const diveCount = maze.diveCount || 0;
+    const totalRope = maze.totalRopePlaced || 0;
+    const maxDepthM = Math.floor((maze.maxDepthReached || 0) / (maze.mazeTileSize || 1));
+
+    ctx.fillStyle = 'rgba(240,230,200,0.85)';
+    ctx.font = 'bold 13px Arial';
+    ctx.fillText('— 行动报告 —', cw / 2, reportY);
+
+    // 四栏数据
+    ctx.font = '12px Arial';
+    const statItems = [
+        { label: '出勤次数', value: diveCount + ' 次' },
+        { label: '最大深度', value: maxDepthM + ' m' },
+        { label: '铺设绳索', value: totalRope + ' 段' },
+        { label: '结案状态', value: '已移交医疗组' },
+    ];
+    const sw = cw / statItems.length;
+    for (let i = 0; i < statItems.length; i++) {
+        const sx = sw * i + sw / 2;
+        ctx.fillStyle = 'rgba(255,230,180,0.95)';
+        ctx.font = 'bold 16px Arial';
+        ctx.fillText(statItems[i].value, sx, reportY + 38);
+        ctx.fillStyle = 'rgba(200,180,140,0.6)';
+        ctx.font = '10px Arial';
+        ctx.fillText(statItems[i].label, sx, reportY + 56);
+    }
+
+    // 叙事段（3~4 行）
+    const narrY = ch * 0.58;
+    ctx.fillStyle = 'rgba(240,220,180,0.8)';
+    ctx.font = 'italic 13px Georgia, serif';
+    const narrLines = [
+        '被困者已被送上担架，医疗组正在检查体征。',
+        '队长拍了拍你的肩："干得漂亮。"',
+        '你坐在井边，氧气瓶从水里被拉上来，阳光正好。',
+    ];
+    for (let i = 0; i < narrLines.length; i++) {
+        ctx.fillText(narrLines[i], cw / 2, narrY + i * 22);
+    }
+
+    // 底部双按钮
+    if (timer >= 60) {
+        const btnAlpha = Math.min(1, (timer - 60) / 20);
+        ctx.globalAlpha = showAlpha * btnAlpha;
+        const btnH = 46;
+        const btnY = ch - 72;
+        const gap = 12;
+        const totalW = Math.min(cw - 32, 420);
+        const halfW = (totalW - gap) / 2;
+        const leftX = (cw - totalW) / 2;
+        const rightX = leftX + halfW + gap;
+
+        // 左：留在此处（次按钮）
+        ctx.fillStyle = 'rgba(70,55,38,0.9)';
+        ctx.beginPath();
+        rrect(ctx, leftX, btnY, halfW, btnH, 23);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(200,180,140,0.5)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        rrect(ctx, leftX, btnY, halfW, btnH, 23);
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(230,215,180,0.95)';
+        ctx.font = 'bold 14px Arial';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('留在此处', leftX + halfW / 2, btnY + btnH / 2);
+        ctx.textBaseline = 'alphabetic';
+
+        // 右：接受新的任务（主按钮，暖绿）
+        const mainGrad = ctx.createLinearGradient(rightX, btnY, rightX + halfW, btnY);
+        mainGrad.addColorStop(0, 'rgba(50,130,90,0.95)');
+        mainGrad.addColorStop(1, 'rgba(80,170,120,0.95)');
+        ctx.fillStyle = mainGrad;
+        ctx.beginPath();
+        rrect(ctx, rightX, btnY, halfW, btnH, 23);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(230,255,240,0.98)';
+        ctx.font = 'bold 14px Arial';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('接受新的任务 ▶', rightX + halfW / 2, btnY + btnH / 2);
+        ctx.textBaseline = 'alphabetic';
+    }
+
+    ctx.globalAlpha = 1;
+}
+
+// ---------------------------------------------
+// C. 搜寻终止结案页（岸上长按"放弃救援"完成后显示）
+// ---------------------------------------------
+// 设计：冷灰/墨蓝基调 + 红色盖章"搜寻终止" + 失败统计 + 叙事段 + 单按钮"接受新的任务"
+function drawCaseAbandoned(maze: any, cw: number, ch: number, time: number) {
+    const timer = (maze as any).caseResultTimer || 0;
+    const showAlpha = Math.min(1, timer / 30);
+
+    // 背景：冷灰蓝
+    ctx.globalAlpha = showAlpha;
+    const bg = ctx.createLinearGradient(0, 0, 0, ch);
+    bg.addColorStop(0, 'rgba(14,16,22,0.98)');
+    bg.addColorStop(1, 'rgba(6,8,12,0.99)');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, cw, ch);
+
+    // 顶部红色盖章
+    ctx.globalAlpha = showAlpha;
+    ctx.textAlign = 'center';
+    const stampY = ch * 0.13;
+    ctx.save();
+    ctx.translate(cw / 2, stampY);
+    ctx.rotate(0.04);
+    ctx.strokeStyle = 'rgba(230,90,70,0.9)';
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    rrect(ctx, -130, -22, 260, 44, 8);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(250,140,120,0.95)';
+    ctx.font = 'bold 20px Arial';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('案件结案 · 搜寻终止', 0, 0);
+    ctx.textBaseline = 'alphabetic';
+    ctx.restore();
+
+    // 副标题：案件编号
+    ctx.fillStyle = 'rgba(170,180,195,0.7)';
+    ctx.font = '13px Consolas, Menlo, monospace';
+    ctx.fillText(maze.caseNumber || 'JWR-------', cw / 2, stampY + 44);
+
+    // 失败统计
+    const reportY = ch * 0.32;
+    const diveCount = maze.diveCount || 0;
+    const totalRope = maze.totalRopePlaced || 0;
+    const maxDepthM = Math.floor((maze.maxDepthReached || 0) / (maze.mazeTileSize || 1));
+    // 探索覆盖率（以已探索非墙格占总非墙格比例）
+    let exploredCount = 0;
+    let openCount = 0;
+    try {
+        for (let r = 0; r < maze.mazeRows; r++) {
+            for (let c = 0; c < maze.mazeCols; c++) {
+                if (maze.mazeMap[r][c] === 0) {
+                    openCount++;
+                    if (maze.mazeExplored[r] && maze.mazeExplored[r][c]) exploredCount++;
+                }
+            }
+        }
+    } catch (e) { /* 忽略 */ }
+    const coveragePct = openCount > 0 ? Math.round(exploredCount / openCount * 100) : 0;
+
+    ctx.fillStyle = 'rgba(200,210,225,0.8)';
+    ctx.font = 'bold 13px Arial';
+    ctx.fillText('— 行动记录 —', cw / 2, reportY);
+
+    const statItems = [
+        { label: '出勤次数', value: diveCount + ' 次' },
+        { label: '最大深度', value: maxDepthM + ' m' },
+        { label: '覆盖率', value: coveragePct + '%' },
+        { label: '铺设绳索', value: totalRope + ' 段' },
+    ];
+    const sw = cw / statItems.length;
+    for (let i = 0; i < statItems.length; i++) {
+        const sx = sw * i + sw / 2;
+        ctx.fillStyle = 'rgba(200,210,225,0.9)';
+        ctx.font = 'bold 16px Arial';
+        ctx.fillText(statItems[i].value, sx, reportY + 38);
+        ctx.fillStyle = 'rgba(140,150,170,0.6)';
+        ctx.font = '10px Arial';
+        ctx.fillText(statItems[i].label, sx, reportY + 56);
+    }
+
+    // 叙事段
+    const narrY = ch * 0.58;
+    ctx.fillStyle = 'rgba(200,210,225,0.78)';
+    ctx.font = 'italic 13px Georgia, serif';
+    const narrLines = [
+        '你摘下面镜。调度员在无线电里说："搜寻终止，新的报警来了。"',
+        '你没有回答，看着黑色水面沉默了很久。',
+        '水面浮着几个气泡，很快也没了。',
+    ];
+    for (let i = 0; i < narrLines.length; i++) {
+        ctx.fillText(narrLines[i], cw / 2, narrY + i * 22);
+    }
+
+    // 底部按钮：接受新的任务（单按钮，居中）
+    if (timer >= 60) {
+        const btnAlpha = Math.min(1, (timer - 60) / 20);
+        ctx.globalAlpha = showAlpha * btnAlpha;
+        const btnW = Math.min(280, cw * 0.7);
+        const btnH = 46;
+        const btnX = (cw - btnW) / 2;
+        const btnY = ch - 72;
+        const grad = ctx.createLinearGradient(btnX, btnY, btnX + btnW, btnY);
+        grad.addColorStop(0, 'rgba(60,80,120,0.9)');
+        grad.addColorStop(1, 'rgba(90,110,160,0.9)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        rrect(ctx, btnX, btnY, btnW, btnH, 23);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(220,230,250,0.98)';
+        ctx.font = 'bold 15px Arial';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('接受新的任务 ▶', cw / 2, btnY + btnH / 2);
+        ctx.textBaseline = 'alphabetic';
+    }
+
+    ctx.globalAlpha = 1;
+}
+
+// ---------------------------------------------
+// D. 岸上"放弃救援"按钮（长按 2s 完成后触发 abandonCase）
+// 在 drawMazeShore 中的"探索记录"卡片上方、屏幕右下角绘制
+// 与其它导出一起暴露，供 input.ts 做 hit-test
+// ---------------------------------------------
+export function getAbandonBtnRect(cw: number, ch: number): {x: number, y: number, w: number, h: number} {
+    const w = 108;
+    const h = 34;
+    const x = cw - w - 12;
+    // 放在探索记录卡片上方一点，避免和卡片重合（卡片 cardY 最小约 ch - 448）
+    // 直接取 ch - 460 做上限保护
+    const y = Math.max(52, ch - 460 - h - 6);
+    return { x, y, w, h };
+}
+
+// 绘制放弃救援按钮（岸上阶段 & 非全屏地图时调用）
+// 接受当前按下进度（0~1），按下时按钮会被"沿进度填充"红色
+export function drawAbandonBtn(cw: number, ch: number, time: number, holdProgress: number) {
+    const r = getAbandonBtnRect(cw, ch);
+    ctx.globalAlpha = 0.88;
+    // 底色
+    ctx.fillStyle = 'rgba(40,20,18,0.75)';
+    ctx.beginPath();
+    rrect(ctx, r.x, r.y, r.w, r.h, 17);
+    ctx.fill();
+    // 红色进度填充（长按时从左到右扫过）
+    if (holdProgress > 0) {
+        ctx.save();
+        ctx.beginPath();
+        rrect(ctx, r.x, r.y, r.w, r.h, 17);
+        ctx.clip();
+        ctx.fillStyle = 'rgba(200,60,50,0.85)';
+        ctx.fillRect(r.x, r.y, r.w * Math.min(1, holdProgress), r.h);
+        ctx.restore();
+    }
+    // 边框
+    ctx.strokeStyle = 'rgba(255,160,140,0.55)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    rrect(ctx, r.x, r.y, r.w, r.h, 17);
+    ctx.stroke();
+    // 文字
+    ctx.fillStyle = 'rgba(255,220,210,0.95)';
+    ctx.font = 'bold 12px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const label = holdProgress > 0 ? '松手取消 · 长按结案' : '放弃救援';
+    ctx.fillText(label, r.x + r.w / 2, r.y + r.h / 2);
+    ctx.textBaseline = 'alphabetic';
+    ctx.globalAlpha = 1;
+}
+
+// ---------------------------------------------
+// E. resolved_idle 状态下的"接受新任务"按钮
+// 留在本关时岸上水面入口置灰、下潜禁用；玩家仍可随时离开本关
+// 按钮位置和 abandon 按钮上下对称（在岸上界面的右上角）
+// ---------------------------------------------
+export function getResolvedIdleNewCaseBtnRect(cw: number, ch: number): {x: number, y: number, w: number, h: number} {
+    const w = 128;
+    const h = 34;
+    const x = cw - w - 12;
+    const y = 52;
+    return { x, y, w, h };
+}
+
+export function drawResolvedIdleNewCaseBtn(cw: number, ch: number, time: number) {
+    const r = getResolvedIdleNewCaseBtnRect(cw, ch);
+    const pulse = 0.8 + Math.sin(time * 2) * 0.15;
+    ctx.globalAlpha = pulse;
+    const grad = ctx.createLinearGradient(r.x, r.y, r.x + r.w, r.y);
+    grad.addColorStop(0, 'rgba(50,130,90,0.9)');
+    grad.addColorStop(1, 'rgba(80,170,120,0.9)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    rrect(ctx, r.x, r.y, r.w, r.h, 17);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(180,255,210,0.55)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    rrect(ctx, r.x, r.y, r.w, r.h, 17);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(230,255,240,0.98)';
+    ctx.font = 'bold 12px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('接受新的任务 ▶', r.x + r.w / 2, r.y + r.h / 2);
+    ctx.textBaseline = 'alphabetic';
+    ctx.globalAlpha = 1;
+}
+
+// ---------------------------------------------
+// F. 警情通报页"接受任务"按钮矩形（供 input.ts hit-test）
+// ---------------------------------------------
+export function getBriefingAcceptBtnRect(cw: number, ch: number): {x: number, y: number, w: number, h: number} {
+    const w = Math.min(260, cw * 0.7);
+    const h = 46;
+    return { x: (cw - w) / 2, y: ch - 74, w, h };
+}
+
+// ---------------------------------------------
+// G. resolved 结案页双按钮矩形 / abandoned 结案页单按钮矩形
+// ---------------------------------------------
+export function getResolvedBtnRects(cw: number, ch: number): {stayX: number, newX: number, y: number, w: number, h: number} {
+    const h = 46;
+    const y = ch - 72;
+    const gap = 12;
+    const totalW = Math.min(cw - 32, 420);
+    const halfW = (totalW - gap) / 2;
+    const leftX = (cw - totalW) / 2;
+    const rightX = leftX + halfW + gap;
+    return { stayX: leftX, newX: rightX, y, w: halfW, h };
+}
+
+export function getAbandonedAcceptBtnRect(cw: number, ch: number): {x: number, y: number, w: number, h: number} {
+    const w = Math.min(280, cw * 0.7);
+    const h = 46;
+    return { x: (cw - w) / 2, y: ch - 72, w, h };
 }
