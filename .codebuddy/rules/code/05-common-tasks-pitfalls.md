@@ -140,13 +140,35 @@ type: always
 
 优先检查：
 
-- `src/logic/MazeLogic.ts`（四个对外函数：`abandonCase / acceptNewCase / stayInResolvedCase / markBriefingShown`；`updateMaze` 中 `resolved / abandoned` 推进 `caseResultTimer`；`resolved_idle` 与 shore 同路径；新建地图分支写入 `caseNumber / briefingShown` 初值）
-- `src/logic/MazeSave.ts`（`loadMazeProgress` 恢复 phase 时保留 `resolved_idle`，其它一律强制 `shore`）
+- `src/logic/MazeLogic.ts`（四个对外函数：`abandonCase / acceptNewCase / stayInResolvedCase / markBriefingShown`；`updateMaze` 中 `resolved / abandoned` 推进 `caseResultTimer`；`resolved_idle` 与 shore 同路径；新建地图分支写入 `caseNumber / briefingShown / briefingEnterTime` 初值；`abandonCase` 写入 `abandonedEnterTime`）
+- `src/logic/MazeSave.ts`（`loadMazeProgress` 恢复 phase 时保留 `resolved_idle`，其它一律强制 `shore`；读档分支兜底三个 enterTime 字段）
 - `src/logic/Logic.ts`（从 MazeLogic 转导出四个新函数）
-- `src/render/RenderMazeUI.ts`（三个全屏页 + 两个按钮绘制：`drawCaseBriefing / drawCaseResolved / drawCaseAbandoned / drawAbandonBtn / drawResolvedIdleNewCaseBtn`；五个按钮矩形导出：`getBriefingAcceptBtnRect / getAbandonBtnRect / getResolvedIdleNewCaseBtnRect / getResolvedBtnRects / getAbandonedAcceptBtnRect`；`drawMazeHUD` 在 shore/resolved_idle/resolved/abandoned 四个 phase 分发）
+- `src/render/RenderMazeUI.ts`（三个全屏页 + 两个按钮绘制：`drawCaseBriefing / drawCaseResolved / drawCaseAbandoned / drawAbandonBtn / drawResolvedIdleNewCaseBtn`；入场动效辅助：`stampPunchAnim`（盖章 punch：1.7→1.0 + 微过冲）、`animCountUp`（数字滚动 easeOutQuad）、`buildRoundedRectPerimeter`（按长按进度截取按钮外缘周长）；五个按钮矩形导出：`getBriefingAcceptBtnRect / getAbandonBtnRect / getResolvedIdleNewCaseBtnRect / getResolvedBtnRects / getAbandonedAcceptBtnRect`；`drawMazeHUD` 在 shore/resolved_idle/resolved/abandoned 四个 phase 分发）
 - `src/core/input.ts`（`initInput` 新增 5 个回调；shore touchStart 检测放弃按钮按下；touchMove 持续判定长按 2s 完成 + 移出按钮自动取消；touchEnd 松手取消 + briefing/resolved_idle/resolved/abandoned 四个新 phase 按钮 hit-test；rescued 页"继续"按钮改为触发 `onEnterResolved`；shore 点击下潜前先判 resolved_idle 屏蔽）
-- `game.ts`（接线 5 个新回调：`abandonCase / acceptNewCase / stayInResolvedCase / markBriefingShown / onEnterResolved`）
-- `src/core/state.ts`（`mazeRescue` 的字段扩展：`caseNumber / briefingShown / abandonHolding / abandonHoldStart / abandonTouchId / caseResultTimer`）
+- `game.ts`（接线 5 个新回调：`abandonCase / acceptNewCase / stayInResolvedCase / markBriefingShown / onEnterResolved`；`onEnterResolved` 内写入 `resolvedEnterTime`）
+- `src/core/state.ts`（`mazeRescue` 的字段扩展：`caseNumber / briefingShown / briefingEnterTime / resolvedEnterTime / abandonedEnterTime / abandonHolding / abandonHoldStart / abandonTouchId / caseResultTimer`）
+
+**安全区与布局约定**：
+
+- `SAFE_TOP = 58`：顶部内容必须在 y ≥ 58 开始，避让微信小游戏右上角胶囊（约 87×32，从右上角开始）
+- `PAD_X = 28`：左右内边距，所有内容都应该在 `[PAD_X, cw - PAD_X]` 内
+- ALERT 条的 EMERGENCY 居中需要避让右侧胶囊：中心 x 用 `(PAD_X + (cw - 108)) / 2`，而不是 `cw / 2`
+- 四栏数据等分：总宽度用 `(cw - PAD_X * 2) / 4`，起点 `PAD_X`，避免贴屏幕边
+- 数据行超长（如伪 GPS 坐标）必须做"超出就换到 label 下方全宽显示"的回退，不要硬切
+
+**入场动效实现**：
+
+- 三个全屏页各有独立的"进入时间戳" `briefingEnterTime / resolvedEnterTime / abandonedEnterTime`，在 phase 切入时写 `Date.now()`
+- 渲染层用 `t = Math.max(0, (Date.now() - enterTime) / 1000)` 做相对时钟，而不是用全局 `time`（避免因为全局时钟持续增长导致每次切入动效都跑到终态）
+- 盖章 punch：`scale` 用 easeOutCubic 从 1.7 到 1.0（0.5s），0.5~0.7s 加一个 `sin(k*π) * 0.06` 的过冲
+- 打字机：每字符 0.03s，行间延迟 0.18s，起点 0.7s（等顶部条滑入完成）；光标用 `Math.floor(t * 3) % 2 === 0` 做闪烁
+- 数字 count-up：`animCountUp(target, startSec, dur, tSec)` 用 easeOutQuad，`Math.floor(target * ease)` 得整数
+
+**放弃按钮实现要点**：
+
+- 视觉：深石板灰底 + **虚线描边**（`setLineDash([3,2])`）+ 左侧矢量对讲机图标 + 右侧细体文字
+- 长按进度：不再用"大面积填红"，而是用 `setLineDash([totalLen * progress, totalLen])` 沿按钮**外缘**画一圈红色环形进度，`buildRoundedRectPerimeter()` 计算圆角矩形周长
+- 位置：`y = clamp(112, ch*0.22, ch-480)`，同时避让顶部标题和底部展开的探索记录卡片
 
 常见陷阱：
 
@@ -155,7 +177,8 @@ type: always
 - **存档里不要把 abandon 运行态存进去**：`abandonHolding / abandonHoldStart / abandonTouchId` 走 `MazeSave.rest` 会自动进存档；本来也没必要跨 session 保留，但每次读档后要强制清零（已在读档分支兜底）。
 - **resolved_idle 的水面入口**：只靠绘制层盖一层遮罩并不足以阻止下潜，必须在 `input.ts` 的点击下潜分支里额外 `if (maze.phase === 'resolved_idle') return;`，否则玩家仍能点出隐藏的下潜触发。
 - **案件编号要来自 seed**：`buildCaseNumberFromSeed` 只取 seed 低 6 位十进制；严禁用 `Date.now()` 或 `Math.random()`，否则好友分享时同种子下案件号不一致，叙事元数据失真。
-
+- **不要用全局 time 驱动入场动效**：如果用全局 `CONFIG.screenTime` 之类的累加时钟，玩家二次打开同一页时动效会直接跳到终态（因为 t 已经很大）；必须用 `Date.now() - enterTime` 的独立相对时钟。
+- **setLineDash 的兼容性**：微信小游戏 Canvas 2D 支持 `setLineDash`，但某些旧版本基础库签名是 `(ctx as any).setLineDash(...)`；写 `(ctx as any).setLineDash && (ctx as any).setLineDash([...])` 这种兼容写法更稳。
 ### 1.6 改凶猛鱼行为或攻击判定
 
 优先检查：

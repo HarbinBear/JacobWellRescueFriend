@@ -37,11 +37,12 @@ initInput(
     () => stayInResolvedCase(),
     () => markBriefingShown(),
     () => {
-        // 进入 resolved 叙事页：切 phase + 归零 caseResultTimer
+        // 进入 resolved 叙事页：切 phase + 归零 caseResultTimer + 写入入场动效时间戳
         const maze: any = state.mazeRescue;
         if (maze && maze.phase === 'rescued') {
             maze.phase = 'resolved';
             maze.caseResultTimer = 0;
+            maze.resolvedEnterTime = Date.now();
         }
     }
 );

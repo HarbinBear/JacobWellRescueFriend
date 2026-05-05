@@ -119,6 +119,14 @@ export function resetMazeLogic() {
         mr.abandonHoldStart = 0;
         mr.abandonTouchId = null;
         if (typeof mr.caseResultTimer !== 'number') mr.caseResultTimer = 0;
+        // 入场动效时间戳兜底：读档后把"如果当前 phase 是对应全屏页"的 enterTime 设成 now，
+        // 避免玩家读档时遇到一张没有 enterTime 的页导致动效直接跑到终态而跳过
+        const nowMs = Date.now();
+        if (!mr.briefingShown && (typeof mr.briefingEnterTime !== 'number' || mr.briefingEnterTime <= 0)) {
+            mr.briefingEnterTime = nowMs;
+        }
+        if (typeof mr.resolvedEnterTime !== 'number') mr.resolvedEnterTime = 0;
+        if (typeof mr.abandonedEnterTime !== 'number') mr.abandonedEnterTime = 0;
         // phase 在读档时被强制为 'shore'；但如果老档存了 resolved / abandoned / resolved_idle
         // 这些非游戏中的状态，读档也会被 MazeSave.loadMazeProgress 覆写成 'shore'，所以这里不需特判
 
@@ -232,6 +240,9 @@ export function resetMazeLogic() {
         // 救援概念包装：案件编号从 seed 派生（取低 24 位再补 6 位十进制，纯叙事用）
         caseNumber: buildCaseNumberFromSeed(mazeData.seed),
         briefingShown: false,          // 新地图首次进岸上时会弹警情通报
+        briefingEnterTime: Date.now(), // 新地图生成瞬间就写入，警情通报入场动效会从此开始
+        resolvedEnterTime: 0,
+        abandonedEnterTime: 0,
         abandonHolding: false,
         abandonHoldStart: 0,
         abandonTouchId: null,
@@ -670,6 +681,7 @@ export function abandonCase() {
     if (!maze) return;
     maze.phase = 'abandoned';
     maze.caseResultTimer = 0;
+    maze.abandonedEnterTime = Date.now();
     maze.abandonHolding = false;
     maze.abandonHoldStart = 0;
     maze.abandonTouchId = null;

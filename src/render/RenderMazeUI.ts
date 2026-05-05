@@ -2198,122 +2198,258 @@ function seedToAlertTime(seed: number): string {
 // ---------------------------------------------
 // A. 警情通报页（岸上首次进入新地图时覆盖层）
 // ---------------------------------------------
-// 设计：暗墨绿底（对讲机屏幕感）+ 顶部红色 ALERT 条 + 打字机效果逐字现文字
-// 布局：标题 / 案件编号 / 地点（伪 GPS）/ 接警时间 / 情况描述 / 任务指令 / 底部按钮
-// 按钮：[ 接受任务，前往现场 ]
+// 设计：暗墨绿底（对讲机屏幕感）+ 顶部红色 ALERT 条从上滑入 + 打字机逐字显示 + 雷达扫描线
+// 布局重点：顶部 SAFE_TOP=58 避让微信胶囊；数据行用左右两列，事发地点过长时自动换行到下一行
+// 按钮：[ 接受任务，前往现场 ]，按钮带"呼吸 + 光晕扫过"动效
 // 关闭：在 input.ts 里对应按钮 hit-test 触发 markBriefingShown()
 function drawCaseBriefing(maze: any, cw: number, ch: number, time: number) {
     const seed = (maze && typeof maze.seed === 'number') ? (maze.seed >>> 0) : 0;
+    // 入场时钟：相对 enterTime 的秒数，用于驱动动效
+    const enterMs = (maze && maze.briefingEnterTime) ? maze.briefingEnterTime : Date.now();
+    const t = Math.max(0, (Date.now() - enterMs) / 1000);
+    // 全屏淡入（前 0.35s）
+    const bgAlpha = Math.min(1, t / 0.35);
+    // 顶部 ALERT 条滑入（前 0.5s）
+    const barSlideT = Math.min(1, t / 0.5);
+    const barEase = 1 - (1 - barSlideT) * (1 - barSlideT) * (1 - barSlideT); // easeOutCubic
+    // 安全区常量
+    const SAFE_TOP = 58;  // 避让右上角胶囊
+    const PAD_X = 28;
+    const contentR = cw - PAD_X;
 
     // 背景：深墨绿 + 细扫描线
-    ctx.globalAlpha = 1;
+    ctx.globalAlpha = bgAlpha;
     const bg = ctx.createLinearGradient(0, 0, 0, ch);
     bg.addColorStop(0, 'rgba(8,18,12,0.97)');
     bg.addColorStop(1, 'rgba(4,10,8,0.99)');
     ctx.fillStyle = bg;
     ctx.fillRect(0, 0, cw, ch);
-    // 扫描线
-    ctx.globalAlpha = 0.06;
+    // 扫描线（静态）
+    ctx.globalAlpha = bgAlpha * 0.06;
     ctx.fillStyle = '#6ef0a0';
     for (let y = 0; y < ch; y += 3) {
         ctx.fillRect(0, y, cw, 1);
     }
-    ctx.globalAlpha = 1;
+    // 雷达扫描线（动态：一根亮绿带从上往下周期扫过）
+    const sweepCycle = 2.4;
+    const sweepY = ((t % sweepCycle) / sweepCycle) * ch;
+    const sweepGrad = ctx.createLinearGradient(0, sweepY - 80, 0, sweepY + 8);
+    sweepGrad.addColorStop(0, 'rgba(110,240,160,0)');
+    sweepGrad.addColorStop(0.7, 'rgba(110,240,160,0.10)');
+    sweepGrad.addColorStop(1, 'rgba(180,255,200,0.28)');
+    ctx.globalAlpha = bgAlpha;
+    ctx.fillStyle = sweepGrad;
+    ctx.fillRect(0, sweepY - 80, cw, 88);
+    ctx.globalAlpha = bgAlpha;
 
-    // 顶部红色 ALERT 条（闪烁）
-    const blink = 0.65 + Math.abs(Math.sin(time * 3)) * 0.35;
-    const barY = ch * 0.08;
-    ctx.fillStyle = `rgba(220,60,40,${0.25 + blink * 0.15})`;
-    ctx.fillRect(0, barY - 24, cw, 44);
-    ctx.fillStyle = `rgba(255,200,180,${blink})`;
-    ctx.font = 'bold 18px Consolas, Menlo, monospace';
+    // 顶部 ALERT 条：从屏幕上方滑入
+    const barTargetY = SAFE_TOP + 16;
+    const barY = barTargetY - (1 - barEase) * 60;
+    const blink = 0.65 + Math.abs(Math.sin(t * 3)) * 0.35;
+    ctx.fillStyle = `rgba(180,50,36,${(0.28 + blink * 0.12) * barEase})`;
+    ctx.fillRect(0, barY - 22, cw, 44);
+    // 描边
+    ctx.strokeStyle = `rgba(255,130,100,${0.45 * barEase})`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, barY - 22); ctx.lineTo(cw, barY - 22);
+    ctx.moveTo(0, barY + 22); ctx.lineTo(cw, barY + 22);
+    ctx.stroke();
+    // ALERT 文字：在 [PAD_X, cw-108] 的可视安全区内居中（避让右上角胶囊）
+    ctx.fillStyle = `rgba(255,210,190,${blink * barEase})`;
+    ctx.font = 'bold 16px Consolas, Menlo, monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('⚠  EMERGENCY  ALERT  ⚠', cw / 2, barY);
+    const alertCenterX = (PAD_X + (cw - 108)) / 2;
+    ctx.fillText('⚠  EMERGENCY  ALERT  ⚠', alertCenterX, barY);
     ctx.textBaseline = 'alphabetic';
 
     // 副标题
-    ctx.fillStyle = 'rgba(180,230,200,0.85)';
-    ctx.font = '12px Consolas, Menlo, monospace';
-    ctx.fillText('CAVE  RESCUE  DISPATCH  CENTER  /  紧急救援调度中心', cw / 2, barY + 34);
+    ctx.globalAlpha = bgAlpha * barEase;
+    ctx.fillStyle = 'rgba(180,230,200,0.8)';
+    ctx.font = '11px Consolas, Menlo, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('CAVE RESCUE DISPATCH CENTER / 紧急救援调度中心', cw / 2, barY + 34);
 
-    // 案件信息（打字机效果：每帧揭一个字）
+    // 案件信息：打字机效果，起始 0.7s
     const lines: {label: string, value: string, color?: string}[] = [
         { label: '案件编号', value: maze.caseNumber || 'JWR-000000', color: 'rgba(180,240,200,0.95)' },
         { label: '接警时间', value: seedToAlertTime(seed), color: 'rgba(200,220,200,0.9)' },
-        { label: '事发地点', value: '雅各布井支洞  ' + seedToPseudoCoord(seed), color: 'rgba(200,220,200,0.9)' },
+        { label: '事发地点', value: '雅各布井支洞 · ' + seedToPseudoCoord(seed), color: 'rgba(200,220,200,0.9)' },
         { label: '情  况', value: '1 名潜水员失联，氧气存量未知', color: 'rgba(255,220,180,0.95)' },
-        { label: '任  务', value: '深入洞穴，找到被困者并将其带回水面', color: 'rgba(255,255,220,0.95)' },
+        { label: '任  务', value: '深入洞穴，找到被困者并带回水面', color: 'rgba(255,255,220,0.95)' },
     ];
+    const typeCharSec = 0.03;
+    const lineDelay = 0.18;
+    const typeStart = 0.7;
 
-    // 打字机：briefing 出现后 caseResultTimer 可能未推进（只在 resolved/abandoned 推进）
-    // 这里直接用 time 做稳定动画：打开瞬间的时间由外部不保存，所以只用 sin 波做常驻呼吸即可
-    const typeProgress = 1; // 简化：全显示（如需打字机，后续可以在 maze 上加 briefingTypeTimer）
-
-    let infoY = ch * 0.28;
-    const labelX = cw * 0.18;
-    const valueX = cw * 0.38;
+    const infoStartY = SAFE_TOP + 92;
+    const labelX = PAD_X + 8;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
+    ctx.globalAlpha = bgAlpha;
+    let infoY = infoStartY;
     for (let i = 0; i < lines.length; i++) {
         const ln = lines[i];
-        // 标签
-        ctx.fillStyle = 'rgba(140,200,160,0.7)';
+        const lineAppearAt = typeStart + i * lineDelay;
+        const lineTime = Math.max(0, t - lineAppearAt);
+        const alphaEnter = Math.min(1, lineTime / 0.25);
+        if (alphaEnter <= 0) { infoY += 34; continue; }
+        ctx.globalAlpha = bgAlpha * alphaEnter;
+
+        ctx.fillStyle = 'rgba(140,200,160,0.72)';
         ctx.font = '12px Consolas, Menlo, monospace';
         ctx.fillText(ln.label, labelX, infoY);
-        // 值
+
+        const chars = Math.max(0, Math.floor(lineTime / typeCharSec));
+        const visText = ln.value.slice(0, Math.min(ln.value.length, chars));
         ctx.fillStyle = ln.color || '#cfe';
         ctx.font = 'bold 14px Consolas, Menlo, monospace';
-        const visText = ln.value; // typeProgress==1 全显示
-        ctx.fillText(visText, valueX, infoY);
-        infoY += 34;
+
+        const valueX = labelX + 70;
+        const availW = contentR - valueX;
+        const fullW = ctx.measureText(ln.value).width;
+        if (fullW <= availW) {
+            ctx.fillText(visText, valueX, infoY);
+            if (chars < ln.value.length && Math.floor(t * 3) % 2 === 0) {
+                const cursorX = valueX + ctx.measureText(visText).width + 2;
+                ctx.fillStyle = 'rgba(200,255,210,0.75)';
+                ctx.fillRect(cursorX, infoY - 7, 6, 13);
+            }
+            infoY += 34;
+        } else {
+            // 值太长：换到 label 下方全宽显示
+            infoY += 18;
+            ctx.fillStyle = ln.color || '#cfe';
+            ctx.font = 'bold 13px Consolas, Menlo, monospace';
+            ctx.fillText(visText, labelX, infoY);
+            if (chars < ln.value.length && Math.floor(t * 3) % 2 === 0) {
+                const cursorX = labelX + ctx.measureText(visText).width + 2;
+                ctx.fillStyle = 'rgba(200,255,210,0.75)';
+                ctx.fillRect(cursorX, infoY - 7, 6, 13);
+            }
+            infoY += 22;
+        }
     }
     ctx.textBaseline = 'alphabetic';
+    ctx.globalAlpha = bgAlpha;
 
-    // 底部说明：你是当地救援者
-    ctx.fillStyle = 'rgba(180,220,190,0.55)';
-    ctx.font = 'italic 12px Georgia, serif';
+    // 底部叙事段（3 行逐行淡入）
+    const narrStartAt = typeStart + 5 * lineDelay;
+    const narrT = Math.max(0, t - narrStartAt);
+    const narrLines = [
+        '你是本地洞穴救援队的一员。',
+        '对讲机里的声音很急，却尽量保持克制。',
+        '你收起咖啡杯，走向岸上已经架好的气瓶和面镜。',
+    ];
     ctx.textAlign = 'center';
-    const narrY = ch * 0.68;
-    ctx.fillText('你是本地洞穴救援队的一员。对讲机里的声音很急，却尽量保持克制。', cw / 2, narrY);
-    ctx.fillText('你收起咖啡杯，走向岸上已经架好的气瓶和面镜。', cw / 2, narrY + 20);
+    ctx.font = 'italic 12px Georgia, serif';
+    const narrY = ch * 0.72;
+    for (let i = 0; i < narrLines.length; i++) {
+        const a = Math.min(1, (narrT - i * 0.35) / 0.5);
+        if (a <= 0) continue;
+        ctx.globalAlpha = bgAlpha * a * 0.75;
+        ctx.fillStyle = 'rgba(180,220,190,1)';
+        ctx.fillText(narrLines[i], cw / 2, narrY + i * 20);
+    }
+    ctx.globalAlpha = bgAlpha;
 
-    // 底部"接受任务"按钮
-    const btnW = Math.min(260, cw * 0.7);
-    const btnH = 46;
-    const btnX = (cw - btnW) / 2;
-    const btnY = ch - 74;
-    const pulse = 0.85 + Math.sin(time * 2) * 0.1;
-    const btnGrad = ctx.createLinearGradient(btnX, btnY, btnX + btnW, btnY);
-    btnGrad.addColorStop(0, `rgba(30,90,60,${pulse})`);
-    btnGrad.addColorStop(1, `rgba(50,140,90,${pulse})`);
-    ctx.fillStyle = btnGrad;
-    ctx.beginPath();
-    rrect(ctx, btnX, btnY, btnW, btnH, 23);
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(180,255,210,0.5)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    rrect(ctx, btnX, btnY, btnW, btnH, 23);
-    ctx.stroke();
-    ctx.fillStyle = 'rgba(220,255,230,0.98)';
-    ctx.font = 'bold 15px Arial';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('接受任务，前往现场', cw / 2, btnY + btnH / 2);
-    ctx.textBaseline = 'alphabetic';
+    // 底部"接受任务"按钮：叙事段结束后出现
+    const btnAppearAt = narrStartAt + 1.4;
+    const btnT = Math.max(0, t - btnAppearAt);
+    const btnAlpha = Math.min(1, btnT / 0.35);
+    if (btnAlpha > 0) {
+        const btnW = Math.min(260, cw * 0.74);
+        const btnH = 46;
+        const btnX = (cw - btnW) / 2;
+        const btnY = ch - 82;
+        const pulse = 0.85 + Math.sin(t * 2) * 0.1;
+        ctx.globalAlpha = bgAlpha * btnAlpha;
+        // 光晕
+        const haloGrad = ctx.createRadialGradient(cw / 2, btnY + btnH / 2, 10, cw / 2, btnY + btnH / 2, btnW * 0.7);
+        haloGrad.addColorStop(0, `rgba(80,200,140,${0.18 * pulse})`);
+        haloGrad.addColorStop(1, 'rgba(80,200,140,0)');
+        ctx.fillStyle = haloGrad;
+        ctx.fillRect(btnX - 40, btnY - 30, btnW + 80, btnH + 60);
+        // 按钮主体
+        const btnGrad = ctx.createLinearGradient(btnX, btnY, btnX + btnW, btnY);
+        btnGrad.addColorStop(0, `rgba(30,90,60,${pulse})`);
+        btnGrad.addColorStop(1, `rgba(50,140,90,${pulse})`);
+        ctx.fillStyle = btnGrad;
+        ctx.beginPath();
+        rrect(ctx, btnX, btnY, btnW, btnH, 23);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(180,255,210,0.5)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        rrect(ctx, btnX, btnY, btnW, btnH, 23);
+        ctx.stroke();
+        // 扫光
+        const sweepT = (t % 3) / 3;
+        if (sweepT < 1) {
+            ctx.save();
+            ctx.beginPath();
+            rrect(ctx, btnX, btnY, btnW, btnH, 23);
+            ctx.clip();
+            const sweepX = btnX - 40 + (btnW + 80) * sweepT;
+            const shineGrad = ctx.createLinearGradient(sweepX - 28, 0, sweepX + 28, 0);
+            shineGrad.addColorStop(0, 'rgba(255,255,255,0)');
+            shineGrad.addColorStop(0.5, 'rgba(255,255,255,0.22)');
+            shineGrad.addColorStop(1, 'rgba(255,255,255,0)');
+            ctx.fillStyle = shineGrad;
+            ctx.fillRect(sweepX - 28, btnY, 56, btnH);
+            ctx.restore();
+        }
+        // 按钮文字
+        ctx.fillStyle = 'rgba(220,255,230,0.98)';
+        ctx.font = 'bold 15px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('接受任务，前往现场', cw / 2, btnY + btnH / 2);
+        ctx.textBaseline = 'alphabetic';
+    }
 
     ctx.textAlign = 'left';
+    ctx.globalAlpha = 1;
+}
+
+// 辅助：盖章 punch 动效
+function stampPunchAnim(t: number): {scale: number, alphaIn: number} {
+    if (t <= 0) return { scale: 1.7, alphaIn: 0 };
+    if (t < 0.5) {
+        const k = t / 0.5;
+        const ease = 1 - (1 - k) * (1 - k) * (1 - k);
+        const scale = 1.7 - ease * 0.7;
+        const alphaIn = Math.min(1, t / 0.3);
+        return { scale, alphaIn };
+    }
+    if (t < 0.7) {
+        const k = (t - 0.5) / 0.2;
+        const scale = 1.0 - Math.sin(k * Math.PI) * 0.06;
+        return { scale, alphaIn: 1 };
+    }
+    return { scale: 1.0, alphaIn: 1 };
+}
+
+// 辅助：count-up 整数动画
+function animCountUp(targetVal: number, startSec: number, dur: number, tSec: number): number {
+    if (tSec <= startSec) return 0;
+    const k = Math.min(1, (tSec - startSec) / dur);
+    const ease = 1 - (1 - k) * (1 - k);
+    return Math.floor(targetVal * ease);
 }
 
 // ---------------------------------------------
 // B. 救援成功结案页（救援数据结算 rescued 之后显示）
 // ---------------------------------------------
-// 设计：暖色调（晨光）+ 顶部绿色盖章"成功营救" + 行动报告 + 叙事段 + 双按钮
-// 按钮：[ 留在此处 · 查看记录 ]   [ 接受新的任务 ]
+// 设计：暖色调（晨光）+ 顶部绿色盖章 punch + 行动报告数字滚动 + 叙事段逐行淡入 + 双按钮
 function drawCaseResolved(maze: any, cw: number, ch: number, time: number) {
     const timer = (maze as any).caseResultTimer || 0;
     const showAlpha = Math.min(1, timer / 30);
-    const seed = (maze && typeof maze.seed === 'number') ? (maze.seed >>> 0) : 0;
+    const enterMs = (maze && maze.resolvedEnterTime) ? maze.resolvedEnterTime : Date.now();
+    const t = Math.max(0, (Date.now() - enterMs) / 1000);
+    const SAFE_TOP = 58;
+    const PAD_X = 28;
 
     // 背景：晨光暖渐变
     ctx.globalAlpha = showAlpha;
@@ -2324,25 +2460,43 @@ function drawCaseResolved(maze: any, cw: number, ch: number, time: number) {
     ctx.fillStyle = bg;
     ctx.fillRect(0, 0, cw, ch);
 
-    // 顶部光晕（模拟阳光）
-    const haloR = Math.min(cw, ch) * 0.7;
+    // 顶部光晕（呼吸）
+    const haloBreath = 1 + Math.sin(t * 0.9) * 0.06;
+    const haloR = Math.min(cw, ch) * 0.7 * haloBreath;
     const haloG = ctx.createRadialGradient(cw * 0.78, ch * 0.1, 10, cw * 0.78, ch * 0.1, haloR);
     haloG.addColorStop(0, 'rgba(255,220,160,0.35)');
     haloG.addColorStop(1, 'rgba(255,200,130,0)');
     ctx.fillStyle = haloG;
     ctx.fillRect(0, 0, cw, ch);
 
-    // 顶部绿色"盖章"标题
+    // 浮动暖色尘埃粒子
+    ctx.globalAlpha = showAlpha;
+    for (let i = 0; i < 28; i++) {
+        const px = (Math.sin(i * 2.17 + t * 0.15) * 0.5 + 0.5) * cw;
+        const py = ((i * 37 + t * 18) % ch);
+        const sz = 1 + (i % 3) * 0.7;
+        const a = 0.08 + (i % 4) * 0.04;
+        ctx.fillStyle = `rgba(255,230,180,${a})`;
+        ctx.beginPath();
+        ctx.arc(px, py, sz, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // 顶部绿色"盖章" punch
     ctx.globalAlpha = showAlpha;
     ctx.textAlign = 'center';
-    const stampY = ch * 0.13;
+    const stampY = SAFE_TOP + 44;
+    const stamp = stampPunchAnim(t);
     ctx.save();
     ctx.translate(cw / 2, stampY);
-    ctx.rotate(-0.05);
+    ctx.scale(stamp.scale, stamp.scale);
+    ctx.rotate(-0.04);
+    ctx.globalAlpha = showAlpha * stamp.alphaIn;
     ctx.strokeStyle = 'rgba(120,220,170,0.9)';
     ctx.lineWidth = 2.4;
+    const stampW = Math.min(240, cw - PAD_X * 2 - 20);
     ctx.beginPath();
-    rrect(ctx, -120, -22, 240, 44, 8);
+    rrect(ctx, -stampW / 2, -24, stampW, 48, 10);
     ctx.stroke();
     ctx.fillStyle = 'rgba(150,240,190,0.95)';
     ctx.font = 'bold 20px Arial';
@@ -2352,65 +2506,87 @@ function drawCaseResolved(maze: any, cw: number, ch: number, time: number) {
     ctx.restore();
 
     // 副标题：案件编号
-    ctx.fillStyle = 'rgba(240,220,180,0.75)';
+    const subAlpha = Math.min(1, Math.max(0, (t - 0.55) / 0.35));
+    ctx.globalAlpha = showAlpha * subAlpha;
+    ctx.fillStyle = 'rgba(240,220,180,0.78)';
     ctx.font = '13px Consolas, Menlo, monospace';
     ctx.fillText(maze.caseNumber || 'JWR-------', cw / 2, stampY + 44);
 
-    // 行动报告（类似 rescued 页，但文字叙事化）
-    const reportY = ch * 0.32;
+    // 行动报告（数字滚动）
+    const reportY = ch * 0.33;
     const diveCount = maze.diveCount || 0;
     const totalRope = maze.totalRopePlaced || 0;
     const maxDepthM = Math.floor((maze.maxDepthReached || 0) / (maze.mazeTileSize || 1));
 
+    const reportAlpha = Math.min(1, Math.max(0, (t - 0.8) / 0.35));
+    ctx.globalAlpha = showAlpha * reportAlpha;
     ctx.fillStyle = 'rgba(240,230,200,0.85)';
     ctx.font = 'bold 13px Arial';
     ctx.fillText('— 行动报告 —', cw / 2, reportY);
 
-    // 四栏数据
-    ctx.font = '12px Arial';
-    const statItems = [
-        { label: '出勤次数', value: diveCount + ' 次' },
-        { label: '最大深度', value: maxDepthM + ' m' },
-        { label: '铺设绳索', value: totalRope + ' 段' },
-        { label: '结案状态', value: '已移交医疗组' },
+    const statItemsR = [
+        { label: '出勤次数', rawVal: diveCount, unit: ' 次', staticText: '' },
+        { label: '最大深度', rawVal: maxDepthM, unit: ' m', staticText: '' },
+        { label: '铺设绳索', rawVal: totalRope, unit: ' 段', staticText: '' },
+        { label: '结案状态', rawVal: 0, unit: '', staticText: '已移交医疗组' },
     ];
-    const sw = cw / statItems.length;
-    for (let i = 0; i < statItems.length; i++) {
-        const sx = sw * i + sw / 2;
+    const leftB = PAD_X, rightB = cw - PAD_X;
+    const sw = (rightB - leftB) / statItemsR.length;
+    for (let i = 0; i < statItemsR.length; i++) {
+        const sx = leftB + sw * i + sw / 2;
+        const colStart = 1.0 + i * 0.15;
+        const colAlpha = Math.min(1, Math.max(0, (t - colStart) / 0.3));
+        if (colAlpha <= 0) continue;
+        ctx.globalAlpha = showAlpha * colAlpha;
         ctx.fillStyle = 'rgba(255,230,180,0.95)';
         ctx.font = 'bold 16px Arial';
-        ctx.fillText(statItems[i].value, sx, reportY + 38);
+        const it = statItemsR[i];
+        let valText: string;
+        if (it.staticText) {
+            valText = it.staticText;
+        } else {
+            const v = animCountUp(it.rawVal, colStart, 0.8, t);
+            valText = v + it.unit;
+        }
+        ctx.fillText(valText, sx, reportY + 38);
         ctx.fillStyle = 'rgba(200,180,140,0.6)';
         ctx.font = '10px Arial';
-        ctx.fillText(statItems[i].label, sx, reportY + 56);
+        ctx.fillText(it.label, sx, reportY + 56);
     }
+    ctx.globalAlpha = showAlpha;
 
-    // 叙事段（3~4 行）
-    const narrY = ch * 0.58;
-    ctx.fillStyle = 'rgba(240,220,180,0.8)';
+    // 叙事段
+    const narrYR = ch * 0.60;
+    ctx.textAlign = 'center';
     ctx.font = 'italic 13px Georgia, serif';
-    const narrLines = [
+    const narrLinesR = [
         '被困者已被送上担架，医疗组正在检查体征。',
         '队长拍了拍你的肩："干得漂亮。"',
         '你坐在井边，氧气瓶从水里被拉上来，阳光正好。',
     ];
-    for (let i = 0; i < narrLines.length; i++) {
-        ctx.fillText(narrLines[i], cw / 2, narrY + i * 22);
+    for (let i = 0; i < narrLinesR.length; i++) {
+        const a = Math.min(1, Math.max(0, (t - 2.0 - i * 0.5) / 0.6));
+        if (a <= 0) continue;
+        ctx.globalAlpha = showAlpha * a * 0.88;
+        ctx.fillStyle = 'rgba(240,220,180,1)';
+        ctx.fillText(narrLinesR[i], cw / 2, narrYR + i * 22);
     }
+    ctx.globalAlpha = showAlpha;
 
     // 底部双按钮
-    if (timer >= 60) {
-        const btnAlpha = Math.min(1, (timer - 60) / 20);
+    const btnReadyR = t > 3.8 && timer >= 60;
+    if (btnReadyR) {
+        const btnAlpha = Math.min(1, (t - 3.8) / 0.4);
         ctx.globalAlpha = showAlpha * btnAlpha;
         const btnH = 46;
-        const btnY = ch - 72;
+        const btnY = ch - 82;
         const gap = 12;
-        const totalW = Math.min(cw - 32, 420);
+        const totalW = Math.min(cw - PAD_X * 2, 420);
         const halfW = (totalW - gap) / 2;
         const leftX = (cw - totalW) / 2;
         const rightX = leftX + halfW + gap;
 
-        // 左：留在此处（次按钮）
+        // 左：留在此处
         ctx.fillStyle = 'rgba(70,55,38,0.9)';
         ctx.beginPath();
         rrect(ctx, leftX, btnY, halfW, btnH, 23);
@@ -2423,10 +2599,11 @@ function drawCaseResolved(maze: any, cw: number, ch: number, time: number) {
         ctx.fillStyle = 'rgba(230,215,180,0.95)';
         ctx.font = 'bold 14px Arial';
         ctx.textBaseline = 'middle';
+        ctx.textAlign = 'center';
         ctx.fillText('留在此处', leftX + halfW / 2, btnY + btnH / 2);
         ctx.textBaseline = 'alphabetic';
 
-        // 右：接受新的任务（主按钮，暖绿）
+        // 右：接受新的任务
         const mainGrad = ctx.createLinearGradient(rightX, btnY, rightX + halfW, btnY);
         mainGrad.addColorStop(0, 'rgba(50,130,90,0.95)');
         mainGrad.addColorStop(1, 'rgba(80,170,120,0.95)');
@@ -2434,6 +2611,21 @@ function drawCaseResolved(maze: any, cw: number, ch: number, time: number) {
         ctx.beginPath();
         rrect(ctx, rightX, btnY, halfW, btnH, 23);
         ctx.fill();
+        const sweepT = (t % 3) / 3;
+        if (sweepT < 1) {
+            ctx.save();
+            ctx.beginPath();
+            rrect(ctx, rightX, btnY, halfW, btnH, 23);
+            ctx.clip();
+            const sweepX = rightX - 20 + (halfW + 40) * sweepT;
+            const shineGrad = ctx.createLinearGradient(sweepX - 20, 0, sweepX + 20, 0);
+            shineGrad.addColorStop(0, 'rgba(255,255,255,0)');
+            shineGrad.addColorStop(0.5, 'rgba(255,255,255,0.22)');
+            shineGrad.addColorStop(1, 'rgba(255,255,255,0)');
+            ctx.fillStyle = shineGrad;
+            ctx.fillRect(sweepX - 20, btnY, 40, btnH);
+            ctx.restore();
+        }
         ctx.fillStyle = 'rgba(230,255,240,0.98)';
         ctx.font = 'bold 14px Arial';
         ctx.textBaseline = 'middle';
@@ -2442,15 +2634,20 @@ function drawCaseResolved(maze: any, cw: number, ch: number, time: number) {
     }
 
     ctx.globalAlpha = 1;
+    ctx.textAlign = 'left';
 }
 
 // ---------------------------------------------
 // C. 搜寻终止结案页（岸上长按"放弃救援"完成后显示）
 // ---------------------------------------------
-// 设计：冷灰/墨蓝基调 + 红色盖章"搜寻终止" + 失败统计 + 叙事段 + 单按钮"接受新的任务"
+// 设计：冷灰/墨蓝基调 + 红色盖章 punch + 数据 count-up + 叙事段逐行淡入 + 单按钮
 function drawCaseAbandoned(maze: any, cw: number, ch: number, time: number) {
     const timer = (maze as any).caseResultTimer || 0;
     const showAlpha = Math.min(1, timer / 30);
+    const enterMs = (maze && maze.abandonedEnterTime) ? maze.abandonedEnterTime : Date.now();
+    const t = Math.max(0, (Date.now() - enterMs) / 1000);
+    const SAFE_TOP = 58;
+    const PAD_X = 28;
 
     // 背景：冷灰蓝
     ctx.globalAlpha = showAlpha;
@@ -2460,17 +2657,48 @@ function drawCaseAbandoned(maze: any, cw: number, ch: number, time: number) {
     ctx.fillStyle = bg;
     ctx.fillRect(0, 0, cw, ch);
 
-    // 顶部红色盖章
+    // 微弱雪花噪点
+    ctx.globalAlpha = showAlpha * 0.05;
+    for (let i = 0; i < 60; i++) {
+        const nx = ((i * 53 + (t * 17 | 0)) % cw);
+        const ny = ((i * 97 + (t * 29 | 0)) % ch);
+        ctx.fillStyle = '#c8d0e0';
+        ctx.fillRect(nx, ny, 1, 1);
+    }
     ctx.globalAlpha = showAlpha;
+
+    // 缓慢上浮微弱气泡（呼应叙事"水面浮着几个气泡"）
+    for (let i = 0; i < 6; i++) {
+        const cycle = 6 + i * 0.7;
+        const phase = (t + i * 2.1) % cycle;
+        const k = phase / cycle;
+        const bx = (Math.sin(i * 1.9) * 0.35 + 0.5) * cw + Math.sin(t * 0.4 + i) * 12;
+        const by = ch * 0.9 - k * ch * 0.55;
+        const bSize = 2 + k * 3;
+        const bA = (1 - k) * 0.15;
+        ctx.globalAlpha = showAlpha * bA;
+        ctx.strokeStyle = 'rgba(180,195,215,1)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(bx, by, bSize, 0, Math.PI * 2);
+        ctx.stroke();
+    }
+    ctx.globalAlpha = showAlpha;
+
+    // 顶部红色盖章 punch
     ctx.textAlign = 'center';
-    const stampY = ch * 0.13;
+    const stampYA = SAFE_TOP + 44;
+    const stampA = stampPunchAnim(t);
     ctx.save();
-    ctx.translate(cw / 2, stampY);
-    ctx.rotate(0.04);
+    ctx.translate(cw / 2, stampYA);
+    ctx.scale(stampA.scale, stampA.scale);
+    ctx.rotate(0.035);
+    ctx.globalAlpha = showAlpha * stampA.alphaIn;
     ctx.strokeStyle = 'rgba(230,90,70,0.9)';
     ctx.lineWidth = 2.4;
+    const stampWA = Math.min(260, cw - PAD_X * 2 - 20);
     ctx.beginPath();
-    rrect(ctx, -130, -22, 260, 44, 8);
+    rrect(ctx, -stampWA / 2, -24, stampWA, 48, 10);
     ctx.stroke();
     ctx.fillStyle = 'rgba(250,140,120,0.95)';
     ctx.font = 'bold 20px Arial';
@@ -2480,16 +2708,17 @@ function drawCaseAbandoned(maze: any, cw: number, ch: number, time: number) {
     ctx.restore();
 
     // 副标题：案件编号
-    ctx.fillStyle = 'rgba(170,180,195,0.7)';
+    const subAlphaA = Math.min(1, Math.max(0, (t - 0.55) / 0.35));
+    ctx.globalAlpha = showAlpha * subAlphaA;
+    ctx.fillStyle = 'rgba(170,180,195,0.72)';
     ctx.font = '13px Consolas, Menlo, monospace';
-    ctx.fillText(maze.caseNumber || 'JWR-------', cw / 2, stampY + 44);
+    ctx.fillText(maze.caseNumber || 'JWR-------', cw / 2, stampYA + 44);
 
     // 失败统计
-    const reportY = ch * 0.32;
-    const diveCount = maze.diveCount || 0;
-    const totalRope = maze.totalRopePlaced || 0;
-    const maxDepthM = Math.floor((maze.maxDepthReached || 0) / (maze.mazeTileSize || 1));
-    // 探索覆盖率（以已探索非墙格占总非墙格比例）
+    const reportYA = ch * 0.33;
+    const diveCountA = maze.diveCount || 0;
+    const totalRopeA = maze.totalRopePlaced || 0;
+    const maxDepthMA = Math.floor((maze.maxDepthReached || 0) / (maze.mazeTileSize || 1));
     let exploredCount = 0;
     let openCount = 0;
     try {
@@ -2504,48 +2733,63 @@ function drawCaseAbandoned(maze: any, cw: number, ch: number, time: number) {
     } catch (e) { /* 忽略 */ }
     const coveragePct = openCount > 0 ? Math.round(exploredCount / openCount * 100) : 0;
 
-    ctx.fillStyle = 'rgba(200,210,225,0.8)';
+    const reportAlphaA = Math.min(1, Math.max(0, (t - 0.8) / 0.35));
+    ctx.globalAlpha = showAlpha * reportAlphaA;
+    ctx.fillStyle = 'rgba(200,210,225,0.82)';
     ctx.font = 'bold 13px Arial';
-    ctx.fillText('— 行动记录 —', cw / 2, reportY);
+    ctx.fillText('— 行动记录 —', cw / 2, reportYA);
 
-    const statItems = [
-        { label: '出勤次数', value: diveCount + ' 次' },
-        { label: '最大深度', value: maxDepthM + ' m' },
-        { label: '覆盖率', value: coveragePct + '%' },
-        { label: '铺设绳索', value: totalRope + ' 段' },
+    const statItemsA = [
+        { label: '出勤次数', rawVal: diveCountA, unit: ' 次' },
+        { label: '最大深度', rawVal: maxDepthMA, unit: ' m' },
+        { label: '覆盖率', rawVal: coveragePct, unit: '%' },
+        { label: '铺设绳索', rawVal: totalRopeA, unit: ' 段' },
     ];
-    const sw = cw / statItems.length;
-    for (let i = 0; i < statItems.length; i++) {
-        const sx = sw * i + sw / 2;
-        ctx.fillStyle = 'rgba(200,210,225,0.9)';
+    const leftBA = PAD_X, rightBA = cw - PAD_X;
+    const swA = (rightBA - leftBA) / statItemsA.length;
+    for (let i = 0; i < statItemsA.length; i++) {
+        const sx = leftBA + swA * i + swA / 2;
+        const colStart = 1.0 + i * 0.15;
+        const colAlpha = Math.min(1, Math.max(0, (t - colStart) / 0.3));
+        if (colAlpha <= 0) continue;
+        ctx.globalAlpha = showAlpha * colAlpha;
+        ctx.fillStyle = 'rgba(200,210,225,0.95)';
         ctx.font = 'bold 16px Arial';
-        ctx.fillText(statItems[i].value, sx, reportY + 38);
+        const v = animCountUp(statItemsA[i].rawVal, colStart, 0.8, t);
+        ctx.fillText(v + statItemsA[i].unit, sx, reportYA + 38);
         ctx.fillStyle = 'rgba(140,150,170,0.6)';
         ctx.font = '10px Arial';
-        ctx.fillText(statItems[i].label, sx, reportY + 56);
+        ctx.fillText(statItemsA[i].label, sx, reportYA + 56);
     }
+    ctx.globalAlpha = showAlpha;
 
     // 叙事段
-    const narrY = ch * 0.58;
-    ctx.fillStyle = 'rgba(200,210,225,0.78)';
+    const narrYA = ch * 0.60;
+    ctx.textAlign = 'center';
     ctx.font = 'italic 13px Georgia, serif';
-    const narrLines = [
+    const narrLinesA = [
         '你摘下面镜。调度员在无线电里说："搜寻终止，新的报警来了。"',
         '你没有回答，看着黑色水面沉默了很久。',
         '水面浮着几个气泡，很快也没了。',
     ];
-    for (let i = 0; i < narrLines.length; i++) {
-        ctx.fillText(narrLines[i], cw / 2, narrY + i * 22);
+    for (let i = 0; i < narrLinesA.length; i++) {
+        const a = Math.min(1, Math.max(0, (t - 2.0 - i * 0.55) / 0.6));
+        if (a <= 0) continue;
+        ctx.globalAlpha = showAlpha * a * 0.82;
+        ctx.fillStyle = 'rgba(200,210,225,1)';
+        ctx.fillText(narrLinesA[i], cw / 2, narrYA + i * 22);
     }
+    ctx.globalAlpha = showAlpha;
 
-    // 底部按钮：接受新的任务（单按钮，居中）
-    if (timer >= 60) {
-        const btnAlpha = Math.min(1, (timer - 60) / 20);
+    // 底部按钮：接受新的任务（单按钮居中）
+    const btnReadyA = t > 4.0 && timer >= 60;
+    if (btnReadyA) {
+        const btnAlpha = Math.min(1, (t - 4.0) / 0.4);
         ctx.globalAlpha = showAlpha * btnAlpha;
-        const btnW = Math.min(280, cw * 0.7);
+        const btnW = Math.min(280, cw * 0.74);
         const btnH = 46;
         const btnX = (cw - btnW) / 2;
-        const btnY = ch - 72;
+        const btnY = ch - 82;
         const grad = ctx.createLinearGradient(btnX, btnY, btnX + btnW, btnY);
         grad.addColorStop(0, 'rgba(60,80,120,0.9)');
         grad.addColorStop(1, 'rgba(90,110,160,0.9)');
@@ -2553,66 +2797,157 @@ function drawCaseAbandoned(maze: any, cw: number, ch: number, time: number) {
         ctx.beginPath();
         rrect(ctx, btnX, btnY, btnW, btnH, 23);
         ctx.fill();
+        // 扫光
+        const sweepT = (t % 3.2) / 3.2;
+        if (sweepT < 1) {
+            ctx.save();
+            ctx.beginPath();
+            rrect(ctx, btnX, btnY, btnW, btnH, 23);
+            ctx.clip();
+            const sweepX = btnX - 28 + (btnW + 56) * sweepT;
+            const shineGrad = ctx.createLinearGradient(sweepX - 22, 0, sweepX + 22, 0);
+            shineGrad.addColorStop(0, 'rgba(255,255,255,0)');
+            shineGrad.addColorStop(0.5, 'rgba(255,255,255,0.18)');
+            shineGrad.addColorStop(1, 'rgba(255,255,255,0)');
+            ctx.fillStyle = shineGrad;
+            ctx.fillRect(sweepX - 22, btnY, 44, btnH);
+            ctx.restore();
+        }
         ctx.fillStyle = 'rgba(220,230,250,0.98)';
         ctx.font = 'bold 15px Arial';
+        ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText('接受新的任务 ▶', cw / 2, btnY + btnH / 2);
         ctx.textBaseline = 'alphabetic';
     }
 
     ctx.globalAlpha = 1;
+    ctx.textAlign = 'left';
 }
 
 // ---------------------------------------------
-// D. 岸上"放弃救援"按钮（长按 2s 完成后触发 abandonCase）
-// 在 drawMazeShore 中的"探索记录"卡片上方、屏幕右下角绘制
-// 与其它导出一起暴露，供 input.ts 做 hit-test
+// D. 岸上"放弃救援"按钮（重做版）
+// 视觉：暗石板底 + 细虚线描边（正式公文感）+ 左侧"对讲机小图标" + 右侧 "结束搜寻 ⇥" 细体文字
+// 长按：围绕按钮外缘画一圈红色环形进度（而不是大面积填红），更克制；文字切换为"持续按住 …"
+// 位置：岸上阶段固定在屏幕右上偏下（避开胶囊和底部探索记录卡片）
 // ---------------------------------------------
 export function getAbandonBtnRect(cw: number, ch: number): {x: number, y: number, w: number, h: number} {
-    const w = 108;
-    const h = 34;
-    const x = cw - w - 12;
-    // 放在探索记录卡片上方一点，避免和卡片重合（卡片 cardY 最小约 ch - 448）
-    // 直接取 ch - 460 做上限保护
-    const y = Math.max(52, ch - 460 - h - 6);
+    const w = 124;
+    const h = 36;
+    const x = cw - w - 14;
+    // 布局约束：
+    //   - 上方避让"岸上营地"标题（~y=96 处）与 resolved_idle 按钮（y=52~86，虽然 abandon 和它不会同屏，但保留安全距离）
+    //   - 下方避让底部"探索记录"卡片（折叠时 cardY ≈ ch-64，展开时 cardY ≈ ch-448）；为了展开时也不被卡片挡到，y 必须 ≤ ch-480
+    //   - 给"体型偏小屏"（ch<600）兜底一个下限 y=112
+    const y = Math.max(112, Math.min(ch - 480, ch * 0.22));
     return { x, y, w, h };
 }
 
-// 绘制放弃救援按钮（岸上阶段 & 非全屏地图时调用）
-// 接受当前按下进度（0~1），按下时按钮会被"沿进度填充"红色
+// 绘制放弃救援按钮（岸上 shore 阶段 & 非全屏地图时调用）
+// holdProgress: 0~1，长按进度；渲染为外缘一圈红色进度环
 export function drawAbandonBtn(cw: number, ch: number, time: number, holdProgress: number) {
     const r = getAbandonBtnRect(cw, ch);
-    ctx.globalAlpha = 0.88;
-    // 底色
-    ctx.fillStyle = 'rgba(40,20,18,0.75)';
+
+    // 按钮底：深石板灰
+    ctx.globalAlpha = 0.92;
+    const bgGrad = ctx.createLinearGradient(r.x, r.y, r.x, r.y + r.h);
+    bgGrad.addColorStop(0, 'rgba(28,30,34,0.88)');
+    bgGrad.addColorStop(1, 'rgba(16,18,22,0.92)');
+    ctx.fillStyle = bgGrad;
     ctx.beginPath();
-    rrect(ctx, r.x, r.y, r.w, r.h, 17);
+    rrect(ctx, r.x, r.y, r.w, r.h, 18);
     ctx.fill();
-    // 红色进度填充（长按时从左到右扫过）
-    if (holdProgress > 0) {
-        ctx.save();
-        ctx.beginPath();
-        rrect(ctx, r.x, r.y, r.w, r.h, 17);
-        ctx.clip();
-        ctx.fillStyle = 'rgba(200,60,50,0.85)';
-        ctx.fillRect(r.x, r.y, r.w * Math.min(1, holdProgress), r.h);
-        ctx.restore();
-    }
-    // 边框
-    ctx.strokeStyle = 'rgba(255,160,140,0.55)';
+
+    // 虚线描边（公文感）
+    ctx.save();
+    if ((ctx as any).setLineDash) (ctx as any).setLineDash([3, 2]);
+    ctx.strokeStyle = holdProgress > 0 ? 'rgba(230,120,100,0.55)' : 'rgba(200,205,215,0.32)';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    rrect(ctx, r.x, r.y, r.w, r.h, 17);
+    rrect(ctx, r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1, 17.5);
     ctx.stroke();
-    // 文字
-    ctx.fillStyle = 'rgba(255,220,210,0.95)';
-    ctx.font = 'bold 12px Arial';
-    ctx.textAlign = 'center';
+    if ((ctx as any).setLineDash) (ctx as any).setLineDash([]);
+    ctx.restore();
+
+    // 长按：按钮外缘一圈红色进度环
+    if (holdProgress > 0) {
+        ctx.save();
+        const r2 = 18;
+        const p = buildRoundedRectPerimeter(r.x, r.y, r.w, r.h, r2);
+        const totalLen = p.totalLen;
+        if ((ctx as any).setLineDash) {
+            (ctx as any).setLineDash([totalLen * holdProgress, totalLen]);
+        }
+        ctx.strokeStyle = 'rgba(230,90,70,0.95)';
+        ctx.lineWidth = 2.2;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        rrect(ctx, r.x, r.y, r.w, r.h, r2);
+        ctx.stroke();
+        if ((ctx as any).setLineDash) (ctx as any).setLineDash([]);
+        ctx.lineCap = 'butt';
+        ctx.restore();
+    }
+
+    // 左侧小对讲机图标：主体圆角矩形 + 屏幕 + 按钮点 + 天线 + 天线呼吸红点
+    const iconCx = r.x + 18;
+    const iconCy = r.y + r.h / 2;
+    const iconCol = holdProgress > 0 ? 'rgba(255,180,160,0.95)' : 'rgba(200,210,220,0.85)';
+    ctx.strokeStyle = iconCol;
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    rrect(ctx, iconCx - 7, iconCy - 8, 14, 18, 2);
+    ctx.stroke();
+    // 屏幕
+    ctx.fillStyle = iconCol;
+    ctx.globalAlpha = 0.92 * 0.7;
+    ctx.fillRect(iconCx - 5, iconCy - 6, 10, 5);
+    ctx.globalAlpha = 0.92;
+    // 按钮点
+    ctx.beginPath();
+    ctx.arc(iconCx, iconCy + 3, 1.6, 0, Math.PI * 2);
+    ctx.fill();
+    // 天线
+    ctx.beginPath();
+    ctx.moveTo(iconCx + 5, iconCy - 8);
+    ctx.lineTo(iconCx + 9, iconCy - 13);
+    ctx.stroke();
+    // 天线尖顶呼吸闪点（长按时偏红）
+    const blink = 0.5 + Math.abs(Math.sin(time * 2.2)) * 0.5;
+    ctx.fillStyle = holdProgress > 0
+        ? `rgba(255,140,110,${blink})`
+        : `rgba(180,230,255,${blink * 0.7})`;
+    ctx.beginPath();
+    ctx.arc(iconCx + 9, iconCy - 13, 1.6, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 文字（细体，左对齐）
+    ctx.fillStyle = holdProgress > 0 ? 'rgba(255,215,200,0.98)' : 'rgba(220,228,238,0.88)';
+    ctx.font = '12px Arial';
+    ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    const label = holdProgress > 0 ? '松手取消 · 长按结案' : '放弃救援';
-    ctx.fillText(label, r.x + r.w / 2, r.y + r.h / 2);
+    const labelMain = holdProgress > 0 ? '持续按住 …' : '结束搜寻';
+    ctx.fillText(labelMain, iconCx + 16, iconCy);
+
+    // 右侧尾箭头（未按时显示）
+    if (holdProgress <= 0) {
+        ctx.fillStyle = 'rgba(200,210,220,0.55)';
+        ctx.font = '10px Arial';
+        ctx.fillText('⇥', r.x + r.w - 14, iconCy);
+    }
+
     ctx.textBaseline = 'alphabetic';
+    ctx.textAlign = 'left';
     ctx.globalAlpha = 1;
+}
+
+// 辅助：计算圆角矩形描边总周长（用于 setLineDash 按比例截取）
+function buildRoundedRectPerimeter(x: number, y: number, w: number, h: number, r: number): {totalLen: number} {
+    const rr = Math.min(r, w / 2, h / 2);
+    const straightH = 2 * (w - 2 * rr);
+    const straightV = 2 * (h - 2 * rr);
+    const arcLen = 2 * Math.PI * rr;
+    return { totalLen: straightH + straightV + arcLen };
 }
 
 // ---------------------------------------------

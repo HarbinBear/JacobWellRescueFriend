@@ -234,6 +234,12 @@ export const state = {
         // 坐标 / 接警时间等其它叙事字段都在渲染层从 seed + 常量派生，不再单独存状态
         caseNumber: string;          // 形如 'JWR-128473'（J=Jacob's Well R=Rescue）
         briefingShown: boolean;      // 本张地图的警情通报页是否已展示过（首次进入显示，之后不再弹）
+        // 三个全屏页的"进入时间戳"，用于驱动各自的入场动效（相对时钟）
+        // 约定：页切换时写 Date.now()；渲染层取 (Date.now() - enterTime)/1000 当相对 t 使用
+        // 不进存档（运行时即可，退出小游戏后重开自然从 0 开始动效）
+        briefingEnterTime: number;
+        resolvedEnterTime: number;
+        abandonedEnterTime: number;
         // 岸上"放弃救援"长按运行态（不跨 session，每次进岸上都会重置）
         abandonHolding: boolean;     // 是否正在长按放弃
         abandonHoldStart: number;    // 放弃长按开始时间戳（ms）
