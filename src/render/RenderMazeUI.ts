@@ -2334,7 +2334,8 @@ function drawCaseBriefing(maze: any, cw: number, ch: number, time: number) {
     ctx.textBaseline = 'alphabetic';
     ctx.globalAlpha = bgAlpha;
 
-    // 底部叙事段（3 行逐行淡入）
+    // 叙事段（3 行逐行淡入，紧贴数据行下方，不再放到 ch*0.72 造成中段大片空白）
+    // infoY 此时已指向最后一行数据的 y 位置（末尾加过 34 或 22），这里在其下方再空 36px 开始
     const narrStartAt = typeStart + 5 * lineDelay;
     const narrT = Math.max(0, t - narrStartAt);
     const narrLines = [
@@ -2344,17 +2345,44 @@ function drawCaseBriefing(maze: any, cw: number, ch: number, time: number) {
     ];
     ctx.textAlign = 'center';
     ctx.font = 'italic 12px Georgia, serif';
-    const narrY = ch * 0.72;
+    // 起始 y：数据行最后位置 + 36px 间距；并强制不超过 ch*0.58，避免与按钮挤在一起
+    const narrY = Math.min(infoY + 36, ch * 0.62);
     for (let i = 0; i < narrLines.length; i++) {
         const a = Math.min(1, (narrT - i * 0.35) / 0.5);
         if (a <= 0) continue;
-        ctx.globalAlpha = bgAlpha * a * 0.75;
-        ctx.fillStyle = 'rgba(180,220,190,1)';
+        ctx.globalAlpha = bgAlpha * a * 0.78;
+        ctx.fillStyle = 'rgba(200,230,210,1)';
         ctx.fillText(narrLines[i], cw / 2, narrY + i * 20);
     }
     ctx.globalAlpha = bgAlpha;
 
-    // 底部"接受任务"按钮：叙事段结束后出现
+    // 中下段辅助叙事：电台状态提示（第 5 行叙事之后淡入，填充中段空白，但克制不喧宾夺主）
+    const statusStartAt = narrStartAt + 3 * 0.35 + 0.6;
+    const statusT = Math.max(0, t - statusStartAt);
+    if (statusT > 0) {
+        const statusAlpha = Math.min(1, statusT / 0.5);
+        ctx.globalAlpha = bgAlpha * statusAlpha * 0.55;
+        const statusY = narrY + 3 * 20 + 32;
+        // 左右两根细线，中间一段闪动光标文字
+        const lineW = Math.min(cw * 0.32, 160);
+        const blinkDot = Math.floor(t * 2) % 4;
+        const dots = '.'.repeat(blinkDot) + ' '.repeat(3 - blinkDot);
+        ctx.strokeStyle = 'rgba(150,220,180,0.5)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(cw / 2 - lineW - 50, statusY);
+        ctx.lineTo(cw / 2 - 50, statusY);
+        ctx.moveTo(cw / 2 + 50, statusY);
+        ctx.lineTo(cw / 2 + lineW + 50, statusY);
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(180,230,200,0.85)';
+        ctx.font = '11px Consolas, Menlo, monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('等待指令' + dots, cw / 2, statusY + 3);
+    }
+    ctx.globalAlpha = bgAlpha;
+
+    // 底部"接受任务"按钮：叙事段结束后出现，贴近屏幕底部
     const btnAppearAt = narrStartAt + 1.4;
     const btnT = Math.max(0, t - btnAppearAt);
     const btnAlpha = Math.min(1, btnT / 0.35);
@@ -2362,7 +2390,7 @@ function drawCaseBriefing(maze: any, cw: number, ch: number, time: number) {
         const btnW = Math.min(260, cw * 0.74);
         const btnH = 46;
         const btnX = (cw - btnW) / 2;
-        const btnY = ch - 82;
+        const btnY = ch - 56;
         const pulse = 0.85 + Math.sin(t * 2) * 0.1;
         ctx.globalAlpha = bgAlpha * btnAlpha;
         // 光晕
@@ -2439,6 +2467,63 @@ function animCountUp(targetVal: number, startSec: number, dur: number, tSec: num
     return Math.floor(targetVal * ease);
 }
 
+// 辅助：智能盖章绘制
+// 自动根据 safeWidth（允许的最大盖章宽度）调整字号与盖章宽度，保证旋转后不会超出屏幕
+// - text：盖章文字
+// - textColor / strokeColor：文字色与描边色
+// - scale / rot：入场动效的缩放和旋转弧度
+// - safeWidth：允许占用的最大宽度（含旋转后外接）；一般传 cw - PAD_X*2
+// 调用前必须 ctx.save() + translate 到盖章中心，调用后 ctx.restore()
+// 盖章中心点即当前 translate 位置
+function drawSmartStamp(
+    text: string,
+    textColor: string,
+    strokeColor: string,
+    scale: number,
+    rot: number,
+    safeWidth: number,
+) {
+    // 先尝试字号 20，测量文字宽度
+    const tryFonts = [20, 18, 16, 14];
+    let picked = tryFonts[0];
+    let textW = 0;
+    for (let i = 0; i < tryFonts.length; i++) {
+        ctx.font = 'bold ' + tryFonts[i] + 'px Arial';
+        textW = ctx.measureText(text).width;
+        // 盖章外框宽 = 文字宽 + 左右内 padding 24
+        const rectW = textW + 48;
+        // 旋转后外接矩形宽度：|cos(rot)|*rectW + |sin(rot)|*rectH (rectH=48 固定)
+        const ar = Math.abs(rot);
+        const outerW = Math.abs(Math.cos(ar)) * rectW + Math.abs(Math.sin(ar)) * 48;
+        // 缩放后再乘 scale（punch 入场初始最大 1.7 倍）
+        const needed = outerW * scale;
+        if (needed <= safeWidth) {
+            picked = tryFonts[i];
+            break;
+        }
+    }
+    // 按选中字号重新 measure 一次（有可能循环中 break 时 textW 是上次迭代的值）
+    ctx.font = 'bold ' + picked + 'px Arial';
+    textW = ctx.measureText(text).width;
+    const rectW = textW + 48;
+    const rectH = 44;
+
+    ctx.scale(scale, scale);
+    ctx.rotate(rot);
+    ctx.strokeStyle = strokeColor;
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    rrect(ctx, -rectW / 2, -rectH / 2, rectW, rectH, 10);
+    ctx.stroke();
+    ctx.fillStyle = textColor;
+    ctx.font = 'bold ' + picked + 'px Arial';
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'center';
+    ctx.fillText(text, 0, 0);
+    ctx.textBaseline = 'alphabetic';
+    ctx.textAlign = 'left';
+}
+
 // ---------------------------------------------
 // B. 救援成功结案页（救援数据结算 rescued 之后显示）
 // ---------------------------------------------
@@ -2482,27 +2567,22 @@ function drawCaseResolved(maze: any, cw: number, ch: number, time: number) {
         ctx.fill();
     }
 
-    // 顶部绿色"盖章" punch
+    // 顶部绿色"盖章" punch（使用 drawSmartStamp 自适应字号和宽度）
     ctx.globalAlpha = showAlpha;
     ctx.textAlign = 'center';
     const stampY = SAFE_TOP + 44;
     const stamp = stampPunchAnim(t);
     ctx.save();
     ctx.translate(cw / 2, stampY);
-    ctx.scale(stamp.scale, stamp.scale);
-    ctx.rotate(-0.04);
     ctx.globalAlpha = showAlpha * stamp.alphaIn;
-    ctx.strokeStyle = 'rgba(120,220,170,0.9)';
-    ctx.lineWidth = 2.4;
-    const stampW = Math.min(240, cw - PAD_X * 2 - 20);
-    ctx.beginPath();
-    rrect(ctx, -stampW / 2, -24, stampW, 48, 10);
-    ctx.stroke();
-    ctx.fillStyle = 'rgba(150,240,190,0.95)';
-    ctx.font = 'bold 20px Arial';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('案件结案 · 成功营救', 0, 0);
-    ctx.textBaseline = 'alphabetic';
+    drawSmartStamp(
+        '案件结案 · 成功营救',
+        'rgba(150,240,190,0.95)',
+        'rgba(120,220,170,0.9)',
+        stamp.scale,
+        -0.04,
+        cw - PAD_X * 2 - 8,
+    );
     ctx.restore();
 
     // 副标题：案件编号
@@ -2579,7 +2659,7 @@ function drawCaseResolved(maze: any, cw: number, ch: number, time: number) {
         const btnAlpha = Math.min(1, (t - 3.8) / 0.4);
         ctx.globalAlpha = showAlpha * btnAlpha;
         const btnH = 46;
-        const btnY = ch - 82;
+        const btnY = ch - 56;
         const gap = 12;
         const totalW = Math.min(cw - PAD_X * 2, 420);
         const halfW = (totalW - gap) / 2;
@@ -2649,12 +2729,23 @@ function drawCaseAbandoned(maze: any, cw: number, ch: number, time: number) {
     const SAFE_TOP = 58;
     const PAD_X = 28;
 
-    // 背景：冷灰蓝
+    // 背景：冷蓝灰基调（不是纯黑，带层次感）
     ctx.globalAlpha = showAlpha;
     const bg = ctx.createLinearGradient(0, 0, 0, ch);
-    bg.addColorStop(0, 'rgba(14,16,22,0.98)');
-    bg.addColorStop(1, 'rgba(6,8,12,0.99)');
+    bg.addColorStop(0, 'rgba(42,54,70,0.98)');   // 顶部偏蓝灰（模拟阴天清晨）
+    bg.addColorStop(0.45, 'rgba(26,34,48,0.98)'); // 中部深蓝灰
+    bg.addColorStop(1, 'rgba(14,18,26,0.99)');   // 底部深冷黑
     ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, cw, ch);
+
+    // 顶部冷蓝光晕（呼应成功页的暖光晕，但偏冷、更弱，表现"阴天、无希望"）
+    const coldHaloBreath = 1 + Math.sin(t * 0.7) * 0.05;
+    const coldHaloR = Math.min(cw, ch) * 0.75 * coldHaloBreath;
+    const coldHaloG = ctx.createRadialGradient(cw * 0.22, ch * 0.08, 8, cw * 0.22, ch * 0.08, coldHaloR);
+    coldHaloG.addColorStop(0, 'rgba(120,160,210,0.22)');
+    coldHaloG.addColorStop(0.5, 'rgba(80,110,160,0.08)');
+    coldHaloG.addColorStop(1, 'rgba(60,80,120,0)');
+    ctx.fillStyle = coldHaloG;
     ctx.fillRect(0, 0, cw, ch);
 
     // 微弱雪花噪点
@@ -2685,26 +2776,21 @@ function drawCaseAbandoned(maze: any, cw: number, ch: number, time: number) {
     }
     ctx.globalAlpha = showAlpha;
 
-    // 顶部红色盖章 punch
+    // 顶部红色盖章 punch（使用 drawSmartStamp 自适应字号和宽度）
     ctx.textAlign = 'center';
     const stampYA = SAFE_TOP + 44;
     const stampA = stampPunchAnim(t);
     ctx.save();
     ctx.translate(cw / 2, stampYA);
-    ctx.scale(stampA.scale, stampA.scale);
-    ctx.rotate(0.035);
     ctx.globalAlpha = showAlpha * stampA.alphaIn;
-    ctx.strokeStyle = 'rgba(230,90,70,0.9)';
-    ctx.lineWidth = 2.4;
-    const stampWA = Math.min(260, cw - PAD_X * 2 - 20);
-    ctx.beginPath();
-    rrect(ctx, -stampWA / 2, -24, stampWA, 48, 10);
-    ctx.stroke();
-    ctx.fillStyle = 'rgba(250,140,120,0.95)';
-    ctx.font = 'bold 20px Arial';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('案件结案 · 搜寻终止', 0, 0);
-    ctx.textBaseline = 'alphabetic';
+    drawSmartStamp(
+        '案件结案 · 搜寻终止',
+        'rgba(250,140,120,0.95)',
+        'rgba(230,90,70,0.9)',
+        stampA.scale,
+        0.035,
+        cw - PAD_X * 2 - 8,
+    );
     ctx.restore();
 
     // 副标题：案件编号
@@ -2789,7 +2875,7 @@ function drawCaseAbandoned(maze: any, cw: number, ch: number, time: number) {
         const btnW = Math.min(280, cw * 0.74);
         const btnH = 46;
         const btnX = (cw - btnW) / 2;
-        const btnY = ch - 82;
+        const btnY = ch - 56;
         const grad = ctx.createLinearGradient(btnX, btnY, btnX + btnW, btnY);
         grad.addColorStop(0, 'rgba(60,80,120,0.9)');
         grad.addColorStop(1, 'rgba(90,110,160,0.9)');
@@ -2994,7 +3080,7 @@ export function drawResolvedIdleNewCaseBtn(cw: number, ch: number, time: number)
 export function getBriefingAcceptBtnRect(cw: number, ch: number): {x: number, y: number, w: number, h: number} {
     const w = Math.min(260, cw * 0.7);
     const h = 46;
-    return { x: (cw - w) / 2, y: ch - 74, w, h };
+    return { x: (cw - w) / 2, y: ch - 56, w, h };
 }
 
 // ---------------------------------------------
@@ -3002,7 +3088,7 @@ export function getBriefingAcceptBtnRect(cw: number, ch: number): {x: number, y:
 // ---------------------------------------------
 export function getResolvedBtnRects(cw: number, ch: number): {stayX: number, newX: number, y: number, w: number, h: number} {
     const h = 46;
-    const y = ch - 72;
+    const y = ch - 56;
     const gap = 12;
     const totalW = Math.min(cw - 32, 420);
     const halfW = (totalW - gap) / 2;
@@ -3014,5 +3100,5 @@ export function getResolvedBtnRects(cw: number, ch: number): {stayX: number, new
 export function getAbandonedAcceptBtnRect(cw: number, ch: number): {x: number, y: number, w: number, h: number} {
     const w = Math.min(280, cw * 0.7);
     const h = 46;
-    return { x: (cw - w) / 2, y: ch - 72, w, h };
+    return { x: (cw - w) / 2, y: ch - 56, w, h };
 }
