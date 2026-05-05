@@ -290,6 +290,9 @@ P4（地形序列化）──→ 好友分享需求（另提单）
 - 岸上全屏手绘认知地图重做 + 按次下潜回放
 - **迷宫模式本地存档完成**（v1 简化版 → v2 压缩版 → **v3 种子版**：地图结构不再进存档，由 `generateMazeMap(seed)` 从 uint32 种子确定性重建；`src/core/SeededRandom.ts` 提供 mulberry32 PRNG + 模块级活跃实例机制；`src/world/map.ts` 81 处 + `src/world/mazeScene.ts` 2 处 `Math.random` 全量种子化；`maze_save_v3` key 下单次下潜存档从 v2 的 ~374KB 降到预期 ~10~30KB，彻底解决 Android 端单 key 超限问题；同种子可完全重建同一张地图，为后续好友分享地图打下基础）
 - **氧气瓶拾取系统完成**（迷宫模式：氧气瓶贴在岩石表面，食人鱼聚落高概率、全图低概率散落；轮盘按住确认安装；触发后飞瓶 → 气泡爆发 → 全屏绿色辉光 → 氧气条上涨动画 → "+X%" 跳字；新增 `src/logic/OxygenTank.ts` + `src/render/RenderOxygenTank.ts`；生成走派生种子 `seed ^ 0xCAFEBABE`，已消耗瓶子用 `consumedTankIds` 列表随存档持久化，同 seed 内不会重新出现）
+- **大文件拆分重构完成**（减少 AI 编辑巨型文件的风险，外部导入路径零变更）：
+  - `src/core/config.ts`（854 行）→ 拆成 `src/core/config/` 目录下 5 个功能子模块（`base.ts` 基础/地图/绳索/第三关；`gameplay.ts` 标记/氧气瓶/呼吸/撞击/攻击/探知仪；`modes.ts` fishArena/fishEnemy/maze含浅水区；`rendering.ts` 尘埃/手电/画质/后处理；`character.ts` 手动挡/潜水员/相机/音频）+ `index.ts` 组装；根 `config.ts` 变成一行 `export { CONFIG } from './config/index'`。全仓库 43 处 `import { CONFIG } from '../core/config'` 零修改。
+  - `src/render/RenderMazeUI.ts`（3105 行）→ 拆成 `src/render/mazeUI/` 目录下 3 个子模块（`shore.ts` 岸上界面+全屏认知地图+下潜记录列表/回放 806 行；`debrief.ts` 入水动效+结算数据页 327 行；`cases.ts` 警情通报/救援成功/搜寻终止 3 个全屏叙事页+放弃按钮+resolved_idle 按钮+所有按钮矩形 getter 880 行）。主文件 `RenderMazeUI.ts` 从 3105 行降到 492 行，只保留 `drawMazeHUD`（phase 分发器）+ `drawMazeMinimap`（debug 小地图）+ `ensureMazeHUDInitialized` + `rrect`；通过 `export { ... } from './mazeUI/cases'` re-export 5 个按钮矩形 getter，`input.ts` 的导入路径零修改。**已舍弃**：原 `drawMazeMapFullscreenLegacy`（~470 行）是未被调用的旧铅笔素描方案，按"死代码不搬"原则未迁移，如需恢复可到历史 commit 中取回。`npm run typecheck` 通过。
 
 **下一步优先**：
 1. P1 角色表现修复（T1.3 roll 滚动、T1.4 腿部脚蹼、T1.5 手电位置）

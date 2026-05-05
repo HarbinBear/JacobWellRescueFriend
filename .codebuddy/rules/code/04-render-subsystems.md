@@ -276,7 +276,11 @@ GM 面板是一个独立的运行时调参工具，不依赖逻辑层或状态�
 - `RenderMenu.ts`：主菜单、章节选择、章节卡片配图绘制
 - `RenderEnding.ts`：结局画面（第二三关衔接、熊子死亡结局、旧结局兜底）
 - `RenderArenaUI.ts`：竞技场 HUD（轮次/击杀/存活、准备倒计时、清图庆祝、死亡结算）
-- `RenderMazeUI.ts`：迷宫模式 HUD（氧气条、深度、小地图、岸上界面、入水动效、结算页、全屏认知地图）
+- `RenderMazeUI.ts`：迷宫模式 HUD 的 phase 分发入口（氧气环飘字 / NPC 救援提示 / 撤离按钮 / 调试小地图），不同 phase 的全屏绘制已拆到 `src/render/mazeUI/` 目录：
+  - `mazeUI/shore.ts`：岸上界面 + 全屏认知地图（下潜记录列表 + 单次手绘地图回放）
+  - `mazeUI/debrief.ts`：入水动效 + 下潜结算数据页
+  - `mazeUI/cases.ts`：3 个全屏叙事页（警情通报 / 救援成功 / 搜寻终止）+ 岸上放弃按钮 + resolved_idle 新任务按钮 + 所有按钮矩形 getter
+  - 主文件通过 re-export 暴露按钮矩形 getter（`getAbandonBtnRect` / `getResolvedIdleNewCaseBtnRect` / `getBriefingAcceptBtnRect` / `getResolvedBtnRects` / `getAbandonedAcceptBtnRect`），`input.ts` 的导入路径不变
 - `RenderLight.ts`：光照 CPU 端计算（射线碰撞、泥沙衰减、视线检测）
 - `WebGLLight.ts`：光照 GPU 端渲染（WebGL shader，替代旧 Canvas 2D 光照绘制）
 - `RenderRope.ts`：绳索绘制

@@ -221,6 +221,20 @@ NPC 状态用于控制同伴或目标角色的位置与行为模式，关键字�
 - 逻辑与渲染都能读取同一参数来源
 - 新会话接手时很容易找到全局平衡入口
 
+### 2.1.1 config.ts 的内部拆分
+
+`src/core/config.ts` 本身已经只剩一行 `export { CONFIG } from './config/index';`。真正的参数定义分散到 `src/core/config/` 目录下按功能聚合的子模块里，`index.ts` 再做展开合并。外部代码的导入路径保持不变，仍然是 `import { CONFIG } from '../core/config'`。
+
+- `src/core/config/base.ts`：版本 / 画布 / debug / menuUnlock / 基础移动 / 地图 / 氧气 / 光照 / 泥沙 / 绳索 / 第三关关键点 / 恐怖事件
+- `src/core/config/gameplay.ts`：标记 / 氧气瓶 / 呼吸 / 撞击反馈 / 玩家攻击 / 生命探知仪
+- `src/core/config/modes.ts`：fishArena / fishEnemy / maze（含 shallowWater、食人鱼聚集点、多次下潜闭环）
+- `src/core/config/rendering.ts`：dust / flashlight / quality(含预设) / perfHUD / postProcess
+- `src/core/config/character.ts`：manualDrive / diver / camera / audio（含云存储 fileIDs）
+- `src/core/config/index.ts`：组装上述子模块为最终 `CONFIG`
+
+改参数时优先到对应子模块里改；新增子对象时仍在对应子模块里加字段，不需要改 `index.ts` 或根 `config.ts`。
+
+
 ### 2.2 当前配置大类
 
 从当前实现看，`CONFIG` 至少包含下面几类配置：
