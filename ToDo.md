@@ -17,11 +17,6 @@
 进入结算的各种声音/
 UI按钮点击音效
 
-氧气图标里画个肺🫁，要有呼吸的肺的动画，要和吐气的动画打通以及氧气的消耗打通。
-关于呼吸，要进一步做呼吸系统，运动会让呼吸变快，撞墙后呼吸会变快，即使静止了也都会需要一些时间平复。
-氧气条的消耗不要匀速的，和吐气同步吧，直观一点。
-如果太不明显了，可以考虑把氧气条那个圈放大，不用和别的按钮保持一个大小。
-移动的叠加向量里，除了现在有的随机偏移和移动输入，还要叠加一个浮力向量，就是呼吸时，吐完气这个浮力变小，吸完气浮力会上升，这个最好有个表现能让玩家看出来是什么个逻辑。
 
 **已完成（2026-05-06）：**
 - **氧气环放大 1.4×**（`CONFIG.breath.oxygenRingSizeMul`），其他 HUD 图标保持 28px 不变
@@ -114,24 +109,6 @@ A slow, gentle, deeply relaxed ambient music loop for a sunlit grass clearing be
 ```
 CN：救援成功后留本关时的营地 BGM。阳光下躺在暖草地上半眯着眼的感觉，一切尘埃落定、纯粹的宽慰与舒服、没有任何紧迫感。软指弹吉他极稀疏慢拨（任音符自然延展消散）+ 温暖模拟 pad 如午后雾气铺底 + 每 8~16 小节偶尔一声风铃式轻响，55–60 BPM 极慢。温暖、朦胧、满足、不着急。无张力无前进感无上扬乐句，音乐本身也在休息。纯器乐无缝循环 80s。情绪关键词：午后阳光、宽慰、慵懒、满足、休息。
 
-#### 3. campAmbience（营地环境音）
-EN:
-```
-A distant, layered jungle ambience for a tropical rainforest at dawn. Faraway bird calls (hornbills, bulbuls, distant parakeets), very distant water dripping, soft wind through dense leaves, extremely faint insect chirps. All sounds feel FAR AWAY, as if standing in a clearing with the jungle 50 meters away. No close-up birds, no rustling near the microphone, no human activity, no music. Keep it subtle and atmospheric, not a nature documentary. Seamlessly looping, 40 seconds.
-```
-CN：远景丛林环境。远鸟鸣（犀鸟、鹎、鹦鹉）、极远滴水、软风穿密叶、极轻虫鸣。所有声音要远、不贴脸、无音乐无人声无近景沙沙。无缝循环 40s。
-
-FileID：
-cloud://cloud1-d8gh6fpnh6d0928e8.636c-cloud1-d8gh6fpnh6d0928e8-1424920608/audio/CampBird.mp3
-
-**已接入（2026-05-06）：**
-- AudioManager 新增 **Ambience 通道**（与 BGM / SFX / SFX-Loop 并列的第四类），对外导出 `playAmbience / stopAmbience / updateAmbience`
-- 资源走云存储 `CampBird.mp3`，`CONFIG.audio.cloud.fileIDs.campAmbience` 注册
-- 由 `game.ts` 主循环每帧按 phase 判定：只在 `state.screen === 'mazeRescue' && (phase === 'shore' || phase === 'resolved_idle')` 时激活；briefing / resolved / abandoned 三个叙事弹窗以及下潜中、菜单、主线、竞技场全部停
-- 音量上限 = `maxVolume(0.5) × CONFIG.audio.bgmVolume`，环境音不抢戏
-- 淡入淡出 fadeStep = 0.006（约 3s 到位），shore ↔ 叙事弹窗切换时过渡自然
-- 静音时压 0 不 pause，开静音后从 0 淡回
-
 #### 4. fishChaseStinger（食人鱼追击紧张层）
 EN:
 ```
@@ -139,34 +116,6 @@ A tense underwater stinger loop that layers on top of existing ambient music. De
 ```
 CN：叠加在主 BGM 上的紧张层。40Hz 心跳脉冲（70BPM）、半音滑动不协和弦乐、远处金属刮擦和低频隆隆。无旋律无节奏纯氛围压迫感。无缝循环 24s。备选：string drone 可换 choir whisper 或 low brass swell 试听。
 
-#### 5. breathLoop（吐气泡循环）
-EN:
-```
-A continuous loop of underwater exhaled air bubbles from a scuba diver's regulator. Medium-sized bubbles rising through water, soft gurgling and popping, no mechanical regulator clicks, no inhale sounds — only the exhale bubble stream. Consistent and steady throughout, no dramatic peaks. Recorded as if from a first-person perspective. Seamlessly looping, 3.5 seconds.
-```
-CN：潜水员吐气泡循环。只要吐气、不要吸气、无调节器机械声。中气泡上浮+咕噜破裂。稳定均匀第一人称无缝循环 3.5s。代码侧用 playbackRate 0.7~1.3 控呼吸节奏，volume 0.3~0.8 控强度。
-
-fileid：
-cloud://cloud1-d8gh6fpnh6d0928e8.636c-cloud1-d8gh6fpnh6d0928e8-1424920608/audio/BreathBubble.mp3
-
-**已接入（2026-04-28）：**
-- AudioManager 新增 SFX-Loop 通道（`playSFXLoop / stopSFXLoop / setSFXLoopParams / updateSFXLoops`），支持运行时音量与播放速率调整
-- 新建 `src/logic/BreathSystem.ts`：呼吸相位机（exhale / pause 间歇交替）、运动量映射、嘴部位置气泡粒子生成、音频参数联动
-- 新建 `src/render/RenderBreath.ts`：世界空间气泡绘制（半透明主体 + 高光 + 薄边，随生命淡出）
-- 气泡从潜水员嘴部（头部前端 +22px）涌出，真实向上漂浮（-Y）+ 侧向正弦摆动 + 半径缓慢变大 + 末尾淡出
-- 运动量映射：静止 → 吐气 1.0s / 停顿 3.0s / 气泡率 5/s / 音量 0.35；全速 → 吐气 1.5s / 停顿 0.2s / 气泡率 14/s / 音量 0.8
-- 仅在迷宫 play / 主线 play 阶段激活；岸上、菜单、过场、入水、上浮、死亡过场均静默
-- GM 面板新增"呼吸"Tab 共 27 个参数可调
-
-#### 6. collisionRock（撞岩石）
-EN:
-```
-A single underwater impact of a diver's tank or body hitting a rough rock wall. Muffled low-frequency thud with a short high-frequency scrape, slightly reverberant as if inside a flooded cave. Dry, punchy, no musical tone. Duration 0.4 seconds.
-```
-CN：气瓶/身体撞洞壁闷响。低频闷击+短暂高频刮擦+洞穴混响。干净无音调 0.4s。代码按撞速映射 volume 和 rate（轻擦 rate=1.1 vol=0.3，重撞 rate=0.85 vol=0.9）。
-
-fileid：
-cloud://cloud1-d8gh6fpnh6d0928e8.636c-cloud1-d8gh6fpnh6d0928e8-1424920608/audio/HitRock.mp3
 
 #### 7. strokeArm（手划水）
 EN:
@@ -213,9 +162,9 @@ CN：食人鱼撕咬。利齿咬合锐响+磨咬撕扯+水下闷湿冲击。暴�
 #### 13. oxygenRefill（补氧）
 EN:
 ```
-A positive underwater pickup sound — pressurized gas hissing into a tank valve, followed by a soft ascending chime or two-note bell tone to indicate success, with a gentle bubble flourish at the end. Satisfying, rewarding, not too loud. Duration 1.5 seconds.
+A fast, purely physical oxygen tank refill — absolutely no musical tones, no chimes, no bells, no synth, no digital sound of any kind. Just real mechanical and gas sounds: a sharp burst of high-pressure gas hissing into a steel tank for about 0.6 seconds (bright airy hiss with a slight whistle from the regulator), then the hiss cuts off abruptly with a short dull blunt "thunk" as the flow stops (the tank is full, pressure equalized — a muted metallic thud, not a bell), followed by the crisp mechanical clicks and squeaks of a brass valve being hand-tightened shut (two or three quick metallic turns, tactile and dry). Short, confident, satisfying in a purely mechanical way — the reward feeling comes entirely from how clean and decisive the physical action sounds, not from any added music. Slightly close-mic'd, dry, real-world field recording feel. Duration 1.5 seconds.
 ```
-CN：补氧成功。加压气体嘶声+柔和上行铃音（成功反馈）+尾端气泡。满足奖励感、别太响 1.5s。
+CN：补氧成功。**绝对不要任何铃音、和弦、合成器、电子音、旋律反馈**，只有真实的物理机械和气体声。前 0.6s 是高压气体快速灌入钢瓶的锐利嘶声（带调压阀轻微口哨感），接着嘶声戛然而止、伴随一声"嘟"的钝金属闷响（瓶满、压力平衡，低沉金属撞击感、不是铃声），最后是黄铜阀门被手拧紧的两三下清脆机械咔哒+细微吱吱声（干燥、触感强）。短促、干脆、满足感完全来自物理动作本身的利落，不靠音乐奖励。近距离拾音、干声、真实外景录音质感 1.5s。
 
 #### 14. endingSuccess（救援成功）
 EN:
@@ -241,23 +190,23 @@ CN：被咬死。锐利冲击+湿润咔嚓+被掐断闷惨叫+水花翻腾+低�
 #### 17. endingReturn（回岸）
 EN:
 ```
-A short bittersweet transition — a soft ascending bell chime with a warm pad underneath, a subtle water drip at the end. Gentle closure, not celebratory, slightly melancholic. Duration 1.2 seconds.
+A purely physical sound of a diver quickly ascending and breaking the water surface — no music, no chimes, no pads, no synth, no melodic reward of any kind. The soundscape is: a rising underwater whoosh of water rushing past the body as the diver shoots upward (muffled, bubble-rich, rapidly brightening as depth decreases, about 0.5 seconds), then the sharp clean burst of breaking through the surface (a splash with real water sheeting off, bubbles popping, a quick gasp of air opening up), followed by the calmer ambient lapping of water against rocks or the shore edge and a few residual drips as the diver settles on the surface. Real, physical, field-recording quality. The feeling of "made it back" should come entirely from the natural transition from muffled underwater acoustics to open-air brightness, not from any musical cue. Duration 1.5 seconds.
 ```
-CN：回岸（非救援成功）。柔和上行铃+温暖 pad+尾滴水。温柔收束非庆祝、微惆怅 1.2s。
+CN：回岸（非救援成功）。**绝对不要铃音、pad、旋律、合成奖励音**，纯物理声。先 0.5s 水下急速上浮的 whoosh（闷、气泡丰富、随深度变浅高频渐亮），然后一瞬间破水出面的清亮爆裂（真实水花、水膜脱落、气泡爆破、一口空气刚开闸的感觉），接着是水面轻拍岩石/岸边的平静余波和几滴残留滴水。真实物理、外景录音质感。"回到了"的情绪完全靠水下闷音→水面开阔音的自然声学过渡，不靠任何音乐提示 1.5s。
 
 #### 18. uiPrimary（UI 主按钮）
 EN:
 ```
-A clean minimal UI confirm sound — a short soft bell chime with a subtle water droplet quality, warm and organic, not digital or beepy. Duration 0.2 seconds.
+A purely natural physical tap sound for a confirm button — absolutely no bells, no chimes, no synth, no digital tone, no melodic pitch. Just one real-world acoustic event: a single firm fingertip tap on a small taut stretched piece of waterproof canvas or leather over a hollow wooden frame, producing a soft warm dull "tup" with a tiny bit of natural body resonance and a very short air-puff from the surface flexing. Dry, close-mic'd, felt more than heard. Understated, confident, tactile — the kind of sound a real outdoor equipment clasp or a fieldbook cover would make when pressed. Duration 0.2 seconds.
 ```
-CN：UI 主按钮（开始/确认/救援/安装）。简约确认音、软铃声+水滴质感、温暖有机不要数字 beep。0.2s。
+CN：UI 主按钮（开始/确认/救援/安装）。**绝对不要铃声、和弦、合成器、数字音、任何带音高的调性**，只有一个真实的物理动作声：指尖坚定地按在绷紧的防水帆布或皮革面（下面是空心木框）上发出的一声温暖柔钝的"哚"，带一点点自然腔体共鸣和表面形变挤出的微弱气声。干声、近距离拾音、听感更像触感。低调、笃定、触感强——像真实户外装备扣具或野外笔记本封面被按下的声音 0.2s。
 
 #### 19. uiSecondary（UI 次按钮）
 EN:
 ```
-A minimal UI tap sound — a very short, subtle wooden tick or soft tap, quieter and shorter than a confirm bell, understated and unobtrusive. Duration 0.12 seconds.
+A purely natural physical micro-tap — absolutely no bells, no tones, no synth, no digital click, no musical pitch. Just a real-world tiny acoustic event: a single fingernail or fingertip lightly brushing or tapping a small dry wooden surface (like the edge of a pencil tapping a notebook page), producing a very short, soft, dry tick with almost no body and no resonance — just the brief contact and immediate silence. Lighter, shorter and drier than the primary confirm tap. Close-mic'd, field-recording quality, intentionally uneventful. Duration 0.1 seconds.
 ```
-CN：UI 次按钮（取消/关闭/Tab）。比主按钮更轻更短、木质轻叩或柔软拍击、低调不抢戏 0.12s。
+CN：UI 次按钮（取消/关闭/Tab）。**绝对不要铃声、音高、合成器、数字咔嗒**，纯物理微小动作声：指甲或指尖轻拂/轻叩小块干燥木面（类似铅笔头轻点笔记本纸边），一声极短、柔、干的"嗒"，几乎没有腔体、没有余响——只有接触瞬间和立刻的寂静。比主按钮更轻、更短、更干。近距离拾音、外景录音质感、刻意克制不抢戏 0.1s。
 
 ### 生成批次建议
 1. 第一批（氛围基调）：campBGM / campAmbience / breathLoop

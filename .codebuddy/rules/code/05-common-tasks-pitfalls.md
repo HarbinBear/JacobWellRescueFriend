@@ -96,21 +96,29 @@ type: always
 - 氧气瓶生成必须包裹在派生 seed 的 `setActiveSeededRandom()` / `clearActiveSeededRandom()` 中，否则同 seed 下布局会漂移
 - `consumedTankIds` 在换新地图（`replayMazeLogic`）时要清空，否则新地图会继承老瓶子的"已消耗"状态
 
-### 1.5d 改呼吸系统（间歇吐气气泡 + 循环呼吸音）
+### 1.5d 改呼吸系统（四相位 + 急促度 + 肺动画 + 浮力加速度 + 阶梯耗氧）
 
 优先检查：
 
-- `src/logic/BreathSystem.ts`（相位机、运动量映射、气泡生成、音频参数联动）
+- `src/logic/BreathSystem.ts`（四相位机 `exhale → holdEmpty → inhale → holdFull`、肺容积 `lungVolume`、急促度 `breathRate` 三分量、浮力加速度 `computeBuoyancyOffset()`、阶梯耗氧 `consumeBreathO2()`、气泡生成、音频参数联动）
 - `src/render/RenderBreath.ts`（气泡世界空间绘制）
+- `src/render/HUDTopLeft.ts` 中 `drawLungs()`（肺图标：缩放读 `getLungVolume()`，吐气阶段气管顶部白气泡读吐气进度 `1 - lungVolume`）
+- `src/logic/Logic.ts` / `src/logic/MazeLogic.ts` 中 `player.vy += computeBuoyancyOffset()` 叠加点（水阻之后、`nextX = player.x + player.vx` 之前）
 - `src/audio/AudioManager.ts` 中 SFX-Loop 通道（`playSFXLoop / stopSFXLoop / setSFXLoopParams / updateSFXLoops`）
-- `src/core/config.ts` 中的 `breath` 配置
+- `src/core/config/gameplay.ts` 中的 `breath` 配置
 - `src/gm/GMConfig.ts` 中的"呼吸"Tab
 
 常见陷阱：
 
+- **相位机是四相不是两相**：正确顺序 `exhale → holdEmpty → inhale → holdFull → exhale → ...`。`holdEmpty` / `holdFull` 是停顿保持期，肺容积分别保持 0 / 1 不动，肺图标在这两个阶段**不做缩放**。不要退化回旧的两相 `exhale → pause`，否则"吐完/吸完后的保持感"消失、肺动画与呼吸对不上。
+- **气泡只在 exhale 阶段生成**：其他三相（holdEmpty / inhale / holdFull）都不生成气泡、音频目标音量压 0；如果改成 inhale 也冒气泡，物理语义会错。
+- **肺缩放直接读 `lungVolume`**：不要再通过 `getBreathPhaseAngle()` 的 sin 值驱动缩放（那是为兼容老代码保留的换算层）。新代码统一 `scale = lerp(scaleExhale, scaleInhale, lungVolume)`，这样 holdEmpty/holdFull 时肺才会保持不动。
+- **浮力是加速度不是位移偏移**：`computeBuoyancyOffset()` 返回值通过 `player.vy += ...` 每帧积分成速度，再由 `waterDrag` 衰减。如果误把返回值直接赋给 `player.y += ...`，会变成立刻位移、丢掉"呼吸→浮力→身体起伏晚半拍"的因果感。也不要把它乘 dt，外层每帧只加一次已经是每帧加速度增量。
+- **濒死阶段不要叠浮力**：主线 `stage 4 / 5` 强制 `vx/vy=0` 做随机抖动，这时候要跳过 `computeBuoyancyOffset()`，否则浮力会干扰死亡抽搐的抖动手感。
 - **气泡绘制层顺序**：必须插在 `drawDustDarkLayer()` 之后、世界 transform 的 `ctx.restore()` 之前（光照之前），才能被光照遮罩统一压暗。放到泥沙 silt 同层（光照之后）会导致黑暗区气泡一样亮。
-- **呼吸是间歇的**：不要写成持续吐气。相位机必须是 `exhale → pause → exhale → ...`，不能把 pause 去掉。
-- **SFX-Loop 生命周期**：`playSFXLoop()` 启动后，要在 `resetGameLogic()` / `startMazeDive()` / `returnToShore()` 等模式切换入口调用 `resetBreathSystem()` 清理，避免气泡残留到岸上或菜单。
+- **阶梯耗氧触发边沿**：`consumeBreathO2()` 只在 `exhale → holdEmpty` 的切换那**一帧**返回一口扣氧，其余全部返回 0；迷宫扣氧后立即调 `triggerO2LossFlash(fromO2, toO2)` 画红条。两口气之间千万别写成"每帧匀速扣一点"，那样就回到不直观的老氧耗曲线了。
+- **模式切换必须重置**：`resetGameLogic()` / `startMazeDive()` / `returnToShore()` 三处要调 `resetBreathSystem()` 清空气泡+停音频+重置肺容积/相位/急促度；否则岸上会看到残留气泡、或读档后第一口被老 `exhalePulseCounter` 吞掉（`resetBreathO2Consumer()` 会一起被调用）。
+- **兼容层命名不要再用**：`getBreathPressure / getBreathPhaseAngle / getLastExhalePressure` 与 config 的 `pressureBaseline / buoyancyAmp / buoyancyPressureCoef` 都是向后兼容保留。新代码请用 `getBreathRate / getLungVolume / getLastExhaleBreathRate` 与 `rateBaseline / buoyancyStrength / buoyancyRateCoef`。
 - **playbackRate 兼容性**：微信 `InnerAudioContext.playbackRate` 在手机端不一定生效；浏览器兜底路径（HTMLAudioElement）支持。调参时观察手机端可能只有音量变化、没有音调变化，属正常。
 - **云存储新资源权限**：上传新音频后必须去云开发控制台把文件权限改为"所有用户可读"，否则 `getTempFileURL` 会报 `STORAGE_EXCEED_AUTHORITY`。
 

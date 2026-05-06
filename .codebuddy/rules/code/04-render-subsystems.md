@@ -126,28 +126,43 @@ type: always
 
 ### 1.6c 呼吸系统 `src/logic/BreathSystem.ts`
 
-呼吸系统负责潜水员的**间歇吐气**表现（气泡粒子 + 循环呼吸音），仅在水下可操作阶段（迷宫 play / 主线 play）激活。与标记系统、氧气瓶系统类似，采用**逻辑 + 渲染各自独立模块、由主循环按帧驱动**的模式。
+呼吸系统负责潜水员的**四相位呼吸**表现（气泡粒子 + 循环呼吸音 + 肺图标动画 + 浮力加速度），仅在水下可操作阶段（迷宫 play / 主线 play）激活。与标记系统、氧气瓶系统类似，采用**逻辑 + 渲染各自独立模块、由主循环按帧驱动**的模式。
 
 对外提供（`src/logic/BreathSystem.ts`）：
 
-- `updateBreathSystem()`：每帧由 `MazeLogic.updateMaze()` 和 `Logic.update()` 调用。内部先判断是否应激活（`shouldBeActive()`），然后推进呼吸相位机、生成气泡、驱动音频参数。
+- `updateBreathSystem()`：每帧由 `MazeLogic.updateMaze()` 和 `Logic.update()` 调用。内部先判断是否应激活（`shouldBeActive()`），然后推进急促度、呼吸相位机、肺容积、生成气泡、驱动音频参数。
 - `getBreathBubbles()`：供 `RenderBreath.ts` 读取当前气泡列表。
-- `resetBreathSystem()`：清理气泡 + 停音频。在 `resetGameLogic()` / `startMazeDive()` / `returnToShore()` 三处入口调用。
-- `spawnImpactBurst(cx, cy, strength)`：**撞击气泡爆发入口**（供 `CollisionImpact.ts` 调用）。从撞击点爆发一次大量气泡，数量/半径/寿命/散射速度等由 `CONFIG.collisionImpact.impactBubble*` 参数控制，默认 30→120 粒线性映射、半径 1.6 倍放大、四周扇形散射、寿命 0.55 倍缩短。共享 `bubbles` 渲染列表，因此 `RenderBreath.drawBreathBubblesWorld()` 会一并画出。
+- `getLungVolume()`：返回 0~1 的肺容积（0=吐完最小，1=吸完最大），供 HUD 肺图标与浮力读取。
+- `getBreathRate() / getBreathMovementRate() / getBreathImpactRate()`：急促度总量及两分量（旧名 `getBreathPressure / ...Pressure` 作为兼容层仍可用，内部返回同一数值）。
+- `getBreathPhase()`：返回当前相位 `'exhale' | 'holdEmpty' | 'inhale' | 'holdFull' | 'idle'`。
+- `computeBuoyancyOffset()`：返回每帧应叠加到 `player.vy` 的**浮力加速度**（单位：像素/帧²）。肺空为正（下沉）、肺满为负（上浮）、肺容积 0.5 为中性点 0。由调用方 `player.vy += computeBuoyancyOffset()` 每帧积分。
+- `consumeBreathO2() / resetBreathO2Consumer()`：阶梯式耗氧订阅接口，只在 `exhale → holdEmpty` 切换瞬间返回一口扣氧量，两口之间返回 0。
+- `registerImpact(strength, target?)`：撞击应激入口（供 `CollisionImpact.ts` 调用），只上拉不下拉地抬 `rateImpact`。
+- `resetBreathSystem()`：清理气泡 + 停音频 + 重置肺容积/相位/急促度。在 `resetGameLogic()` / `startMazeDive()` / `returnToShore()` 三处入口调用。
+- `spawnImpactBurst(cx, cy, strength)`：**撞击气泡爆发入口**（供 `CollisionImpact.ts` 调用）。从撞击点爆发一次大量气泡，与呼吸气泡共用 `bubbles` 渲染列表；参数由 `CONFIG.collisionImpact.impactBubble*` 控制。
+- `getBreathPhaseAngle()`：**兼容层**，把四相 `lungVolume` 反算回 0~2π 的相位供旧调用方使用（exhale 区间 0~π / holdEmpty=π / inhale 区间 π~2π / holdFull=0）。新代码应直接用 `getLungVolume()`。
 
 核心设计：
 
-- **间歇吐气相位机**：状态为 `exhale`（吐气）→ `pause`（停顿）→ `exhale` → ...，不是持续吐气。每个相位的时长由当前运动量决定。
-- **运动量映射**：`intensity = min(1, speed / refSpeed)`，带平滑；0→1 线性映射到"吐气时长 / 停顿时长 / 气泡速率 / 音量 / 播放速率 / 气泡大小"六组参数。典型区间：静止 exhale 1.0s / pause 3.0s / 5 粒每秒 / vol 0.35；全速 exhale 1.5s / pause 0.2s / 14 粒每秒 / vol 0.8。
-- **嘴部坐标生成气泡**：气泡从 `player.pos + 前向 * mouthOffsetForward`（默认 22px，对应 `RenderDiver` 头部前端）涌出，小范围抖动。
+- **四相位呼吸机**：状态机为 `exhale`（吐气，肺 1→0）→ `holdEmpty`（吐完保持，肺=0）→ `inhale`（吸气，肺 0→1）→ `holdFull`（吸完保持，肺=1）→ 循环。吐完和吸完都有**停顿保持期**，肺图标在停顿期保持最小/最大不动，不是持续反转；idle 态默认从 holdFull 起步（放松态肺偏满）。每相时长由当前急促度决定，静止时四相 `1.0 / 0.5 / 1.0 / 2.0` s，全速时 `0.5 / 0.05 / 0.4 / 0.1` s。
+- **肺容积 lungVolume（0~1 连续量）**：由相位机驱动，exhale/inhale 阶段走 `smoothstep(t)` 曲线（两端慢中间快，自然呼吸感），hold 阶段保持常量。是肺图标缩放和浮力加速度的唯一真源；把"肺的物理状态"与"相位调度"解耦，让后续扩展（屏息训练、潜水反射等）更干净。
+- **急促度 breathRate 三分量**：总急促度 `= baseline + movement × moveCoef + impact × impactCoef`，clamp 到 `[0,1]`。
+  - movement 分量走**指数平滑**（`rateRise=0.15` 升快 / `rateFall=0.02` 降慢，约 3s 降一半），玩家停下后呼吸不会立刻平复。
+  - impact 分量由 `CollisionImpact.triggerCollisionImpact()` 通过 `registerImpact()` 注入，每秒线性衰减 `impactRecoverPerSec=0.25`，约 4~6s 平复，实现"撞墙后呼吸急促"。
+  - breathRate 同时驱动：四相时长整体缩短（吐气变急）、每口吐气耗氧量增大、浮力幅度增强（`× (1 + rateCoef × breathRate)`）。
+- **浮力 = 加速度，不是位移偏移**：`computeBuoyancyOffset()` 返回每帧加速度增量，由外层 `player.vy += ...` 自然积分成速度、再经 `waterDrag` 衰减。表现效果：身体起伏**晚半拍**跟上呼吸——吸完气后身体才开始上浮、吐完气后才开始下沉，有明显的"呼吸→浮力→位移"因果链。幅度公式 `strength × (1 + rateCoef × breathRate) × (1 - 2 × lungVolume)`，默认 `buoyancyStrength=0.08`，配合 waterDrag 实际位移峰值约 ±2~3 px。
+- **阶梯式氧气消耗**：`consumeBreathO2()` 只在 `exhale → holdEmpty` 切换瞬间（`exhalePulseCounter` 递增的那一帧）返回一口扣氧量：`lerp(o2PerBreathStatic=0.4, o2PerBreathPeak=2.0, lastExhaleBreathRate)`；两口之间完全不扣。未激活时走 `o2IdleDrain=0.005` 兜底恒量。迷宫 `MazeLogic.ts` 扣氧后立即调 `triggerO2LossFlash(fromO2, toO2)` 让氧气环红条闪一下。
+- **运动量 → 吐气表现**：`intensity = min(1, speed / refSpeed)`，带平滑；0→1 线性映射到"四相时长 / 气泡速率 / 音量 / 播放速率 / 气泡大小"。静止 vs 全速差距巨大：静止 exhale 1.0s / 5 粒每秒 / vol 0.35；全速 exhale 0.5s / 14 粒每秒 / vol 0.8。
+- **嘴部坐标生成气泡**：气泡从 `player.pos + 前向 × mouthOffsetForward`（默认 22px，对应 `RenderDiver` 头部前端）涌出，小范围抖动。
 - **真实物理漂浮**：气泡初始 vy 为 -0.9~-1.6（向上），浮力每帧再累加；侧向 vx 是身体侧向的小初速度，叠加正弦摆动（`wobbleFreq / wobbleAmp`）；半径按 `growRate` 缓慢变大到 `maxRadius`；生命末 30% 线性淡出；超出玩家 260px 上方加速消散。
-- **吐气音频包络**：吐气阶段内部再做一个小包络，起吐渐强（前 0.15s）、收吐渐弱（末 0.25s），中间保持峰值音量；停顿阶段音量目标直接置 0。
-- **激活范围**：`shouldBeActive()` 只在 `state.screen === 'mazeRescue' && phase === 'play'` 或 `state.screen === 'play'` 时返回 true；黑屏、被鱼咬、过场、入水、上浮、岸上都自动静默。
+- **吐气音频包络**：只在 exhale 阶段拉起音量，其余三相（holdEmpty / inhale / holdFull）目标音量直接置 0；exhale 内部再做小包络：起吐渐强（前 0.15s）、收吐渐弱（末 0.25s）。
+- **激活范围**：`shouldBeActive()` 只在 `state.screen === 'mazeRescue' && phase === 'play'` 或 `state.screen === 'play'` 时返回 true；黑屏、被鱼咬、过场、入水、上浮、岸上都自动静默。非激活时急促度三分量仍持续推进，确保"离开 play 后呼吸继续平复"。
 
-渲染由专项模块负责（`src/render/RenderBreath.ts`）：
+渲染由专项模块负责（`src/render/RenderBreath.ts` + `src/render/HUDTopLeft.ts`）：
 
 - `drawBreathBubblesWorld(ctx, viewL, viewR, viewT, viewB)`：世界空间气泡绘制。每个气泡画一个半透明蓝白主体圆 + 薄描边 + 左上高光点；视椎剔除；末尾淡出。
-- **关键落点：光照之前绘制**。调用位置在 `Render.ts` 的 `drawDustDarkLayer()` 之后、世界 transform 的 `ctx.restore()` 之前，与岩石/绳索/鱼/NPC 同层。这样气泡会被光照遮罩统一压暗，手电没照到的地方气泡不会发亮。**不要**把气泡放到泥沙 silt 同层（那是光照之后的层，会导致黑暗区气泡也一样亮）。
+- `HUDTopLeft.drawLungs()`：HUD 肺图标。缩放直接读 `getLungVolume()`：`lerp(lungScaleExhale=0.85, lungScaleInhale=1.15, lungVolume)`，并再按急促度加码 30%。**四相位效果**：exhale 平滑收缩到谷值 → holdEmpty 保持最小不动 → inhale 平滑膨胀到峰值 → holdFull 保持最大不动；玩家能清楚看到"吐完/吸完后的停顿保持感"。吐气时气管顶部冒一个小白气泡（进度 `ep = 1 - lungVolume > 0.15` 才画，避免一切换就弹）。颜色按氧气量分四档。
+- **关键落点：光照之前绘制**（气泡）。调用位置在 `Render.ts` 的 `drawDustDarkLayer()` 之后、世界 transform 的 `ctx.restore()` 之前，与岩石/绳索/鱼/NPC 同层。这样气泡会被光照遮罩统一压暗，手电没照到的地方气泡不会发亮。**不要**把气泡放到泥沙 silt 同层（那是光照之后的层，会导致黑暗区气泡也一样亮）。
 
 音频侧扩展（`src/audio/AudioManager.ts`）：
 
@@ -160,7 +175,16 @@ type: always
 - 静音时所有 SFX-Loop 目标音量强制 0，但不调用 stop；开静音时从 0 淡回目标值。
 - 云存储接入：`CONFIG.audio.cloud.fileIDs.breathLoop` 指向云存储路径，首次启动时预拉取临时 URL，过期时（10002）自动重拉。
 
-配置参数集中在 `CONFIG.breath` 子对象（27 项），GM 面板有独立的"呼吸"Tab。
+配置参数集中在 `CONFIG.breath` 子对象。其中与四相位 / 急促度 / 浮力 / 阶梯耗氧 / 肺图标相关的关键字段：
+
+- 四相时长：`exhaleDurationStatic/Peak` / `holdEmptyDurationStatic/Peak` / `inhaleDurationStatic/Peak` / `holdFullDurationStatic/Peak`
+- 急促度：`rateBaseline / rateMoveCoef / rateImpactCoef / rateRise / rateFall / impactRecoverPerSec`
+- 阶梯耗氧：`o2PerBreathStatic / o2PerBreathPeak / o2IdleDrain`
+- 浮力：`buoyancyEnabled / buoyancyStrength / buoyancyRateCoef`（旧字段 `buoyancyAmp / buoyancyPressureCoef` 作兼容兜底）
+- 肺图标：`lungScaleInhale / lungScaleExhale / lungColorHealthy/Mid/Low/Critical` / `oxygenRingSizeMul`
+- 兼容字段（老代码可能还读）：`pauseDurationStatic/Peak` / `pressureBaseline/MoveCoef/ImpactCoef/Rise/Fall`
+
+GM 面板"呼吸"Tab 按上述语义已全部更新为"吐完保持 / 吸完保持 / 急促度 / 浮力强度(加速度)"等中文 label。
 
 ### 1.6c-audio Ambience 通道（岸上营地环境音 `campAmbience`）
 
