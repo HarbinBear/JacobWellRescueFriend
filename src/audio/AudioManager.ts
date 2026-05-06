@@ -18,7 +18,7 @@ import { CONFIG } from '../core/config';
 import { state } from '../core/state';
 
 type AudioKey = 'menuBGM';
-type SFXKey = 'diveSplash' | 'collisionRock' | 'collisionBreath';
+type SFXKey = 'diveSplash' | 'collisionRock' | 'collisionBreath' | 'quickReturn';
 // SFX-Loop：常驻循环、可实时调整音量与播放速率（呼吸气泡等）
 type SFXLoopKey = 'breathLoop';
 // Ambience：常驻低音量环境音（鸟鸣、流水等），独立于 BGM 与 SFX，由 phase 驱动开关
@@ -113,6 +113,14 @@ const SFX_ENTRIES: Record<SFXKey, SFXEntry> = {
     // playbackRate 在调用时压到 0.55~0.75 区间，听感比呼吸更钝更闷，足够区分
     collisionBreath: {
         path: 'audio/BreathBubble.mp3',
+        ctx: null,
+        srcReady: false,
+        urlResolving: false,
+        pendingPlay: false,
+    },
+    // 结束潜水：蓄力后瞬间弹射出水的"上升破水"音效
+    quickReturn: {
+        path: 'audio/QuickReturn.mp3',
         ctx: null,
         srcReady: false,
         urlResolving: false,

@@ -14,7 +14,7 @@
 食人鱼，自带bgm、疑惑声、蓄力声、冲刺声、撕咬声/
 补充氧气/
 岸上营地的环境音，先搞个临时的鸟语花香的循环背景音/
-进入结算的各种声音/
+进入结算的各种声音/ （结束潜水瞬间的弹射出水音效 `QuickReturn.mp3` 已接入 retreat/o2/fishkill 三个触发点，配合 0.5s 蓄力→弹射→破水爆裂转场；其余结算音效——救援成功/溺亡/被咬死——待补）
 UI按钮点击音效
 
 
@@ -166,6 +166,9 @@ A fast, purely physical oxygen tank refill — absolutely no musical tones, no c
 ```
 CN：补氧成功。**绝对不要任何铃音、和弦、合成器、电子音、旋律反馈**，只有真实的物理机械和气体声。前 0.6s 是高压气体快速灌入钢瓶的锐利嘶声（带调压阀轻微口哨感），接着嘶声戛然而止、伴随一声"嘟"的钝金属闷响（瓶满、压力平衡，低沉金属撞击感、不是铃声），最后是黄铜阀门被手拧紧的两三下清脆机械咔哒+细微吱吱声（干燥、触感强）。短促、干脆、满足感完全来自物理动作本身的利落，不靠音乐奖励。近距离拾音、干声、真实外景录音质感 1.5s。
 
+FileID
+cloud://cloud1-d8gh6fpnh6d0928e8.636c-cloud1-d8gh6fpnh6d0928e8-1424920608/audio/GetO2.mp3
+
 #### 14. endingSuccess（救援成功）
 EN:
 ```
@@ -201,12 +204,16 @@ A purely natural physical tap sound for a confirm button — absolutely no bells
 ```
 CN：UI 主按钮（开始/确认/救援/安装）。**绝对不要铃声、和弦、合成器、数字音、任何带音高的调性**，只有一个真实的物理动作声：指尖坚定地按在绷紧的防水帆布或皮革面（下面是空心木框）上发出的一声温暖柔钝的"哚"，带一点点自然腔体共鸣和表面形变挤出的微弱气声。干声、近距离拾音、听感更像触感。低调、笃定、触感强——像真实户外装备扣具或野外笔记本封面被按下的声音 0.2s。
 
+cloud://cloud1-d8gh6fpnh6d0928e8.636c-cloud1-d8gh6fpnh6d0928e8-1424920608/audio/MainBtn.mp3
+
 #### 19. uiSecondary（UI 次按钮）
 EN:
 ```
 A purely natural physical micro-tap — absolutely no bells, no tones, no synth, no digital click, no musical pitch. Just a real-world tiny acoustic event: a single fingernail or fingertip lightly brushing or tapping a small dry wooden surface (like the edge of a pencil tapping a notebook page), producing a very short, soft, dry tick with almost no body and no resonance — just the brief contact and immediate silence. Lighter, shorter and drier than the primary confirm tap. Close-mic'd, field-recording quality, intentionally uneventful. Duration 0.1 seconds.
 ```
 CN：UI 次按钮（取消/关闭/Tab）。**绝对不要铃声、音高、合成器、数字咔嗒**，纯物理微小动作声：指甲或指尖轻拂/轻叩小块干燥木面（类似铅笔头轻点笔记本纸边），一声极短、柔、干的"嗒"，几乎没有腔体、没有余响——只有接触瞬间和立刻的寂静。比主按钮更轻、更短、更干。近距离拾音、外景录音质感、刻意克制不抢戏 0.1s。
+
+cloud://cloud1-d8gh6fpnh6d0928e8.636c-cloud1-d8gh6fpnh6d0928e8-1424920608/audio/SubBtn.mp3
 
 ### 生成批次建议
 1. 第一批（氛围基调）：campBGM / campAmbience / breathLoop

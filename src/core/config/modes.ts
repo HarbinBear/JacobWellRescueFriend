@@ -210,7 +210,7 @@ export const modesConfig = {
         retreatBtnRadius: 36,       // 撤离按钮半径
         retreatBtnXRatio: 0.18,     // 撤离按钮X位置比例
         retreatBtnYRatio: 0.88,     // 撤离按钮Y位置比例
-        surfacingDuration: 60,      // 上浮动画帧数（1秒）
+        surfacingDuration: 30,      // 上浮动画帧数（0.5秒，蓄力→爆发→破水）
         debriefShowDelay: 30,       // 结算页延迟显示帧数
     },
 };

@@ -1,6 +1,7 @@
 import { CONFIG } from '../core/config';
 import { state, player } from '../core/state';
 import { srand } from '../core/SeededRandom';
+import { playSFX } from '../audio/AudioManager';
 
 // =============================================
 // 判断当前是否处于迷宫模式
@@ -1064,6 +1065,9 @@ export function updateFishBiteState() {
                 maze.phase = 'surfacing';
                 maze.surfacingReason = 'fishkill';
                 maze.resultTimer = 0;
+                // 弹射出水音效 + 预震
+                playSFX('quickReturn');
+                state.story.shake = 4;
             } else {
                 // 主线/竞技场：进入失败画面
                 state.screen = 'lose';

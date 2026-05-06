@@ -778,19 +778,62 @@ export function updateMaze() {
         return;
     }
 
-    // === 上浮动画阶段 ===
+    // === 上浮动画阶段（0.5秒蓄力→弹射→破水）===
+    // 节奏（30帧）：
+    //   帧 0   → 设置 surfacingReason 时已播音效 + 初始震屏
+    //   帧 0..8  蓄力阶段（~0.15s）：玩家速度归零原地压缩，轻微下沉一点做"蹲下预备"
+    //   帧 8..22 爆发阶段（~0.23s）：vy 给一个很大负值，easeOut 快速衰减；屏幕持续震动
+    //   帧 22..30 破水阶段（~0.13s）：水花爆裂全屏特效（由渲染层读 resultTimer 绘制）
     if (maze.phase === 'surfacing') {
         maze.resultTimer++;
-        // 玩家自动向上移动
-        player.vy = -3;
-        player.y += player.vy;
-        player.vx *= 0.9;
-        player.x += player.vx;
-        // 动画时间
+        const t = maze.resultTimer;
+
         if (!player.animTime) player.animTime = 0;
-        player.animTime += 0.1;
+
+        if (t <= 8) {
+            // 蓄力：原地压缩，微微下沉
+            player.vx *= 0.6;
+            player.vy = 0.4; // 轻微下坠做"蹲"
+            player.x += player.vx;
+            player.y += player.vy;
+            // 轻微预震
+            state.story.shake = Math.max(state.story.shake || 0, 3);
+            player.animTime += 0.05;
+        } else if (t <= 22) {
+            // 爆发：一拍之内给一个大的向上初速度，然后快速自然衰减
+            if (t === 9) {
+                // 弹射启动瞬间：初速度 + 强烈震屏
+                player.vy = -60;
+                player.vx *= 0.3;
+                state.story.shake = 18;
+            } else {
+                // easeOut 衰减（保持方向向上，数值逐步减小）
+                player.vy *= 0.82;
+                player.vx *= 0.9;
+                // 震屏线性回落
+                state.story.shake = Math.max(0, (state.story.shake || 0) - 1.3);
+            }
+            player.x += player.vx;
+            player.y += player.vy;
+            player.animTime += 0.25;
+        } else {
+            // 破水出面：玩家已"出水"，速度快速归零，屏幕转场由渲染层绘制
+            player.vx *= 0.7;
+            player.vy *= 0.6;
+            player.x += player.vx;
+            player.y += player.vy;
+            if (t === 23) {
+                // 破水瞬间再震一下
+                state.story.shake = Math.max(state.story.shake || 0, 10);
+            } else {
+                state.story.shake = Math.max(0, (state.story.shake || 0) - 1.8);
+            }
+            player.animTime += 0.15;
+        }
+
         // 上浮完成后进入结算
         if (maze.resultTimer >= CONFIG.maze.surfacingDuration) {
+            state.story.shake = 0;
             finishMazeDive(maze.surfacingReason || 'retreat');
         }
         updateParticles();
@@ -1085,6 +1128,9 @@ export function updateMaze() {
             maze.phase = 'surfacing';
             maze.surfacingReason = 'retreat';
             maze.resultTimer = 0;
+            // 弹射出水：音效和初始预震一开始就拉起，萤幕竟为蓄力营造节奏
+            playSFX('quickReturn', { volume: 0.5 });
+            state.story.shake = Math.max(state.story.shake || 0, 4);
             storyManager.showText('安全上浮中...', '#aef', 2000);
         }
     }
@@ -1130,6 +1176,9 @@ export function updateMaze() {
         maze.phase = 'surfacing';
         maze.surfacingReason = 'o2';
         maze.resultTimer = 0;
+        // 弹射出水音效 + 预震
+        playSFX('quickReturn');
+        state.story.shake = Math.max(state.story.shake || 0, 4);
     }
 
     // --- 场景辨识度：检测当前区域主题 ---

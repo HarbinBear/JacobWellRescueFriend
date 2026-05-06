@@ -335,6 +335,12 @@ GM 面板是一个独立的运行时调参工具，不依赖逻辑层或状态�
   - `mazeUI/debrief.ts`：入水动效 + 下潜结算数据页
   - `mazeUI/cases.ts`：3 个全屏叙事页（警情通报 / 救援成功 / 搜寻终止）+ 岸上放弃按钮 + resolved_idle 新任务按钮 + 所有按钮矩形 getter
   - 主文件通过 re-export 暴露按钮矩形 getter（`getAbandonBtnRect` / `getResolvedIdleNewCaseBtnRect` / `getBriefingAcceptBtnRect` / `getResolvedBtnRects` / `getAbandonedAcceptBtnRect`），`input.ts` 的导入路径不变
+  - **`surfacing` 阶段破水爆裂转场（0.5s / 30 帧）**：不走子模块，直接在主文件的 `drawMazeHUD` 里按 `maze.resultTimer` 分三段绘制。节奏与 `MazeLogic.updateMaze` 的 surfacing 分支完全同步：
+    - **帧 0~8 蓄力**：玩家原地压缩 + 微下沉（vy=0.4）+ 屏幕轻微暗角（`createRadialGradient` 0~0.35 alpha）做"憋气瞳孔收缩"感，`state.story.shake` 线性推到 3
+    - **帧 9~22 爆发**：帧 9 瞬间给 `player.vy = -60` 强力向上，随后 `vy *= 0.82` easeOut 衰减；同帧把 `state.story.shake` 拉到 18，之后线性回落 1.3/帧；屏幕顶部画向下渐弱的"速度拖影"白雾（`linearGradient`）+ 约 60 根向下甩的速度线，表现被高速拉扯上升
+    - **帧 22~30 破水**：`player.vy/vx` 快速归零，帧 23 屏幕再震 10；屏幕绘制中心白闪（`radialGradient`）+ 两圈环形激波（主环 + 次波，跟随 k 放大到 `maxR = hypot(cw,ch) * 0.6`）+ 48 根放射状水滴线条（以 `lineCap='round'` 画出带圆头的水滴）+ 底色淡青白铺底，过渡到 `debrief` 数据页时非常平滑
+  - 三个触发 `surfacing` 的入口（retreat 主动撤离 / o2 氧气耗尽 / fishkill 被鱼咬死）都会在把 `phase` 置成 `'surfacing'` 的那一帧同时 `playSFX('quickReturn')` 播放弹射出水音效，并用 `state.story.shake = max(shake, 4)` 做初始预震；`quickReturn` SFX 资源挂在 `CONFIG.audio.cloud.fileIDs.quickReturn`（`audio/QuickReturn.mp3`）
+  - `surfacing` 时长由 `CONFIG.maze.surfacingDuration` 控制（当前 30 帧 / 0.5s），如果将来想把节奏做更长，同时要调整 `MazeLogic` 里三段帧区间的端点
 - `RenderLight.ts`：光照 CPU 端计算（射线碰撞、泥沙衰减、视线检测）
 - `WebGLLight.ts`：光照 GPU 端渲染（WebGL shader，替代旧 Canvas 2D 光照绘制）
 - `RenderRope.ts`：绳索绘制

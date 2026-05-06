@@ -138,13 +138,114 @@ export function drawMazeHUD() {
         return;
     }
 
-    // === 上浮动画阶段 ===
+    // === 上浮动画阶段（0.5秒蓄力→弹射→破水爆裂全屏转场）===
+    // 节奏对应 MazeLogic.updateMaze 的 surfacing 分支：
+    //   帧 0..8   蓄力：屏幕边缘轻微向内挤压的暗角 + 淡淡的底部向上呼吸
+    //   帧 8..22  爆发：屏幕顶部出现"被高速往上拖"的速度线 + 白色方向性径向模糊感
+    //   帧 22..30 破水：全屏白色爆裂水花（径向放射状水滴线条 + 环形激波 + 中心白闪）
     if (maze.phase === 'surfacing') {
-        const progress = Math.min(1, maze.resultTimer / 60);
-        ctx.globalAlpha = progress * 0.6;
-        ctx.fillStyle = 'rgba(200,230,255,1)';
-        ctx.fillRect(0, 0, cw, ch);
-        // 文字提示由 storyManager 统一显示，不在此重复
+        const t = maze.resultTimer;
+        const dur = CONFIG.maze.surfacingDuration; // 30
+        ctx.save();
+
+        if (t <= 8) {
+            // === 蓄力 ===
+            const k = t / 8; // 0..1
+            // 轻微暗角，像憋气瞳孔收缩
+            const grad = ctx.createRadialGradient(cw / 2, ch / 2, ch * 0.2, cw / 2, ch / 2, ch * 0.75);
+            grad.addColorStop(0, 'rgba(0,0,0,0)');
+            grad.addColorStop(1, `rgba(0,0,0,${0.35 * k})`);
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, cw, ch);
+        } else if (t <= 22) {
+            // === 爆发 ===
+            const k = (t - 8) / 14; // 0..1
+            // 顶部向下渐弱的"速度拖影"白雾，表现被向上拉扯
+            const topGrad = ctx.createLinearGradient(0, 0, 0, ch * 0.6);
+            topGrad.addColorStop(0, `rgba(220,245,255,${0.55 * k})`);
+            topGrad.addColorStop(1, 'rgba(220,245,255,0)');
+            ctx.fillStyle = topGrad;
+            ctx.fillRect(0, 0, cw, ch);
+
+            // 速度线：从上向下快速甩出的长短白条，密度随 k 增加
+            const lineCount = Math.floor(20 + k * 40);
+            ctx.strokeStyle = `rgba(255,255,255,${0.35 + k * 0.45})`;
+            ctx.lineWidth = 1.5;
+            for (let i = 0; i < lineCount; i++) {
+                // 用 t 当种子让线条逐帧变化，但不至于完全乱跳
+                const seed = Math.sin(i * 12.9898 + t * 2.1) * 43758.5453;
+                const rx = (seed - Math.floor(seed));
+                const seed2 = Math.sin(i * 78.233 + t * 1.3) * 12345.678;
+                const ry = (seed2 - Math.floor(seed2));
+                const x = rx * cw;
+                const y0 = ry * ch * 0.9;
+                const len = 40 + (1 - ry) * 120 * k;
+                ctx.beginPath();
+                ctx.moveTo(x, y0);
+                ctx.lineTo(x + (Math.sin(i) * 2), y0 + len);
+                ctx.stroke();
+            }
+        } else {
+            // === 破水爆裂 ===
+            const k = (t - 22) / (dur - 22); // 0..1
+            const cx = cw / 2;
+            const cy = ch / 2;
+
+            // 1. 中心白闪（最强在 k=0，快速淡出）
+            const flashA = Math.max(0, 1 - k) * 0.9;
+            if (flashA > 0.01) {
+                const flashGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.hypot(cw, ch) * 0.5);
+                flashGrad.addColorStop(0, `rgba(255,255,255,${flashA})`);
+                flashGrad.addColorStop(0.5, `rgba(230,245,255,${flashA * 0.5})`);
+                flashGrad.addColorStop(1, 'rgba(180,220,240,0)');
+                ctx.fillStyle = flashGrad;
+                ctx.fillRect(0, 0, cw, ch);
+            }
+
+            // 2. 环形激波（白色圆环从中心快速向外扩散）
+            const maxR = Math.hypot(cw, ch) * 0.6;
+            const ringR = maxR * (k * 1.1);
+            const ringA = Math.max(0, 1 - k) * 0.85;
+            if (ringA > 0.02) {
+                ctx.strokeStyle = `rgba(255,255,255,${ringA})`;
+                ctx.lineWidth = 10 + (1 - k) * 16;
+                ctx.beginPath();
+                ctx.arc(cx, cy, ringR, 0, Math.PI * 2);
+                ctx.stroke();
+                // 内圈淡一点的次波
+                ctx.strokeStyle = `rgba(210,240,255,${ringA * 0.55})`;
+                ctx.lineWidth = 4 + (1 - k) * 8;
+                ctx.beginPath();
+                ctx.arc(cx, cy, ringR * 0.72, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+
+            // 3. 放射状水滴线条（从中心向外甩的白色水滴）
+            const dropCount = 48;
+            ctx.strokeStyle = `rgba(240,255,255,${0.85 * (1 - k * 0.6)})`;
+            ctx.lineWidth = 2.2;
+            ctx.lineCap = 'round';
+            for (let i = 0; i < dropCount; i++) {
+                const a = (i / dropCount) * Math.PI * 2 + Math.sin(i * 1.7) * 0.1;
+                const r0 = 40 + k * maxR * 0.9;
+                const r1 = r0 + 30 + (1 - k) * 60;
+                const x0 = cx + Math.cos(a) * r0;
+                const y0 = cy + Math.sin(a) * r0;
+                const x1 = cx + Math.cos(a) * r1;
+                const y1 = cy + Math.sin(a) * r1;
+                ctx.beginPath();
+                ctx.moveTo(x0, y0);
+                ctx.lineTo(x1, y1);
+                ctx.stroke();
+            }
+            ctx.lineCap = 'butt';
+
+            // 4. 底色淡青白过场（最终覆盖全屏，为切到 debrief 平滑铺底）
+            ctx.fillStyle = `rgba(220,240,250,${0.3 + k * 0.5})`;
+            ctx.fillRect(0, 0, cw, ch);
+        }
+
+        ctx.restore();
         ctx.restore();
         return;
     }
