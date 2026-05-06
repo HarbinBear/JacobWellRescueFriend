@@ -168,7 +168,7 @@ export function drawCaseBriefing(maze: any, cw: number, ch: number, time: number
     ctx.fillRect(0, sweepY - 80, cw, 88);
     ctx.globalAlpha = bgAlpha;
 
-    const barTargetY = SAFE_TOP + 16;
+    const barTargetY = SAFE_TOP + 40;
     const barY = barTargetY - (1 - barEase) * 60;
     const blink = 0.65 + Math.abs(Math.sin(t * 3)) * 0.35;
     ctx.fillStyle = `rgba(180,50,36,${(0.28 + blink * 0.12) * barEase})`;
@@ -183,8 +183,7 @@ export function drawCaseBriefing(maze: any, cw: number, ch: number, time: number
     ctx.font = 'bold 16px Consolas, Menlo, monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    const alertCenterX = (PAD_X + (cw - 108)) / 2;
-    ctx.fillText('⚠  EMERGENCY  ALERT  ⚠', alertCenterX, barY);
+    ctx.fillText('⚠  EMERGENCY  ALERT  ⚠', cw / 2, barY);
     ctx.textBaseline = 'alphabetic';
 
     ctx.globalAlpha = bgAlpha * barEase;
@@ -193,10 +192,10 @@ export function drawCaseBriefing(maze: any, cw: number, ch: number, time: number
     ctx.textAlign = 'center';
     ctx.fillText('CAVE RESCUE DISPATCH CENTER / 紧急救援调度中心', cw / 2, barY + 34);
 
-    const lines: {label: string, value: string, color?: string}[] = [
+    const lines: {label: string, value: string, value2?: string, color?: string}[] = [
         { label: '案件编号', value: maze.caseNumber || 'JWR-000000', color: 'rgba(180,240,200,0.95)' },
         { label: '接警时间', value: seedToAlertTime(seed), color: 'rgba(200,220,200,0.9)' },
-        { label: '事发地点', value: '雅各布井支洞 · ' + seedToPseudoCoord(seed), color: 'rgba(200,220,200,0.9)' },
+        { label: '事发地点', value: '雅各布井支洞', value2: seedToPseudoCoord(seed), color: 'rgba(200,220,200,0.9)' },
         { label: '情  况', value: '1 名潜水员失联，氧气存量未知', color: 'rgba(255,220,180,0.95)' },
         { label: '任  务', value: '深入洞穴，找到被困者并带回水面', color: 'rgba(255,255,220,0.95)' },
     ];
@@ -204,7 +203,7 @@ export function drawCaseBriefing(maze: any, cw: number, ch: number, time: number
     const lineDelay = 0.18;
     const typeStart = 0.7;
 
-    const infoStartY = SAFE_TOP + 92;
+    const infoStartY = SAFE_TOP + 116;
     const labelX = PAD_X + 8;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
@@ -215,46 +214,77 @@ export function drawCaseBriefing(maze: any, cw: number, ch: number, time: number
         const lineAppearAt = typeStart + i * lineDelay;
         const lineTime = Math.max(0, t - lineAppearAt);
         const alphaEnter = Math.min(1, lineTime / 0.25);
-        if (alphaEnter <= 0) { infoY += 34; continue; }
+        const hasTwoLines = !!ln.value2;
+        const lineAdvance = hasTwoLines ? 56 : 34;
+        if (alphaEnter <= 0) { infoY += lineAdvance; continue; }
         ctx.globalAlpha = bgAlpha * alphaEnter;
 
         ctx.fillStyle = 'rgba(140,200,160,0.72)';
         ctx.font = '12px Consolas, Menlo, monospace';
         ctx.fillText(ln.label, labelX, infoY);
 
+        const valueX = labelX + 70;
         const chars = Math.max(0, Math.floor(lineTime / typeCharSec));
-        const visText = ln.value.slice(0, Math.min(ln.value.length, chars));
         ctx.fillStyle = ln.color || '#cfe';
         ctx.font = 'bold 14px Consolas, Menlo, monospace';
 
-        const valueX = labelX + 70;
-        const availW = contentR - valueX;
-        const fullW = ctx.measureText(ln.value).width;
-        if (fullW <= availW) {
-            ctx.fillText(visText, valueX, infoY);
-            if (chars < ln.value.length && Math.floor(t * 3) % 2 === 0) {
-                const cursorX = valueX + ctx.measureText(visText).width + 2;
+        if (hasTwoLines) {
+            // 第一行：主地点（如"雅各布井支洞"）
+            const line1 = ln.value;
+            const line2 = ln.value2 || '';
+            const chars1 = Math.min(line1.length, chars);
+            const visLine1 = line1.slice(0, chars1);
+            ctx.fillText(visLine1, valueX, infoY);
+            if (chars1 < line1.length && Math.floor(t * 3) % 2 === 0) {
+                const cursorX = valueX + ctx.measureText(visLine1).width + 2;
                 ctx.fillStyle = 'rgba(200,255,210,0.75)';
                 ctx.fillRect(cursorX, infoY - 7, 6, 13);
             }
-            infoY += 34;
+            // 第二行：坐标，与第一行使用相同的 valueX 对齐
+            if (chars > line1.length) {
+                const chars2 = Math.min(line2.length, chars - line1.length);
+                const visLine2 = line2.slice(0, chars2);
+                ctx.fillStyle = ln.color || '#cfe';
+                ctx.font = '12px Consolas, Menlo, monospace';
+                ctx.fillText(visLine2, valueX, infoY + 22);
+                if (chars2 < line2.length && Math.floor(t * 3) % 2 === 0) {
+                    const cursorX = valueX + ctx.measureText(visLine2).width + 2;
+                    ctx.fillStyle = 'rgba(200,255,210,0.75)';
+                    ctx.fillRect(cursorX, infoY + 22 - 7, 6, 13);
+                }
+            }
+            infoY += lineAdvance;
         } else {
-            infoY += 18;
-            ctx.fillStyle = ln.color || '#cfe';
-            ctx.font = 'bold 13px Consolas, Menlo, monospace';
-            ctx.fillText(visText, labelX, infoY);
-            if (chars < ln.value.length && Math.floor(t * 3) % 2 === 0) {
-                const cursorX = labelX + ctx.measureText(visText).width + 2;
-                ctx.fillStyle = 'rgba(200,255,210,0.75)';
-                ctx.fillRect(cursorX, infoY - 7, 6, 13);
+            const visText = ln.value.slice(0, Math.min(ln.value.length, chars));
+            const availW = contentR - valueX;
+            const fullW = ctx.measureText(ln.value).width;
+            if (fullW <= availW) {
+                ctx.fillText(visText, valueX, infoY);
+                if (chars < ln.value.length && Math.floor(t * 3) % 2 === 0) {
+                    const cursorX = valueX + ctx.measureText(visText).width + 2;
+                    ctx.fillStyle = 'rgba(200,255,210,0.75)';
+                    ctx.fillRect(cursorX, infoY - 7, 6, 13);
+                }
+                infoY += 34;
+            } else {
+                infoY += 18;
+                ctx.fillStyle = ln.color || '#cfe';
+                ctx.font = 'bold 13px Consolas, Menlo, monospace';
+                ctx.fillText(visText, labelX, infoY);
+                if (chars < ln.value.length && Math.floor(t * 3) % 2 === 0) {
+                    const cursorX = labelX + ctx.measureText(visText).width + 2;
+                    ctx.fillStyle = 'rgba(200,255,210,0.75)';
+                    ctx.fillRect(cursorX, infoY - 7, 6, 13);
+                }
+                infoY += 22;
             }
-            infoY += 22;
         }
     }
     ctx.textBaseline = 'alphabetic';
     ctx.globalAlpha = bgAlpha;
 
-    const narrStartAt = typeStart + 5 * lineDelay;
+    // 叙事段起始时间：考虑到事发地点的两行打字时间（value + value2），适度延后
+    const narrStartAt = typeStart + 5 * lineDelay + 0.4;
     const narrT = Math.max(0, t - narrStartAt);
     const narrLines = [
         '你是本地洞穴救援队的一员。',
