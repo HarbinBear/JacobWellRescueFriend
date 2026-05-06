@@ -162,6 +162,36 @@ type: always
 
 配置参数集中在 `CONFIG.breath` 子对象（27 项），GM 面板有独立的"呼吸"Tab。
 
+### 1.6c-audio Ambience 通道（岸上营地环境音 `campAmbience`）
+
+Ambience 是与 BGM / SFX / SFX-Loop 并列的第四类音频通道，用于**常驻低音量环境底噪**（鸟鸣、远水滴、风穿叶等）。当前只有一条 `campAmbience`（岸上鸟语花香循环），资源指向云存储 `CampBird.mp3`。
+
+核心设计：
+
+- **由 phase 驱动开关**：`game.ts` 主循环每帧判断 `state.screen === 'mazeRescue' && (phase === 'shore' || phase === 'resolved_idle')`，成立则 `playAmbience('campAmbience')`，否则 `stopAmbience('campAmbience')`。警情通报 `briefing` / 救援成功 `resolved` / 搜寻终止 `abandoned` 三个叙事弹窗以及下潜中 `play` / 上浮 `surfacing` / 结算 `debrief` / 救援成功瞬间 `rescued` / 菜单 / 主线 / 竞技场全部停，叙事弹窗自带的专属声音由叙事层另做，不与营地环境音叠加。
+- **音量上限走 `bgmVolume`**：环境音是背景层的一部分，不是音效，所以用 `maxVolume * CONFIG.audio.bgmVolume` 做上限裁剪，不受 `sfxVolume` 控制。默认 `maxVolume = 0.5`，让鸟鸣始终克制、几乎察觉不到。
+- **淡入淡出比 BGM 更柔**：`fadeStep = 0.006`（约 3s 到位），让 shore ↔ briefing/resolved/abandoned 切换时环境音渐入渐出自然不突兀。
+- **静音（`setMuted(true)`）时目标音量压 0 但 `desiredPlay` 保持不变**：和 SFX-Loop 一样，静音不调 `pause`；开静音后从 0 淡回 `maxVolume`。
+- **真正 `pause` 的时机**：当 `desiredPlay` 为 false 且 `currentVolume` 已淡到 ≤ 0.001 时才 `pause` 节省资源；静音不会走到这里。
+
+对外接口（`src/audio/AudioManager.ts`）：
+
+- `playAmbience(key: AmbienceKey)`：idempotent，把 `desiredPlay` 置 true，URL 未就绪时挂 pending。
+- `stopAmbience(key: AmbienceKey)`：把 `desiredPlay` 置 false，`updateAmbience()` 中淡到 0 后真正 `pause`。
+- `updateAmbience()`：独立导出，由 `game.ts` 主循环在 `updateSFXLoops()` 之后调用，每帧线性逼近目标音量。
+
+接入链路（`game.ts`）：
+
+```ts
+// 每帧在 updateAudio / updateSFXLoops 之后、updateAmbience 之前判断 phase
+const maze: any = state.mazeRescue;
+const inCamp = state.screen === 'mazeRescue' && maze && (maze.phase === 'shore' || maze.phase === 'resolved_idle');
+if (inCamp) playAmbience('campAmbience'); else stopAmbience('campAmbience');
+updateAmbience();
+```
+
+云存储：`CONFIG.audio.cloud.fileIDs.campAmbience` 指向 `CampBird.mp3`，首次启动时预拉取临时 URL，过期时（10002）自动重拉。
+
 ### 1.6d 撞击反馈系统 `src/logic/CollisionImpact.ts`
 
 撞击反馈系统负责潜水员撞到岩石时的**多通道反馈**（音效 + 气泡 + 耗氧 + 氧气条红色损失弧），采用**全线性强度映射**（不分档），由 `Logic.ts` 主线碰撞分支和 `MazeLogic.ts` 迷宫碰撞分支共同调用。

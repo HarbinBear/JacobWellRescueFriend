@@ -64,11 +64,12 @@ devplan是用来记录需要做的需求的设计的，已经做完的就不用�
 | UI 主按钮 | uiPrimary | 开始/确认/救援/安装 | oneshot |
 | UI 次按钮 | uiSecondary | 取消/关闭/Tab | oneshot |
 
-### 音频资源清单（需新生成 18 条，menuBGM 已有）
+### 音频资源清单（需新生成 19 条，menuBGM 已有）
 | # | key | 文件名 | 类型 | 时长 | 循环 |
 |---|---|---|---|---|---|
 | 1 | menuBGM | 已有 Echoes_of_the_Sunken_Grotto | Music | - | ✅ |
 | 2 | campBGM | ElevenLabs_camp_bgm_loop.mp3 | Music-Loop | 60~90s | ✅ |
+| 2b | campBGMRescued | ElevenLabs_camp_bgm_rescued_loop.mp3 | Music-Loop | 70~90s | ✅ |
 | 3 | campAmbience | ElevenLabs_camp_ambience_loop.mp3 | Ambience-Loop | 30~45s | ✅ |
 | 4 | fishChaseStinger | ElevenLabs_fish_chase_stinger_loop.mp3 | Stinger-Loop | 20~30s | ✅ |
 | 5 | breathLoop | ElevenLabs_breath_bubbles_loop.mp3 | SFX-Loop | 3~4s | ✅ |
@@ -91,12 +92,19 @@ devplan是用来记录需要做的需求的设计的，已经做完的就不用�
 
 通用参数：循环类在 prompt 末尾加 `seamlessly looping`；Prompt Influence 默认 0.3，风格强则 0.5~0.7；拼循环如有缝用 Audacity 做 50ms crossfade。
 
-#### 2. campBGM（岸上营地 BGM）
+#### 2. campBGM（岸上营地 BGM — 任务未完成，待出发）
 EN:
 ```
-A warm, peaceful ambient music loop for a jungle campsite beside a cave well in Thailand. Soft acoustic guitar fingerpicking, gentle bamboo flute melody, subtle low-frequency drone underneath, light hand percussion (shaker, frame drum) at very slow tempo around 60 BPM. Hopeful but contemplative mood, not too bright, hint of melancholy because this is a rescue mission staging ground. No vocals, no sharp transients. Fully instrumental, seamlessly looping, 70 seconds.
+An extremely understated, nearly invisible background music loop for a sunlit jungle campsite beside a cave well in Thailand, serving as the staging ground before a diver sets out on a rescue mission. Bright daylight atmosphere, steady and matter-of-fact, hopeful in a plain everyday way — not emotional, not cinematic, not melancholic. Light acoustic guitar with simple repeating open chords, a very soft sustained pad in the background, a gentle steady pulse around 85–90 BPM that feels purposeful (the diver is about to get to work, not relaxing), no build-ups, no swells, no lead melody, no solo instrument calling attention to itself. The listener should barely notice the music — it only fills the silence. No vocals, no percussion hits, no dramatic transitions. Fully instrumental, seamlessly looping, 70 seconds.
 ```
-CN：丛林营地 BGM，温暖凝重希望感，软指弹吉他+竹笛+低频底座+轻手鼓，60BPM，纯器乐无缝循环 70s。情绪基调：救援基地非度假。
+CN：几乎察觉不到的背景 BGM。阳光明媚的丛林营地、潜水员整装待发的基地氛围，情绪非常平、不煽情不电影化不忧郁。轻柔指弹吉他反复走简单开放和弦 + 极轻持续 pad 铺底 + 85–90 BPM 稳定平实脉动（表达"该去干活了"的笃定而非放松），无起伏无 build-up 无主旋律无独奏抢戏。玩家应该几乎感觉不到音乐存在，只是填补寂静。纯器乐无缝循环 70s。情绪关键词：阳光、日常、笃定、透明、不抢戏。
+
+#### 2b. campBGMRescued（岸上营地 BGM — 救援成功后，留在本关）
+EN:
+```
+A slow, gentle, deeply relaxed ambient music loop for a sunlit grass clearing beside a cave well in Thailand, AFTER a successful rescue. The feeling is lying on warm grass in the afternoon sun, eyes half-closed, everything already resolved — pure quiet comfort and relief, no urgency whatsoever. Soft acoustic guitar with very sparse, slow fingerpicking (notes allowed to ring out and decay fully), a warm analog pad underneath like distant afternoon haze, occasional soft wooden percussion at an extremely slow tempo around 55–60 BPM, perhaps a single gentle wind-chime-like tone every 8–16 bars. Warm, hazy, content, unhurried. No tension, no forward motion, no rising phrases — the music should feel like it is also resting. No vocals, no bright leads, no dramatic changes. Fully instrumental, seamlessly looping, 80 seconds.
+```
+CN：救援成功后留本关时的营地 BGM。阳光下躺在暖草地上半眯着眼的感觉，一切尘埃落定、纯粹的宽慰与舒服、没有任何紧迫感。软指弹吉他极稀疏慢拨（任音符自然延展消散）+ 温暖模拟 pad 如午后雾气铺底 + 每 8~16 小节偶尔一声风铃式轻响，55–60 BPM 极慢。温暖、朦胧、满足、不着急。无张力无前进感无上扬乐句，音乐本身也在休息。纯器乐无缝循环 80s。情绪关键词：午后阳光、宽慰、慵懒、满足、休息。
 
 #### 3. campAmbience（营地环境音）
 EN:
@@ -104,6 +112,17 @@ EN:
 A distant, layered jungle ambience for a tropical rainforest at dawn. Faraway bird calls (hornbills, bulbuls, distant parakeets), very distant water dripping, soft wind through dense leaves, extremely faint insect chirps. All sounds feel FAR AWAY, as if standing in a clearing with the jungle 50 meters away. No close-up birds, no rustling near the microphone, no human activity, no music. Keep it subtle and atmospheric, not a nature documentary. Seamlessly looping, 40 seconds.
 ```
 CN：远景丛林环境。远鸟鸣（犀鸟、鹎、鹦鹉）、极远滴水、软风穿密叶、极轻虫鸣。所有声音要远、不贴脸、无音乐无人声无近景沙沙。无缝循环 40s。
+
+FileID：
+cloud://cloud1-d8gh6fpnh6d0928e8.636c-cloud1-d8gh6fpnh6d0928e8-1424920608/audio/CampBird.mp3
+
+**已接入（2026-05-06）：**
+- AudioManager 新增 **Ambience 通道**（与 BGM / SFX / SFX-Loop 并列的第四类），对外导出 `playAmbience / stopAmbience / updateAmbience`
+- 资源走云存储 `CampBird.mp3`，`CONFIG.audio.cloud.fileIDs.campAmbience` 注册
+- 由 `game.ts` 主循环每帧按 phase 判定：只在 `state.screen === 'mazeRescue' && (phase === 'shore' || phase === 'resolved_idle')` 时激活；briefing / resolved / abandoned 三个叙事弹窗以及下潜中、菜单、主线、竞技场全部停
+- 音量上限 = `maxVolume(0.5) × CONFIG.audio.bgmVolume`，环境音不抢戏
+- 淡入淡出 fadeStep = 0.006（约 3s 到位），shore ↔ 叙事弹窗切换时过渡自然
+- 静音时压 0 不 pause，开静音后从 0 淡回
 
 #### 4. fishChaseStinger（食人鱼追击紧张层）
 EN:

@@ -189,6 +189,9 @@ export const characterConfig = {
                 breathLoop: 'cloud://cloud1-d8gh6fpnh6d0928e8.636c-cloud1-d8gh6fpnh6d0928e8-1424920608/audio/BreathBubble.mp3',
                 collisionRock: 'cloud://cloud1-d8gh6fpnh6d0928e8.636c-cloud1-d8gh6fpnh6d0928e8-1424920608/audio/HitRock.mp3',
                 collisionBreath: 'cloud://cloud1-d8gh6fpnh6d0928e8.636c-cloud1-d8gh6fpnh6d0928e8-1424920608/audio/BreathBubble.mp3',
+                // 岸上营地环境音：鸟语花香循环，仅在 mazeRescue 的 shore / resolved_idle 两个真正暴露在营地的 phase 激活
+                // 警情弹窗 / 救援成功 / 搜寻终止 等叙事页以及下潜中、菜单全部停
+                campAmbience: 'cloud://cloud1-d8gh6fpnh6d0928e8.636c-cloud1-d8gh6fpnh6d0928e8-1424920608/audio/CampBird.mp3',
             } as Record<string, string>,
         },
     },

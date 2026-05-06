@@ -21,6 +21,8 @@ type AudioKey = 'menuBGM';
 type SFXKey = 'diveSplash' | 'collisionRock' | 'collisionBreath';
 // SFX-Loop：常驻循环、可实时调整音量与播放速率（呼吸气泡等）
 type SFXLoopKey = 'breathLoop';
+// Ambience：常驻低音量环境音（鸟鸣、流水等），独立于 BGM 与 SFX，由 phase 驱动开关
+type AmbienceKey = 'campAmbience';
 
 interface AudioEntry {
     path: string;              // 本地降级路径（云存储不可用时兜底）
@@ -57,6 +59,22 @@ interface SFXLoopEntry {
     desiredPlay: boolean;      // 外部是否希望这条 loop 处于播放状态（playSFXLoop/stopSFXLoop 设定）
     playbackRate: number;      // 播放速率（0.5~2.0）
     fadeStep: number;          // 音量逼近步长
+}
+
+// Ambience 条目：常驻循环环境音，只做音量淡入淡出，无播放速率调整
+// 与 SFX-Loop 的区别：音量上限走 bgmVolume（环境音是背景层的一部分，不是音效），且不参与手动调参
+interface AmbienceEntry {
+    path: string;
+    ctx: any | null;
+    srcReady: boolean;
+    urlResolving: boolean;
+    playing: boolean;
+    pendingPlay: boolean;
+    currentVolume: number;
+    targetVolume: number;      // 目标音量；外部调 playAmbience 时设为 maxVolume，stopAmbience 设为 0
+    desiredPlay: boolean;
+    maxVolume: number;         // 激活状态下的峰值音量（默认 0.5，相对 bgmVolume 再做一次乘法）
+    fadeStep: number;
 }
 
 // 音频资源清单
@@ -119,6 +137,25 @@ const SFX_LOOP_ENTRIES: Record<SFXLoopKey, SFXLoopEntry> = {
     },
 };
 
+// Ambience 清单（常驻环境音循环）
+const AMBIENCE_ENTRIES: Record<AmbienceKey, AmbienceEntry> = {
+    campAmbience: {
+        path: 'audio/CampBird.mp3',
+        ctx: null,
+        srcReady: false,
+        urlResolving: false,
+        playing: false,
+        pendingPlay: false,
+        currentVolume: 0,
+        targetVolume: 0,
+        desiredPlay: false,
+        // 环境音只是底噪，不抢戏；取 0.5 的峰值，再乘全局 bgmVolume
+        maxVolume: 0.5,
+        // 淡入淡出比 BGM 慢一点，让过渡更柔（约 3s 到位）
+        fadeStep: 0.006,
+    },
+};
+
 // 当前应该播放的 BGM 键（由外部设置）
 let _currentBGM: AudioKey | null = null;
 let _initialized = false;
@@ -156,6 +193,14 @@ export function initAudio(): void {
         _createSFXLoopContext(key);
         if (_cloudInited) {
             _resolveAndApplySFXLoopCloudURL(key);
+        }
+    }
+
+    // 创建所有 Ambience 上下文并预拉取云 URL
+    for (const key of Object.keys(AMBIENCE_ENTRIES) as AmbienceKey[]) {
+        _createAmbienceContext(key);
+        if (_cloudInited) {
+            _resolveAndApplyAmbienceCloudURL(key);
         }
     }
 }
@@ -539,6 +584,44 @@ export function updateAudio(): void {
     } else if (state.audio.iconProgress > iconTarget) {
         state.audio.iconProgress = Math.max(iconTarget, state.audio.iconProgress - iconStep);
     }
+
+    // 推进 Ambience 的音量逼近
+    for (const key of Object.keys(AMBIENCE_ENTRIES) as AmbienceKey[]) {
+        const entry = AMBIENCE_ENTRIES[key];
+        if (!entry.ctx) continue;
+
+        // 计算目标音量
+        let target = 0;
+        if (entry.desiredPlay) {
+            target = state.audio.muted ? 0 : entry.maxVolume * CONFIG.audio.bgmVolume;
+        }
+        entry.targetVolume = target;
+
+        // 线性逼近目标音量
+        if (entry.currentVolume < entry.targetVolume) {
+            entry.currentVolume = Math.min(entry.targetVolume, entry.currentVolume + entry.fadeStep);
+        } else if (entry.currentVolume > entry.targetVolume) {
+            entry.currentVolume = Math.max(entry.targetVolume, entry.currentVolume - entry.fadeStep);
+        }
+
+        // 写回音频上下文
+        try {
+            entry.ctx.volume = Math.max(0, Math.min(1, entry.currentVolume));
+        } catch (e) {
+            // 忽略平台差异性失败
+        }
+
+        // 当音量已降到 0 且外部不再希望播放：真正 pause 以省资源
+        if (!entry.desiredPlay && entry.playing && entry.currentVolume <= 0.001) {
+            try {
+                entry.ctx.pause();
+            } catch (e) {
+                // 忽略
+            }
+            entry.playing = false;
+            entry.pendingPlay = false;   // 暂停后自然不再挂起
+        }
+    }
 }
 
 // ===== 内部：当前屏幕应播的 BGM =====
@@ -734,6 +817,171 @@ function _updateSFXLoops(): void {
 // 在同一帧内所有音频目标音量都已写回上下文
 export function updateSFXLoops(): void {
     _updateSFXLoops();
+}
+
+// ===== Ambience 上下文创建与云 URL 解析 =====
+// Ambience 是常驻低音量环境音，独立于 BGM、SFX、SFX-Loop。
+// 设计原则：
+// 1. 由 phase 驱动（例如 mazeRescue 的 shore / resolved_idle），不由 state.screen 单独驱动
+// 2. 音量上限 = maxVolume * bgmVolume（环境音是背景层的一部分，不是音效）
+// 3. 静音（setMuted true）时目标音量压 0，但不调 pause，恢复后从 0 淡回
+// 4. 外部通过 playAmbience / stopAmbience 切换，updateAudio 每帧推进淡入淡出
+
+function _createAmbienceContext(key: AmbienceKey): void {
+    const entry = AMBIENCE_ENTRIES[key];
+    try {
+        const wxAny = (typeof wx !== 'undefined') ? (wx as any) : null;
+        if (wxAny && typeof wxAny.createInnerAudioContext === 'function') {
+            const ctx = wxAny.createInnerAudioContext();
+            ctx.loop = true;
+            ctx.autoplay = false;
+            ctx.volume = 0;
+            if (!_cloudInited) {
+                ctx.src = entry.path;
+                entry.srcReady = true;
+            }
+            ctx.onError((err: any) => {
+                const code = err && (err.errCode || err.code);
+                console.warn('[Audio] Ambience ' + key + ' 播放错误:', err);
+                if (_cloudInited && (code === 10002 || code === -1 || code === undefined)) {
+                    entry.srcReady = false;
+                    if (entry.desiredPlay) entry.pendingPlay = true;
+                    _resolveAndApplyAmbienceCloudURL(key);
+                }
+            });
+            entry.ctx = ctx;
+        } else if (typeof (globalThis as any).Audio !== 'undefined') {
+            const ctx = new (globalThis as any).Audio(entry.path);
+            ctx.loop = true;
+            ctx.volume = 0;
+            entry.ctx = ctx;
+            entry.srcReady = true;
+        }
+    } catch (e) {
+        console.warn('[Audio] 创建 Ambience 上下文失败:', e);
+    }
+}
+
+function _resolveAndApplyAmbienceCloudURL(key: AmbienceKey): void {
+    const entry = AMBIENCE_ENTRIES[key];
+    if (!entry || !entry.ctx) return;
+    if (!_cloudInited) return;
+    if (entry.urlResolving) return;
+
+    const fileID = (CONFIG.audio.cloud.fileIDs as Record<string, string>)[key];
+    if (!fileID) {
+        try { entry.ctx.src = entry.path; entry.srcReady = true; } catch (e) { /* 忽略 */ }
+        return;
+    }
+
+    const wxAny = (typeof wx !== 'undefined') ? (wx as any) : null;
+    if (!wxAny || !wxAny.cloud || typeof wxAny.cloud.getTempFileURL !== 'function') {
+        try { entry.ctx.src = entry.path; entry.srcReady = true; } catch (e) { /* 忽略 */ }
+        return;
+    }
+
+    entry.urlResolving = true;
+    wxAny.cloud.getTempFileURL({
+        fileList: [fileID],
+        success: (res: any) => {
+            entry.urlResolving = false;
+            const item = res && res.fileList && res.fileList[0];
+            if (item && item.tempFileURL && (!item.status || item.status === 0)) {
+                try {
+                    entry.ctx.src = item.tempFileURL;
+                    entry.srcReady = true;
+                    if (entry.pendingPlay) {
+                        entry.pendingPlay = false;
+                        _actuallyPlayAmbience(key);
+                    }
+                } catch (e) {
+                    console.warn('[Audio] Ambience 写入临时 URL 失败:', e);
+                }
+            } else {
+                console.warn('[Audio] Ambience getTempFileURL 返回异常，降级到本地:', item);
+                try { entry.ctx.src = entry.path; entry.srcReady = true; } catch (e) { /* 忽略 */ }
+            }
+        },
+        fail: (err: any) => {
+            entry.urlResolving = false;
+            console.warn('[Audio] Ambience getTempFileURL 请求失败，降级到本地:', err);
+            try { entry.ctx.src = entry.path; entry.srcReady = true; } catch (e) { /* 忽略 */ }
+        },
+    });
+}
+
+function _actuallyPlayAmbience(key: AmbienceKey): void {
+    const entry = AMBIENCE_ENTRIES[key];
+    if (!entry || !entry.ctx || !entry.srcReady) return;
+    if (entry.playing) return;
+    try {
+        entry.ctx.volume = 0;
+        entry.ctx.play();
+        entry.playing = true;
+    } catch (e) {
+        console.warn('[Audio] Ambience 播放失败:', e);
+    }
+}
+
+// 请求激活环境音（idempotent，重复调用不会 seek 到头）
+export function playAmbience(key: AmbienceKey): void {
+    const entry = AMBIENCE_ENTRIES[key];
+    if (!entry || !entry.ctx) return;
+    entry.desiredPlay = true;
+    if (!entry.srcReady) {
+        entry.pendingPlay = true;
+        if (_cloudInited && !entry.urlResolving) {
+            _resolveAndApplyAmbienceCloudURL(key);
+        }
+        return;
+    }
+    _actuallyPlayAmbience(key);
+}
+
+// 请求停止环境音（目标音量清零，updateAudio 淡出到 0 后真正 pause）
+export function stopAmbience(key: AmbienceKey): void {
+    const entry = AMBIENCE_ENTRIES[key];
+    if (!entry) return;
+    entry.desiredPlay = false;
+    entry.pendingPlay = false;
+}
+
+// 每帧推进环境音的音量逼近；由 updateAudio 末尾调用
+function _updateAmbience(): void {
+    for (const key of Object.keys(AMBIENCE_ENTRIES) as AmbienceKey[]) {
+        const entry = AMBIENCE_ENTRIES[key];
+        if (!entry.ctx) continue;
+
+        // 目标音量：desiredPlay 且未静音时 = maxVolume * bgmVolume；否则 0
+        let target = 0;
+        if (entry.desiredPlay && !state.audio.muted) {
+            target = Math.max(0, Math.min(1, entry.maxVolume * CONFIG.audio.bgmVolume));
+        }
+        entry.targetVolume = target;
+
+        // 线性逼近
+        if (entry.currentVolume < entry.targetVolume) {
+            entry.currentVolume = Math.min(entry.targetVolume, entry.currentVolume + entry.fadeStep);
+        } else if (entry.currentVolume > entry.targetVolume) {
+            entry.currentVolume = Math.max(entry.targetVolume, entry.currentVolume - entry.fadeStep);
+        }
+
+        try {
+            entry.ctx.volume = Math.max(0, Math.min(1, entry.currentVolume));
+        } catch (e) { /* 忽略 */ }
+
+        // 不再期望播放 且 已淡到 0：真正 pause 节省资源（静音不会走到这里，因为 desiredPlay 仍为 true）
+        if (!entry.desiredPlay && entry.playing && entry.currentVolume <= 0.001) {
+            try { entry.ctx.pause(); } catch (e) { /* 忽略 */ }
+            entry.playing = false;
+            entry.pendingPlay = false;
+        }
+    }
+}
+
+// 单独导出：由 game.ts 主循环在 updateSFXLoops 之后调用
+export function updateAmbience(): void {
+    _updateAmbience();
 }
 
 // ===== 调试辅助 =====

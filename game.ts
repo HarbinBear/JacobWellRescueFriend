@@ -2,7 +2,7 @@ import { initTextures, draw } from './src/render/Render';
 import { resetGameLogic, update, resetArenaLogic, updateArena, resetMazeLogic, replayMazeLogic, updateMaze, startMazeDive, returnToShore, abandonCase, acceptNewCase, stayInResolvedCase, markBriefingShown } from './src/logic/Logic';
 import { state } from './src/core/state';
 import { initInput } from './src/core/input';
-import { initAudio, updateAudio, updateSFXLoops } from './src/audio/AudioManager';
+import { initAudio, updateAudio, updateSFXLoops, updateAmbience, playAmbience, stopAmbience } from './src/audio/AudioManager';
 import { perfFrameBegin, perfFrameEnd, profileBegin, profileEnd } from './src/debug/PerfHUD';
 import { initQualityManager, onFrame as qualityOnFrame } from './src/render/QualityManager';
 
@@ -59,6 +59,18 @@ function gameLoop() {
     profileBegin('updateMaze');    updateMaze();     profileEnd('updateMaze');
     profileBegin('updateAudio');   updateAudio();    profileEnd('updateAudio');
     profileBegin('updateSFXLoops');updateSFXLoops(); profileEnd('updateSFXLoops');
+    // 岸上营地环境音（鸟鸣）由 phase 驱动：只在 mazeRescue 的 shore / resolved_idle 两个真正暴露在营地的 phase 激活
+    // briefing / resolved / abandoned 三个叙事弹窗以及下潜中、菜单全部停（弹窗自带声音由叙事层另做）
+    {
+        const maze: any = state.mazeRescue;
+        const inCamp = state.screen === 'mazeRescue' && maze && (maze.phase === 'shore' || maze.phase === 'resolved_idle');
+        if (inCamp) {
+            playAmbience('campAmbience');
+        } else {
+            stopAmbience('campAmbience');
+        }
+    }
+    profileBegin('updateAmbience');updateAmbience(); profileEnd('updateAmbience');
     profileBegin('draw');          draw();           profileEnd('draw');
     perfFrameEnd();
     // 画质自适应：用 wall-clock 帧间隔喂 FPS 采样
