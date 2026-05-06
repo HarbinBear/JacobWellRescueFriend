@@ -4,14 +4,14 @@ import { generateMazeMap } from '../world/map';
 import { getMazeMainThemeConfig, getMazeSceneThemeKeyByIndex } from '../world/mazeScene';
 import { StoryManager } from '../story/StoryManager';
 import { triggerSilt, updateParticles, updateSplashes } from './Particle';
-import { updateBreathSystem, resetBreathSystem } from './BreathSystem';
+import { updateBreathSystem, resetBreathSystem, consumeBreathO2, resetBreathO2Consumer, computeBuoyancyOffset } from './BreathSystem';
 import { updateRopeSystem } from './Rope';
 import { processManualDrive, updateAutoDriveVisual } from './ManualDrive';
 import { checkMazeCollision } from './Collision';
 import { updateCameraSpringArm, snapCameraToPlayer, getAdaptiveZoom } from './CameraLogic';
 import { updateMarkers, updateWheelButtonVisibility } from './Marker';
 import { createFishEnemy, findMazeFishSpawnPosition, updateAllFishEnemies, generateFishDens } from './FishEnemy';
-import { buildOxygenTanksForMaze, updateOxygenTanks, createOxygenFeedback } from './OxygenTank';
+import { buildOxygenTanksForMaze, updateOxygenTanks, createOxygenFeedback, triggerO2LossFlash } from './OxygenTank';
 import { updateLifeDetector, resetLifeDetector } from './LifeDetector';
 import { playSFX } from '../audio/AudioManager';
 import { triggerCollisionImpact, resetCollisionImpact } from './CollisionImpact';
@@ -346,6 +346,7 @@ export function startMazeDive(diveType: string) {
 
     // 重置呼吸系统运行态（清除残留气泡与音频状态）
     resetBreathSystem();
+    resetBreathO2Consumer();
 
     // 重置生命探知仪运行态（每次新下潜重新开始）
     resetLifeDetector();
@@ -641,6 +642,7 @@ export function returnToShore() {
 
     // 强制清理呼吸系统：岸上不该有气泡，也不该继续播放呼吸音
     resetBreathSystem();
+    resetBreathO2Consumer();
 
     // 回到岸上时再保存一次：虽然 finishMazeDive 已经落过盘，但从 debrief 切回 shore 时
     // phase 字段发生变化，再存一次更稳妥。
@@ -711,6 +713,7 @@ export function stayInResolvedCase() {
     maze.caseResultTimer = 0;
     state.npc.active = false;
     resetBreathSystem();
+    resetBreathO2Consumer();
     saveMazeProgress();
 }
 
@@ -849,14 +852,16 @@ export function updateMaze() {
         player.vx *= CONFIG.waterDrag;
         player.vy *= CONFIG.waterDrag;
 
-        // 自动挡动作视觉：写入转向/前进信号，让 drawDiver 能呈现转向身体侧倾与手臂动作
+        // 自动档动作视觉：写入转向/前进信号，让 drawDiver 能呈现转向身体侧倾与手臂动作
         updateAutoDriveVisual(angleDiff * CONFIG.turnSpeed, input.move > 0);
     }
 
+    // 呼吸浮力：吐气阶段轻微下沉、吸气阶段轻微上浮，给玩家直观的呼吸押频感
+    player.vy += computeBuoyancyOffset();
+
     // 碰撞检测（使用迷宫专属地图）
     const nextX = player.x + player.vx;
-    const nextY = player.y + player.vy;
-    // 记录撞前速度，用于撞击强度判定（必须在 vx/vy 反弹衰减前采样）
+    const nextY = player.y + player.vy;    // 记录撞前速度，用于撞击强度判定（必须在 vx/vy 反弹衰减前采样）
     const preVx = player.vx;
     const preVy = player.vy;
     let hitX = false;
@@ -1098,11 +1103,22 @@ export function updateMaze() {
         }
     }
 
-    // --- 氧气消耗 ---
-    const vel = Math.hypot(player.vx, player.vy);
-    let o2Consumption = CONFIG.maze.o2ConsumptionBase;
-    if (vel > 1.5) o2Consumption += CONFIG.maze.o2ConsumptionMove;
-    player.o2 -= o2Consumption;
+    // --- 氧气消耗（阶梯式：只在吐气瞬间扣一大口；未激活时走 o2IdleDrain 兜底） ---
+    // 阶梯扣氧后，用 triggerO2LossFlash 让氧气环红条闪一下，直观展示“这一口扣了多少”
+    const o2Consumption = consumeBreathO2();
+    if (o2Consumption > 0 && player.o2 > 0 && !CONFIG.infiniteO2) {
+        const fromO2 = player.o2;
+        const toO2 = Math.max(0, fromO2 - o2Consumption);
+        player.o2 = toO2;
+        // 只有“一口”的扣减才触发视觉红条（兜底小恒量不触发，否则红条一直亮）
+        // 用脉冲计数比较：看本帧扣的量是否超过兜底基础扣减量（静止一口至少 0.6%，远大于 o2IdleDrain 0.005）
+        if (o2Consumption > 0.1) {
+            triggerO2LossFlash(fromO2, toO2);
+        }
+    } else if (o2Consumption > 0 && !CONFIG.infiniteO2) {
+        // 氧气已经 0 的兜底
+        player.o2 = Math.max(0, player.o2 - o2Consumption);
+    }
 
     // 无限氧气开关
     if (CONFIG.infiniteO2) player.o2 = 100;

@@ -1,12 +1,14 @@
 // 潜水员呼吸系统
 // 职责：
-// 1. 呼吸相位机：exhale（吐气）→ pause（停顿）→ exhale → pause...（不是持续吐气）
-// 2. 运动量映射：速度越快 → 吐气越频繁 / 停顿越短 / 气泡数量越多 / 音量越大 / 音调略上扬
-// 3. 生成气泡粒子（在吐气阶段按速率从嘴部位置涌出）
-// 4. 驱动 AudioManager 的 breathLoop 通道（吐气阶段拉起音量，停顿阶段降到 0）
+// 1. 呼吸相位机：exhale（吐气）→ holdEmpty（吐完保持）→ inhale（吸气）→ holdFull（吸完保持）→ 循环
+//    吐完和吸完都有"停顿保持"期，不是立刻反转，肺会保持一下再切换
+// 2. 急促度（breathRate）：运动 / 撞击会抬高急促度，让四相整体时长缩短、holdEmpty/holdFull 几乎为 0
+// 3. 肺容积（lungVolume 0~1）：0=吐完最小，1=吸完最大；由四相位机按各自曲线连续推进，用于肺动画与浮力
+// 4. 浮力为"加速度"模型：吐完气（肺空）→ 向下加速度最大；吸完气（肺满）→ 向上加速度最大；通过 +=player.vy 叠加
+// 5. 气泡只在 exhale 阶段生成；音频只在 exhale 阶段拉起音量
+// 6. 每次 exhale → holdEmpty 切换瞬间递增 exhalePulseCounter，用于阶梯耗氧订阅
 //
 // 启用范围：仅在水下可操作状态（迷宫 play 阶段 / 主线 play 阶段）；其他阶段自动静默
-//
 // 调用入口：updateBreathSystem() 每帧由 MazeLogic.updateMaze() 和 Logic.update() 调用
 
 import { CONFIG } from '../core/config';
@@ -32,45 +34,86 @@ export interface BreathBubble {
 }
 
 // =============================================
-// 呼吸相位与运行态
+// 呼吸相位与运行态（四相位机）
 // =============================================
-type BreathPhase = 'exhale' | 'pause' | 'idle';
+//   exhale：吐气，肺容积从 1 → 0
+//   holdEmpty：吐完保持，肺容积保持 0
+//   inhale：吸气，肺容积从 0 → 1
+//   holdFull：吸完保持，肺容积保持 1
+// =============================================
+type BreathPhase = 'exhale' | 'holdEmpty' | 'inhale' | 'holdFull' | 'idle';
 
 interface BreathRuntime {
     phase: BreathPhase;        // 当前相位
     phaseTimer: number;        // 当前相位已持续秒数
-    exhaleDuration: number;    // 本次吐气总时长（秒）
-    pauseDuration: number;     // 本次停顿总时长（秒）
+
+    // 本轮循环（一次完整 exhale→holdEmpty→inhale→holdFull）下四相时长
+    exhaleDuration: number;
+    holdEmptyDuration: number;
+    inhaleDuration: number;
+    holdFullDuration: number;
+
     bubbleAccum: number;       // 气泡生成累积（粒/帧 * dt）
     active: boolean;           // 系统是否处于激活状态（水下可操作）
     audioPlaying: boolean;     // 是否已启动 breathLoop（避免重复调用）
     lastIntensity: number;     // 上次计算的运动量（0~1，用于平滑）
     bubbles: BreathBubble[];   // 活跃气泡列表
+
+    // ========== 呼吸急促度（breathRate）三分量 ==========
+    // 急促度越高：四相时长越短；holdEmpty / holdFull 几乎为 0；耗氧增量越大；浮力波幅越大
+    // breathRate = clamp(baseline + movement*moveCoef + impact*impactCoef, 0, 1)
+    rateMovement: number;      // 运动分量（指数平滑，升快降慢）
+    rateImpact: number;        // 撞击分量（registerImpact 注入，线性衰减）
+    breathRate: number;        // 合成总急促度（供外部只读）
+
+    // ========== 肺容积 lungVolume（0~1 连续量）==========
+    // 0 = 吐完最小；1 = 吸完最大
+    // exhale 阶段：1 → 0（smoothstep 曲线）
+    // holdEmpty：保持 0
+    // inhale 阶段：0 → 1（smoothstep 曲线）
+    // holdFull：保持 1
+    lungVolume: number;
+
+    // ========== 呼气脉冲计数（供阶梯耗氧订阅）==========
+    // 每次 exhale → holdEmpty 切换瞬间递增一次
+    exhalePulseCounter: number;
+    lastExhaleBreathRate: number;  // 最近一次 exhale 结束时的急促度，用于插值 o2PerBreath
 }
 
 const runtime: BreathRuntime = {
     phase: 'idle',
     phaseTimer: 0,
     exhaleDuration: 1.0,
-    pauseDuration: 3.0,
+    holdEmptyDuration: 0.5,
+    inhaleDuration: 1.0,
+    holdFullDuration: 2.0,
     bubbleAccum: 0,
     active: false,
     audioPlaying: false,
     lastIntensity: 0,
     bubbles: [],
+    rateMovement: 0,
+    rateImpact: 0,
+    breathRate: 0,
+    lungVolume: 1.0,  // 初始默认肺满（放松态）
+    exhalePulseCounter: 0,
+    lastExhaleBreathRate: 0,
 };
 
 // =============================================
-// 运动量 → 呼吸参数 映射表
+// 运动量 → 呼吸四相时长 / 气泡 / 音频 参数映射
 // 线性插值：static（静止） ↔ peak（全速）
+// 注意：四相时长的映射使得 peak 时 holdEmpty / holdFull 几乎为 0（急促时没时间停）
 // =============================================
 function mapByIntensity(intensity: number) {
-    const cfg = CONFIG.breath;
+    const cfg: any = CONFIG.breath;
     const t = Math.max(0, Math.min(1, intensity));
     return {
-        exhaleDuration: cfg.exhaleDurationStatic + (cfg.exhaleDurationPeak - cfg.exhaleDurationStatic) * t,
-        pauseDuration: cfg.pauseDurationStatic + (cfg.pauseDurationPeak - cfg.pauseDurationStatic) * t,
-        bubbleRate: cfg.bubbleRateStatic + (cfg.bubbleRatePeak - cfg.bubbleRateStatic) * t,  // 粒/秒（吐气阶段）
+        exhaleDuration: (cfg.exhaleDurationStatic ?? 1.0) + ((cfg.exhaleDurationPeak ?? 0.5) - (cfg.exhaleDurationStatic ?? 1.0)) * t,
+        holdEmptyDuration: (cfg.holdEmptyDurationStatic ?? 0.5) + ((cfg.holdEmptyDurationPeak ?? 0.05) - (cfg.holdEmptyDurationStatic ?? 0.5)) * t,
+        inhaleDuration: (cfg.inhaleDurationStatic ?? 1.0) + ((cfg.inhaleDurationPeak ?? 0.4) - (cfg.inhaleDurationStatic ?? 1.0)) * t,
+        holdFullDuration: (cfg.holdFullDurationStatic ?? 2.0) + ((cfg.holdFullDurationPeak ?? 0.1) - (cfg.holdFullDurationStatic ?? 2.0)) * t,
+        bubbleRate: cfg.bubbleRateStatic + (cfg.bubbleRatePeak - cfg.bubbleRateStatic) * t,
         volume: cfg.volumeStatic + (cfg.volumePeak - cfg.volumeStatic) * t,
         playbackRate: cfg.playbackRateStatic + (cfg.playbackRatePeak - cfg.playbackRateStatic) * t,
         bubbleSize: cfg.bubbleSizeStatic + (cfg.bubbleSizePeak - cfg.bubbleSizeStatic) * t,
@@ -88,21 +131,42 @@ function computeIntensity(): number {
 }
 
 // =============================================
+// 推进急促度（breathRate）三分量
+//   rateMovement：指数平滑，升快降慢（玩家停下后呼吸不会立刻平复）
+//   rateImpact：线性衰减（每秒降 impactRecoverPerSec）
+// =============================================
+function advanceBreathRate(dt: number, rawMovement: number): void {
+    const cfg: any = CONFIG.breath;
+    const riseRate: number = cfg.rateRise ?? cfg.pressureRise ?? 0.15;
+    const fallRate: number = cfg.rateFall ?? cfg.pressureFall ?? 0.02;
+    const m = runtime.rateMovement;
+    if (rawMovement > m) {
+        runtime.rateMovement = m + (rawMovement - m) * riseRate;
+    } else {
+        runtime.rateMovement = m + (rawMovement - m) * fallRate;
+    }
+    const recoverPerSec: number = cfg.impactRecoverPerSec ?? 0.25;
+    runtime.rateImpact = Math.max(0, runtime.rateImpact - recoverPerSec * dt);
+
+    const baseline: number = cfg.rateBaseline ?? cfg.pressureBaseline ?? 0.0;
+    const moveCoef: number = cfg.rateMoveCoef ?? cfg.pressureMoveCoef ?? 1.0;
+    const impactCoef: number = cfg.rateImpactCoef ?? cfg.pressureImpactCoef ?? 1.0;
+    const r = baseline + runtime.rateMovement * moveCoef + runtime.rateImpact * impactCoef;
+    runtime.breathRate = Math.max(0, Math.min(1, r));
+}
+
+// =============================================
 // 判断当前是否应激活呼吸系统
 // =============================================
 function shouldBeActive(): boolean {
     if (!CONFIG.breath.enabled) return false;
-    // 迷宫模式：仅在 play 阶段激活（入水、结算、岸上、上浮等阶段不触发）
     if (state.screen === 'mazeRescue') {
         const maze = state.mazeRescue;
         if (!maze || maze.phase !== 'play') return false;
-        // 被咬 / 死亡过场不吐
         if (state.fishBite && state.fishBite.active) return false;
         return true;
     }
-    // 主线模式：仅在 play 阶段激活
     if (state.screen === 'play') {
-        // 黑屏 / 过场 / 濒死红屏过重时不吐
         if (state.story.flags.blackScreen) return false;
         if (state.fishBite && state.fishBite.active) return false;
         return true;
@@ -112,8 +176,6 @@ function shouldBeActive(): boolean {
 
 // =============================================
 // 计算嘴部世界坐标
-// RenderDiver 中头部圆心在局部 (15.8, 0)，半径 6.5；嘴部大致在头部最前端
-// 将局部前向 +22 像素作为嘴部偏移
 // =============================================
 function getMouthPos(): { x: number; y: number } {
     const mouthOffset = CONFIG.breath.mouthOffsetForward;
@@ -131,29 +193,21 @@ function getMouthPos(): { x: number; y: number } {
 function spawnBubble(intensity: number) {
     const cfg = CONFIG.breath;
     const mouth = getMouthPos();
-    // 在嘴部位置小范围抖动
     const jitter = cfg.spawnJitter;
     const x = mouth.x + (Math.random() - 0.5) * jitter;
     const y = mouth.y + (Math.random() - 0.5) * jitter;
-    // 侧向初速度：沿身体朝向的侧向（角度 + 90°）小随机
     const sideAngle = player.angle + Math.PI / 2;
     const sideVel = (Math.random() - 0.5) * cfg.sideInitSpeed;
-    // 纵向速度：真正向上（-Y），受浮力
     const buoyancy = cfg.buoyancyMin + Math.random() * (cfg.buoyancyMax - cfg.buoyancyMin);
     const vx = Math.cos(sideAngle) * sideVel + (Math.random() - 0.5) * 0.1;
     const vy = -buoyancy;
-    // 半径：基础 + 运动强度拉大
     const baseR = cfg.bubbleSizeStatic + (cfg.bubbleSizePeak - cfg.bubbleSizeStatic) * intensity;
     const radius = baseR * (0.7 + Math.random() * 0.6);
     const maxRadius = radius * (1.4 + Math.random() * 0.5);
-    // 生命衰减：气泡寿命 1.5~2.5 秒（相当于上浮很长一段距离）
     const lifeSec = cfg.lifeMinSec + Math.random() * (cfg.lifeMaxSec - cfg.lifeMinSec);
-    const fadeRate = 1 / (lifeSec * 60); // 60fps 假设
+    const fadeRate = 1 / (lifeSec * 60);
     runtime.bubbles.push({
-        x,
-        y,
-        vx,
-        vy,
+        x, y, vx, vy,
         wobblePhase: Math.random() * Math.PI * 2,
         wobbleFreq: cfg.wobbleFreqMin + Math.random() * (cfg.wobbleFreqMax - cfg.wobbleFreqMin),
         wobbleAmp: cfg.wobbleAmpMin + Math.random() * (cfg.wobbleAmpMax - cfg.wobbleAmpMin),
@@ -163,7 +217,6 @@ function spawnBubble(intensity: number) {
         fadeRate,
         maxRadius,
     });
-    // 溢出保护
     if (runtime.bubbles.length > cfg.maxBubbles) {
         runtime.bubbles.splice(0, runtime.bubbles.length - cfg.maxBubbles);
     }
@@ -175,24 +228,18 @@ function spawnBubble(intensity: number) {
 function updateBubbles() {
     for (let i = runtime.bubbles.length - 1; i >= 0; i--) {
         const b = runtime.bubbles[i];
-        // 侧向摆动（正弦）
         b.wobblePhase += b.wobbleFreq;
         const wobbleDX = Math.cos(b.wobblePhase) * b.wobbleAmp;
         b.x += b.vx + wobbleDX;
         b.y += b.vy;
-        // 纵向加速（浮力继续作用）
         b.vy -= 0.03;
-        // 侧向速度衰减
         b.vx *= 0.98;
-        // 半径缓慢增长
         if (b.radius < b.maxRadius) b.radius += b.growRate;
-        // 生命衰减
         b.life -= b.fadeRate;
         if (b.life <= 0) {
             runtime.bubbles.splice(i, 1);
             continue;
         }
-        // 撞墙或游出视野太远时加速淡出（简单处理：气泡升得离玩家太远就快速消失）
         const distY = player.y - b.y;
         if (distY > CONFIG.breath.despawnUpDist) {
             b.life -= b.fadeRate * 3;
@@ -201,40 +248,81 @@ function updateBubbles() {
 }
 
 // =============================================
-// 推进呼吸相位机
+// smoothstep：3t²-2t³，t∈[0,1]
+// =============================================
+function smoothstep(t: number): number {
+    const x = Math.max(0, Math.min(1, t));
+    return x * x * (3 - 2 * x);
+}
+
+// =============================================
+// 推进呼吸相位机（四相位）并更新 lungVolume
 // =============================================
 function advancePhase(dt: number, intensity: number) {
     runtime.phaseTimer += dt;
+
     if (runtime.phase === 'exhale') {
-        // 吐气阶段：按速率生成气泡
+        // 吐气：肺容积从 1 → 0（smoothstep，两端慢中间快）
+        const t = Math.max(0, Math.min(1, runtime.phaseTimer / Math.max(0.01, runtime.exhaleDuration)));
+        runtime.lungVolume = 1 - smoothstep(t);
+
+        // 吐气阶段生成气泡
         const params = mapByIntensity(intensity);
         runtime.bubbleAccum += params.bubbleRate * dt;
         while (runtime.bubbleAccum >= 1) {
             spawnBubble(intensity);
             runtime.bubbleAccum -= 1;
         }
+
         if (runtime.phaseTimer >= runtime.exhaleDuration) {
-            runtime.phase = 'pause';
+            // exhale → holdEmpty：触发呼气脉冲（阶梯耗氧订阅）
+            runtime.exhalePulseCounter += 1;
+            runtime.lastExhaleBreathRate = runtime.breathRate;
+            runtime.phase = 'holdEmpty';
             runtime.phaseTimer = 0;
             runtime.bubbleAccum = 0;
+            runtime.lungVolume = 0;
         }
-    } else if (runtime.phase === 'pause') {
-        // 停顿阶段：不生成气泡，音量拉到 0
-        if (runtime.phaseTimer >= runtime.pauseDuration) {
-            // 进入下一次吐气，按当前运动量重新采样两个时长
+    } else if (runtime.phase === 'holdEmpty') {
+        // 吐完保持：肺容积保持 0，不生成气泡
+        runtime.lungVolume = 0;
+        if (runtime.phaseTimer >= runtime.holdEmptyDuration) {
+            runtime.phase = 'inhale';
+            runtime.phaseTimer = 0;
+        }
+    } else if (runtime.phase === 'inhale') {
+        // 吸气：肺容积从 0 → 1（smoothstep）
+        const t = Math.max(0, Math.min(1, runtime.phaseTimer / Math.max(0.01, runtime.inhaleDuration)));
+        runtime.lungVolume = smoothstep(t);
+        if (runtime.phaseTimer >= runtime.inhaleDuration) {
+            runtime.phase = 'holdFull';
+            runtime.phaseTimer = 0;
+            runtime.lungVolume = 1;
+        }
+    } else if (runtime.phase === 'holdFull') {
+        // 吸完保持：肺容积保持 1
+        runtime.lungVolume = 1;
+        if (runtime.phaseTimer >= runtime.holdFullDuration) {
+            // 新一轮循环：按当前运动量重新采样四相时长
             const params = mapByIntensity(intensity);
             runtime.phase = 'exhale';
             runtime.phaseTimer = 0;
             runtime.exhaleDuration = params.exhaleDuration;
-            runtime.pauseDuration = params.pauseDuration;
+            runtime.holdEmptyDuration = params.holdEmptyDuration;
+            runtime.inhaleDuration = params.inhaleDuration;
+            runtime.holdFullDuration = params.holdFullDuration;
+            runtime.bubbleAccum = 0;
         }
     } else {
-        // idle：刚激活的第一帧，立即进入吐气
+        // idle：激活后的第一帧，从 holdFull 起步（模拟"放松状态"肺偏满）
         const params = mapByIntensity(intensity);
-        runtime.phase = 'exhale';
-        runtime.phaseTimer = 0;
         runtime.exhaleDuration = params.exhaleDuration;
-        runtime.pauseDuration = params.pauseDuration;
+        runtime.holdEmptyDuration = params.holdEmptyDuration;
+        runtime.inhaleDuration = params.inhaleDuration;
+        runtime.holdFullDuration = params.holdFullDuration;
+        runtime.phase = 'holdFull';
+        runtime.phaseTimer = 0;
+        runtime.lungVolume = 1;
         runtime.bubbleAccum = 0;
     }
 }
@@ -246,13 +334,16 @@ export function updateBreathSystem() {
     const cfg = CONFIG.breath;
     const active = shouldBeActive();
 
-    // 运动量（带平滑，避免急停急启）
+    const dt = 1 / 60;
+
     const rawIntensity = computeIntensity();
     const smooth = cfg.intensitySmooth;
     runtime.lastIntensity += (rawIntensity - runtime.lastIntensity) * smooth;
     const intensity = runtime.lastIntensity;
 
-    // 非激活状态：停止音频，让残留气泡继续飘完
+    // 急促度三分量始终推进（非激活也推进，确保离开 play 后平复继续发生）
+    advanceBreathRate(dt, rawIntensity);
+
     if (!active) {
         if (runtime.audioPlaying) {
             stopSFXLoop('breathLoop');
@@ -262,27 +353,25 @@ export function updateBreathSystem() {
         runtime.phase = 'idle';
         runtime.phaseTimer = 0;
         runtime.bubbleAccum = 0;
+        // lungVolume 不重置，保持连续
         updateBubbles();
         return;
     }
 
-    // 激活状态：确保音频已启动
     if (!runtime.audioPlaying) {
         playSFXLoop('breathLoop');
         runtime.audioPlaying = true;
     }
     runtime.active = true;
 
-    // dt：按 60fps 估算
-    const dt = 1 / 60;
     advancePhase(dt, intensity);
 
-    // 音频参数：吐气阶段用目标音量与目标速率，停顿阶段音量拉到 0
+    // 音频参数：只在 exhale 阶段拉起音量，其余三相压 0
     const params = mapByIntensity(intensity);
     let targetVol: number;
-    let targetRate: number;
+    let targetRate: number = params.playbackRate;
     if (runtime.phase === 'exhale') {
-        // 吐气内部再做一个小包络：起吐渐强、收吐渐弱（0~0.15s 上升，最后 0.2s 下降）
+        // 吐气内部再做一个小包络：起吐渐强、收吐渐弱
         const t = runtime.phaseTimer;
         const total = runtime.exhaleDuration;
         let envelope = 1;
@@ -291,27 +380,19 @@ export function updateBreathSystem() {
         if (t < attack) envelope = t / attack;
         else if (t > total - release) envelope = Math.max(0, (total - t) / release);
         targetVol = params.volume * envelope;
-        targetRate = params.playbackRate;
     } else {
         targetVol = 0;
-        targetRate = params.playbackRate;
     }
     setSFXLoopParams('breathLoop', { targetVolume: targetVol, playbackRate: targetRate });
 
-    // 气泡粒子更新
     updateBubbles();
 }
 
 // =============================================
 // 撞击气泡爆发（撞岩石时调用）
-// 与呼吸气泡复用同一条渲染通道，但数量更多、初速度向四周散射、半径更大、寿命更短
-// 参数：
-//   cx, cy：撞击点世界坐标（一般传 player.x / player.y）
-//   strength：撞击强度 0~1（由 CollisionImpact 线性映射而来）
 // =============================================
 export function spawnImpactBurst(cx: number, cy: number, strength: number): void {
     const cfg = CONFIG.breath;
-    // 从 CONFIG.collisionImpact.bubble* 取撞击气泡参数，缺省时用默认值
     const impactCfg = (CONFIG as any).collisionImpact || {};
     const countMin: number = impactCfg.impactBubbleCountMin ?? 30;
     const countMax: number = impactCfg.impactBubbleCountMax ?? 120;
@@ -323,28 +404,20 @@ export function spawnImpactBurst(cx: number, cy: number, strength: number): void
     const count = Math.round(countMin + (countMax - countMin) * t);
 
     for (let i = 0; i < count; i++) {
-        // 位置：撞击点 +/- 少量抖动
         const px = cx + (Math.random() - 0.5) * 12;
         const py = cy + (Math.random() - 0.5) * 12;
-        // 初速度：四周扇形散射（不局限于朝前），略偏向上（-Y）模拟气泡被撞出又快速浮起
         const dirAngle = Math.random() * Math.PI * 2;
-        // 稍微压低向下的分量（让 vy < 0 概率大一点，气泡整体偏向上浮）
         const speedScale = 0.4 + Math.random() * 0.6;
         const initSpeed = spreadSpeed * speedScale * (0.5 + t * 0.5);
         const vx = Math.cos(dirAngle) * initSpeed;
         const vy = Math.sin(dirAngle) * initSpeed - (cfg.buoyancyMin + Math.random() * (cfg.buoyancyMax - cfg.buoyancyMin)) * 0.6;
-        // 半径：比呼吸气泡更大（sizeMul 倍放大）
         const baseR = (cfg.bubbleSizeStatic + (cfg.bubbleSizePeak - cfg.bubbleSizeStatic) * t) * sizeMul;
         const radius = baseR * (0.7 + Math.random() * 0.8);
         const maxRadius = radius * (1.3 + Math.random() * 0.5);
-        // 寿命：比呼吸气泡更短（lifeMul 倍缩短，爆发式消散）
         const lifeSec = (cfg.lifeMinSec + Math.random() * (cfg.lifeMaxSec - cfg.lifeMinSec)) * lifeMul;
         const fadeRate = 1 / (lifeSec * 60);
         runtime.bubbles.push({
-            x: px,
-            y: py,
-            vx,
-            vy,
+            x: px, y: py, vx, vy,
             wobblePhase: Math.random() * Math.PI * 2,
             wobbleFreq: cfg.wobbleFreqMin + Math.random() * (cfg.wobbleFreqMax - cfg.wobbleFreqMin),
             wobbleAmp: cfg.wobbleAmpMin + Math.random() * (cfg.wobbleAmpMax - cfg.wobbleAmpMin),
@@ -356,7 +429,6 @@ export function spawnImpactBurst(cx: number, cy: number, strength: number): void
         });
     }
 
-    // 溢出保护：共享呼吸气泡的上限，避免极端情况下无限堆积
     if (runtime.bubbles.length > cfg.maxBubbles) {
         runtime.bubbles.splice(0, runtime.bubbles.length - cfg.maxBubbles);
     }
@@ -379,8 +451,113 @@ export function resetBreathSystem() {
     runtime.bubbles.length = 0;
     runtime.lastIntensity = 0;
     runtime.active = false;
+    runtime.rateMovement = 0;
+    runtime.rateImpact = 0;
+    runtime.breathRate = 0;
+    runtime.lungVolume = 1.0;
+    runtime.exhalePulseCounter = 0;
+    runtime.lastExhaleBreathRate = 0;
     if (runtime.audioPlaying) {
         stopSFXLoop('breathLoop');
         runtime.audioPlaying = false;
     }
+}
+
+// =============================================
+// 撞击应激：由 CollisionImpact 调用，把 rateImpact 抬到目标值
+//   只上拉不下拉（避免覆盖未衰减完的更强应激）
+// =============================================
+export function registerImpact(strength: number, target?: number): void {
+    const t = Math.max(0, Math.min(1, target != null ? target : strength));
+    if (t > runtime.rateImpact) {
+        runtime.rateImpact = t;
+    }
+}
+
+// =============================================
+// 对外只读接口
+// =============================================
+export function getBreathRate(): number { return runtime.breathRate; }
+export function getBreathMovementRate(): number { return runtime.rateMovement; }
+export function getBreathImpactRate(): number { return runtime.rateImpact; }
+export function getLungVolume(): number { return runtime.lungVolume; }
+export function getBreathPhase(): BreathPhase { return runtime.phase; }
+export function getExhalePulseCounter(): number { return runtime.exhalePulseCounter; }
+export function getLastExhaleBreathRate(): number { return runtime.lastExhaleBreathRate; }
+export function isBreathActive(): boolean { return runtime.active; }
+
+// ---- 旧命名兼容层（避免外部调用处一次性全部要改；新代码请用上面的新接口）----
+export function getBreathPressure(): number { return runtime.breathRate; }
+export function getBreathMovementPressure(): number { return runtime.rateMovement; }
+export function getBreathImpactPressure(): number { return runtime.rateImpact; }
+export function getLastExhalePressure(): number { return runtime.lastExhaleBreathRate; }
+// phaseAngle 兼容：把 lungVolume 反算回一个 0~2π 的相位供现有肺绘制
+//   吐气（lungVolume 从 1→0）→ phaseAngle 0→π（sin > 0）
+//   吸气（lungVolume 从 0→1）→ phaseAngle π→2π（sin < 0）
+//   holdEmpty → π（sin ≈ 0）；holdFull → 0（sin ≈ 0）
+export function getBreathPhaseAngle(): number {
+    if (runtime.phase === 'exhale') {
+        // lungVolume: 1→0 映射到 phaseAngle: 0→π
+        return Math.PI * (1 - runtime.lungVolume);
+    }
+    if (runtime.phase === 'holdEmpty') return Math.PI;
+    if (runtime.phase === 'inhale') {
+        // lungVolume: 0→1 映射到 phaseAngle: π→2π
+        return Math.PI + Math.PI * runtime.lungVolume;
+    }
+    // holdFull 或 idle
+    return 0;
+}
+
+// =============================================
+// 呼吸浮力：加速度模型
+//   返回值 = 每帧 vy 的加速度增量（由调用方 player.vy += computeBuoyancyOffset()）
+//   肺容积 lungVolume 映射：
+//     lungVolume = 0（肺空，吐完）→ 向下加速度最大（正值）
+//     lungVolume = 0.5（中性浮力点）→ 加速度 = 0
+//     lungVolume = 1（肺满，吸完）→ 向上加速度最大（负值）
+//   加速度幅度 = buoyancyStrength × (1 + breathRate × buoyancyRateCoef)
+//
+// 关键效果（由于每帧都在 vy 上积分）：
+//   吐完气瞬间：肺空 → 持续下沉加速度 → 身体开始下沉（但不是立刻到最大速度）
+//   吸气过程：浮力渐增 → 向下加速度减小 → 减速下沉
+//   吸完气瞬间：肺满 → 持续上浮加速度 → 身体开始上浮
+//   吐气过程：浮力渐减 → 向上加速度减小 → 减速上浮
+//   表现：身体起伏比呼吸"晚半拍"，有明显的呼吸→浮力→位移因果链
+// =============================================
+export function computeBuoyancyOffset(): number {
+    const cfg: any = CONFIG.breath;
+    if (!cfg.buoyancyEnabled) return 0;
+    if (!runtime.active) return 0;
+    // strength 优先用新名，兜底回退到老的 buoyancyAmp（保持向后兼容）
+    const strength: number = cfg.buoyancyStrength ?? cfg.buoyancyAmp ?? 0.08;
+    const rateCoef: number = cfg.buoyancyRateCoef ?? cfg.buoyancyPressureCoef ?? 0.6;
+    // (lungVolume - 0.5) * 2 ∈ [-1, +1]：肺空 = -1（对应向下），肺满 = +1（对应向上）
+    // 然后乘以 -strength：肺空 → 正加速度（向下，Y 增大）；肺满 → 负加速度（向上，Y 减小）
+    const signed = (runtime.lungVolume - 0.5) * 2;
+    const scaledStrength = strength * (1 + rateCoef * runtime.breathRate);
+    return -signed * scaledStrength;
+}
+
+// =============================================
+// 阶梯式氧气消耗订阅器
+// =============================================
+let _lastSeenExhalePulse = 0;
+export function consumeBreathO2(): number {
+    const cfg: any = CONFIG.breath;
+    if (!runtime.active) {
+        return cfg.o2IdleDrain ?? 0.005;
+    }
+    if (runtime.exhalePulseCounter > _lastSeenExhalePulse) {
+        _lastSeenExhalePulse = runtime.exhalePulseCounter;
+        const staticLoss: number = cfg.o2PerBreathStatic ?? 0.6;
+        const peakLoss: number = cfg.o2PerBreathPeak ?? 2.5;
+        const r = Math.max(0, Math.min(1, runtime.lastExhaleBreathRate));
+        return staticLoss + (peakLoss - staticLoss) * r;
+    }
+    return 0;
+}
+
+export function resetBreathO2Consumer(): void {
+    _lastSeenExhalePulse = runtime.exhalePulseCounter;
 }

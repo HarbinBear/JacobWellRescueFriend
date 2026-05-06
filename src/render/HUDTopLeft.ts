@@ -29,6 +29,7 @@ import { ctx } from './Canvas';
 import { drawAudioIcon, toggleMuted as audioToggleMuted } from './RenderAudioToggle';
 import { getLifeDetectorRuntime } from '../logic/LifeDetector';
 import { toggleGMOpen, isGMOpen } from '../gm/GMPanel';
+import { getBreathPhaseAngle, getBreathPhase, getBreathPressure, getLungVolume } from '../logic/BreathSystem';
 
 // ========== 布局常量 ==========
 // 起点 X/Y，每项尺寸、间距（垂直排列）
@@ -121,11 +122,24 @@ interface HUDSlot {
 // 返回当前可见HUD项的布局位置列表
 function getVisibleSlots(): HUDSlot[] {
     const slots: HUDSlot[] = [];
+    // 氧气环单独放大：参考 CONFIG.breath.oxygenRingSizeMul，其他图标保持原尺寸
+    const cfgBreath: any = (CONFIG as any).breath || {};
+    const oxygenSizeMul: number = cfgBreath.oxygenRingSizeMul ?? 1.0;
     let y = HUD_START_Y;
+    let prevHalf = 0; // 上一项的半径，用于给不同尺寸图标之间留出正确间距
     for (const item of hudItems) {
         if (item.visible && !item.visible()) continue;
-        slots.push({ item, cx: HUD_START_X, cy: y, size: HUD_ITEM_SIZE });
-        y += HUD_ITEM_SIZE + HUD_ITEM_GAP;
+        const sizeHere = item.id === 'oxygen' ? HUD_ITEM_SIZE * oxygenSizeMul : HUD_ITEM_SIZE;
+        const halfHere = sizeHere / 2;
+        if (slots.length === 0) {
+            // 第一个项以固定起点为中心（但若它被放大，起点往下挪让它离顶部有合理留白）
+            y = HUD_START_Y + Math.max(0, halfHere - HUD_ITEM_SIZE / 2);
+        } else {
+            // 后续项基于上一项的下边缘 + 统一间距 + 本项半径
+            y = y + prevHalf + HUD_ITEM_GAP + halfHere;
+        }
+        slots.push({ item, cx: HUD_START_X, cy: y, size: sizeHere });
+        prevHalf = halfHere;
     }
     return slots;
 }
@@ -541,22 +555,128 @@ function drawOxygenIcon(c: CanvasRenderingContext2D, cx: number, cy: number, siz
         c.globalAlpha = 1;
     }
 
-    // 中心显示"O₂"字样（O 是正常大小，2 是右下角小脚标），颜色跟随氧气状态
-    c.save();
-    c.fillStyle = o2Color;
-    c.textAlign = 'center';
-    c.textBaseline = 'middle';
-    // 主字符"O"
-    c.font = 'bold 13px Arial';
-    // 使 O 和脚标 2 作为一个整体视觉居中：O 的几何中心稍微左移，给脚标让位
-    const oOffsetX = -2.5;
-    c.fillText('O', cx + oOffsetX, cy);
-    // 脚标"2"：小字号，位置右下
-    c.font = 'bold 9px Arial';
-    c.textBaseline = 'alphabetic';
-    c.fillText('2', cx + oOffsetX + 6, cy + 5);
-    c.restore();
+    // 中心显示"肺"形图标：吸气（pause）膨胀、吐气（exhale）收缩
+    // 颜色随氧气状态变化：充足=健康粉、中等=粉紫、低氧=灰紫、濒死=发青
+    drawLungs(c, cx, cy, ringR, o2Ratio);
 
+    c.restore();
+}
+
+// ---- 矢量肺图标：两瓣 + 气管 ----
+// 规模尺寸：以氧气环内圈半径 R 为参考，肺的最大覆盖半径约 0.78R
+// 动画：直接读取 BreathSystem 的肺容积 lungVolume（0~1，0=吐完最小, 1=吸完最大）
+//   exhale 阶段：1→0，连续收缩
+//   holdEmpty：保持 0，肺图标保持最小（玩家能看到"吐完气后的停顿保持"）
+//   inhale 阶段：0→1，连续膨胀
+//   holdFull：保持 1，肺图标保持最大（玩家能看到"吸完气后的停顿保持"）
+function drawLungs(c: CanvasRenderingContext2D, cx: number, cy: number, ringR: number, o2Ratio: number): void {
+    const cfg: any = (CONFIG as any).breath || {};
+    // ==== 缩放动画：按肺容积在 exhale 谷值 ~ inhale 峰值之间线性插值 ====
+    const lungVolume = Math.max(0, Math.min(1, getLungVolume()));
+    const pressure = Math.max(0, Math.min(1, getBreathPressure()));
+    const scaleInhale: number = cfg.lungScaleInhale ?? 1.15;
+    const scaleExhale: number = cfg.lungScaleExhale ?? 0.85;
+    // lungVolume=0 → 吐完最小缩放；lungVolume=1 → 吸完最大缩放
+    let scale = scaleExhale + (scaleInhale - scaleExhale) * lungVolume;
+    // 急促度越高，呼吸起伏越剧烈，整体缩放幅度再加码 30%
+    scale = 1 + (scale - 1) * (1 + pressure * 0.3);
+    // phaseAngle/phase 只用于下方气管口气泡判断（exhale 瞬间冒一个白气泡），保持不变
+    const phase = getBreathPhase();
+    const phaseAngle = getBreathPhaseAngle();
+    void phaseAngle;
+
+    // ==== 颜色：按 o2Ratio 分段 ====
+    const colorHealthy: string = cfg.lungColorHealthy ?? 'rgba(240,140,150,1)';
+    const colorMid: string = cfg.lungColorMid ?? 'rgba(210,120,150,1)';
+    const colorLow: string = cfg.lungColorLow ?? 'rgba(150,100,130,1)';
+    const colorCritical: string = cfg.lungColorCritical ?? 'rgba(120,140,160,1)';
+    let lungColor: string;
+    if (o2Ratio > 0.5) lungColor = colorHealthy;
+    else if (o2Ratio > 0.25) lungColor = colorMid;
+    else if (o2Ratio > 0.1) lungColor = colorLow;
+    else lungColor = colorCritical;
+
+    // 基础尺寸：覆盖约环内径的 80%
+    const R = ringR * 0.78;
+
+    c.save();
+    c.translate(cx, cy);
+    c.scale(scale, scale);
+
+    // ==== 气管（中央竖线 + 主支气管分叉）====
+    const tracheaColor = 'rgba(60, 50, 60, 0.75)';
+    c.strokeStyle = tracheaColor;
+    c.lineWidth = Math.max(1, R * 0.12);
+    c.lineCap = 'round';
+    c.beginPath();
+    // 气管顶部到分叉点
+    c.moveTo(0, -R * 0.85);
+    c.lineTo(0, -R * 0.15);
+    c.stroke();
+    // 左右主支气管（短段斜向外）
+    c.lineWidth = Math.max(0.8, R * 0.09);
+    c.beginPath();
+    c.moveTo(0, -R * 0.15);
+    c.lineTo(-R * 0.35, R * 0.05);
+    c.moveTo(0, -R * 0.15);
+    c.lineTo(R * 0.35, R * 0.05);
+    c.stroke();
+
+    // ==== 肺叶：两瓣对称形（左右）====
+    // 每瓣用贝塞尔曲线勾一个"豆形"，外侧圆弧、内侧平直
+    const drawLobe = (sign: number) => {
+        // sign=-1 画左肺，sign=+1 画右肺
+        c.save();
+        c.scale(sign, 1);
+        // 描边稍暗一点
+        c.strokeStyle = 'rgba(90, 40, 55, 0.85)';
+        c.lineWidth = Math.max(1, R * 0.08);
+        c.fillStyle = lungColor;
+        c.beginPath();
+        // 从支气管接入点开始
+        c.moveTo(R * 0.15, -R * 0.05);
+        // 上顶：向外向上的圆弧（肺尖）
+        c.bezierCurveTo(R * 0.55, -R * 0.55, R * 0.95, -R * 0.15, R * 0.88, R * 0.25);
+        // 外下：外侧向下扩
+        c.bezierCurveTo(R * 0.85, R * 0.55, R * 0.55, R * 0.88, R * 0.30, R * 0.80);
+        // 底内：往里收回到内侧
+        c.bezierCurveTo(R * 0.10, R * 0.75, R * 0.05, R * 0.55, R * 0.10, R * 0.30);
+        // 内侧回到起点（直上）
+        c.lineTo(R * 0.15, -R * 0.05);
+        c.closePath();
+        c.fill();
+        c.stroke();
+
+        // 肺纹（内部淡色曲线，增加识别感）
+        c.strokeStyle = 'rgba(255, 210, 220, 0.35)';
+        c.lineWidth = Math.max(0.6, R * 0.04);
+        c.beginPath();
+        c.moveTo(R * 0.30, R * 0.10);
+        c.bezierCurveTo(R * 0.45, R * 0.25, R * 0.55, R * 0.40, R * 0.50, R * 0.60);
+        c.stroke();
+        c.restore();
+    };
+
+    drawLobe(-1);
+    drawLobe(+1);
+
+    // ==== 吐气阶段从气管顶部冒一个小白气泡（表示"正在吐气"）====
+    // exhale 阶段 lungVolume 从 1 → 0，用 (1 - lungVolume) 作为吐气进度 ep
+    // ep > 0.15 时才画（吐气刚开始的 15% 时间不画，避免一切换就弹）
+    if (phase === 'exhale') {
+        const ep = 1 - lungVolume;  // 吐气进度 0~1
+        if (ep > 0.15) {
+            const puffAlpha = Math.min(1, ep * 1.4);
+            const puffR = R * 0.12 * (0.6 + ep * 0.8);
+            const puffY = -R * 0.95 - ep * R * 0.3;
+            c.fillStyle = `rgba(220, 240, 255, ${(0.65 * puffAlpha).toFixed(3)})`;
+            c.beginPath();
+            c.arc(0, puffY, puffR, 0, Math.PI * 2);
+            c.fill();
+        }
+    }
+
+    c.lineCap = 'butt';
     c.restore();
 }
 

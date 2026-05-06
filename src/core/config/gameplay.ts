@@ -77,22 +77,32 @@ export const gameplayConfig = {
         refSpeed: 4.0,                  // 约对应手动挡满速
         intensitySmooth: 0.08,          // 运动量平滑系数（每帧向目标逼近）
 
-        // 静止（intensity=0）下的参数
-        exhaleDurationStatic: 1.0,      // 吐气时长（秒）
-        pauseDurationStatic: 3.0,       // 停顿时长（秒）
+        // 静止（intensity=0）下的四相时长（秒）
+        //   放松态：呼吸慢而深，肺偏满（holdFull 最长 —— 常态下肺偏放松满态）
+        exhaleDurationStatic: 2.2,      // 吐气时长
+        holdEmptyDurationStatic: 0.9,   // 吐完保持（肺空）
+        inhaleDurationStatic: 1.9,      // 吸气时长
+        holdFullDurationStatic: 0.6,    // 吸完保持（肺满）—— 默认态最长
         bubbleRateStatic: 5,            // 吐气阶段气泡生成速率（粒/秒）
-        volumeStatic: 0.35,             // 峰值音量（0~1，将被 sfxVolume 上限裁剪）
+        volumeStatic: 0.35,             // 峰值音量（0~1,将被 sfxVolume 上限裁剪）
         playbackRateStatic: 0.85,       // 播放速率（0.5~2.0）
-        bubbleSizeStatic: 7,          // 基础气泡半径（像素）
+        bubbleSizeStatic: 7,            // 基础气泡半径（像素）
 
-        // 全速（intensity=1）下的参数
-        exhaleDurationPeak: 0.7,        // 吐气时长（秒）
-        pauseDurationPeak: 0.8,         // 停顿时长（秒，几乎连续吐）
-        bubbleRatePeak: 14,             // 吐气阶段气泡生成速率（粒/秒）
-        volumePeak: 0.8,                // 峰值音量
-        playbackRatePeak: 1.2,          // 播放速率
-        bubbleSizePeak: 9,            // 基础气泡半径
+        // 全速（intensity=1）下的四相时长（秒）
+        //   急促态：几乎连续呼吸，holdEmpty / holdFull 几乎为 0
+        exhaleDurationPeak: 0.5,
+        holdEmptyDurationPeak: 0.05,
+        inhaleDurationPeak: 0.4,
+        holdFullDurationPeak: 0.1,
+        bubbleRatePeak: 14,
+        volumePeak: 0.8,
+        playbackRatePeak: 1.2,
+        bubbleSizePeak: 9,
 
+        // ---- 兼容字段（老代码可能还读 pauseDuration*,保留以防回退）----
+        //   pauseDuration 语义等价于 holdEmptyDuration（旧两相位机"吐气→停顿"中的停顿）
+        pauseDurationStatic: 3.0,
+        pauseDurationPeak: 0.8,
         // 嘴部位置：沿身体朝向前方偏移（像素，RenderDiver 头部直径约 13，取 22 是嘴部前端）
         mouthOffsetForward: 22,
         spawnJitter: 2,                 // 生成位置随机抖动半径（像素）
@@ -118,6 +128,52 @@ export const gameplayConfig = {
         colorCore: 'rgba(220, 245, 255, 0.95)',   // 气泡高光色
         colorBody: 'rgba(180, 220, 240, 0.55)',   // 气泡主体色
         outlineAlpha: 0.45,              // 边缘描边透明度
+
+        // ========== 呼吸急促度（breathRate 三分量）==========
+        // 总急促度 = baseline + movement*moveCoef + impact*impactCoef，clamp 到 [0,1]
+        // breathRate 同时决定：四相时长整体缩短（吐气变急）、每口吐气耗氧量增加、浮力波幅增强
+        rateBaseline: 0.0,               // 静止基线
+        rateMoveCoef: 1.0,               // 运动分量系数（= 归一化速度 × 此值）
+        rateImpactCoef: 1.0,             // 撞击分量系数
+        rateRise: 0.15,                  // movement 上升速率（每帧向目标逼近）
+        rateFall: 0.02,                  // movement 下降速率（静止后慢慢平复，约 3s 降一半）
+        impactRecoverPerSec: 0.25,       // 撞击急促度每秒线性衰减（0.8 → 约 3.2s 平复）
+
+        // ========== 阶梯式氧气消耗（每次 exhale → holdEmpty 切换瞬间扣一口）==========
+        o2PerBreathStatic: 0.4,          // 静止时每口吐气扣氧（%）
+        o2PerBreathPeak: 2.0,            // 全速时每口吐气扣氧（%）
+        o2IdleDrain: 0.005,              // 呼吸系统未激活时的兜底恒量扣减（每帧 %）
+
+        // ========== 呼吸浮力（加速度模型，叠加到 player.vy）==========
+        // 肺空（lungVolume=0）→ 向下加速度（+Y）
+        // 肺满（lungVolume=1）→ 向上加速度（-Y）
+        // 每帧加速度 = buoyancyStrength × (1 + breathRate × buoyancyRateCoef) × (1 - 2*lungVolume)
+        // 配合 waterDrag 衰减后实际位移峰值约 ±2~3 像素，身体起伏晚半拍跟上呼吸
+        buoyancyEnabled: true,           // 浮力总开关
+        buoyancyStrength: 0.02,          // 每帧加速度峰值（像素/帧²）
+        buoyancyRateCoef: 0.6,           // 急促度加成系数（breathRate=1 时额外 +60%）
+        buoyancyIndicatorEnabled: false, // 潜水员脚下浮力方向箭头（debug,默认关）
+
+        // ---- 兼容字段（老代码若读 pressure* / buoyancyAmp，回退到这里）----
+        pressureBaseline: 0.0,
+        pressureMoveCoef: 1.0,
+        pressureImpactCoef: 1.0,
+        pressureRise: 0.15,
+        pressureFall: 0.02,
+        buoyancyAmp: 0.08,               // 等价于 buoyancyStrength
+        buoyancyPressureCoef: 0.6,       // 等价于 buoyancyRateCoef
+
+        // ========== 肺图标动画 ==========
+        lungScaleIdle: 1.0,              // 待机时肺的基础缩放
+        lungScaleInhale: 1.15,           // 吸气阶段（= BreathSystem 的 pause）峰值缩放
+        lungScaleExhale: 0.85,           // 吐气阶段（= BreathSystem 的 exhale）峰值缩放
+        lungColorHealthy: 'rgba(240,140,150,1)',   // 氧气充足（> 50%）
+        lungColorMid: 'rgba(210,120,150,1)',       // 氧气中等（25~50%）
+        lungColorLow: 'rgba(150,100,130,1)',       // 氧气低（10~25%）
+        lungColorCritical: 'rgba(120,140,160,1)',  // 氧气濒死（< 10%）
+
+        // ========== 氧气环放大 ==========
+        oxygenRingSizeMul: 1.5,          // 氧气环相对其他 HUD 图标的尺寸倍数
     },
 
     // ===== 撞击岩石反馈系统 =====

@@ -16,7 +16,7 @@ type: always
 |------|----------|--------|------|------|
 | P1 | 角色表现（重绘潜水员） | 🔴 高 | 🟡 进行中 | **本轮完成全身动画增强**：引入躯干波动相位时钟统一驱动 idle/forward/turn 三种状态的 yaw/roll/compress/手臂摆动/头部蛇形传导；转向时身体明显侧倾（约 16°满量）+ Y 轴压扁模拟 3D；idle 下腿部保留呼吸微幅；手电发光位置待修 |
 | P2 | 手电筒光照改进（VPL连续化） | 🟡 中 | ⬜ 未开始 | 离散虚拟光源 → 连续反射面 |
-| P3 | 生命系统增强 | 🟢 低 | 🟡 部分完成 | **呼吸气泡 + 呼吸音已接入**（SFX-Loop 通道 + 间歇吐气相位机 + 运动量映射气泡速率/音量/播放率 + 嘴部坐标气泡粒子 + GM 面板「呼吸」Tab）；**撞岩石惩罚已接入**（线性强度映射：音效音量/播放速率 + 气泡爆发 + 氧气损失 + 氧气环红色损失弧动画；GM 面板「撞击」Tab 全参数可调）；氧气与运动关联待做 |
+| P3 | 生命系统增强 | 🟢 低 | 🟡 部分完成 | **呼吸气泡 + 呼吸音已接入**；**撞岩石惩罚已接入**；**本轮新增：呼吸压强系统 + 阶梯式氧耗 + 肺图标 + 呼吸浮力**（见 T3.7/T3.8/T3.9/T3.10） |
 | **P4** | **地形序列化系统** | 🔴 高 | 🟡 部分完成 | 第一阶段完成：种子 + PRNG + 地图重建 + v3 存档；好友分享编码待做 |
 | P5 | 迷宫模式本地存档 | 🔴 高 | ✅ 已完成 | v3 种子版存档：地图结构靠 seed 重建，单次下潜 ~10~30KB，远低于 Android 上限 |
 | **P6** | **氧气瓶拾取系统** | 🔴 高 | ✅ 已完成 | 聚落大概率刷新，贴岩石表面，轮盘按住安装，完整视觉反馈；同 seed 已消耗不再刷；增强：每瓶外观随机（瓶体色/锈蚀/阀门/标签/裂口/倾倒）+ "前人遗物"伴生物件（潜水镜/潜水衣/布条碎片，40/25/20/15 组合），全部确定性派生 |
@@ -70,12 +70,17 @@ type: always
 
 ### P3：生命系统增强
 
-- [ ] T3.1 重构氧气消耗公式（基础 + 运动系数 + 撞墙惩罚）
+- [x] T3.1 重构氧气消耗公式（阶梯式 + 呼吸压强驱动）——**本轮完成**：见 T3.7。
 - [x] T3.2 实现呼出气泡粒子效果（新建 `BreathSystem.ts` + `RenderBreath.ts`；从嘴部坐标涌出、真实向上漂浮 + 侧向正弦摆动 + 半径缓慢变大 + 末尾淡出）
 - [x] T3.3 气泡频率与运动量关联（运动量 0→1 映射到气泡速率/音量/播放速率/气泡大小/吐气时长/停顿时长；呼吸采用间歇吐气 exhale→pause→exhale 相位机）
 - [x] T3.4 与音频系统联动（AudioManager 新增 SFX-Loop 通道 `playSFXLoop / stopSFXLoop / setSFXLoopParams / updateSFXLoops`；接入 breathLoop 云存储音效；吐气阶段拉起音量/停顿阶段降到 0；仅在迷宫 play / 主线 play 激活）
 - [x] T3.5 GM 面板参数调整（新增「呼吸」Tab 共 27 项可调）
-- [x] T3.6 撞岩石惩罚（音效 + 气泡 + 耗氧 + 氧气条红条视觉反馈）——**本轮完成**：新建 `src/logic/CollisionImpact.ts` 统一入口；触发规则全线性映射（不分档）：`|v| >= speedThreshold` 才算撞，`strength = clamp((|v| - threshold) / range, 0, 1)` 作为 0~1 强度，所有反馈参数按强度线性插值；音效接入 `collisionRock`（云存储），`playSFX` 扩展 `{volume, playbackRate}` 动态参数，按强度 0.35→1.0 / 1.1→0.85（越重越低沉）；气泡借 `triggerSilt` 6→30 线性；氧气损失 0.8%→4.5% 线性；氧气环扩展 `o2LossTimer / o2LossFromRatio / o2LossToRatio` 字段，`triggerO2LossFlash()` 触发红色损失弧动画（1s 衰减、多次撞击累加 fromRatio 取较大值）；同一撞击 400ms 冷却避免 X/Y 双轴同帧重复触发；`infiniteO2` 模式下仍保留红条反馈便于测试；主线 `Logic.ts` 与迷宫 `MazeLogic.ts` 碰撞分支同步接入（注意在 `player.vx *= -0.5` 反弹前采样 preVx/preVy）；`resetGameLogic` / `startMazeDive` 调用 `resetCollisionImpact()` 清理冷却；`CONFIG.collisionImpact` 12 个参数 + GM 面板「撞击」Tab。**气泡表现升级**：撞击气泡不再走 `triggerSilt`（那是泥沙颗粒，不是气泡），改为走 `BreathSystem.spawnImpactBurst()` 复用呼吸气泡渲染管线；但参数区别明显——数量 30→120（呼吸一次吐气 5~14 粒）、半径 1.6 倍放大、初速度向四周扇形散射（呼吸只朝嘴前）、寿命 0.55 倍缩短（爆发式消散）；声音用 `collisionBreath`（独立 SFX 实例，复用 BreathBubble.mp3 但 playbackRate 压到 0.55~0.75，听感比呼吸更钝重），与 `collisionRock`（HitRock.mp3）并发播放；这样 HitRock 资源到位前也有明确的撞击音反馈，且和持续呼吸声能区分开。
+- [x] T3.6 撞岩石惩罚（音效 + 气泡 + 耗氧 + 氧气条红条视觉反馈）——见下方老记录。
+- [x] **T3.7 呼吸压强系统 + 阶梯式氧气消耗**（本轮完成）：在 `BreathSystem.ts` 中引入 **pressure 三分量**（`movementPressure` / `impactPressure` / `pressureBaseline`），总压强 `pressure = baseline + movement*moveCoef + impact*impactCoef`。其中 movement 走**指数平滑**（pressureRise=0.15 上升快、pressureFall=0.02 下降慢，约 3s 才降一半），实现"静止后呼吸需要时间平复"；impact 由 `CollisionImpact.triggerCollisionImpact()` 在撞岩石时通过新的 `registerImpact(strength, target=0.35+0.65*strength)` 注入，每秒线性衰减 `impactRecoverPerSec=0.25`，约 4~6 秒平复，实现"撞墙后呼吸急促"。同时新增对外 API `getBreathPressure / getBreathPhaseAngle / getBreathPhase / getExhalePulseCounter / getLastExhalePressure / computeBuoyancyOffset / consumeBreathO2 / resetBreathO2Consumer`。**氧气消耗改为阶梯式**：相位机在 `exhale → pause` 切换瞬间递增 `exhalePulseCounter`，`consumeBreathO2()` 只在计数器增加的那一帧返回 `lerp(o2PerBreathStatic=0.6, o2PerBreathPeak=2.5, lastExhalePressure)` 做一口大扣氧（即 0.6%~2.5% 每口气）；两口气之间完全不扣。迷宫 `MazeLogic.ts` 扣氧后立刻调 `triggerO2LossFlash(fromO2, toO2)` 让氧气环红条闪一下，阶梯感视觉非常明显。呼吸未激活时（岸上/过场）走 `o2IdleDrain=0.005` 兜底恒量。主线 `Logic.ts` 保留 `tankDamaged` 倍率和 NPC 补氧逻辑，但基础扣氧改走 `consumeBreathO2()`。三处 `resetBreathSystem()` 调用同步补 `resetBreathO2Consumer()` 重置订阅游标，避免切图后老计数吞第一口。
+- [x] **T3.8 氧气图标放大 + 肺图标**（本轮完成）：`CONFIG.breath.oxygenRingSizeMul=1.4` 让氧气环相对其他 HUD 图标放大 40%；`HUDTopLeft.ts::getVisibleSlots()` 改为按 id 动态决定 size，并根据上下项半径之差重新计算竖向间距，保证其他图标仍是 28px 不变。中央 "O₂" 脚标文字替换为**矢量肺图标**（`drawLungs`）：两瓣豆形肺叶（贝塞尔曲线）+ 中央气管 + 左右主支气管分叉 + 肺纹（淡色内部曲线）。肺颜色按氧气量分四档（健康粉/粉紫/灰紫/濒死青），`CONFIG.breath.lungColorHealthy/Mid/Low/Critical` 可调。肺缩放读 `getBreathPhaseAngle()`：吐气阶段 [0, π] sin>0 → 收缩到 `lungScaleExhale=0.85`，吸气阶段 [π, 2π] sin<0 → 膨胀到 `lungScaleInhale=1.15`，压强越高幅度再加 30%。吐气瞬间还会从气管顶部冒一个小白气泡（`phase==='exhale' && sin>0.15`），强调"正在吐气"。
+- [x] **T3.9 呼吸浮力向量**（本轮完成）：在 `BreathSystem` 中新增 `computeBuoyancyOffset()`，返回 `sin(phaseAngle) × buoyancyAmp × (1 + pressure × buoyancyPressureCoef)` 作为 Y 方向偏移，吐气时正（下沉）、吸气时负（上浮）。主线 `Logic.ts` 和迷宫 `MazeLogic.ts` 在玩家移动分支末尾（水阻之后、`let nextX = player.x + player.vx` 之前）叠加 `player.vy += computeBuoyancyOffset()`。默认 `buoyancyAmp=0.18`、`buoyancyPressureCoef=0.6`，幅度克制但静止时肉眼可见"人物在原地上下呼吸起伏"。主线濒死阶段（stage 4/5 强制 vx/vy=0）额外判一层，不叠加浮力避免干扰随机抖动。浮力与肺动画完全同相位（都读同一个 `phaseAngle`）——玩家看到肺膨胀的瞬间身体也在上浮，逻辑自解释。可视化调试箭头 `buoyancyIndicatorEnabled` 默认关闭，未来可开。
+- [x] **T3.10 GM 面板扩展**（本轮完成）：「呼吸」Tab 追加 16 项：压强基线/运动系数/撞击系数/上升率/下降率/撞击衰减速率；阶梯耗氧静止/全速/口 + 兜底基础耗氧；启用呼吸浮力 + 浮力幅度 + 浮力压强加成 + 浮力指示箭头；肺缩放 idle/吸气/吐气峰值；氧气环尺寸倍数。
+
 ### P4：地形序列化系统 🔴 高优先
 **问题描述**：
 当前迷宫地图完全依赖 `Math.random()` 生成，无法重现同一张地图。需要设计一套编解码系统，将地图结构和玩家进度序列化为一串字符串，支持精确还原。

@@ -23,7 +23,7 @@ import { CONFIG } from '../core/config';
 import { state, player } from '../core/state';
 import { playSFX } from '../audio/AudioManager';
 import { triggerO2LossFlash } from './OxygenTank';
-import { spawnImpactBurst } from './BreathSystem';
+import { spawnImpactBurst, registerImpact } from './BreathSystem';
 
 // 最近一次触发时间戳（用于 cooldown）
 let _lastImpactTime = 0;
@@ -76,6 +76,15 @@ export function triggerCollisionImpact(preVx: number, preVy: number, x: number, 
         spawnImpactBurst(x, y, strength);
     } catch (e) {
         // 气泡生成失败不影响音效和氧气损失
+    }
+
+    // ---- 呼吸应激：把撞击强度注入呼吸压强系统，呼吸会变急促几秒后才平复 ----
+    // 用较高的 target 让撞击更明显（最轻的撞击也能拉到 0.35+，重撞几乎拉满）
+    try {
+        const stressTarget = 0.35 + 0.65 * strength;
+        registerImpact(strength, stressTarget);
+    } catch (e) {
+        // 注入失败不影响其他反馈
     }
 
     // ---- 氧气损失：按强度线性扣氧，且在氧气环上触发红色损失弧动画 ----

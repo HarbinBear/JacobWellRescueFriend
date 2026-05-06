@@ -3,7 +3,7 @@ import { state, player, particles, input, resetState } from '../core/state';
 import { generateMap } from '../world/map';
 import { StoryManager } from '../story/StoryManager';
 import { Particle, createSplash, updateSplashes, triggerSilt, updateParticles } from './Particle';
-import { updateBreathSystem, resetBreathSystem } from './BreathSystem';
+import { updateBreathSystem, resetBreathSystem, consumeBreathO2, resetBreathO2Consumer, computeBuoyancyOffset } from './BreathSystem';
 import { updateRopeSystem, findNearestWall } from './Rope';
 import { updateAllFishEnemies, createFishEnemy, findSafeSpawnPosition, findMazeFishSpawnPosition } from './FishEnemy';
 import { processManualDrive, updateAutoDriveVisual } from './ManualDrive';
@@ -293,6 +293,7 @@ export function resetGameLogic(startStage, startPlay) {
     if(startPlay === undefined) startPlay = true;
     resetState();
     resetBreathSystem();
+    resetBreathO2Consumer();
     resetCollisionImpact();
     generateMap();
     
@@ -654,6 +655,12 @@ export function update() {
         updateAutoDriveVisual(angleDiff * CONFIG.turnSpeed, input.move > 0);
     }
 
+    // 呼吸浮力：吐气阶段轻微下沉、吸气阶段轻微上浮，让玩家能直观感知呼吸节奏
+    // 濒死阶段不叠加（那里强制 vx/vy=0，不想被浮力干扰）
+    if (state.story.stage !== 4 && state.story.stage !== 5) {
+        player.vy += computeBuoyancyOffset();
+    }
+
     let nextX = player.x + player.vx;
     let nextY = player.y + player.vy;
     
@@ -903,9 +910,9 @@ export function update() {
 
     player.silt = Math.max(0, player.silt - 0.15); 
 
-    // 3. 气体逻辑
-    let o2Consumption = CONFIG.o2ConsumptionBase;
-    if(vel > 1.5) o2Consumption += CONFIG.o2ConsumptionMove;
+    // 3. 气体逻辑（阶梯式：由 BreathSystem 驱动，只在吐气瞬间扣一大口）
+    // 呼吸系统未激活时（过场 / 岸上 / 菜单），consumeBreathO2 会返回 o2IdleDrain 兜底小常量
+    let o2Consumption = consumeBreathO2();
 
     if(state.story.flags.tankDamaged) {
         o2Consumption *= CONFIG.o2DamageMultiplier;
