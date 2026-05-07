@@ -30,6 +30,7 @@ import { drawAudioIcon, toggleMuted as audioToggleMuted } from './RenderAudioTog
 import { getLifeDetectorRuntime } from '../logic/LifeDetector';
 import { toggleGMOpen, isGMOpen } from '../gm/GMPanel';
 import { getBreathPhaseAngle, getBreathPhase, getBreathPressure, getLungVolume } from '../logic/BreathSystem';
+import { playSFX } from '../audio/AudioManager';
 
 // ========== 布局常量 ==========
 // 起点 X/Y，每项尺寸、间距（垂直排列）
@@ -236,6 +237,8 @@ function findSlotById(id: string): HUDSlot | null {
 }
 
 function fireShortTap(slot: HUDSlot): void {
+    // HUD 栏所有图标点击都统一视为"次按钮"（切换/提示类辅助操作）
+    playSFX('uiSecondary');
     if (slot.item.onShortTap) slot.item.onShortTap();
     const tipText = slot.item.tipText ? slot.item.tipText() : '';
     if (tipText) {

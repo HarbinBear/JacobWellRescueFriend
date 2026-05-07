@@ -18,7 +18,7 @@ import { CONFIG } from '../core/config';
 import { state } from '../core/state';
 
 type AudioKey = 'menuBGM';
-type SFXKey = 'diveSplash' | 'collisionRock' | 'collisionBreath' | 'quickReturn';
+type SFXKey = 'diveSplash' | 'collisionRock' | 'collisionBreath' | 'quickReturn' | 'uiPrimary' | 'uiSecondary';
 // SFX-Loop：常驻循环、可实时调整音量与播放速率（呼吸气泡等）
 type SFXLoopKey = 'breathLoop';
 // Ambience：常驻低音量环境音（鸟鸣、流水等），独立于 BGM 与 SFX，由 phase 驱动开关
@@ -121,6 +121,22 @@ const SFX_ENTRIES: Record<SFXKey, SFXEntry> = {
     // 结束潜水：蓄力后瞬间弹射出水的"上升破水"音效
     quickReturn: {
         path: 'audio/QuickReturn.mp3',
+        ctx: null,
+        srcReady: false,
+        urlResolving: false,
+        pendingPlay: false,
+    },
+    // UI 主按钮点击音（确认/开始/救援/安装/下潜 等决定性操作）
+    uiPrimary: {
+        path: 'audio/MainBtn.mp3',
+        ctx: null,
+        srcReady: false,
+        urlResolving: false,
+        pendingPlay: false,
+    },
+    // UI 次按钮点击音（取消/关闭/返回/Tab/折叠 等辅助操作）
+    uiSecondary: {
+        path: 'audio/SubBtn.mp3',
         ctx: null,
         srcReady: false,
         urlResolving: false,

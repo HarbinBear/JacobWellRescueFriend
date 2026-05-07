@@ -13,6 +13,7 @@ import {
     getResolvedBtnRects,
     getAbandonedAcceptBtnRect,
 } from '../render/RenderMazeUI';
+import { playSFX } from '../audio/AudioManager';
 
 // 章节页滑动状态
 let chapterTouchStartY = 0;
@@ -527,6 +528,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                     maze.abandonHolding = false;
                     maze.abandonHoldStart = 0;
                     maze.abandonTouchId = null;
+                    playSFX('uiPrimary');
                     if (onAbandonCase) onAbandonCase();
                 }
             }
@@ -703,6 +705,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                 const cw = CONFIG.screenWidth, ch = CONFIG.screenHeight;
                 const br = getBriefingAcceptBtnRect(cw, ch);
                 if (tx >= br.x && tx <= br.x + br.w && ty >= br.y && ty <= br.y + br.h) {
+                    playSFX('uiPrimary');
                     if (onMarkBriefingShown) onMarkBriefingShown();
                 }
                 return;
@@ -720,6 +723,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
             if (!maze.shoreMapOpen) {
                 const nr = getResolvedIdleNewCaseBtnRect(cw, ch);
                 if (tx >= nr.x && tx <= nr.x + nr.w && ty >= nr.y && ty <= nr.y + nr.h) {
+                    playSFX('uiPrimary');
                     if (onAcceptNewCase) onAcceptNewCase();
                     return;
                 }
@@ -747,11 +751,13 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
             const br = getResolvedBtnRects(cw, ch);
             // 留在此处（左）
             if (tx >= br.stayX && tx <= br.stayX + br.w && ty >= br.y && ty <= br.y + br.h) {
+                playSFX('uiSecondary');
                 if (onStayInResolvedCase) onStayInResolvedCase();
                 return;
             }
             // 接受新的任务（右）
             if (tx >= br.newX && tx <= br.newX + br.w && ty >= br.y && ty <= br.y + br.h) {
+                playSFX('uiPrimary');
                 if (onAcceptNewCase) onAcceptNewCase();
                 return;
             }
@@ -768,6 +774,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
             const cw = CONFIG.screenWidth, ch = CONFIG.screenHeight;
             const ar = getAbandonedAcceptBtnRect(cw, ch);
             if (tx >= ar.x && tx <= ar.x + ar.w && ty >= ar.y && ty <= ar.y + ar.h) {
+                playSFX('uiPrimary');
                 if (onAcceptNewCase) onAcceptNewCase();
             }
             return;
@@ -800,13 +807,15 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
 
                     // 子页面A：单次下潜手绘地图回放
                     if (idx >= 0 && list[idx]) {
-                        // 点击左上"← 记录"按钮：回到列表
+                    // 点击左上"← 记录"按钮：回到列表
                         if (tx >= 8 && tx <= 8 + 78 && ty >= 8 && ty <= 8 + 30) {
+                            playSFX('uiSecondary');
                             maze.shoreMapDiveIndex = -1;
                             maze.shoreMapAnimTimer = 0;
                             return;
                         }
                         // 点击其它区域：回到下潜记录列表（不关闭全屏）
+                        playSFX('uiSecondary');
                         maze.shoreMapDiveIndex = -1;
                         maze.shoreMapAnimTimer = 0;
                         return;
@@ -815,6 +824,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                     // 子页面B：下潜记录列表
                     // 点击左上"← 返回"按钮：关闭全屏回到岸上
                     if (tx >= 8 && tx <= 8 + 68 && ty >= 8 && ty <= 8 + 30) {
+                        playSFX('uiSecondary');
                         maze.shoreMapOpen = false;
                         return;
                     }
@@ -831,6 +841,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                         for (let i = 0; i < list.length; i++) {
                             const cy = listTop + i * (cardH + gap);
                             if (tx >= cardX && tx <= cardX + cardW && ty >= cy && ty <= cy + cardH) {
+                                playSFX('uiSecondary');
                                 const reverseIdx = list.length - 1 - i; // 渲染时逆序
                                 maze.shoreMapDiveIndex = reverseIdx;
                                 maze.shoreMapAnimTimer = 0;
@@ -839,6 +850,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                         }
                     }
                     // 点击其它空白区域：关闭全屏
+                    playSFX('uiSecondary');
                     maze.shoreMapOpen = false;
                     return;
                 }
@@ -858,6 +870,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                 const mapIconY = cardY + (cardCollapsedH - mapIconSize) / 2;
                 if (tx >= mapIconX && tx <= mapIconX + mapIconSize &&
                     ty >= mapIconY && ty <= mapIconY + mapIconSize) {
+                    playSFX('uiSecondary');
                     maze.shoreMapOpen = true;
                     maze.shoreMapDiveIndex = -1; // 默认先看列表
                     maze.shoreMapAnimTimer = 0;
@@ -869,6 +882,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                     ty >= cardY && ty <= cardY + cardCollapsedH) {
                     // 排除下潜记录按钮区域
                     if (!(tx >= mapIconX && tx <= mapIconX + mapIconSize)) {
+                        playSFX('uiSecondary');
                         maze._shoreRecordOpen = !maze._shoreRecordOpen;
                         return;
                     }
@@ -887,12 +901,14 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                     }
                     // 根据是否已发现NPC自动决定下潜类型
                     const diveType = maze.npcFound ? 'rescue' : 'scout';
+                    playSFX('uiPrimary');
                     if (onMazeDive) onMazeDive(diveType);
                     return;
                 }
 
                 // "返回主菜单"按钮（左上角）
                 if (tx < 80 && ty < 50) {
+                    playSFX('uiSecondary');
                     state.screen = 'menu';
                     state.menuScreen = 'main';
                     state.mazeRescue = null;
@@ -912,6 +928,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
             const toggleBtnSize = 28;
             // 检测折叠/展开按钮区域
             if (tx >= mapX && tx <= mapX + toggleBtnSize && ty >= mapY && ty <= mapY + toggleBtnSize) {
+                playSFX('uiSecondary');
                 state.mazeRescue.minimapExpanded = !state.mazeRescue.minimapExpanded;
                 return;
             }
@@ -937,6 +954,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                 if (tx >= nextBtnX && tx <= nextBtnX + nextBtnW &&
                     ty >= nextBtnY - nextBtnH / 2 && ty <= nextBtnY + nextBtnH / 2) {
                     // 进入叙事结案页：切 phase 到 resolved，caseResultTimer 归零
+                    playSFX('uiPrimary');
                     if (onEnterResolved) onEnterResolved();
                     return;
                 }
@@ -953,6 +971,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
             const shoreBtnY = ch - 50;
             if (tx >= shoreBtnX && tx <= shoreBtnX + shoreBtnW &&
                 ty >= shoreBtnY - shoreBtnH / 2 && ty <= shoreBtnY + shoreBtnH / 2) {
+                playSFX('uiPrimary');
                 if (onReturnToShore) onReturnToShore();
                 return;
             }
@@ -984,6 +1003,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                             return;
                         }
                         if(!state.transition.active) {
+                            playSFX('uiPrimary');
                             state.transition.active = true;
                             state.transition.alpha = 0;
                             state.transition.mode = 'out';
@@ -1007,6 +1027,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                         }
                         state.menuScreen = 'chapter';
                         state.chapterScrollY = 0;
+                        playSFX('uiSecondary');
                         return;
                     }
                     // 检测"食人鱼竞技场"按钮
@@ -1022,6 +1043,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                             return;
                         }
                         if (onArena) onArena();
+                        playSFX('uiPrimary');
                         return;
                     }
                     // 检测"迷宫纯享版"按钮
@@ -1037,6 +1059,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                             return;
                         }
                         if (onMaze) onMaze();
+                        playSFX('uiPrimary');
                         return;
                     }                }
                 return;
@@ -1046,6 +1069,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                 if(!chapterTouchMoved) {
                     // 返回按钮（左上角区域）
                     if(tx < 90 && ty < 52) {
+                        playSFX('uiSecondary');
                         state.menuScreen = 'main';
                         state.chapterScrollY = 0;
                         return;
@@ -1066,6 +1090,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                                 }
                                 let startStage = i === 0 ? 1 : (i === 1 ? 3 : (i === 2 ? 7 : 9));
                                 if(!state.transition.active) {
+                                    playSFX('uiPrimary');
                                     state.transition.active = true;
                                     state.transition.alpha = 0;
                                     state.transition.mode = 'out';
@@ -1122,7 +1147,10 @@ function handleTouchEnd(changedTouches) {
         // 轮盘松手：执行选中操作或取消
         if (state.wheel && state.wheel.open && t.identifier === state.wheel.touchId) {
             if (state.wheel.highlightIndex >= 0 && state.wheel.sectors[state.wheel.highlightIndex]) {
+                playSFX('uiPrimary');
                 executeWheelAction(state.wheel.sectors[state.wheel.highlightIndex].action);
+            } else {
+                playSFX('uiSecondary');
             }
             // 关闭轮盘
             state.wheel.open = false;

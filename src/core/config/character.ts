@@ -194,6 +194,10 @@ export const characterConfig = {
                 // 岸上营地环境音：鸟语花香循环，仅在 mazeRescue 的 shore / resolved_idle 两个真正暴露在营地的 phase 激活
                 // 警情弹窗 / 救援成功 / 搜寻终止 等叙事页以及下潜中、菜单全部停
                 campAmbience: 'cloud://cloud1-d8gh6fpnh6d0928e8.636c-cloud1-d8gh6fpnh6d0928e8-1424920608/audio/CampBird.mp3',
+                // UI 主按钮（开始/确认/接受任务/救援/安装/下潜）：真实物理触感的柔钝 "哚" 声，无旋律无音高
+                uiPrimary: 'cloud://cloud1-d8gh6fpnh6d0928e8.636c-cloud1-d8gh6fpnh6d0928e8-1424920608/audio/MainBtn.mp3',
+                // UI 次按钮（取消/关闭/返回/Tab 切换/折叠）：更轻更短更干的 "嗒" 声
+                uiSecondary: 'cloud://cloud1-d8gh6fpnh6d0928e8.636c-cloud1-d8gh6fpnh6d0928e8-1424920608/audio/SubBtn.mp3',
             } as Record<string, string>,
         },
     },

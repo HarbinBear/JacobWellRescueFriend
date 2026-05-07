@@ -12,6 +12,7 @@ import {
 import { state, player } from '../core/state';
 import { createFishEnemy, findMazeFishSpawnPosition, findSafeSpawnPosition } from '../logic/FishEnemy';
 import { setPreset, onItemEdited as qualityOnItemEdited, setAuto as qualitySetAuto } from '../render/QualityManager';
+import { playSFX } from '../audio/AudioManager';
 
 // 重新导出绘制函数，保持外部引用不变
 export { drawGMButton, drawGMPanel } from './GMRender';
@@ -136,6 +137,7 @@ export function handleGMTouchStart(tx: number, ty: number): boolean {
         const relX = tx - _panelX + _tabScrollX;
         const tabIdx = Math.floor(relX / TAB_FIXED_W);
         if (tabIdx >= 0 && tabIdx < TABS.length) {
+            if (_activeTab !== tabIdx) playSFX('uiSecondary');
             _activeTab = tabIdx;
             _scrollY = 0;
             _editingItem = null;
@@ -183,6 +185,7 @@ export function handleGMTouchStart(tx: number, ty: number): boolean {
                         val = parseFloat(val.toFixed(precision));
                         setConfigValue(numItem.path, val);
                         _notifyQualityItemEdit(numItem.path);
+                        playSFX('uiSecondary');
                     }
                     _editingItem = null;
                     return true;
@@ -198,6 +201,7 @@ export function handleGMTouchStart(tx: number, ty: number): boolean {
                         val = parseFloat(val.toFixed(precision));
                         setConfigValue(numItem.path, val);
                         _notifyQualityItemEdit(numItem.path);
+                        playSFX('uiSecondary');
                     }
                     _editingItem = null;
                     return true;
@@ -208,6 +212,7 @@ export function handleGMTouchStart(tx: number, ty: number): boolean {
                     if (_editingItem === numItem.path) {
                         // 已在编辑，不做处理
                     } else {
+                        playSFX('uiSecondary');
                         _editingItem = numItem.path;
                         const currentVal = getConfigValue(numItem.path);
                         const precision = numItem.precision ?? 0;
@@ -222,6 +227,7 @@ export function handleGMTouchStart(tx: number, ty: number): boolean {
                 const currentVal = !!getConfigValue(item.path);
                 setConfigValue(item.path, !currentVal);
                 _notifyQualityItemEdit(item.path);
+                playSFX('uiSecondary');
                 return true;
             } else if (item.type === 'select') {
                 // select 类型：左右箭头切换
@@ -238,6 +244,7 @@ export function handleGMTouchStart(tx: number, ty: number): boolean {
                     const newVal = selItem.options[newIdx];
                     setConfigValue(selItem.path, newVal);
                     _notifyQualitySelectChange(selItem.path, newVal);
+                    playSFX('uiSecondary');
                     return true;
                 }
                 if (tx >= rightBtnX && tx <= rightBtnX + rightBtnW) {
@@ -246,11 +253,13 @@ export function handleGMTouchStart(tx: number, ty: number): boolean {
                     const newVal = selItem.options[newIdx];
                     setConfigValue(selItem.path, newVal);
                     _notifyQualitySelectChange(selItem.path, newVal);
+                    playSFX('uiSecondary');
                     return true;
                 }
                 return true;
             } else if (item.type === 'action') {
-                // 执行 action 操作
+                // 执行 action 操作（实质执行类主按钮）
+                playSFX('uiPrimary');
                 _executeAction((item as GMActionItem).actionId);
                 return true;
             }
