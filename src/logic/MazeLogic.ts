@@ -12,6 +12,7 @@ import { updateCameraSpringArm, snapCameraToPlayer, getAdaptiveZoom } from './Ca
 import { updateMarkers, updateWheelButtonVisibility } from './Marker';
 import { createFishEnemy, findMazeFishSpawnPosition, updateAllFishEnemies, generateFishDens } from './FishEnemy';
 import { buildOxygenTanksForMaze, updateOxygenTanks, createOxygenFeedback, triggerO2LossFlash } from './OxygenTank';
+import { buildRelicsForMaze, updateRelicDiscovery, resetRelicDiscoveryForDive, getThisDiveNewRelicIds } from './Relic';
 import { updateLifeDetector, resetLifeDetector } from './LifeDetector';
 import { playSFX } from '../audio/AudioManager';
 import { triggerCollisionImpact, resetCollisionImpact } from './CollisionImpact';
@@ -108,6 +109,13 @@ export function resetMazeLogic() {
             );
             if (!Array.isArray(state.mazeRescue.consumedTankIds)) state.mazeRescue.consumedTankIds = [];
             state.mazeRescue.oxygenFeedback = createOxygenFeedback();
+
+            // 图鉴物件：从主 seed 派生 ^0x5EED1CE0 确定性重建
+            // discoveredRelicIds 从存档读取（若老存档缺失字段则兜底空数组）
+            (state.mazeRescue as any).relics = buildRelicsForMaze(state.mazeRescue.seed);
+            if (!Array.isArray((state.mazeRescue as any).discoveredRelicIds)) {
+                (state.mazeRescue as any).discoveredRelicIds = [];
+            }
         }
 
         // 救援概念包装：老存档缺失字段时兜底（seed 已经有了，caseNumber 随 seed 固定）
@@ -234,6 +242,7 @@ export function resetMazeLogic() {
         _retreatDetailHolding: false,
         _shoreRecordOpen: false,
         _shoreRecordAnim: 0,
+        codexOpen: false,
         _driveToggleOpen: 0,
         _driveToggleHolding: false,
         _driveSwitchTip: 0,
@@ -281,6 +290,9 @@ export function resetMazeLogic() {
         oxygenTanks: [],
         consumedTankIds: [],
         oxygenFeedback: null,
+        // 图鉴物件占位：后面紧跟着用派生 seed 生成
+        relics: [],
+        discoveredRelicIds: [],
     };
 
     // 生成食人鱼聚集点（需要 state.mazeRescue 已挂载；跨下潜保留，换地图时重建）
@@ -298,6 +310,10 @@ export function resetMazeLogic() {
     state.mazeRescue.consumedTankIds = [];
     state.mazeRescue.oxygenTanks = buildOxygenTanksForMaze(mazeData.seed, []);
     state.mazeRescue.oxygenFeedback = createOxygenFeedback();
+
+    // 图鉴物件：新地图新 seed，discoveredRelicIds 清空，按主 seed 派生生成
+    (state.mazeRescue as any).relics = buildRelicsForMaze(mazeData.seed);
+    (state.mazeRescue as any).discoveredRelicIds = [];
 
     // 初始化 NPC（被救者，岸上阶段不激活）
     state.npc.active = false;
@@ -353,6 +369,9 @@ export function startMazeDive(diveType: string) {
 
     // 重置撞击反馈冷却（避免跨场景冷却误挡第一次撞击）
     resetCollisionImpact();
+
+    // 重置本次下潜的图鉴新发现列表（discoveredRelicIds 是跨下潜累计的，这里不动）
+    resetRelicDiscoveryForDive();
 
     // 设置下潜类型（不区分scout/rescue，统一为scout，发现NPC后自动可绑绳）
     maze.diveType = diveType;
@@ -603,7 +622,9 @@ function finishMazeDive(returnReason: string) {
         ropesSnapshot: ropesSnap,
         npcFoundAtEnd: !!maze.npcFound,
         finishAt: Date.now(),
-    });
+        // 本次下潜新发现的图鉴物件 id 列表（用于 debrief 页展示"本次新发现"）
+        newRelicIds: getThisDiveNewRelicIds(),
+    } as any);
 
     // 只保留最近 5 次下潜记录，超过的把最老的挤掉（FIFO）
     const MAX_DIVE_HISTORY = 5;
@@ -963,6 +984,9 @@ export function updateMaze() {
 
     // --- 生命探知仪（未发现NPC时以节拍提示距离）---
     updateLifeDetector();
+
+    // --- 图鉴物件发现判定（手电照到 + 靠近即记入图鉴） ---
+    updateRelicDiscovery();
 
     // --- 轮盘展开动画 ---
     if (state.wheel && state.wheel.open) {

@@ -124,6 +124,38 @@ type: always
 
 配置参数集中在 `CONFIG.oxygenTank` 子对象中，GM 面板有独立的"氧气瓶"Tab。
 
+### 1.6b-relic 场景图鉴物件系统 `src/logic/Relic.ts`
+
+图鉴物件系统是迷宫模式专属的纯视觉+发现记录子系统，与氧气瓶系统采用同样的"派生 seed 确定性生成 + 跨下潜持久化"模式，但**严格不可交互**。
+
+对外提供（`src/logic/Relic.ts`）：
+
+- `buildRelicsForMaze(mainSeed)`：根据主 seed 派生子种子 `mainSeed ^ 0x5EED1CE0`，确定性生成当前迷宫的 relic 列表（10 种类型：skeleton/coin/potshard/anchor/ring/stoneTablet/fishhook/bell/rustyKey/shell）。派生 seed 与 fishDens (`^0xDEADBEEF`) / oxygenTanks (`^0xCAFEBABE`) 完全独立，保证三个系统的随机序列互不污染。
+- `updateRelicDiscovery()`：每帧由 `MazeLogic.updateMaze()` 调用。遍历 relics，对未发现的每一项检查"手电开着 + 距离 < `discoverRadius` + 落在玩家朝向 ±`discoverFovDeg`/2 角度内"，三者全满足即记入 `state.mazeRescue.discoveredRelicIds`（全局图鉴，跨下潜累计）和 `_thisDiveNewRelicIds`（本次下潜专用，不进存档）。
+- `resetRelicDiscoveryForDive()` / `getThisDiveNewRelicIds()`：本次下潜新发现列表的重置与读取。`startMazeDive` 调 reset 清空，`finishMazeDive` 调 get 把 id 列表塞进 `diveHistory[*].newRelicIds`。
+- `findRelicById(id)` / `getDiscoveredCount()` / `getTotalRelicCount()`：供 UI 层查询本次发现物件的名字和图鉴进度。
+- `RELIC_TYPES: Record<RelicKind, {name, desc, weight}>`：10 种物件的中文名、简短叙事、出现权重（骸骨/石板稀有 weight=2~3，硬币/海螺常见 weight=9~10）。
+
+核心设计：
+
+- **严格不可交互**：不走 `state.wheel`、不调 `detectWheelContext`、不参与按钮 hit-test、不弹 tip。就是"看到就记下来"，没有任何操作入口。这一点是底线，后续如果要加"收集后回营地博物馆展览"之类的能力，也必须走独立通道、不能在水下出现拾取按钮。
+- **位置来自派生 seed**：每次生成最多尝试 `totalCount * 10` 次，每次随机挑一颗墙 + 随机角度，50% 贴墙外缘（`wallR + 4~7px`）、50% 散落在岩石附近通路（`wallR + 30~60px`）；最终位置需通过 `checkMazeCollision` 校验不嵌岩石，且两两 ≥ `minDistBetween`、离出生点 ≥ `minDistToSpawn`。失败就换下一颗墙，直到 totalCount 或尝试次数耗尽。
+- **类型按权重抽签**：`pickKindByWeight()` 用 `srand()` 抽样；骸骨/石板权重低（2~3），硬币/海螺权重高（9~10），让每张地图总能混搭出"常见 + 稀有"的组合。
+- **跨下潜持久**：`discoveredRelicIds` 跨下潜累计，岸上和结算页都显示"X / totalCount"进度；新地图（`clearMazeSave` → `resetMazeLogic` 走新建分支）会把它清空，换关即全新图鉴。
+- **运行时 relics 不进存档**：`relics[]` 走 MazeSave 的 rest 黑名单，读档时 MazeLogic 用派生 seed 重建一份完全一致的列表；这样存档体积不受影响（省掉 ~15×80 字节）。
+- **发现判定的 FOV 是独立参数**：`discoverFovDeg` 默认 60°（比 `CONFIG.fov` 稍窄），故意让"照到"的判定比"看见"更严格，避免玩家手电扫过但眼睛没聚焦的物件也被误判发现。
+
+渲染由专项模块负责（`src/render/RenderRelic.ts`）：
+
+- `drawRelicsWorld(ctx, viewL, viewR, viewT, viewB)`：世界空间批量绘制入口，带 ±20px 视椎剔除。对每个物件按 `relic.kind` 分发到 10 个 `drawXxx` 函数之一。绘制时先 `translate(x, y) + rotate(angle) + scale(size)`，然后画物件本体。
+- 10 个纯矢量绘制函数：骸骨（头骨 + 眼窝 + 三根散骨）/ 硬币（圆 + 方孔 + 绿锈点）/ 陶罐碎片（破损弧 + 折线边 + 横纹）/ 铁锚（环 + 杆 + 钩臂 + 钩尖三角 + 锈斑）/ 指环（环 + 中心宝石）/ 刻字石板（矩形 + 三行刻痕线）/ 鱼钩（弯钩 + 倒刺 + 虚线断线）/ 铜铃（钟形 + 挂环 + 铃舌）/ 钥匙（柄环 + 杆 + 两颗齿）/ 海螺（椭圆主体 + 三圈渐缩螺纹 + 开口暗部）。统一调色板"被水侵蚀"色调：冷象牙白骨、青铜、陶土、锈铁、磨银、墨绿铜锈、石灰灰、黄铜、海螺米黄。
+- 尺寸 14~24px，远小于氧气瓶（约 40px），不会与氧气瓶/NPC/标记视觉混淆。
+- **绝对静态**：不发光、不呼吸、不脉冲、不闪烁，已发现与未发现外观完全一致。这是视觉底线——任何"动"的属性都会与氧气瓶的"呼吸发光"语言冲突，让玩家误以为能交互。
+
+**关键落点：在 `drawDustDarkLayer` 之前绘制**。调用位置在 `Render.ts` 的 `drawOxygenTanksWorld` 之后、`drawDustDarkLayer` 之前，与岩石/绳索/鱼/NPC 同层，会被光照遮罩统一压暗——手电没照到的地方物件不会自发光，保持黑暗氛围。**不要**放到 `drawDustLitLayer`（光照之后层）或 HUD 层，否则黑暗区也会亮，破坏氛围。
+
+配置参数集中在 `CONFIG.relic` 子对象中（`totalCount / onWallRatio / minDistBetween / minDistToSpawn / discoverRadius / discoverFovDeg` 6 项）。当前 GM 面板还没有独立 Tab，如需调参直接改 config 即可。
+
 ### 1.6c 呼吸系统 `src/logic/BreathSystem.ts`
 
 呼吸系统负责潜水员的**四相位呼吸**表现（气泡粒子 + 循环呼吸音 + 肺图标动画 + 浮力加速度），仅在水下可操作阶段（迷宫 play / 主线 play）激活。与标记系统、氧气瓶系统类似，采用**逻辑 + 渲染各自独立模块、由主循环按帧驱动**的模式。

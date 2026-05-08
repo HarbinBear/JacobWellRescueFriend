@@ -3,6 +3,7 @@
 
 import { state } from '../../core/state';
 import { ctx } from '../Canvas';
+import { drawCodexEntryBtn } from './codex';
 
 // 兼容微信小游戏的圆角矩形（本文件内部私有工具）
 function rrect(c: any, x: number, y: number, w: number, h: number, r: number) {
@@ -357,6 +358,9 @@ export function drawMazeShore(maze: any, cw: number, ch: number, time: number) {
             ctx.fillText('点击水面入口开始下潜探索', cw / 2, cardY + cardH - 14);
         }
     }
+
+    // 右上角「图鉴」入口按钮（让开微信胶囊；点击后 codexOpen=true，全屏图鉴页由 RenderMazeUI 分发绘制）
+    drawCodexEntryBtn(cw, time);
 
     ctx.globalAlpha = 1;
 }

@@ -225,6 +225,7 @@ export const state = {
         _retreatDetailHolding: boolean; // 撤离按钮详情是否正在按住（非长按撤离）
         _shoreRecordOpen: boolean;  // 岸上探索记录是否展开
         _shoreRecordAnim: number;   // 岸上探索记录展开动画进度（0~1）
+        codexOpen: boolean;         // 岸上图鉴全屏页是否打开（不跨 session 持久化，但和其它 shore UI 字段一起随 rest 自动保留；不影响结构重建）
         _driveToggleOpen: number;   // 手动/自动挡详情展开进度（0~1）
         _driveToggleHolding: boolean; // 手动/自动挡详情是否正在按住
         _driveSwitchTip: number;    // 手动/自动挡切换tip倒计时（帧）
@@ -325,6 +326,12 @@ export const state = {
         oxygenTanks: any[];
         consumedTankIds: number[];
         oxygenFeedback: any;
+
+        // === 场景图鉴物件（由派生 seed 确定性生成，跨下潜保留） ===
+        // relics：本地图所有物件（运行时，不进存档；靠 seed 重建）
+        // discoveredRelicIds：已发现物件 ID 列表，跨下潜累积，进存档
+        relics: any[];
+        discoveredRelicIds: number[];
 
         // === 本次下潜运行态数据 ===
         playerPath: {x: number, y: number}[]; // 记录玩家移动轨迹

@@ -265,6 +265,7 @@ interface PackedDive {
     ropesSnap: PackedHistoryRope[];    // 每条历史绳索（含端点）
     npcFoundAtEnd: boolean;
     finishAt: number;
+    newRelicIds?: number[];            // 本次下潜新发现的图鉴物件 id 列表
 }
 
 interface PackedMaze {
@@ -346,8 +347,8 @@ export function saveMazeProgress(): boolean {
             ropesSnap,
             npcFoundAtEnd: !!d.npcFoundAtEnd,
             finishAt: d.finishAt || 0,
-        });
-    }
+            newRelicIds: Array.isArray((d as any).newRelicIds) ? (d as any).newRelicIds.slice() : [],
+        });    }
 
     // 收集其它小字段（剔除所有能从种子重建或已经单独压缩的大字段）
     const rest: any = {};
@@ -368,6 +369,8 @@ export function saveMazeProgress(): boolean {
             k === 'oxygenTanks' ||
             // 氧气拾取的运行态反馈（飞瓶、气泡、跳字、屏幕辉光）不跨 session 保留
             k === 'oxygenFeedback' ||
+            // 图鉴物件列表从主 seed 派生重建，discoveredRelicIds 随 rest 自动保留
+            k === 'relics' ||
             // 单独压缩的大字段
             k === 'mazeExplored' || k === 'thisExploredBefore' ||
             k === 'diveHistory' ||
@@ -494,6 +497,9 @@ export function loadMazeProgress(): boolean {
     maze.oxygenTanks = [];
     if (!Array.isArray(maze.consumedTankIds)) maze.consumedTankIds = [];
     maze.oxygenFeedback = null; // 视觉反馈运行态，读档后由 MazeLogic 重建
+    // 图鉴物件：占位，由 MazeLogic.resetMazeLogic 的读档分支用派生 seed 重建
+    maze.relics = [];
+    if (!Array.isArray(maze.discoveredRelicIds)) maze.discoveredRelicIds = [];
 
     // 展开压缩后的 diveHistory
     const packedHistory: PackedDive[] = Array.isArray(maze.diveHistory) ? maze.diveHistory : [];
@@ -521,6 +527,7 @@ export function loadMazeProgress(): boolean {
             ropesSnapshot: ropesSnap,
             npcFoundAtEnd: !!d.npcFoundAtEnd,
             finishAt: d.finishAt || 0,
+            newRelicIds: Array.isArray((d as any).newRelicIds) ? (d as any).newRelicIds.slice() : [],
         });
     }
     maze.diveHistory = realHistory;

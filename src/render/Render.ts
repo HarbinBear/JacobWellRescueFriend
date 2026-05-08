@@ -13,6 +13,7 @@ import { drawAllFishEnemies, drawFishBiteEffect } from './RenderFishEnemy';
 import { drawMazeWallShape, getMazeParticleColorByWorld, getMazeThemeColorByCell, drawMazeShallowSky, drawMazeShallowWaterTint, drawMazeShallowCaustics, getMazeShallowMaskAlpha, drawFishDenSkulls } from './RenderMazeScene';
 import { drawOxygenTanksWorld, drawOxygenFeedbackWorld } from './RenderOxygenTank';
 import { drawBreathBubblesWorld } from './RenderBreath';
+import { drawRelicsWorld, drawRelicHintsWorld } from './RenderRelic';
 import { getLifeDetectorRuntime } from '../logic/LifeDetector';
 import { drawGMButton, drawGMPanel } from '../gm/GMPanel';
 import { updateDustTime, drawDustDarkLayer, drawDustLitLayer } from './DustMotes';
@@ -408,6 +409,8 @@ export function draw() {
     if (isMazeMode && state.mazeRescue && state.mazeRescue.phase === 'play') {
         drawOxygenTanksWorld(ctx, viewL, viewR, viewT, viewB);
         drawOxygenFeedbackWorld(ctx);
+        // 图鉴物件（静态、不可交互、仅 play 阶段世界层绘制）
+        drawRelicsWorld(ctx, viewL, viewR, viewT, viewB);
     }
 
     // --- 计算光照参数（体积光和遮罩共用）---
@@ -902,7 +905,16 @@ export function draw() {
     drawDustLitLayer(ctx, viewL, viewR, viewT, viewB, zoom, playerFlashlightActive);
     ctx.restore();
 
-    // 绘制泥沙粒子（在光照层之上，使泥沙遮盖光照）
+    // 绘制图鉴发现提示飘字（世界空间，但不被光照压暗，在光照层之上）
+    // 故意挂在这里：被手电发现的瞬间，提示字要"跳"出来让玩家看到，黑暗区也可见
+    if (isMazeMode && state.mazeRescue && state.mazeRescue.phase === 'play') {
+        ctx.save();
+        ctx.translate(logicW/2 + shakeX, logicH/2 + shakeY);
+        ctx.scale(zoom, zoom);
+        ctx.translate(-camX, -camY);
+        drawRelicHintsWorld(ctx, viewL, viewR, viewT, viewB);
+        ctx.restore();
+    }
     ctx.save();
     ctx.translate(logicW/2 + shakeX, logicH/2 + shakeY);
     ctx.scale(zoom, zoom);

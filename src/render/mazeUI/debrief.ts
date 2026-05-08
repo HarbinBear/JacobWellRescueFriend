@@ -5,6 +5,7 @@
 import { state } from '../../core/state';
 import { ctx } from '../Canvas';
 import { getMazeMainThemeConfig } from '../../world/mazeScene';
+import { RELIC_TYPES, findRelicById } from '../../logic/Relic';
 
 // 兼容微信小游戏的圆角矩形（本文件内部私有工具）
 function rrect(c: any, x: number, y: number, w: number, h: number, r: number) {
@@ -278,6 +279,45 @@ export function drawMazeDebrief(maze: any, cw: number, ch: number, time: number)
             }).join('、');
             ctx.fillStyle = 'rgba(160,200,240,0.7)';
             ctx.fillText(`新发现：${themeNames}`, cw / 2, tipY);
+            tipY += 16;
+        }
+
+        // === 图鉴：本次新发现物件 + 累计进度 ===
+        const newRelicIds: number[] = Array.isArray((lastDive as any).newRelicIds)
+            ? (lastDive as any).newRelicIds
+            : [];
+        const totalRelicCount: number = Array.isArray((maze as any).relics)
+            ? (maze as any).relics.length : 0;
+        const discoveredCount: number = Array.isArray((maze as any).discoveredRelicIds)
+            ? (maze as any).discoveredRelicIds.length : 0;
+
+        if (newRelicIds.length > 0) {
+            // 拼出名字（去重 + 按名字归并）
+            const nameCount: Record<string, number> = {};
+            for (const id of newRelicIds) {
+                const r = findRelicById(id);
+                if (!r) continue;
+                const def = RELIC_TYPES[r.kind];
+                if (!def) continue;
+                nameCount[def.name] = (nameCount[def.name] || 0) + 1;
+            }
+            const parts: string[] = [];
+            for (const name in nameCount) {
+                if (Object.prototype.hasOwnProperty.call(nameCount, name)) {
+                    const n = nameCount[name];
+                    parts.push(n > 1 ? `${name}×${n}` : name);
+                }
+            }
+            ctx.font = 'bold 12px Arial';
+            ctx.fillStyle = 'rgba(255,210,140,0.9)';
+            ctx.fillText(`本次发现：${parts.join('、')}`, cw / 2, tipY);
+            tipY += 16;
+        }
+
+        if (totalRelicCount > 0) {
+            ctx.font = '11px Arial';
+            ctx.fillStyle = 'rgba(160,200,240,0.55)';
+            ctx.fillText(`本关图鉴进度 ${discoveredCount} / ${totalRelicCount}`, cw / 2, tipY);
         }
     }
 

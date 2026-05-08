@@ -22,6 +22,7 @@ import {
     drawAbandonBtn,
     drawResolvedIdleNewCaseBtn,
 } from './mazeUI/cases';
+import { drawMazeCodex } from './mazeUI/codex';
 
 // 按钮矩形 getter 继续从本文件对外导出，兼容 input.ts 既有的
 // `import { ... } from '../render/RenderMazeUI'` 路径
@@ -32,6 +33,10 @@ export {
     getResolvedBtnRects,
     getAbandonedAcceptBtnRect,
 } from './mazeUI/cases';
+export {
+    getCodexEntryBtnRect,
+    getCodexCloseBtnRect,
+} from './mazeUI/codex';
 
 // 确保迷宫模式 HUD 管理器已初始化（仅初始化一次，跨会话也只初始化一次）
 let _mazeHUDInitialized = false;
@@ -68,6 +73,12 @@ export function drawMazeHUD() {
 
     // === 岸上阶段 ===
     if (maze.phase === 'shore') {
+        // 图鉴全屏页：独立分发，不叠加任何其它 UI（返回按钮在全屏页自己画）
+        if (maze.codexOpen) {
+            drawMazeCodex(cw, ch, time);
+            ctx.restore();
+            return;
+        }
         drawMazeShore(maze, cw, ch, time);
         // 放弃救援按钮（仅在岸上主界面显示，全屏地图与通报覆盖时不显示）
         if (!maze.shoreMapOpen && maze.briefingShown) {
@@ -87,6 +98,12 @@ export function drawMazeHUD() {
 
     // === 结案后"留在此处"状态：岸上画面但水面入口置灰 ===
     if (maze.phase === 'resolved_idle') {
+        // 图鉴全屏页也允许在 resolved_idle 打开
+        if (maze.codexOpen) {
+            drawMazeCodex(cw, ch, time);
+            ctx.restore();
+            return;
+        }
         drawMazeShore(maze, cw, ch, time);
         if (!maze.shoreMapOpen) {
             // 水面入口上盖一层"本案已结案"半透明遮罩

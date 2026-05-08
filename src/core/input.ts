@@ -12,6 +12,8 @@ import {
     getResolvedIdleNewCaseBtnRect,
     getResolvedBtnRects,
     getAbandonedAcceptBtnRect,
+    getCodexEntryBtnRect,
+    getCodexCloseBtnRect,
 } from '../render/RenderMazeUI';
 import { playSFX } from '../audio/AudioManager';
 
@@ -240,6 +242,10 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                 const maze: any = state.mazeRescue;
                 const cw = CONFIG.screenWidth;
                 const ch = CONFIG.screenHeight;
+                // 图鉴全屏页打开：只记录起点，touchEnd 做"返回"或"点空白关闭"分发
+                if (maze.codexOpen) {
+                    return;
+                }
                 // 警情通报页打开时：吃掉所有点击，touchEnd 再处理"接受任务"
                 if (!maze.briefingShown && !maze.shoreMapOpen) {
                     return;
@@ -799,6 +805,34 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
             const moved = Math.hypot(tx - shoreTouchStartX, ty - shoreTouchStartY) > 10;
             if (!moved) {
                 const maze = state.mazeRescue;
+
+                // ---- 图鉴全屏页打开时的分发 ----
+                if (maze.codexOpen) {
+                    const cr = getCodexCloseBtnRect();
+                    if (tx >= cr.x && tx <= cr.x + cr.w && ty >= cr.y && ty <= cr.y + cr.h) {
+                        playSFX('uiSecondary');
+                        maze.codexOpen = false;
+                        return;
+                    }
+                    // 点击其它区域也关闭图鉴（约定跟下潜记录列表一样克制）
+                    playSFX('uiSecondary');
+                    maze.codexOpen = false;
+                    return;
+                }
+
+                // ---- 点击右上角"图鉴"按钮：打开全屏图鉴页 ----
+                {
+                    const codexRect = getCodexEntryBtnRect(cw);
+                    if (tx >= codexRect.x && tx <= codexRect.x + codexRect.w &&
+                        ty >= codexRect.y && ty <= codexRect.y + codexRect.h) {
+                        // 只有非全屏地图状态下才开（防止和地图全屏互相叠）
+                        if (!maze.shoreMapOpen) {
+                            playSFX('uiSecondary');
+                            maze.codexOpen = true;
+                            return;
+                        }
+                    }
+                }
 
                 // ---- 全屏地图打开时的分发：有两种子页面（列表 / 回放） ----
                 if (maze.shoreMapOpen) {

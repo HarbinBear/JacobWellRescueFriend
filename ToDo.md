@@ -16,6 +16,11 @@
 进入结算的各种声音/ （结束潜水瞬间的弹射出水音效 `QuickReturn.mp3` 已接入 retreat/o2/fishkill 三个触发点，配合 0.5s 蓄力→弹射→破水爆裂转场；其余结算音效——救援成功/溺亡/被咬死——待补）
 UI按钮点击音效（MainBtn.mp3 / SubBtn.mp3 已接入：主按钮=开始游戏/章节进入/竞技场/迷宫纯享版/下潜/继续/回到岸上/接受任务/接受新任务/长按放弃完成/轮盘松手执行/GM action 执行；次按钮=返回主菜单/章节页返回/下潜记录开关/卡片点击/折叠探索记录/全屏地图返回/调试小地图折叠/留在此处/轮盘取消/左上角 HUD 5 个图标短按/GM 面板 Tab 切换·加减·输入框·布尔·select 箭头）；拾取氧气瓶音效 GetO2.mp3 已接入 `OxygenTank.completeInstall()`；被食人鱼咬死音效 FishBiteManDie.mp3 已接入 `FishEnemy.triggerPlayerDeath()`（bite→dead 切换那一帧）
 
+玩家可以主动选择辖区，一个洞穴玩腻了可以主动换一个，不换的话，下一关还是这个图。
+
+鱼再做的危险一点。
+
+
 
 **已完成（2026-05-06）：**
 - **氧气环放大 1.4×**（`CONFIG.breath.oxygenRingSizeMul`），其他 HUD 图标保持 28px 不变
