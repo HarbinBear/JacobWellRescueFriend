@@ -58,6 +58,28 @@ function drawRelic(ctx: CanvasRenderingContext2D, relic: Relic) {
         case 'bell':        drawBell(ctx); break;
         case 'rustyKey':    drawRustyKey(ctx); break;
         case 'shell':       drawShell(ctx); break;
+        case 'silverCoin':  drawSilverCoin(ctx); break;
+        case 'humanSkull':  drawHumanSkull(ctx); break;
+        case 'pocketWatch': drawPocketWatch(ctx); break;
+        case 'oilLamp':     drawOilLamp(ctx); break;
+        case 'smallKnife':  drawSmallKnife(ctx); break;
+        case 'maskShard':   drawMaskShard(ctx); break;
+        case 'waterFlask':  drawWaterFlask(ctx); break;
+        case 'ironNail':    drawIronNail(ctx); break;
+        case 'brassCompass':drawBrassCompass(ctx); break;
+        case 'leatherBoot': drawLeatherBoot(ctx); break;
+        case 'cross':       drawCross(ctx); break;
+        case 'amulet':      drawAmulet(ctx); break;
+        case 'idolFigure':  drawIdolFigure(ctx); break;
+        case 'crystal':     drawCrystal(ctx); break;
+        case 'ceramicBowl': drawCeramicBowl(ctx); break;
+        case 'glassBottle': drawGlassBottle(ctx); break;
+        case 'coralChunk':  drawCoralChunk(ctx); break;
+        case 'sharkTooth':  drawSharkTooth(ctx); break;
+        case 'fishSkeleton':drawFishSkeleton(ctx); break;
+        case 'fossil':      drawFossil(ctx); break;
+        case 'obsidian':    drawObsidian(ctx); break;
+        case 'cameraHousing':drawCameraHousing(ctx); break;
     }
 
     ctx.restore();
@@ -429,6 +451,763 @@ function drawShell(ctx: CanvasRenderingContext2D) {
 }
 
 // =============================================
+// 【扩展 22 种】
+// =============================================
+
+// 银币：银色底 + 齿纹 + 头像凸点
+function drawSilverCoin(ctx: CanvasRenderingContext2D) {
+    ctx.fillStyle = PALETTE.silver;
+    ctx.strokeStyle = PALETTE.silverEdge;
+    ctx.lineWidth = 0.6;
+    ctx.beginPath();
+    ctx.arc(0, 0, 5.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.strokeStyle = PALETTE.silverEdge;
+    ctx.lineWidth = 0.3;
+    for (let i = 0; i < 16; i++) {
+        const a = (i / 16) * Math.PI * 2;
+        const r1 = 5.5, r2 = 6.2;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(a) * r1, Math.sin(a) * r1);
+        ctx.lineTo(Math.cos(a) * r2, Math.sin(a) * r2);
+        ctx.stroke();
+    }
+    ctx.fillStyle = PALETTE.silverEdge;
+    ctx.beginPath();
+    ctx.ellipse(0, 0.5, 2, 2.8, 0, 0, Math.PI * 2);
+    ctx.fill();
+}
+
+function drawHumanSkull(ctx: CanvasRenderingContext2D) {
+    ctx.fillStyle = PALETTE.bone;
+    ctx.strokeStyle = PALETTE.boneDark;
+    ctx.lineWidth = 0.7;
+    ctx.beginPath();
+    ctx.ellipse(0, -2, 8, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-5, 4);
+    ctx.quadraticCurveTo(0, 9, 5, 4);
+    ctx.lineTo(4, 2.5);
+    ctx.lineTo(-4, 2.5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = PALETTE.stoneDark;
+    ctx.beginPath();
+    ctx.ellipse(-2.8, -2, 1.8, 2.2, 0, 0, Math.PI * 2);
+    ctx.ellipse(2.8, -2, 1.8, 2.2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(0, 0.5);
+    ctx.lineTo(-1.2, 3);
+    ctx.lineTo(1.2, 3);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = PALETTE.boneDark;
+    ctx.lineWidth = 0.4;
+    ctx.beginPath();
+    ctx.moveTo(-3, 5.5); ctx.lineTo(3, 5.5);
+    ctx.moveTo(-1.5, 5); ctx.lineTo(-1.5, 7);
+    ctx.moveTo(0, 5); ctx.lineTo(0, 7.5);
+    ctx.moveTo(1.5, 5); ctx.lineTo(1.5, 7);
+    ctx.stroke();
+}
+
+function drawPocketWatch(ctx: CanvasRenderingContext2D) {
+    ctx.fillStyle = PALETTE.brass;
+    ctx.strokeStyle = PALETTE.brassEdge;
+    ctx.lineWidth = 0.7;
+    ctx.beginPath();
+    ctx.arc(0, 0, 6.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(240,230,200,0.88)';
+    ctx.beginPath();
+    ctx.arc(0, 0, 5.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = PALETTE.brassEdge;
+    for (let i = 0; i < 12; i++) {
+        const a = (i / 12) * Math.PI * 2 - Math.PI / 2;
+        ctx.beginPath();
+        ctx.arc(Math.cos(a) * 4.2, Math.sin(a) * 4.2, 0.35, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    ctx.strokeStyle = PALETTE.stoneDark;
+    ctx.lineWidth = 0.7;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(0, 0); ctx.lineTo(-2, -2.5);
+    ctx.moveTo(0, 0); ctx.lineTo(3, 1.5);
+    ctx.stroke();
+    ctx.lineCap = 'butt';
+    ctx.strokeStyle = 'rgba(60,50,40,0.55)';
+    ctx.lineWidth = 0.4;
+    ctx.beginPath();
+    ctx.moveTo(-5, -3); ctx.lineTo(-1, 0); ctx.lineTo(2, 2); ctx.lineTo(5, 4);
+    ctx.stroke();
+    ctx.fillStyle = PALETTE.brassEdge;
+    ctx.fillRect(-0.8, -8, 1.6, 1.5);
+}
+
+function drawOilLamp(ctx: CanvasRenderingContext2D) {
+    ctx.fillStyle = PALETTE.iron;
+    ctx.strokeStyle = PALETTE.ironEdge;
+    ctx.lineWidth = 0.6;
+    ctx.beginPath();
+    ctx.moveTo(-5, 6);
+    ctx.lineTo(5, 6);
+    ctx.lineTo(4, 3);
+    ctx.lineTo(-4, 3);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-3.5, 3);
+    ctx.lineTo(3.5, 3);
+    ctx.lineTo(3, 0);
+    ctx.lineTo(-3, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(180,200,210,0.35)';
+    ctx.strokeStyle = PALETTE.silverEdge;
+    ctx.beginPath();
+    ctx.moveTo(-2.5, 0);
+    ctx.lineTo(-2.2, -5);
+    ctx.lineTo(-1.5, -6.5);
+    ctx.lineTo(1.5, -6.5);
+    ctx.lineTo(2.2, -5);
+    ctx.lineTo(2.5, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.strokeStyle = PALETTE.ironEdge;
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.arc(5, 1.5, 2, -Math.PI / 2, Math.PI / 2);
+    ctx.stroke();
+}
+
+function drawSmallKnife(ctx: CanvasRenderingContext2D) {
+    ctx.fillStyle = PALETTE.pot;
+    ctx.strokeStyle = PALETTE.potEdge;
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(-8, -1.2);
+    ctx.lineTo(-2, -1.4);
+    ctx.lineTo(-2, 1.4);
+    ctx.lineTo(-8, 1.2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = PALETTE.brassEdge;
+    ctx.beginPath();
+    ctx.arc(-6, 0, 0.4, 0, Math.PI * 2);
+    ctx.arc(-4, 0, 0.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = PALETTE.iron;
+    ctx.strokeStyle = PALETTE.ironEdge;
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(-2, -1.2);
+    ctx.lineTo(8, -0.4);
+    ctx.lineTo(8.8, 0);
+    ctx.lineTo(8, 0.6);
+    ctx.lineTo(-2, 1.2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = PALETTE.rust;
+    ctx.beginPath();
+    ctx.arc(2, 0, 0.5, 0, Math.PI * 2);
+    ctx.arc(5, 0.3, 0.4, 0, Math.PI * 2);
+    ctx.fill();
+}
+
+function drawMaskShard(ctx: CanvasRenderingContext2D) {
+    ctx.fillStyle = PALETTE.stoneDark;
+    ctx.beginPath();
+    ctx.moveTo(-7, -4);
+    ctx.quadraticCurveTo(0, -7, 7, -3);
+    ctx.lineTo(6, -1);
+    ctx.quadraticCurveTo(0, -4.5, -6, -2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = 'rgba(140,170,180,0.55)';
+    ctx.strokeStyle = 'rgba(80,100,110,0.8)';
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(-6, -2);
+    ctx.quadraticCurveTo(0, -4, 5, -1.5);
+    ctx.lineTo(4, 2);
+    ctx.lineTo(2, 5);
+    ctx.lineTo(-3, 3);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+    ctx.lineWidth = 0.3;
+    ctx.beginPath();
+    ctx.moveTo(-2, -1); ctx.lineTo(0, 1); ctx.lineTo(2, 3);
+    ctx.moveTo(0, 1); ctx.lineTo(-2, 2);
+    ctx.stroke();
+}
+
+function drawWaterFlask(ctx: CanvasRenderingContext2D) {
+    ctx.fillStyle = PALETTE.silver;
+    ctx.strokeStyle = PALETTE.silverEdge;
+    ctx.lineWidth = 0.6;
+    ctx.beginPath();
+    ctx.moveTo(-4, -4);
+    ctx.lineTo(4, -4);
+    ctx.lineTo(5, 7);
+    ctx.lineTo(-5, 7);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-2, -6);
+    ctx.lineTo(2, -6);
+    ctx.lineTo(2, -4);
+    ctx.lineTo(-2, -4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = PALETTE.ironEdge;
+    ctx.fillRect(-2.4, -7.2, 4.8, 1.4);
+    ctx.fillStyle = 'rgba(180,150,100,0.6)';
+    ctx.fillRect(-3.2, 0, 6.4, 3);
+    ctx.strokeStyle = PALETTE.silverEdge;
+    ctx.lineWidth = 0.3;
+    ctx.beginPath();
+    ctx.moveTo(-2, 4); ctx.quadraticCurveTo(-1, 5.5, 1, 4.5);
+    ctx.stroke();
+}
+
+function drawIronNail(ctx: CanvasRenderingContext2D) {
+    ctx.fillStyle = PALETTE.iron;
+    ctx.strokeStyle = PALETTE.ironEdge;
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(-3, -7);
+    ctx.lineTo(3, -7);
+    ctx.lineTo(2.5, -5.5);
+    ctx.lineTo(-2.5, -5.5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-1.2, -5.5);
+    ctx.lineTo(1.2, -5.5);
+    ctx.lineTo(0.4, 8);
+    ctx.lineTo(-0.4, 8);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = PALETTE.rust;
+    ctx.beginPath();
+    ctx.arc(0, -3, 0.5, 0, Math.PI * 2);
+    ctx.arc(0.3, 0, 0.4, 0, Math.PI * 2);
+    ctx.arc(-0.3, 3, 0.5, 0, Math.PI * 2);
+    ctx.arc(0, -6.3, 0.6, 0, Math.PI * 2);
+    ctx.fill();
+}
+
+function drawBrassCompass(ctx: CanvasRenderingContext2D) {
+    ctx.fillStyle = PALETTE.brass;
+    ctx.strokeStyle = PALETTE.brassEdge;
+    ctx.lineWidth = 0.7;
+    ctx.beginPath();
+    ctx.arc(0, 0, 7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(240,230,200,0.8)';
+    ctx.beginPath();
+    ctx.arc(0, 0, 5.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = PALETTE.brassEdge;
+    ctx.font = 'bold 3px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('N', 0, -4);
+    ctx.fillText('S', 0, 4);
+    ctx.fillText('E', 4, 0);
+    ctx.fillText('W', -4, 0);
+    ctx.textAlign = 'start';
+    ctx.textBaseline = 'alphabetic';
+    ctx.save();
+    ctx.rotate(0.3);
+    ctx.fillStyle = '#a03020';
+    ctx.beginPath();
+    ctx.moveTo(0, -4.5);
+    ctx.lineTo(-0.8, 0);
+    ctx.lineTo(0.8, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = PALETTE.stoneDark;
+    ctx.beginPath();
+    ctx.moveTo(0, 4.5);
+    ctx.lineTo(-0.8, 0);
+    ctx.lineTo(0.8, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    ctx.fillStyle = PALETTE.brassEdge;
+    ctx.beginPath();
+    ctx.arc(0, 0, 0.7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(60,50,40,0.45)';
+    ctx.lineWidth = 0.3;
+    ctx.beginPath();
+    ctx.moveTo(-5, -2); ctx.lineTo(2, 0); ctx.lineTo(5, 3);
+    ctx.stroke();
+}
+
+function drawLeatherBoot(ctx: CanvasRenderingContext2D) {
+    ctx.fillStyle = '#5a3b22';
+    ctx.strokeStyle = '#2e1f11';
+    ctx.lineWidth = 0.6;
+    ctx.beginPath();
+    ctx.moveTo(-6, -4);
+    ctx.lineTo(-3, -4);
+    ctx.lineTo(-2, 3);
+    ctx.lineTo(8, 3);
+    ctx.lineTo(9, 5);
+    ctx.lineTo(8, 6);
+    ctx.lineTo(-6, 6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#1d1108';
+    ctx.fillRect(-6, 5, 15, 1.2);
+    ctx.fillStyle = '#2e1f11';
+    ctx.beginPath();
+    ctx.arc(-5, -2, 0.4, 0, Math.PI * 2);
+    ctx.arc(-5, -0, 0.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#2e1f11';
+    ctx.lineWidth = 0.3;
+    ctx.beginPath();
+    ctx.moveTo(0, 3); ctx.quadraticCurveTo(2, 4.2, 5, 3.5);
+    ctx.moveTo(-4, 1); ctx.lineTo(-2, 2);
+    ctx.stroke();
+}
+
+function drawCross(ctx: CanvasRenderingContext2D) {
+    ctx.fillStyle = PALETTE.brass;
+    ctx.strokeStyle = PALETTE.brassEdge;
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.rect(-1, -7, 2, 14);
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.rect(-5, -2.5, 10, 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = PALETTE.gem;
+    ctx.beginPath();
+    ctx.arc(0, -1.5, 0.7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(90,140,100,0.6)';
+    ctx.beginPath();
+    ctx.arc(-0.4, 3, 0.5, 0, Math.PI * 2);
+    ctx.arc(3, -1.5, 0.4, 0, Math.PI * 2);
+    ctx.fill();
+}
+
+function drawAmulet(ctx: CanvasRenderingContext2D) {
+    ctx.strokeStyle = '#6a4f30';
+    ctx.lineWidth = 0.6;
+    ctx.beginPath();
+    ctx.moveTo(-4, -6); ctx.lineTo(0, -3); ctx.lineTo(4, -6);
+    ctx.stroke();
+    ctx.fillStyle = PALETTE.bone;
+    ctx.strokeStyle = PALETTE.boneDark;
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(-4, -2);
+    ctx.quadraticCurveTo(-5, 2, -3, 6);
+    ctx.quadraticCurveTo(0, 8, 3, 6);
+    ctx.quadraticCurveTo(5, 2, 4, -2);
+    ctx.quadraticCurveTo(0, -4.5, -4, -2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.strokeStyle = PALETTE.stoneDark;
+    ctx.lineWidth = 0.3;
+    ctx.beginPath();
+    ctx.moveTo(-2, 0); ctx.lineTo(2, 0);
+    ctx.moveTo(0, -0.5); ctx.lineTo(0, 4);
+    ctx.moveTo(-1.5, 2); ctx.lineTo(1.5, 2);
+    ctx.moveTo(-2, 4); ctx.lineTo(2, 4);
+    ctx.stroke();
+    ctx.fillStyle = PALETTE.stoneDark;
+    ctx.beginPath();
+    ctx.arc(0, -3, 0.5, 0, Math.PI * 2);
+    ctx.fill();
+}
+
+function drawIdolFigure(ctx: CanvasRenderingContext2D) {
+    ctx.fillStyle = PALETTE.stone;
+    ctx.strokeStyle = PALETTE.stoneDark;
+    ctx.lineWidth = 0.6;
+    ctx.beginPath();
+    ctx.moveTo(-4, 7);
+    ctx.lineTo(4, 7);
+    ctx.lineTo(3, 4);
+    ctx.lineTo(-3, 4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-2.5, 4);
+    ctx.lineTo(2.5, 4);
+    ctx.lineTo(2, -2);
+    ctx.lineTo(-2, -2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(0, -4, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = PALETTE.stoneDark;
+    ctx.beginPath();
+    ctx.arc(-1, -4.2, 0.5, 0, Math.PI * 2);
+    ctx.arc(1, -4.2, 0.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = PALETTE.stoneDark;
+    ctx.lineWidth = 0.3;
+    ctx.beginPath();
+    ctx.moveTo(-2, 0); ctx.lineTo(2, 0);
+    ctx.moveTo(-1.5, 2); ctx.lineTo(1.5, 2);
+    ctx.stroke();
+}
+
+function drawCrystal(ctx: CanvasRenderingContext2D) {
+    ctx.fillStyle = 'rgba(180,220,230,0.75)';
+    ctx.strokeStyle = 'rgba(80,120,140,0.9)';
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(0, -8);
+    ctx.lineTo(-2.5, -3);
+    ctx.lineTo(-2.5, 5);
+    ctx.lineTo(2.5, 5);
+    ctx.lineTo(2.5, -3);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(160,200,215,0.75)';
+    ctx.beginPath();
+    ctx.moveTo(-5, -4);
+    ctx.lineTo(-6.5, 0);
+    ctx.lineTo(-6.5, 5);
+    ctx.lineTo(-3.5, 5);
+    ctx.lineTo(-3.5, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(5, -5.5);
+    ctx.lineTo(3.5, -1);
+    ctx.lineTo(3.5, 5);
+    ctx.lineTo(6.5, 5);
+    ctx.lineTo(6.5, -1);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+    ctx.lineWidth = 0.4;
+    ctx.beginPath();
+    ctx.moveTo(0, -7); ctx.lineTo(0, 4);
+    ctx.stroke();
+}
+
+function drawCeramicBowl(ctx: CanvasRenderingContext2D) {
+    ctx.fillStyle = PALETTE.pot;
+    ctx.strokeStyle = PALETTE.potEdge;
+    ctx.lineWidth = 0.6;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 8, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#4a3220';
+    ctx.beginPath();
+    ctx.ellipse(0, 0.5, 6.5, 4.8, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(80,70,50,0.8)';
+    ctx.beginPath();
+    ctx.ellipse(0, 1.5, 4.5, 2.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = PALETTE.potEdge;
+    ctx.lineWidth = 0.3;
+    for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(a) * 7.2, Math.sin(a) * 5.4);
+        ctx.lineTo(Math.cos(a) * 7.8, Math.sin(a) * 5.85);
+        ctx.stroke();
+    }
+}
+
+function drawGlassBottle(ctx: CanvasRenderingContext2D) {
+    ctx.fillStyle = 'rgba(100,140,100,0.5)';
+    ctx.strokeStyle = 'rgba(50,80,50,0.85)';
+    ctx.lineWidth = 0.6;
+    ctx.beginPath();
+    ctx.moveTo(-3, -2);
+    ctx.lineTo(3, -2);
+    ctx.lineTo(3.5, 8);
+    ctx.lineTo(-3.5, 8);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-1.2, -6);
+    ctx.lineTo(1.2, -6);
+    ctx.lineTo(1.5, -2);
+    ctx.lineTo(-1.5, -2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(60,90,60,0.7)';
+    ctx.fillRect(-1.5, -7.2, 3, 1.4);
+    ctx.strokeRect(-1.5, -7.2, 3, 1.4);
+    ctx.fillStyle = 'rgba(220,220,220,0.65)';
+    ctx.beginPath();
+    ctx.arc(-1.5, 2, 0.35, 0, Math.PI * 2);
+    ctx.arc(0.5, 4, 0.4, 0, Math.PI * 2);
+    ctx.arc(1.8, 6, 0.3, 0, Math.PI * 2);
+    ctx.arc(-2, 5, 0.35, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+    ctx.lineWidth = 0.4;
+    ctx.beginPath();
+    ctx.moveTo(-2.4, 0); ctx.lineTo(-2.8, 6);
+    ctx.stroke();
+}
+
+function drawCoralChunk(ctx: CanvasRenderingContext2D) {
+    ctx.strokeStyle = '#c85040';
+    ctx.fillStyle = '#a04030';
+    ctx.lineWidth = 1.5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(0, 7);
+    ctx.lineTo(0, -2);
+    ctx.moveTo(0, 2); ctx.lineTo(-5, -3); ctx.moveTo(-5, -3); ctx.lineTo(-6, -6);
+    ctx.moveTo(-5, -3); ctx.lineTo(-3, -7);
+    ctx.moveTo(0, 0); ctx.lineTo(5, -4); ctx.moveTo(5, -4); ctx.lineTo(4, -7);
+    ctx.moveTo(5, -4); ctx.lineTo(7, -6);
+    ctx.moveTo(0, -2); ctx.lineTo(1, -7);
+    ctx.stroke();
+    ctx.fillStyle = '#d86050';
+    ctx.beginPath();
+    ctx.arc(-6, -6, 1, 0, Math.PI * 2);
+    ctx.arc(-3, -7, 0.8, 0, Math.PI * 2);
+    ctx.arc(4, -7, 0.9, 0, Math.PI * 2);
+    ctx.arc(7, -6, 1, 0, Math.PI * 2);
+    ctx.arc(1, -7, 0.8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.lineCap = 'butt';
+}
+
+function drawSharkTooth(ctx: CanvasRenderingContext2D) {
+    ctx.fillStyle = '#e8e0cc';
+    ctx.strokeStyle = '#8a7f68';
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(-3.5, 6);
+    ctx.lineTo(3.5, 6);
+    ctx.lineTo(0, -7);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#b0a58d';
+    ctx.beginPath();
+    ctx.moveTo(-3.5, 6);
+    ctx.lineTo(3.5, 6);
+    ctx.lineTo(3, 4);
+    ctx.lineTo(-3, 4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#8a7f68';
+    for (let i = 0; i < 4; i++) {
+        const y = -4 + i * 2;
+        ctx.beginPath();
+        ctx.moveTo(-2 + i * 0.35, y);
+        ctx.lineTo(-2.7 + i * 0.35, y + 0.3);
+        ctx.lineTo(-2 + i * 0.35, y + 0.8);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(2 - i * 0.35, y);
+        ctx.lineTo(2.7 - i * 0.35, y + 0.3);
+        ctx.lineTo(2 - i * 0.35, y + 0.8);
+        ctx.closePath();
+        ctx.fill();
+    }
+}
+
+function drawFishSkeleton(ctx: CanvasRenderingContext2D) {
+    ctx.strokeStyle = PALETTE.bone;
+    ctx.fillStyle = PALETTE.bone;
+    ctx.lineWidth = 1;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(-8, 0); ctx.lineTo(7, 0);
+    ctx.stroke();
+    for (let i = 0; i < 7; i++) {
+        const x = -6 + i * 2;
+        const len = 3 - Math.abs(i - 3) * 0.4;
+        ctx.beginPath();
+        ctx.moveTo(x, 0); ctx.lineTo(x, -len);
+        ctx.moveTo(x, 0); ctx.lineTo(x, len);
+        ctx.stroke();
+    }
+    ctx.fillStyle = PALETTE.bone;
+    ctx.strokeStyle = PALETTE.boneDark;
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(7, -3);
+    ctx.lineTo(10, 0);
+    ctx.lineTo(7, 3);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = PALETTE.stoneDark;
+    ctx.beginPath();
+    ctx.arc(8, 0, 0.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = PALETTE.bone;
+    ctx.beginPath();
+    ctx.moveTo(-8, 0);
+    ctx.lineTo(-11, -3);
+    ctx.lineTo(-11, 3);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.lineCap = 'butt';
+}
+
+function drawFossil(ctx: CanvasRenderingContext2D) {
+    ctx.fillStyle = PALETTE.stone;
+    ctx.strokeStyle = PALETTE.stoneDark;
+    ctx.lineWidth = 0.6;
+    ctx.beginPath();
+    ctx.moveTo(-7, -5);
+    ctx.lineTo(6, -6);
+    ctx.lineTo(8, 5);
+    ctx.lineTo(-6, 6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.strokeStyle = '#2a2520';
+    ctx.lineWidth = 0.6;
+    const cx = 0.5, cy = 0.5;
+    ctx.beginPath();
+    for (let t = 0; t < Math.PI * 4; t += 0.08) {
+        const r = 4.5 - t * 0.5;
+        if (r < 0.3) break;
+        const x = cx + Math.cos(t) * r;
+        const y = cy + Math.sin(t) * r;
+        if (t === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(40,35,30,0.6)';
+    ctx.lineWidth = 0.35;
+    for (let t = 0; t < Math.PI * 4; t += 0.5) {
+        const r = 4.5 - t * 0.5;
+        if (r < 0.5) break;
+        const x = cx + Math.cos(t) * r;
+        const y = cy + Math.sin(t) * r;
+        const ix = cx + Math.cos(t) * (r - 0.8);
+        const iy = cy + Math.sin(t) * (r - 0.8);
+        ctx.beginPath();
+        ctx.moveTo(x, y); ctx.lineTo(ix, iy);
+        ctx.stroke();
+    }
+}
+
+function drawObsidian(ctx: CanvasRenderingContext2D) {
+    ctx.fillStyle = '#18171c';
+    ctx.strokeStyle = '#0a090c';
+    ctx.lineWidth = 0.6;
+    ctx.beginPath();
+    ctx.moveTo(-6, -3);
+    ctx.lineTo(-3, -6);
+    ctx.lineTo(4, -5);
+    ctx.lineTo(7, 0);
+    ctx.lineTo(5, 5);
+    ctx.lineTo(-2, 6);
+    ctx.lineTo(-6, 2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(200,200,220,0.5)';
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(-3, -5); ctx.lineTo(0, 0); ctx.lineTo(5, 4);
+    ctx.moveTo(0, 0); ctx.lineTo(-5, 2);
+    ctx.moveTo(0, 0); ctx.lineTo(6, -2);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(220,220,240,0.75)';
+    ctx.beginPath();
+    ctx.arc(-2, -2, 0.5, 0, Math.PI * 2);
+    ctx.arc(3, 1.5, 0.4, 0, Math.PI * 2);
+    ctx.fill();
+}
+
+function drawCameraHousing(ctx: CanvasRenderingContext2D) {
+    ctx.fillStyle = '#2a2a28';
+    ctx.strokeStyle = '#0f0f0e';
+    ctx.lineWidth = 0.6;
+    ctx.beginPath();
+    ctx.moveTo(-7, -4);
+    ctx.lineTo(7, -4);
+    ctx.lineTo(7, 5);
+    ctx.lineTo(-7, 5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#0f0f0e';
+    ctx.beginPath();
+    ctx.arc(0, 0.5, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#7a7a78';
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.arc(0, 0.5, 3.5, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(0, 0.5, 2.2, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(100,120,130,0.55)';
+    ctx.beginPath();
+    ctx.arc(-0.8, -0.3, 1.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#4a4a48';
+    ctx.fillRect(4, -5.5, 1.8, 1.5);
+    ctx.strokeRect(4, -5.5, 1.8, 1.5);
+    ctx.fillStyle = '#c0c0bc';
+    ctx.fillRect(-6.2, -3.2, 1.8, 1.2);
+    ctx.strokeStyle = '#0a0a08';
+    ctx.lineWidth = 0.7;
+    ctx.beginPath();
+    ctx.moveTo(-5, 3); ctx.lineTo(-2, 4.2);
+    ctx.moveTo(3, 3.5); ctx.lineTo(5, 2);
+    ctx.stroke();
+    ctx.fillStyle = '#a03020';
+    ctx.fillRect(-6, -3.8, 3, 0.5);
+}
+
+// =============================================
 // 对外：每帧绘制所有图鉴物件（带视椒剞除）
 // =============================================
 export function drawRelicsWorld(
@@ -477,18 +1256,42 @@ export function drawRelicHintsWorld(
         else if (t > 0.7) a = 1 - (t - 0.7) / 0.3;
         if (a <= 0) continue;
 
-        // 小圆点前缀
-        ctx.fillStyle = 'rgba(255, 220, 150, ' + (a * 0.85).toFixed(3) + ')';
-        ctx.beginPath();
-        ctx.arc(h.x - 40, h.y, 2, 0, Math.PI * 2);
-        ctx.fill();
+        const isNew = (h as any).kind === 'newCodex';
 
-        // 文字：米色 + 淡黑影 + 淡描边避免淹没在亮岩石上
-        ctx.shadowColor = 'rgba(0,0,0,0.7)';
-        ctx.shadowBlur = 4;
-        ctx.fillStyle = 'rgba(255, 230, 175, ' + a.toFixed(3) + ')';
-        ctx.fillText(h.text, h.x, h.y);
-        ctx.shadowBlur = 0;
+        if (isNew) {
+            // 新图鉴：金色粗体 + 更大 + 轻微 scale 呼吸（入场 punch）
+            const tp = Math.min(1, t / 0.2);
+            const scale = 1 + (1 - tp) * 0.35;
+            ctx.save();
+            ctx.translate(h.x, h.y);
+            ctx.scale(scale, scale);
+            ctx.font = 'italic bold 15px Georgia, serif';
+            // 金色辉光
+            ctx.shadowColor = 'rgba(255, 200, 80, 0.9)';
+            ctx.shadowBlur = 10;
+            ctx.fillStyle = 'rgba(255, 230, 120, ' + a.toFixed(3) + ')';
+            ctx.fillText(h.text, 0, 0);
+            // 再叠一层黑色描边
+            ctx.shadowColor = 'rgba(0,0,0,0.8)';
+            ctx.shadowBlur = 4;
+            ctx.fillStyle = 'rgba(255, 245, 180, ' + a.toFixed(3) + ')';
+            ctx.fillText(h.text, 0, 0);
+            ctx.shadowBlur = 0;
+            ctx.restore();
+        } else {
+            // 普通发现：米色 Georgia
+            // 小圆点前缀
+            ctx.fillStyle = 'rgba(255, 220, 150, ' + (a * 0.85).toFixed(3) + ')';
+            ctx.beginPath();
+            ctx.arc(h.x - 40, h.y, 2, 0, Math.PI * 2);
+            ctx.fill();
+            // 文字
+            ctx.shadowColor = 'rgba(0,0,0,0.7)';
+            ctx.shadowBlur = 4;
+            ctx.fillStyle = 'rgba(255, 230, 175, ' + a.toFixed(3) + ')';
+            ctx.fillText(h.text, h.x, h.y);
+            ctx.shadowBlur = 0;
+        }
     }
 
     ctx.restore();

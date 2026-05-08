@@ -5,7 +5,7 @@
 import { state } from '../../core/state';
 import { ctx } from '../Canvas';
 import { getMazeMainThemeConfig } from '../../world/mazeScene';
-import { RELIC_TYPES, findRelicById } from '../../logic/Relic';
+import { RELIC_TYPES, findRelicById, getCodexFoundKindCount, getCodexTotalKindCount } from '../../logic/Relic';
 
 // 兼容微信小游戏的圆角矩形（本文件内部私有工具）
 function rrect(c: any, x: number, y: number, w: number, h: number, r: number) {
@@ -282,29 +282,33 @@ export function drawMazeDebrief(maze: any, cw: number, ch: number, time: number)
             tipY += 16;
         }
 
-        // === 图鉴：本次新发现物件 + 累计进度 ===
+        // === 图鉴：本次新发现物件 + 本次新增总图鉴 + 累计进度 ===
         const newRelicIds: number[] = Array.isArray((lastDive as any).newRelicIds)
             ? (lastDive as any).newRelicIds
             : [];
-        const totalRelicCount: number = Array.isArray((maze as any).relics)
-            ? (maze as any).relics.length : 0;
-        const discoveredCount: number = Array.isArray((maze as any).discoveredRelicIds)
-            ? (maze as any).discoveredRelicIds.length : 0;
+        // 统计本次发现的 kind 名字数量（不重复），用于"本次发现：Xxx×2、Yyy"文本拼接
+        const newKindNames: { [k: string]: number } = {};
+        for (const id of newRelicIds) {
+            const r = findRelicById(id);
+            if (!r) continue;
+            const def = RELIC_TYPES[r.kind];
+            if (!def) continue;
+            newKindNames[def.name] = (newKindNames[def.name] || 0) + 1;
+        }
+        // 本次新增总图鉴 = 从 diveHistory 读出的 newCodexKindCount（准确值，由 MazeLogic.finishMazeDive 写入）
+        // 老存档没有这个字段时兜底为 0
+        const newCodexCount: number = typeof (lastDive as any).newCodexKindCount === 'number'
+            ? (lastDive as any).newCodexKindCount
+            : 0;
+        const codexFound = getCodexFoundKindCount();
+        const codexTotal = getCodexTotalKindCount();
 
+        // 第一行：本次发现的具体物件
         if (newRelicIds.length > 0) {
-            // 拼出名字（去重 + 按名字归并）
-            const nameCount: Record<string, number> = {};
-            for (const id of newRelicIds) {
-                const r = findRelicById(id);
-                if (!r) continue;
-                const def = RELIC_TYPES[r.kind];
-                if (!def) continue;
-                nameCount[def.name] = (nameCount[def.name] || 0) + 1;
-            }
             const parts: string[] = [];
-            for (const name in nameCount) {
-                if (Object.prototype.hasOwnProperty.call(nameCount, name)) {
-                    const n = nameCount[name];
+            for (const name in newKindNames) {
+                if (Object.prototype.hasOwnProperty.call(newKindNames, name)) {
+                    const n = newKindNames[name];
                     parts.push(n > 1 ? `${name}×${n}` : name);
                 }
             }
@@ -314,10 +318,25 @@ export function drawMazeDebrief(maze: any, cw: number, ch: number, time: number)
             tipY += 16;
         }
 
-        if (totalRelicCount > 0) {
+        // 第二行：金色大字高亮“本次新增图鉴 X 种”（只有 > 0 时才出）
+        if (newCodexCount > 0) {
+            ctx.save();
+            ctx.font = 'italic bold 14px Georgia, serif';
+            ctx.shadowColor = 'rgba(255, 200, 80, 0.9)';
+            ctx.shadowBlur = 10;
+            ctx.fillStyle = 'rgba(255, 230, 120, 0.95)';
+            ctx.fillText(`★ 本次新增图鉴 ${newCodexCount} 种 ★`, cw / 2, tipY);
+            ctx.shadowBlur = 0;
+            ctx.restore();
+            tipY += 20;
+        }
+
+        // 第三行：总图鉴进度
+        if (codexTotal > 0) {
             ctx.font = '11px Arial';
-            ctx.fillStyle = 'rgba(160,200,240,0.55)';
-            ctx.fillText(`本关图鉴进度 ${discoveredCount} / ${totalRelicCount}`, cw / 2, tipY);
+            const isMax = codexFound >= codexTotal;
+            ctx.fillStyle = isMax ? 'rgba(255, 220, 120, 0.95)' : 'rgba(160,200,240,0.7)';
+            ctx.fillText(`图鉴进度 ${codexFound} / ${codexTotal}`, cw / 2, tipY);
         }
     }
 

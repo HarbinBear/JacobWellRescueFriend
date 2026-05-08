@@ -36,6 +36,8 @@ export {
 export {
     getCodexEntryBtnRect,
     getCodexCloseBtnRect,
+    getCodexCellCount,
+    getCodexCellRectByIndex,
 } from './mazeUI/codex';
 
 // 确保迷宫模式 HUD 管理器已初始化（仅初始化一次，跨会话也只初始化一次）

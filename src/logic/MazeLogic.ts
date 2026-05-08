@@ -12,7 +12,7 @@ import { updateCameraSpringArm, snapCameraToPlayer, getAdaptiveZoom } from './Ca
 import { updateMarkers, updateWheelButtonVisibility } from './Marker';
 import { createFishEnemy, findMazeFishSpawnPosition, updateAllFishEnemies, generateFishDens } from './FishEnemy';
 import { buildOxygenTanksForMaze, updateOxygenTanks, createOxygenFeedback, triggerO2LossFlash } from './OxygenTank';
-import { buildRelicsForMaze, updateRelicDiscovery, resetRelicDiscoveryForDive, getThisDiveNewRelicIds } from './Relic';
+import { buildRelicsForMaze, updateRelicDiscovery, resetRelicDiscoveryForDive, getThisDiveNewRelicIds, getThisDiveNewCodexCount } from './Relic';
 import { updateLifeDetector, resetLifeDetector } from './LifeDetector';
 import { playSFX } from '../audio/AudioManager';
 import { triggerCollisionImpact, resetCollisionImpact } from './CollisionImpact';
@@ -111,13 +111,16 @@ export function resetMazeLogic() {
             state.mazeRescue.oxygenFeedback = createOxygenFeedback();
 
             // 图鉴物件：从主 seed 派生 ^0x5EED1CE0 确定性重建
-            // discoveredRelicIds 从存档读取（若老存档缺失字段则兜底空数组）
+            // discoveredRelicIds / codexKinds 从存档读取（若老存档缺失字段则兼底空数组）
             (state.mazeRescue as any).relics = buildRelicsForMaze(state.mazeRescue.seed);
             if (!Array.isArray((state.mazeRescue as any).discoveredRelicIds)) {
                 (state.mazeRescue as any).discoveredRelicIds = [];
             }
+            if (!Array.isArray((state.mazeRescue as any).codexKinds)) {
+                (state.mazeRescue as any).codexKinds = [];
+            }
+            (state.mazeRescue as any).codexSelectedKind = null;
         }
-
         // 救援概念包装：老存档缺失字段时兜底（seed 已经有了，caseNumber 随 seed 固定）
         const mr: any = state.mazeRescue as any;
         if (!mr.caseNumber) mr.caseNumber = buildCaseNumberFromSeed(mr.seed || 0);
@@ -213,6 +216,12 @@ export function resetMazeLogic() {
         }
     }
 
+    // 保留"总图鉴"跨关累计：换新地图时 relics/discoveredRelicIds 清空，但 codexKinds 保留
+    // （codexKinds 记录玩家历史上累计见过的 kind 集合，是跨关的"成就进度"）
+    const preservedCodexKinds: string[] = Array.isArray((state.mazeRescue as any)?.codexKinds)
+        ? (state.mazeRescue as any).codexKinds.slice()
+        : [];
+
     // 初始化迷宫专属状态 —— 直接进入岸上阶段
     state.mazeRescue = {
         phase: 'shore',
@@ -293,6 +302,8 @@ export function resetMazeLogic() {
         // 图鉴物件占位：后面紧跟着用派生 seed 生成
         relics: [],
         discoveredRelicIds: [],
+        codexKinds: [],             // 总图鉴（跨关累积）：新地图则不清，由读档分支恢复
+        codexSelectedKind: null,    // 图鉴详情卡选中的 kind
     };
 
     // 生成食人鱼聚集点（需要 state.mazeRescue 已挂载；跨下潜保留，换地图时重建）
@@ -312,8 +323,11 @@ export function resetMazeLogic() {
     state.mazeRescue.oxygenFeedback = createOxygenFeedback();
 
     // 图鉴物件：新地图新 seed，discoveredRelicIds 清空，按主 seed 派生生成
+    // codexKinds 是"总图鉴"跨关累计，使用前面保存的 preservedCodexKinds 恢复
     (state.mazeRescue as any).relics = buildRelicsForMaze(mazeData.seed);
     (state.mazeRescue as any).discoveredRelicIds = [];
+    (state.mazeRescue as any).codexKinds = preservedCodexKinds;
+    (state.mazeRescue as any).codexSelectedKind = null;
 
     // 初始化 NPC（被救者，岸上阶段不激活）
     state.npc.active = false;
@@ -624,6 +638,8 @@ function finishMazeDive(returnReason: string) {
         finishAt: Date.now(),
         // 本次下潜新发现的图鉴物件 id 列表（用于 debrief 页展示"本次新发现"）
         newRelicIds: getThisDiveNewRelicIds(),
+        // 本次下潜新增总图鉴 kind 数（首次见过的种类数），用于结算页金色高亮"本次新增图鉴 X 种"
+        newCodexKindCount: getThisDiveNewCodexCount(),
     } as any);
 
     // 只保留最近 5 次下潜记录，超过的把最老的挤掉（FIFO）

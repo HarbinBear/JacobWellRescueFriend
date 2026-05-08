@@ -5,7 +5,7 @@ const systemInfo = wx.getSystemInfoSync();
 
 export const baseConfig = {
     // 版本信息
-    version: 'v1.0.15',
+    version: 'v1.0.16',
 
     // 画布设置 (竖屏适配)
     screenWidth: systemInfo.windowWidth,

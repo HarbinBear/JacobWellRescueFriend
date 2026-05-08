@@ -5,6 +5,7 @@ import { DEBUG_FISH_BTN, ATTACK_BTN, FLASHLIGHT_BTN } from '../render/RenderUI';
 import { isGMOpen, handleGMTouchStart, handleGMTouchMove, handleGMTouchEnd } from '../gm/GMPanel';
 import { handleHUDTouchStart, handleHUDTouchMove, handleHUDTouchEnd } from '../render/HUDTopLeft';
 import { buildWheelSectors, executeWheelAction } from '../logic/Marker';
+import { ALL_RELIC_KINDS } from '../logic/Relic';
 import { getWheelBtnPos } from '../render/RenderWheel';
 import {
     getBriefingAcceptBtnRect,
@@ -14,6 +15,8 @@ import {
     getAbandonedAcceptBtnRect,
     getCodexEntryBtnRect,
     getCodexCloseBtnRect,
+    getCodexCellCount,
+    getCodexCellRectByIndex,
 } from '../render/RenderMazeUI';
 import { playSFX } from '../audio/AudioManager';
 
@@ -808,15 +811,35 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
 
                 // ---- 图鉴全屏页打开时的分发 ----
                 if (maze.codexOpen) {
+                    const selKind: string | null = (maze as any).codexSelectedKind || null;
+                    // 详情卡已开：点任何地方都关详情卡（不关整页）
+                    if (selKind) {
+                        playSFX('uiSecondary');
+                        (maze as any).codexSelectedKind = null;
+                        return;
+                    }
+                    // 点返回按钮：关整个图鉴页
                     const cr = getCodexCloseBtnRect();
                     if (tx >= cr.x && tx <= cr.x + cr.w && ty >= cr.y && ty <= cr.y + cr.h) {
                         playSFX('uiSecondary');
                         maze.codexOpen = false;
                         return;
                     }
-                    // 点击其它区域也关闭图鉴（约定跟下潜记录列表一样克制）
-                    playSFX('uiSecondary');
-                    maze.codexOpen = false;
+                    // 点某一格：选中这种，弹详情卡
+                    const total = getCodexCellCount();
+                    for (let i = 0; i < total; i++) {
+                        const rect = getCodexCellRectByIndex(cw, ch, i);
+                        if (!rect) continue;
+                        if (tx >= rect.x && tx <= rect.x + rect.w && ty >= rect.y && ty <= rect.y + rect.h) {
+                            const kind = ALL_RELIC_KINDS[i];
+                            if (kind) {
+                                playSFX('uiPrimary');
+                                (maze as any).codexSelectedKind = kind;
+                            }
+                            return;
+                        }
+                    }
+                    // 点其它空白：保持页面打开，不做任何动作（只有显式点"返回"才关）
                     return;
                 }
 

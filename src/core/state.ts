@@ -329,9 +329,13 @@ export const state = {
 
         // === 场景图鉴物件（由派生 seed 确定性生成，跨下潜保留） ===
         // relics：本地图所有物件（运行时，不进存档；靠 seed 重建）
-        // discoveredRelicIds：已发现物件 ID 列表，跨下潜累积，进存档
+        // discoveredRelicIds：已发现本关物件 ID 列表（本关作用域，换关清空）
+        // codexKinds：总图鉴 kind 集合（跨关累计，进存档）；32 种中哪些已被玩家发现
+        // codexSelectedKind：当前图鉴详情卡选中的 kind；null=未选中；不跨 session 持久化
         relics: any[];
         discoveredRelicIds: number[];
+        codexKinds: string[];
+        codexSelectedKind: string | null;
 
         // === 本次下潜运行态数据 ===
         playerPath: {x: number, y: number}[]; // 记录玩家移动轨迹

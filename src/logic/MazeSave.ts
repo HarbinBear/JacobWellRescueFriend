@@ -266,6 +266,7 @@ interface PackedDive {
     npcFoundAtEnd: boolean;
     finishAt: number;
     newRelicIds?: number[];            // 本次下潜新发现的图鉴物件 id 列表
+    newCodexKindCount?: number;        // 本次下潜新增总图鉴 kind 数（成就感金色高亮用）
 }
 
 interface PackedMaze {
@@ -348,6 +349,7 @@ export function saveMazeProgress(): boolean {
             npcFoundAtEnd: !!d.npcFoundAtEnd,
             finishAt: d.finishAt || 0,
             newRelicIds: Array.isArray((d as any).newRelicIds) ? (d as any).newRelicIds.slice() : [],
+            newCodexKindCount: typeof (d as any).newCodexKindCount === 'number' ? (d as any).newCodexKindCount : 0,
         });    }
 
     // 收集其它小字段（剔除所有能从种子重建或已经单独压缩的大字段）
@@ -528,6 +530,7 @@ export function loadMazeProgress(): boolean {
             npcFoundAtEnd: !!d.npcFoundAtEnd,
             finishAt: d.finishAt || 0,
             newRelicIds: Array.isArray((d as any).newRelicIds) ? (d as any).newRelicIds.slice() : [],
+            newCodexKindCount: typeof (d as any).newCodexKindCount === 'number' ? (d as any).newCodexKindCount : 0,
         });
     }
     maze.diveHistory = realHistory;
