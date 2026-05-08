@@ -16,6 +16,7 @@ import { CONFIG } from '../core/config';
 import { state, player } from '../core/state';
 import { srand, setActiveSeededRandom, clearActiveSeededRandom } from '../core/SeededRandom';
 import { checkMazeCollision } from './Collision';
+import { playSFX } from '../audio/AudioManager';
 
 // =============================================
 // 数据结构
@@ -573,6 +574,9 @@ export function triggerO2LossFlash(fromO2: number, toO2: number): void {
 function completeInstall(t: OxygenTank, fb: OxygenFeedback) {
     t.consumed = true;
     t.isBeingInstalled = false;
+    // 拾取音效：高压气体嘶声 + 阀门机械咔哒
+    // 前剪 0.2s，跳过音频开头的拖尾静音/淡入段，让触发感更直接
+    playSFX('oxygenRefill', { startTime: 0.2 });
     // 写入 consumedTankIds，方便存档持久化
     const maze = state.mazeRescue;
     if (maze) {

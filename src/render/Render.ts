@@ -2,7 +2,7 @@ import { CONFIG } from '../core/config';
 import { state, player, particles, touches } from '../core/state';
 import { canvas, ctx, dpr, logicW, logicH } from './Canvas';
 import { isLineOfSight, getLightPolygon } from './RenderLight';
-import { initWebGLLight, isWebGLAvailable, uploadPolyData, uploadVPLData, renderLightMask, renderVolumetricLight, getGLCanvas, getGLCanvasPixelSize } from './WebGLLight';
+import { initWebGLLight, isWebGLAvailable, uploadPolyData, uploadVPLData, renderLightMask, renderVolumetricLight, getGLCanvas, getVolGLCanvas, getGLCanvasPixelSize } from './WebGLLight';
 import { drawDiver } from './RenderDiver';
 import { drawUI, drawControls, drawSlashEffect } from './RenderUI';
 import { drawRopesWorld, drawRopeButton } from './RenderRope';
@@ -564,16 +564,29 @@ export function draw() {
         });
         profileEnd('light.volPass');
         
-        // --- light.volCompose: 体积光 drawImage 合成（screen 模式）---
+        // --- light.volCompose: 体积光 drawImage 合成 ---
+        // 合成模式走 CONFIG.postProcess.volCompositeMode：
+        // - 'screen'  柔和饱和上限（桌面/安卓/iOS 现在都可用）
+        // - 'lighter' additive 加法合成，视觉接近 screen，高光区更亮，依赖 tone mapping 压回来
+        // 默认 'lighter'。
+        //
+        // iOS 体积光修复关键：遮罩 pass 和体积光 pass 各自用独立的 WebGL canvas
+        //   - getVolGLCanvas() 返回体积光专属 canvas
+        //   - getGLCanvas()     返回遮罩专属 canvas
+        // 两次 drawImage 从两张不同的源 canvas 读取，即便 iOS WebKit 对 drawImage(WebGLCanvas)
+        // 做延迟/引用式读取也不会互相污染（老架构两 pass 共用一张 canvas，导致 iOS 延迟读取到
+        // 遮罩 pass 最后一次 clear 后的内容，体积光完全消失）。
         profileBegin('light.volCompose');
         ctx.save();
-        ctx.globalCompositeOperation = 'screen';
         {
             const glSize = getGLCanvasPixelSize();
-            ctx.drawImage(getGLCanvas() as unknown as CanvasImageSource, 0, 0, glSize.w, glSize.h, 0, 0, logicW, logicH);
+            const pp: any = CONFIG.postProcess;
+            // 体积光从独立的 vol canvas 合成（不再与遮罩共用 canvas）
+            ctx.globalCompositeOperation = (pp.volCompositeMode === 'screen' ? 'screen' : 'lighter') as GlobalCompositeOperation;
+            ctx.drawImage(getVolGLCanvas() as unknown as CanvasImageSource, 0, 0, glSize.w, glSize.h, 0, 0, logicW, logicH);
         }
         ctx.restore();
-        profileEnd('light.volCompose');        
+        profileEnd('light.volCompose');
         // --- light.maskPass: 遮罩层 WebGL draw call ---
         profileBegin('light.maskPass');
         renderLightMask({

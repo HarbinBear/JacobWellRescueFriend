@@ -19,9 +19,9 @@ export const baseConfig = {
 
     // ===== 主菜单解锁配置 =====
     menuUnlock: {
-        startGame: true,       // 开始游戏是否解锁
-        chapterSelect: true,   // 章节选择是否解锁
-        fishArena: true,       // 食人鱼竞技场是否解锁
+        startGame: false,       // 开始游戏是否解锁
+        chapterSelect: false,   // 章节选择是否解锁
+        fishArena: false,       // 食人鱼竞技场是否解锁
         mazeMode: true,        // 迷宫纯享版是否解锁
     },
 

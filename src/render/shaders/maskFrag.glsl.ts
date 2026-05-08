@@ -259,6 +259,7 @@ void main() {
     float lightPow = pow(lightClamped, u_maskPow);
     float finalAlpha = darkness * mix(1.0, u_maskMinAlpha, lightPow);
     
+    // 非预乘 alpha 输出：遮罩层在所有平台都已验证工作，保持不变
     gl_FragColor = vec4(finalColor, finalAlpha);
 }
 `;

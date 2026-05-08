@@ -18,7 +18,7 @@ import { CONFIG } from '../core/config';
 import { state } from '../core/state';
 
 type AudioKey = 'menuBGM';
-type SFXKey = 'diveSplash' | 'collisionRock' | 'collisionBreath' | 'quickReturn' | 'uiPrimary' | 'uiSecondary';
+type SFXKey = 'diveSplash' | 'collisionRock' | 'collisionBreath' | 'quickReturn' | 'uiPrimary' | 'uiSecondary' | 'oxygenRefill' | 'fishBiteDie';
 // SFX-Loop：常驻循环、可实时调整音量与播放速率（呼吸气泡等）
 type SFXLoopKey = 'breathLoop';
 // Ambience：常驻低音量环境音（鸟鸣、流水等），独立于 BGM 与 SFX，由 phase 驱动开关
@@ -134,7 +134,7 @@ const SFX_ENTRIES: Record<SFXKey, SFXEntry> = {
         urlResolving: false,
         pendingPlay: false,
     },
-    // UI 次按钮点击音（取消/关闭/返回/Tab/折叠 等辅助操作）
+    // UI 次按钮（取消/关闭/返回/Tab 切换/折叠）：更轻更短更干的 "嗒" 声
     uiSecondary: {
         path: 'audio/SubBtn.mp3',
         ctx: null,
@@ -142,8 +142,23 @@ const SFX_ENTRIES: Record<SFXKey, SFXEntry> = {
         urlResolving: false,
         pendingPlay: false,
     },
+    // 拾取氧气瓶：高压气体快速灌入钢瓶的嘶声 + 阀门拧紧的机械咔哒
+    oxygenRefill: {
+        path: 'audio/GetO2.mp3',
+        ctx: null,
+        srcReady: false,
+        urlResolving: false,
+        pendingPlay: false,
+    },
+    // 被食人鱼咬死：湿润咔嚓 + 被掐断闷惨叫 + 水花翻腾 + 低频嗡鸣 + 远气泡
+    fishBiteDie: {
+        path: 'audio/FishBiteManDie.mp3',
+        ctx: null,
+        srcReady: false,
+        urlResolving: false,
+        pendingPlay: false,
+    },
 };
-
 // SFX-Loop 清单（循环音效，可实时调整）
 const SFX_LOOP_ENTRIES: Record<SFXLoopKey, SFXLoopEntry> = {
     breathLoop: {
@@ -442,9 +457,10 @@ function _resolveAndApplySFXCloudURL(key: SFXKey): void {
     });
 }
 
-// 内部：真正执行 SFX 播放（stop -> seek(0) -> play）
+// 内部：真正执行 SFX 播放（stop -> seek(startTime) -> play）
 // options 可选地覆盖音量（0~1，会与 CONFIG.audio.sfxVolume 相乘）与播放速率（0.5~2.0）
-function _actuallyPlaySFX(key: SFXKey, options?: { volume?: number; playbackRate?: number }): void {
+// startTime（秒）：强制从音频的某个位置起播，用来削掉音频开头的拖尾部分
+function _actuallyPlaySFX(key: SFXKey, options?: { volume?: number; playbackRate?: number; startTime?: number }): void {
     const entry = SFX_ENTRIES[key];
     if (!entry || !entry.ctx || !entry.srcReady) return;
     try {
@@ -452,20 +468,29 @@ function _actuallyPlaySFX(key: SFXKey, options?: { volume?: number; playbackRate
         if (state.audio.muted) return;
         const volScale = options && typeof options.volume === 'number' ? Math.max(0, Math.min(1, options.volume)) : 1;
         entry.ctx.volume = Math.max(0, Math.min(1, CONFIG.audio.sfxVolume * volScale));
-        // 播放速率（InnerAudioContext 手机端可能不生效，浏览器兜底路径生效）
+        // 播放速率（InnerAudioContext 手机端可能不生效，浏览器兼底路径生效）
         if (options && typeof options.playbackRate === 'number') {
             const rate = Math.max(0.5, Math.min(2.0, options.playbackRate));
             try { entry.ctx.playbackRate = rate; } catch (e) { /* 忽略不支持的路径 */ }
         }
-        // 尝试把播放头拉回起点：InnerAudioContext 支持 stop()/seek(0)
+        // 起播位置：默认 0；若传了 startTime 则从该位置起播（单位秒）
+        const startAt = options && typeof options.startTime === 'number' && options.startTime > 0
+            ? options.startTime
+            : 0;
+        // 尝试把播放头拉到指定位置：InnerAudioContext 支持 stop()/seek(t)
         try { entry.ctx.stop(); } catch (e) { /* 忽略 */ }
-        try { if (typeof entry.ctx.seek === 'function') entry.ctx.seek(0); } catch (e) { /* 忽略 */ }
+        try { if (typeof entry.ctx.seek === 'function') entry.ctx.seek(startAt); } catch (e) { /* 忽略 */ }
+        // 浏览器兼底（HTMLAudioElement）没有 seek，但有 currentTime
+        try {
+            if (typeof entry.ctx.seek !== 'function' && 'currentTime' in entry.ctx) {
+                (entry.ctx as any).currentTime = startAt;
+            }
+        } catch (e) { /* 忽略 */ }
         entry.ctx.play();
     } catch (e) {
         console.warn('[Audio] SFX 播放失败:', e);
     }
 }
-
 // ===== 播放控制 =====
 
 // 请求播放某个 BGM；若已是当前 BGM 则保持
@@ -500,9 +525,9 @@ export function stopBGM(): void {
 }
 
 // 播放一次性音效（SFX）。静音时直接跳过；云 URL 未就绪时挂起，就绪后立刻触发一次。
-// options 可选：volume（0~1，最终音量 = sfxVolume * volume）、playbackRate（0.5~2.0）
+// options 可选：volume（0~1，最终音量 = sfxVolume * volume）、playbackRate（0.5~2.0）、startTime（秒，从该位置起播，用来削掉音频开头的拖尾）
 // 若 URL 还没就绪，仅在"首次触发"时挂起 pending（不带动态参数），避免后续动态参数丢失
-export function playSFX(key: SFXKey, options?: { volume?: number; playbackRate?: number }): void {
+export function playSFX(key: SFXKey, options?: { volume?: number; playbackRate?: number; startTime?: number }): void {
     if (state.audio.muted) return;
     const entry = SFX_ENTRIES[key];
     if (!entry || !entry.ctx) return;

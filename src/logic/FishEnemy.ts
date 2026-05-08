@@ -1011,6 +1011,9 @@ function triggerPlayerBitten(fish: FishEnemy) {
     if (state.fishBite && state.fishBite.active && state.fishBite.phase === 'dead') {
         return;
     }
+    // 咬击音效：仅在"从非活跃 → 进入 bite"的那一帧响一次，避免同一次咬住期间多条鱼重复触发
+    // 单鱼后续循环咬（biteCount++）也不会再响，只响开场那一口，对应用户要的"冲击声"
+    const shouldPlay = !state.fishBite || !state.fishBite.active;
     if (!state.fishBite) {
         state.fishBite = {
             active: true,
@@ -1023,6 +1026,10 @@ function triggerPlayerBitten(fish: FishEnemy) {
     state.fishBite.phase = 'bite';
     state.fishBite.timer = 0;
     state.fishBite.shakeIntensity = 15;
+    if (shouldPlay) {
+        // 鱼冲过来咬住玩家的第一口：湿润咔嚓 + 闷惨叫 + 水花翻腾 + 低频嗡鸣
+        playSFX('fishBiteDie');
+    }
 }
 
 // =============================================
@@ -1030,6 +1037,7 @@ function triggerPlayerBitten(fish: FishEnemy) {
 // =============================================
 function triggerPlayerDeath(fish: FishEnemy) {
     if (!state.fishBite) return;
+    // 死亡音效已移到 triggerPlayerBitten（冲击的第一口），这里不再重复播放
     state.fishBite.phase = 'dead';
     state.fishBite.timer = 0;
 }

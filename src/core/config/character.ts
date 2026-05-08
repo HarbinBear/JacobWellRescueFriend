@@ -198,6 +198,10 @@ export const characterConfig = {
                 uiPrimary: 'cloud://cloud1-d8gh6fpnh6d0928e8.636c-cloud1-d8gh6fpnh6d0928e8-1424920608/audio/MainBtn.mp3',
                 // UI 次按钮（取消/关闭/返回/Tab 切换/折叠）：更轻更短更干的 "嗒" 声
                 uiSecondary: 'cloud://cloud1-d8gh6fpnh6d0928e8.636c-cloud1-d8gh6fpnh6d0928e8-1424920608/audio/SubBtn.mp3',
+                // 拾取氧气瓶：高压气体嘶声 + 阀门机械咔哒（纯物理反馈，无旋律）
+                oxygenRefill: 'cloud://cloud1-d8gh6fpnh6d0928e8.636c-cloud1-d8gh6fpnh6d0928e8-1424920608/audio/GetO2.mp3',
+                // 被食人鱼咬死：湿润冲击 + 被掐断闷惨叫 + 水花翻腾 + 低频不祥嗡鸣
+                fishBiteDie: 'cloud://cloud1-d8gh6fpnh6d0928e8.636c-cloud1-d8gh6fpnh6d0928e8-1424920608/audio/FishBiteManDie.mp3',
             } as Record<string, string>,
         },
     },

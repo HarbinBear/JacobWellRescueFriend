@@ -174,7 +174,15 @@ void main() {
     }
 
     float a = max(color.r, max(color.g, color.b));
-    if (a < 0.001) discard;
+
+    // 非预乘 alpha 输出 + 不用 discard：
+    // 某些 iOS GPU（PowerVR 系）对 fragment shader 的 discard 语句在后续走 drawImage + 合成
+    // 这条路径时有渲染 bug，会导致整个 WebGL canvas 被判定为"不可作为合成源"进而完全看不到。
+    // 把 discard 改成直接输出 vec4(0)，让所有像素都走正常的 blend 流程，兼容性最好。
+    if (a < 0.001) {
+        gl_FragColor = vec4(0.0);
+        return;
+    }
     gl_FragColor = vec4(color, a);
 }
 `;

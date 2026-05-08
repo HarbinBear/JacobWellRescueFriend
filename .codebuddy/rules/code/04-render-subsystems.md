@@ -466,7 +466,7 @@ GM 面板里 **"手动挡"** 和 **"角色"** 两个 Tab 都已同步更新到�
 光照系统采用 **Canvas 2D + WebGL 混合架构**：
 
 - **CPU 端**（`RenderLight.ts`）：射线碰撞检测（`getLightPolygon`）、泥沙衰减计算（`computeSiltAttenuation`）、视线检测（`isLineOfSight`）
-- **GPU 端**（`WebGLLight.ts`）：用独立 WebGL canvas 渲染光照遮罩和体积光，通过 fragment shader 在一个 draw call 中完成手电筒光锥、自身发光、环境感知、漫散射、VPL 反弹光；同时负责自动曝光的 CPU 端估算（`computeExposure()`）
+- **GPU 端**（`WebGLLight.ts`）：用**两张独立的 WebGL canvas**（遮罩层与体积光层各一张，各持一套 gl context / program / buffers / textures）分别渲染光照遮罩和体积光，通过 fragment shader 在一个 draw call 中完成手电筒光锥、自身发光、环境感知、漫散射、VPL 反弹光；同时负责自动曝光的 CPU 端估算（`computeExposure()`）。两张 canvas 分别由 `getGLCanvas()` / `getVolGLCanvas()` 导出给 `Render.ts` 的 drawImage 合成使用。详见本节下方"iOS 体积光修复：双 WebGL canvas 架构"。
 - **Shader 文件**（`src/render/shaders/`）：`.glsl` 为原始 shader 源码，`.glsl.ts` 为 TypeScript 导出版本，两者需保持同步
 - **合成**：WebGL canvas 通过 `drawImage` 合成到主 Canvas 2D 画布
 
@@ -500,6 +500,35 @@ WebGL canvas 在微信小游戏手机端有两个必须遵守的兼容性约束�
 1. **`preserveDrawingBuffer: true` 是必须的**。WebGL 规范默认 `preserveDrawingBuffer: false`，意味着每次合成操作后 drawing buffer 会被自动清空。在手机 GPU 上，`drawImage` 读取 WebGL canvas 时如果 buffer 已被清空就会读到空白。桌面端通常有隐式 buffer 保留所以不会暴露问题，但手机端严格遵循规范。因此 `getContext('webgl')` 必须传入 `{ preserveDrawingBuffer: true }`。
 
 2. **每次 `drawArrays` 后必须调用 `gl.flush()`**。手机 GPU 的 `drawArrays` 只是把命令提交到命令队列，不保证立即执行完毕。如果紧接着用 `ctx.drawImage(glCanvas)` 读取，GPU 可能还没渲染完。`gl.flush()` 确保命令队列被提交执行。
+
+#### iOS 体积光修复：双 WebGL canvas 架构
+
+**背景**：历史上遮罩 pass 和体积光 pass 共用同一张 glCanvas（先渲染体积光 → drawImage 合成 → 清空后渲染遮罩 → drawImage 合成）。这套流程在安卓 / macOS / Windows 上正常，但在 iOS 真机（iPhone16 / iPadAir3 均复现）上体积光完全不显示（`light.volPass` 耗时正常约 8ms，遮罩仍正常显示，只有体积光消失）。
+
+**根因**：iOS WebKit 对 `ctx.drawImage(WebGLCanvas, ...)` 不是立即复制像素，而是**延迟/引用式读取**——先记住源 canvas 引用，等主画布真正提交显示时才去源 canvas 读取像素。由于两个 pass 共用一张 glCanvas，体积光 drawImage 登记引用后，后续遮罩 pass 的 `gl.clear()` 已把 canvas 清空并覆写为遮罩内容，iOS 最终从同一张 canvas 读到的是遮罩像素，体积光被完全吃掉。表现为"体积光 0 贡献、遮罩正常"。
+
+**解决方案**：`WebGLLight.ts` 改为**双 WebGL context + 双 canvas 架构**。抽出内部 `GLCtx` 接口，模块内持有两个完全独立的上下文实例 `_maskCtx` / `_volCtx`，各自管理自己的 `canvas / gl / program / posBuffer / polyTexture / vplTexture / uniforms`。对外：
+
+- `initWebGLLight()` 依次调 `initOneCtx(_maskCtx, MASK_FRAG_SRC, 'mask')` 与 `initOneCtx(_volCtx, VOLUMETRIC_FRAG_SRC, 'vol')`，任一失败都回退到 Canvas 2D 路径
+- `uploadPolyData()` / `uploadVPLData()` 编码一次源数据后**同时**调 `uploadPolyToCtx` / `uploadVPLToCtx` 写到两张 texture（两个 context 之间 texture 不能共享，必须各自上传一份）
+- `renderLightMask()` 内部只操作 `_maskCtx`，`renderVolumetricLight()` 内部只操作 `_volCtx`
+- 新增导出 `getVolGLCanvas()` 返回体积光 canvas；`getGLCanvas()` 语义保持不变（返回遮罩 canvas）
+- 分辨率缩放 `applyQualityScale()` 必须同步缩放两张 canvas（否则合成源 rect 会不一致）
+- `isWebGLAvailable()` 两个 context 都必须可用才返回 true
+
+合成侧 `Render.ts` 的两次 `drawImage` 现在从两张不同的源 canvas 读取，即使 iOS 做延迟读取也不会互相污染。
+
+**代价**：多一张同尺寸 glCanvas（低画质档 0.25 scale 下约 200KB 级别，可忽略）+ 多一份 shader program / vertex buffer / 两张数据纹理（合计 < 10KB）+ 每帧多两次 `texImage2D` 上传（纳秒级）。真机实测遮罩 / 体积光全部正常显示。
+
+**关键约束**：
+
+- 同一个 WebGL context 绑定在一个 canvas 上，**无法切换 render target 到另一张 canvas**；想把两个 pass 画到不同 canvas，必须用两个独立的 gl context，texture / program 不能复用
+- 两张 canvas 的宽高必须严格同步（都由 `applyQualityScale()` 按 `CONFIG.quality` 当前 scale 重设）
+- 两套 uniform 写入必须一致（`setCommonUniforms(ctx, params)` 是按 ctx 参数化的，调用两次分别写入两套 uniform location）
+- 合成侧不能再出现"从同一张 canvas 顺序读两次"的模式——`Render.ts` 中遮罩合成行用 `getGLCanvas()`、体积光合成行用 `getVolGLCanvas()`，两条路径物理上读不同源
+- 老的"预乘 alpha 对齐"尝试（`premultipliedAlpha: true` + shader 输出 `vec4(color*a, a)`）在 iOS 真机实测**无效**（可能还会让原本正常的遮罩层一起坏掉），已全部回滚；当前两个 context 都保持 `premultipliedAlpha: false`，shader 输出非预乘 `vec4(color, a)`，blendFunc 保持 `SRC_ALPHA, ONE_MINUS_SRC_ALPHA`（遮罩）与 `SRC_ALPHA, ONE`（体积光 additive）
+
+**体积光合成模式**：`CONFIG.postProcess.volCompositeMode` 仍保留，默认 `'lighter'`（additive 加法合成），可在 GM 面板「后处理」Tab 切换为 `'screen'`（柔和饱和上限）。双 canvas 架构上线后两种模式在 iOS / 安卓 / 桌面都能正常显示，保留 `screen` 选项是为了视觉风格选择，不再承担兼容性兜底角色。早期为排障加入的 3 个 iOS 调试开关（`volDebugFill` / `volDebugSkipEarlyReturn` / `volDebugBypassComposite`）在双 canvas 方案验证成功后已全部移除（shader / config / GM 面板 / Render 合成分支同步清理），未来如遇类似兼容性问题可重新按需临时加入。
 
 #### 画质分档 + FPS 自适应（P12）
 

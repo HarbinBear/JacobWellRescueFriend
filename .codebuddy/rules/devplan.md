@@ -304,6 +304,14 @@ P4（地形序列化）──→ 好友分享需求（另提单）
   - 三个触发入口（`retreat` 主动撤离 / `o2` 氧气耗尽 / `fishkill` 被鱼咬死）在把 `phase` 置成 `'surfacing'` 的那一帧同时 `playSFX('quickReturn')` 播弹射出水音效 + `state.story.shake = max(shake, 4)` 初始预震
   - 音频资源：`AudioManager.SFXKey` 扩展 `'quickReturn'`，云存储地址写在 `CONFIG.audio.cloud.fileIDs.quickReturn`（`audio/QuickReturn.mp3`）
   - 涉及文件：`src/logic/MazeLogic.ts` + `src/logic/FishEnemy.ts` + `src/render/RenderMazeUI.ts` + `src/audio/AudioManager.ts` + `src/core/config/modes.ts` + `src/core/config/character.ts`。`npm run typecheck` 通过。
+- **iOS 体积光合成修复（真机实测：iPhone16 / iPadAir3 上 volPass 耗时正常但完全看不到体积光；安卓 / macOS / Windows 全部正常）**：根因是 iOS WebKit 对「非预乘 alpha 的 WebGL canvas 作为 drawImage 源 + `ctx.globalCompositeOperation='screen'` 合成到 2D canvas」这条路径有长期渲染 bug，而遮罩层走默认 `source-over` 不受影响，所以只有体积光消失。经过两轮迭代：
+  - **第一版（已回滚）**：尝试方案 A（预乘 alpha 对齐：`premultipliedAlpha: false → true` + 两个 shader 输出改 `vec4(color * a, a)` + `blendFunc` 改为预乘方程）。真机实测仍然看不到——怀疑预乘 alpha 改动反而把遮罩层这条原本工作的路径也搞坏了，画面整体看起来仍是"没有光照"。
+  - **第二版（当前方案，已落地）**：回滚所有预乘 alpha 改动，只保留两条最小侵入的兜底：
+    - (1) `CONFIG.postProcess.volCompositeMode` 默认 `'lighter'`（additive 加法合成，iOS 对 additive 支持稳定，不走 screen 这条踩坑路径）；`Render.ts` 中体积光合成行读此配置；GM 面板「后处理」Tab 的 `select` 控件可真机现场切换对比
+    - (2) `volumetricFrag.glsl` 末尾把 `if (a < 0.001) discard;` 改成 `if (a < 0.001) { gl_FragColor = vec4(0.0); return; }`——某些 iOS PowerVR GPU 对 fragment shader 的 `discard` 在"后续走 drawImage + 合成"这条路径上有渲染 bug，会把整个 WebGL canvas 判定为不可作为合成源，直接用透明黑输出走正常 blend 更兼容
+    - WebGL context 保持 `premultipliedAlpha: false`，两个 shader 保持非预乘输出 `vec4(color, a)`，两处 `blendFunc` 保持 `SRC_ALPHA, ONE_MINUS_SRC_ALPHA`（遮罩）与 `SRC_ALPHA, ONE`（体积光 additive）。maskFrag 里本就没有 `discard`，不需要改
+  - 涉及文件：`src/render/WebGLLight.ts` + `src/render/shaders/maskFrag.glsl` + `src/render/shaders/volumetricFrag.glsl` + `src/core/config/rendering.ts` + `src/render/Render.ts` + `src/gm/GMConfig.ts`。改完后必须跑 `node scripts/buildShaders.js` 重新生成两个 `.glsl.ts`；`npm run typecheck` 通过。
+  - **若真机仍然看不到**，进一步可选的排查方向（不急着做，先等实测结果）：(a) 彻底旁路合成，把 WebGL canvas 画到离屏 2D canvas 再用 `source-over` 画回来（打破 drawImage 源为 WebGL 的特殊路径）；(b) 把体积光 shader 内所有 `if (...) return vec3(0.0);` 早退改成 `if` 外继续走，让所有像素都走完整个 shader（早退也是 PowerVR 某些版本的敏感点）；(c) 把体积光整层合并进遮罩层，放弃独立体积光 pass；(d) WebGL context 初始化失败或 getContext 返回 null 时有没有降级黑屏——可以让用户在迷宫模式 GM 面板里切 `volCompositeMode: screen` 对比，如果切 screen 后能显示但颜色奇怪，说明问题不是 lighter 而是其他。
 
 **下一步优先**：
 1. P1 角色表现修复（T1.3 roll 滚动、T1.4 腿部脚蹼、T1.5 手电位置）

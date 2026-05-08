@@ -13,9 +13,8 @@
 脚踢水，和动画挂钩/
 食人鱼，自带bgm、疑惑声、蓄力声、冲刺声、撕咬声/
 补充氧气/
-岸上营地的环境音，先搞个临时的鸟语花香的循环背景音/
 进入结算的各种声音/ （结束潜水瞬间的弹射出水音效 `QuickReturn.mp3` 已接入 retreat/o2/fishkill 三个触发点，配合 0.5s 蓄力→弹射→破水爆裂转场；其余结算音效——救援成功/溺亡/被咬死——待补）
-UI按钮点击音效（MainBtn.mp3 / SubBtn.mp3 已接入：主按钮=开始游戏/章节进入/竞技场/迷宫纯享版/下潜/继续/回到岸上/接受任务/接受新任务/长按放弃完成/轮盘松手执行/GM action 执行；次按钮=返回主菜单/章节页返回/下潜记录开关/卡片点击/折叠探索记录/全屏地图返回/调试小地图折叠/留在此处/轮盘取消/左上角 HUD 5 个图标短按/GM 面板 Tab 切换·加减·输入框·布尔·select 箭头）
+UI按钮点击音效（MainBtn.mp3 / SubBtn.mp3 已接入：主按钮=开始游戏/章节进入/竞技场/迷宫纯享版/下潜/继续/回到岸上/接受任务/接受新任务/长按放弃完成/轮盘松手执行/GM action 执行；次按钮=返回主菜单/章节页返回/下潜记录开关/卡片点击/折叠探索记录/全屏地图返回/调试小地图折叠/留在此处/轮盘取消/左上角 HUD 5 个图标短按/GM 面板 Tab 切换·加减·输入框·布尔·select 箭头）；拾取氧气瓶音效 GetO2.mp3 已接入 `OxygenTank.completeInstall()`；被食人鱼咬死音效 FishBiteManDie.mp3 已接入 `FishEnemy.triggerPlayerDeath()`（bite→dead 切换那一帧）
 
 
 **已完成（2026-05-06）：**
@@ -83,10 +82,10 @@ devplan是用来记录需要做的需求的设计的，已经做完的就不用�
 | 10 | fishCharge | ElevenLabs_fish_charge.mp3 | SFX-Oneshot | 0.6~1.0s | ❌ |
 | 11 | fishDash | ElevenLabs_fish_dash.mp3 | SFX-Oneshot | 0.4~0.7s | ❌ |
 | 12 | fishBite | ElevenLabs_fish_bite.mp3 | SFX-Oneshot | 0.5~0.8s | ❌ |
-| 13 | oxygenRefill | ElevenLabs_oxygen_refill.mp3 | SFX-Oneshot | 1.2~1.8s | ❌ |
+| 13 | oxygenRefill | ElevenLabs_oxygen_refill.mp3 | SFX-Oneshot | 1.2~1.8s | ✅ |
 | 14 | endingSuccess | ElevenLabs_ending_success.mp3 | SFX-Oneshot | 2.5~4s | ❌ |
 | 15 | endingFailDrown | ElevenLabs_ending_fail_drown.mp3 | SFX-Oneshot | 2~3s | ❌ |
-| 16 | endingFailBite | ElevenLabs_ending_fail_bite.mp3 | SFX-Oneshot | 2~3s | ❌ |
+| 16 | endingFailBite | ElevenLabs_ending_fail_bite.mp3 | SFX-Oneshot | 2~3s | ✅ |
 | 17 | endingReturn | ElevenLabs_ending_return.mp3 | SFX-Oneshot | 1~1.5s | ❌ |
 | 18 | uiPrimary | ElevenLabs_ui_primary.mp3 | SFX-Oneshot | 0.15~0.25s | ❌ |
 | 19 | uiSecondary | ElevenLabs_ui_secondary.mp3 | SFX-Oneshot | 0.1~0.2s | ❌ |
@@ -189,6 +188,8 @@ EN:
 A violent underwater death by predator — a sudden sharp impact with a wet crunch, muffled scream cut short, thrashing water, trailing off into a low ominous drone with distant bubbles. Brutal and shocking, then quiet. Duration 2.5 seconds.
 ```
 CN：被咬死。锐利冲击+湿润咔嚓+被掐断闷惨叫+水花翻腾+低频不祥嗡鸣+远气泡。残暴惊悚后归寂 2.5s。
+
+cloud://cloud1-d8gh6fpnh6d0928e8.636c-cloud1-d8gh6fpnh6d0928e8-1424920608/audio/FishBiteManDie.mp3
 
 #### 17. endingReturn（回岸）
 EN:

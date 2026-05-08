@@ -276,6 +276,7 @@ export const TABS: GMTab[] = [
             { type: 'bool', label: 'ToneMapping开关', path: 'postProcess.enableToneMapping' },
             { type: 'number', label: 'ToneMapping模式(0=Reinhard,1=ACES)', path: 'postProcess.toneMappingMode', min: 0, max: 1, step: 1 },
             { type: 'number', label: 'Reinhard白点', path: 'postProcess.reinhardWhitePoint', min: 0.5, max: 10, step: 0.5, precision: 1 },
+            { type: 'select', label: '体积光合成模式', path: 'postProcess.volCompositeMode', options: ['lighter', 'screen'] },
         ]
     },
     {

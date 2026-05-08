@@ -116,5 +116,12 @@ export const renderingConfig = {
         enableToneMapping: true,        // 是否启用 Tone Mapping
         toneMappingMode: 1,              // 0=Reinhard, 1=ACES
         reinhardWhitePoint: 2.0,         // Reinhard 扩展白点（越大允许越亮的值保留）
+
+        // ===== 体积光合成模式 =====
+        // 'screen' = ctx.globalCompositeOperation='screen'（柔和饱和上限）
+        // 'lighter' = additive 叠加（早期 iOS WebKit 体积光显示问题已通过"双 WebGL canvas 架构"解决，
+        //            两种模式均可用；默认保留 'lighter'，视觉上接近 'screen' 但高光更亮，
+        //            如果需要柔和上限可在 GM 面板切回 'screen'）
+        volCompositeMode: 'lighter' as 'screen' | 'lighter',
     },
 };
