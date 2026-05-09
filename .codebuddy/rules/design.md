@@ -29,6 +29,7 @@ type: always
    - [06-diver-visual-design.md](./design/06-diver-visual-design.md)：潜水员角色表现与手动挡输入可视化设计稿
    - [07-playdead-methodology-design.md](./design/07-playdead-methodology-design.md)：Playdead 方法论在本项目中的表现落地稿
    - [08-toner-master-narrative.md](./design/08-toner-master-narrative.md)：《唐老师的救援》叙事蓝本（主线未来目标形态，不是当前已实现内容；当前四关是其早期雏形）
+   - [09-extraction-loop-design.md](./design/09-extraction-loop-design.md)：撤离玩法（经济循环 + 装备消耗 + 背包搜刮）顶层设计入口；详细分卷在 [extraction/](./design/extraction/) 子目录的 7 卷分册
 
 ## 最短阅读建议
 
@@ -48,7 +49,8 @@ type: always
 - **改潜水员角色绘制、手动挡动作联动、角色表现细调**：优先读 `06-diver-visual-design.md`
 - **改画面统一性、Playdead 风格方法论、相机体感、表现层优先级**：优先读 `07-playdead-methodology-design.md`
 - **讨论主线叙事的未来走向、失忆/女孩/梦境/八音盒/三线合一、完美结局条件**：优先读 `08-toner-master-narrative.md`（注意：这是目标形态，不是当前实现）
-- **做“玩家感知被救者”这类和未来叙事绑定的新能力**：先读 `08-toner-master-narrative.md` 的第五节，再回到对应玩法分卷
+- **做"玩家感知被救者"这类和未来叙事绑定的新能力**：先读 `08-toner-master-narrative.md` 的第五节，再回到对应玩法分卷
+- **做撤离玩法 / 经济循环 / 装备购买 / 背包搜刮 / 物品定价 / 商店刷新 / 救援与赚钱穿插**：先读 `09-extraction-loop-design.md`（顶层入口），按需打开 [`design/extraction/`](./design/extraction/) 子目录的 7 卷分册
 
 ## 设计文档与技术文档分工
 
