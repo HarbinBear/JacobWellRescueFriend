@@ -1,0 +1,171 @@
+// 撤离玩法状态根（state.extraction）
+//
+// 设计原则：
+// - 所有撤离玩法数据集中在 state.extraction 子树，不污染 state.mazeRescue
+// - 本模块仅负责 state.extraction 的初始化与默认值兜底，不做任何业务逻辑
+// - 业务逻辑（拾取、商店、经济）都通过 import 这里的类型与访问器实现
+// - 阶段 1 只支持最小必要字段；后续阶段按子卷文档增量扩展
+//
+// 详见 design/extraction/04-loadout-and-inventory.md 与 07-engineering-isolation.md
+
+import { state } from '../../core/state';
+
+// =============================================
+// 类型定义
+// =============================================
+
+/** 仓库里的一件战利品（已上岸，等待卖出 / 留作收藏） */
+export interface WarehouseItem {
+    /** 唯一 id（递增计数） */
+    id: number;
+    /** 物品 id（对应 ExtractionRegistry 里的 itemId） */
+    itemId: string;
+    /** 品相档位（'broken'/'worn'/'normal'/'fine'/'pristine'）；阶段 1 暂时全部为 normal */
+    condition: string;
+}
+
+/** 下潜中的临时背包格子里的物品 */
+export interface BagItem {
+    /** 唯一 id（递增计数，与 warehouse 共享一套计数避免冲突） */
+    id: number;
+    /** 物品 id */
+    itemId: string;
+    /** 品相档位 */
+    condition: string;
+    /** 占用格子数（从 ItemRegistry 读取并落到运行时，避免 UI 反复查表） */
+    slots: number;
+}
+
+/** 撤离玩法状态根 */
+export interface ExtractionState {
+    /** 数据版本号（升级老存档兜底用） */
+    version: number;
+
+    /** 金币余额 */
+    coins: number;
+
+    /** 名声（阶段 1 仅占位，阶段 3 启用） */
+    reputation: number;
+
+    /** 仓库（已撤离回岸的物品） */
+    warehouse: WarehouseItem[];
+
+    /** 仓库 / 背包共享的下一个唯一 id（避免 id 冲突） */
+    nextItemId: number;
+
+    /** 下潜中的临时背包（运行时数据，每次下潜开始清空） */
+    bag: {
+        /** 容量（格子数）—— 阶段 1 固定 4 */
+        maxSlots: number;
+        /** 已装载物品 */
+        items: BagItem[];
+    };
+
+    /** 当次下潜的运行时数据，结束清空 */
+    diveSession: {
+        /** 已被本次下潜拾取的 relic id 列表（当次内不再次出现，下次下潜重刷） */
+        pickedRelicIds: number[];
+    };
+
+    /** 一次性事件标志位（阶段 1 暂未使用） */
+    flags: {
+        /** 是否首次进入撤离系统（用于教程） */
+        tutorialShown: boolean;
+    };
+
+    /** 累计统计（成就/调试用） */
+    stats: {
+        /** 累计获得金币 */
+        totalCoinsEarned: number;
+        /** 累计撤离次数 */
+        totalDives: number;
+        /** 累计拾取物品数 */
+        totalPickups: number;
+    };
+}
+
+// =============================================
+// 默认值
+// =============================================
+
+/** 阶段 1 起步配置：100 金 + 4 格背包 */
+export function getInitialExtractionState(): ExtractionState {
+    return {
+        version: 1,
+        coins: 100,
+        reputation: 0,
+        warehouse: [],
+        nextItemId: 1,
+        bag: {
+            maxSlots: 4,
+            items: [],
+        },
+        diveSession: {
+            pickedRelicIds: [],
+        },
+        flags: {
+            tutorialShown: false,
+        },
+        stats: {
+            totalCoinsEarned: 0,
+            totalDives: 0,
+            totalPickups: 0,
+        },
+    };
+}
+
+// =============================================
+// 访问器
+// =============================================
+
+/** 获取 state.extraction，不存在时返回 null（不自动初始化，避免与 load 流程冲突） */
+export function getExtractionState(): ExtractionState | null {
+    const ex = (state as any).extraction;
+    return ex && typeof ex === 'object' ? (ex as ExtractionState) : null;
+}
+
+/** 强制确保 state.extraction 存在（如果不存在则初始化为默认值） */
+export function ensureExtractionState(): ExtractionState {
+    let ex = (state as any).extraction;
+    if (!ex || typeof ex !== 'object') {
+        ex = getInitialExtractionState();
+        (state as any).extraction = ex;
+    }
+    return ex as ExtractionState;
+}
+
+/** 老存档兜底：把缺失的字段填上默认值（用于 load 之后） */
+export function patchExtractionState(ex: any): ExtractionState {
+    const def = getInitialExtractionState();
+    if (!ex || typeof ex !== 'object') return def;
+    if (typeof ex.version !== 'number') ex.version = def.version;
+    if (typeof ex.coins !== 'number') ex.coins = def.coins;
+    if (typeof ex.reputation !== 'number') ex.reputation = def.reputation;
+    if (!Array.isArray(ex.warehouse)) ex.warehouse = [];
+    if (typeof ex.nextItemId !== 'number') ex.nextItemId = 1;
+    if (!ex.bag || typeof ex.bag !== 'object') ex.bag = def.bag;
+    if (typeof ex.bag.maxSlots !== 'number') ex.bag.maxSlots = def.bag.maxSlots;
+    if (!Array.isArray(ex.bag.items)) ex.bag.items = [];
+    if (!ex.diveSession || typeof ex.diveSession !== 'object') ex.diveSession = def.diveSession;
+    if (!Array.isArray(ex.diveSession.pickedRelicIds)) ex.diveSession.pickedRelicIds = [];
+    if (!ex.flags || typeof ex.flags !== 'object') ex.flags = def.flags;
+    if (typeof ex.flags.tutorialShown !== 'boolean') ex.flags.tutorialShown = false;
+    if (!ex.stats || typeof ex.stats !== 'object') ex.stats = def.stats;
+    if (typeof ex.stats.totalCoinsEarned !== 'number') ex.stats.totalCoinsEarned = 0;
+    if (typeof ex.stats.totalDives !== 'number') ex.stats.totalDives = 0;
+    if (typeof ex.stats.totalPickups !== 'number') ex.stats.totalPickups = 0;
+    return ex as ExtractionState;
+}
+
+/** 重置为新手起步状态（GM 调试用） */
+export function resetExtractionState(): void {
+    (state as any).extraction = getInitialExtractionState();
+}
+
+/** 申请下一个唯一 item id（warehouse + bag 共用） */
+export function nextExtractionItemId(): number {
+    const ex = ensureExtractionState();
+    const id = ex.nextItemId;
+    ex.nextItemId = id + 1;
+    return id;
+}

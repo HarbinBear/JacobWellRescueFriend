@@ -283,4 +283,12 @@ export const gameplayConfig = {
         discoverRadius: 110,          // 发现半径（像素）
         discoverFovDeg: 60,           // 发现角度（度，玩家手电光锥内）
     },
+
+    // ===== 撤离玩法（迷宫模式经济循环：水下捡战利品 → 撤离 → 卖货 → 升级装备） =====
+    // 详见 .codebuddy/rules/design/extraction/
+    extraction: {
+        enabled: true,                  // 主开关：关闭后所有撤离 UI 隐藏，迷宫模式回退现状
+        pickupRange: 180,               // 玩家拾取战利品的距离（像素）
+        debugPickupOverlay: false,      // 调试可视化：拾取范围圆圈 + Relic 距离标签（GM 面板可开关）
+    },
 };

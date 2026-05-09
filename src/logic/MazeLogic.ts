@@ -18,6 +18,8 @@ import { playSFX } from '../audio/AudioManager';
 import { triggerCollisionImpact, resetCollisionImpact } from './CollisionImpact';
 import { loadMazeProgress, saveMazeProgress, clearMazeSave } from './MazeSave';
 import { setActiveSeededRandom, clearActiveSeededRandom } from '../core/SeededRandom';
+// 撤离玩法钩子：每次下潜开始/结束自动应用装备效果与结算战利品
+import { onExtractionDiveStart, onExtractionDiveEnd } from '../extraction';
 
 // 迷宫模式使用独立的 StoryManager 实例
 const storyManager = new StoryManager();
@@ -556,6 +558,9 @@ export function startMazeDive(diveType: string) {
         state.wheel.nearbyInfo = null;
         state.wheel.previewAction = null;
     }
+
+    // 撤离玩法钩子：应用装备效果（背包大小、消耗品起始 O2/电池等）+ 清空本次拾取记录
+    onExtractionDiveStart();
 }
 
 // =============================================
@@ -659,6 +664,9 @@ function finishMazeDive(returnReason: string) {
     maze.phase = 'debrief';
     maze.resultTimer = 0;
     maze.finishTime = Date.now();
+
+    // 撤离玩法钩子：根据 returnReason 结算背包（成功 100%/半成功 50%/失败全损）+ 还原装备覆盖 + 落盘
+    onExtractionDiveEnd(returnReason);
 
     // 一次下潜结束、本次成果已记录到 diveHistory，此时的 state 已经属于"回到岸上之后的进度"
     // 直接落盘，防止玩家在 debrief 页退出游戏导致本次记录丢失

@@ -13,6 +13,19 @@ import { state, player } from '../core/state';
 import { createFishEnemy, findMazeFishSpawnPosition, findSafeSpawnPosition } from '../logic/FishEnemy';
 import { setPreset, onItemEdited as qualityOnItemEdited, setAuto as qualitySetAuto } from '../render/QualityManager';
 import { playSFX } from '../audio/AudioManager';
+// 撤离玩法：GM 调试 action（加钱 / 重置经济等）
+import {
+    addCoins as exAddCoins,
+    resetExtractionState as exResetState,
+    clearExtractionSave as exClearSave,
+    addToBag as exAddToBag,
+    rollCondition as exRollCondition,
+    getCoins as exGetCoins,
+    getExtractionState as exGetState,
+    findNearbyPickupRelic as exFindNearbyRelic,
+    ExtractionEnabled as exEnabled,
+} from '../extraction';
+import { ALL_RELIC_KINDS } from '../logic/Relic';
 
 // 重新导出绘制函数，保持外部引用不变
 export { drawGMButton, drawGMPanel } from './GMRender';
@@ -429,6 +442,77 @@ function _executeAction(actionId: string): void {
             const count = state.fishEnemies ? state.fishEnemies.length : 0;
             state.fishEnemies = [];
             console.log(`[GM] 清除 ${count} 条食人鱼`);
+            break;
+        }
+        // ========== 撤离玩法调试 ==========
+        case 'extractionAdd100': {
+            exAddCoins(100);
+            console.log('[GM][Extraction] +100 金，当前 ' + exGetCoins() + ' 金');
+            break;
+        }
+        case 'extractionAdd1000': {
+            exAddCoins(1000);
+            console.log('[GM][Extraction] +1000 金，当前 ' + exGetCoins() + ' 金');
+            break;
+        }
+        case 'extractionReset': {
+            exClearSave();
+            console.log('[GM][Extraction] 撤离玩法已重置为新手起步状态');
+            break;
+        }
+        case 'extractionFillBag': {
+            // 给背包随便塞一件随机古物（调试 UI 用）
+            const ex = exGetState();
+            if (ex) {
+                const kind = ALL_RELIC_KINDS[Math.floor(Math.random() * ALL_RELIC_KINDS.length)];
+                const condition = exRollCondition('defaultPool');
+                const it = exAddToBag(kind, condition);
+                if (it) console.log('[GM][Extraction] 背包入物：' + kind + ' (' + condition + ')');
+                else console.log('[GM][Extraction] 背包已满');
+            }
+            break;
+        }
+        case 'extractionDumpState': {
+            const ex = exGetState();
+            console.log('[GM][Extraction] state.extraction =', ex);
+            break;
+        }
+        case 'extractionDebugRelics': {
+            // 调试：输出当前关 relic 状况 + 玩家附近 relic 距离 + 撤离系统启用状态
+            const maze: any = state.mazeRescue;
+            console.log('[Debug][Relic] state.screen=' + state.screen);
+            console.log('[Debug][Relic] mazeRescue.phase=' + (maze ? maze.phase : 'NO_MAZE'));
+            const relics: any[] = maze && maze.relics ? maze.relics : [];
+            console.log('[Debug][Relic] relics.length=' + relics.length);
+            const ex = exGetState();
+            const picked = ex ? ex.diveSession.pickedRelicIds : [];
+            console.log('[Debug][Relic] state.extraction=', ex ? '存在' : 'null');
+            console.log('[Debug][Relic] 本次已拾取=' + (picked || []).length);
+            // 找前 5 个最近的 relic 与玩家的距离
+            if (relics.length > 0) {
+                const distances: { id: number; kind: string; dist: number; picked: boolean }[] = [];
+                const pickedSet = new Set(picked);
+                for (const r of relics) {
+                    distances.push({
+                        id: r.id,
+                        kind: r.kind,
+                        dist: Math.round(Math.hypot(player.x - r.x, player.y - r.y)),
+                        picked: pickedSet.has(r.id),
+                    });
+                }
+                distances.sort((a, b) => a.dist - b.dist);
+                console.log('[Debug][Relic] 玩家位置=(' + Math.round(player.x) + ',' + Math.round(player.y) + ')');
+                console.log('[Debug][Relic] 最近 5 个：');
+                for (let i = 0; i < Math.min(5, distances.length); i++) {
+                    console.log('  [' + i + '] kind=' + distances[i].kind +
+                                ' dist=' + distances[i].dist + 'px' +
+                                (distances[i].picked ? ' (已拾取)' : ''));
+                }
+            }
+            // 测试 findNearbyPickupRelic 返回值
+            const nearby = exFindNearbyRelic();
+            console.log('[Debug][Relic] findNearbyPickupRelic 返回=' + (nearby ? '找到 id=' + nearby.id + ' kind=' + nearby.kind : 'null'));
+            console.log('[Debug][Relic] ExtractionEnabled=' + exEnabled());
             break;
         }
         default:

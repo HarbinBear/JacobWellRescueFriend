@@ -3,6 +3,13 @@ import { state, player, input } from '../core/state';
 import { findNearestWall } from './Rope';
 import { pathLength, samplePolyline } from './Pathfinding';
 import { findNearbyOxygenTank, startInstallTank, cancelInstallTank } from './OxygenTank';
+// 撤离玩法：水下战利品拾取轮盘上下文（接入点见 detectWheelContext / executeWheelAction）
+import {
+    findNearbyPickupRelic,
+    performPickup,
+    getRelicPickupLabel,
+    ExtractionEnabled,
+} from '../extraction';
 
 // ============ 类型定义 ============
 
@@ -37,7 +44,8 @@ export type WheelAction =
     | 'markUnknown'  // 放黄问号标记
     | 'markSafe'     // 放绿圈标记
     | 'removeMarker' // 拆除标记
-    | 'installTank'; // 安装氧气瓶
+    | 'installTank'  // 安装氧气瓶
+    | 'pickupRelic'; // 拾取水下战利品（撤离玩法）
 
 export interface WheelSector {
     action: WheelAction;
@@ -55,6 +63,7 @@ export type WheelContext =
     | 'ropeMid'         // 靠近绳索中段
     | 'ropeMarkedMid'   // 靠近绳索中段已有标记
     | 'oxygenTank'      // 靠近氧气瓶
+    | 'pickupRelic'     // 靠近水下战利品（撤离玩法）
     | 'none';           // 不在任何可交互对象附近
 
 // ============ 全局标记 ID 计数器 ============
@@ -160,6 +169,8 @@ interface NearbyInfo {
     isEndpoint?: boolean; // 是否是绳索端点
     existingMarker?: Marker; // 已有标记
     oxygenTankId?: number; // 附近氧气瓶 id（context=oxygenTank 时有效）
+    pickupRelicId?: number; // 附近水下战利品 id（context=pickupRelic 时有效）
+    pickupRelicLabel?: string; // 拾取扇区显示文本（"拾取 · 黄铜指南针"）
 }
 
 /** 检测玩家附近的可交互对象，返回上下文信息 */
@@ -174,6 +185,19 @@ export function detectWheelContext(): NearbyInfo {
         if (tank) {
             result.context = 'oxygenTank';
             result.oxygenTankId = tank.id;
+            return result;
+        }
+    }
+
+    // === 0.5 次高优先：水下战利品拾取（撤离玩法）===
+    // 仅在迷宫模式 play 阶段 + 撤离玩法启用时启用；不与铺绳/标记冲突
+    if (ExtractionEnabled && ExtractionEnabled() &&
+        state.screen === 'mazeRescue' && state.mazeRescue && state.mazeRescue.phase === 'play') {
+        const relic = findNearbyPickupRelic();
+        if (relic) {
+            result.context = 'pickupRelic';
+            result.pickupRelicId = relic.id;
+            result.pickupRelicLabel = getRelicPickupLabel(relic.id);
             return result;
         }
     }
@@ -283,6 +307,12 @@ export function buildWheelSectors(ctx: WheelContext, hasExistingMarker: boolean)
         case 'oxygenTank':
             // 靠近氧气瓶：只有安装氧气瓶，占满 360°
             sectors.push({ action: 'installTank', label: '安装氧气瓶', startAngle: 0, endAngle: 0 });
+            break;
+        case 'pickupRelic':
+            // 靠近水下战利品：只有"拾取"，占满 360°（label 由 nearbyInfo.pickupRelicLabel 提供）
+            // 这里先放占位 label，渲染时会被 input.ts 注入的 nearbyInfo.pickupRelicLabel 覆盖；
+            // 但更稳妥的做法是让渲染层直接读 nearbyInfo.pickupRelicLabel——保持本函数纯粹
+            sectors.push({ action: 'pickupRelic', label: '拾取', startAngle: 0, endAngle: 0 });
             break;
         case 'ropingWall':
             // 铺绳中靠近岩石：只有结束铺绳，占满360°
@@ -493,6 +523,20 @@ export function executeWheelAction(action: WheelAction) {
                             break;
                         }
                     }
+                }
+            }
+            break;
+        }
+        case 'pickupRelic': {
+            // 撤离玩法：水下战利品拾取——立即入背包
+            if (info.pickupRelicId != null) {
+                const r = performPickup(info.pickupRelicId);
+                if (r.ok) {
+                    // 简单飘字提示（复用 storyManager 风格的小提示由调用方处理；
+                    // 这里只做静默拾取，UI 反馈靠右下角背包格子的填入）
+                } else if (r.reason === 'bagFull') {
+                    // 背包满：不拾取，玩家应该先丢东西。后续 UI 可以做更明显的反馈
+                    console.log('[Pickup] 背包已满，无法拾取');
                 }
             }
             break;

@@ -3,6 +3,12 @@ import { state, player } from '../core/state';
 import { ctx, logicW, logicH } from './Canvas';
 import { drawOxygenScreenGlow } from './RenderOxygenTank';
 import { drawHUDTopLeft, initMazeHUDTopLeft } from './HUDTopLeft';
+// 撤离玩法 UI 模块（独立于现有 mazeUI 子目录，与撤离系统所有代码同处一个独立树下）
+import { drawCoinHUD } from '../extraction/render/CoinHUD';
+import { drawInventoryHUD } from '../extraction/render/InventoryHUD';
+import { drawExtractionSettlement } from '../extraction/render/DebriefExtension';
+import { drawShop, drawShopEntryBtn, isShopOpen as isExtractionShopOpen } from '../extraction/render/ShopUI';
+import { drawPickupHints } from '../extraction/render/PickupHints';
 
 // 本文件已按职责拆分到 src/render/mazeUI/ 目录：
 //   - mazeUI/shore.ts    岸上界面 + 全屏认知地图 + 下潜记录列表 / 单次手绘回放
@@ -81,7 +87,19 @@ export function drawMazeHUD() {
             ctx.restore();
             return;
         }
+        // 撤离玩法商店全屏页：独立分发
+        if (isExtractionShopOpen()) {
+            drawShop(cw, ch, time);
+            ctx.restore();
+            return;
+        }
         drawMazeShore(maze, cw, ch, time);
+        // 撤离玩法：顶部金币 HUD（仅在岸上 / resolved_idle 显示，避开警情通报和图鉴）
+        if (!maze.shoreMapOpen && maze.briefingShown) {
+            drawCoinHUD();
+            // 商店入口按钮
+            drawShopEntryBtn(cw, ch, time);
+        }
         // 放弃救援按钮（仅在岸上主界面显示，全屏地图与通报覆盖时不显示）
         if (!maze.shoreMapOpen && maze.briefingShown) {
             const hp = (maze.abandonHolding && maze.abandonHoldStart > 0)
@@ -106,8 +124,17 @@ export function drawMazeHUD() {
             ctx.restore();
             return;
         }
+        // 撤离玩法商店全屏页：独立分发
+        if (isExtractionShopOpen()) {
+            drawShop(cw, ch, time);
+            ctx.restore();
+            return;
+        }
         drawMazeShore(maze, cw, ch, time);
         if (!maze.shoreMapOpen) {
+            // 撤离玩法：顶部金币 HUD
+            drawCoinHUD();
+            drawShopEntryBtn(cw, ch, time);
             // 水面入口上盖一层"本案已结案"半透明遮罩
             ctx.fillStyle = 'rgba(0,0,0,0.45)';
             const poolX = cw * 0.5, poolY = ch * 0.44;
@@ -153,6 +180,8 @@ export function drawMazeHUD() {
     // === 结算界面（探路返回 / 救援成功） ===
     if (maze.phase === 'debrief' || maze.phase === 'rescued') {
         drawMazeDebrief(maze, cw, ch, time);
+        // 撤离玩法：在原结算页右上角追加"撤离结算"小卡片（含全部卖出按钮）
+        drawExtractionSettlement(maze, cw, ch, time);
         ctx.restore();
         return;
     }
@@ -277,6 +306,11 @@ export function drawMazeHUD() {
     // --- 左上角 HUD（氧气环 / 手动挡 / 音频 / 生命探知仪，统一由 HUDTopLeft 管理） ---
     ensureMazeHUDInitialized();
     drawHUDTopLeft(time);
+
+    // --- 撤离玩法：右下角背包格子条（仅 play 阶段显示） ---
+    drawInventoryHUD();
+    // --- 撤离玩法：拾取/容量飘字（世界坐标跟随，跟随相机变换） ---
+    drawPickupHints();
 
     // 仅保留"氧气拾取后屏幕级别的 +X% 飘字"（HUDTopLeft 内部不负责这个世界级飘字）
     if (maze.oxygenFeedback && maze.oxygenFeedback.floatText) {

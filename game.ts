@@ -5,6 +5,8 @@ import { initInput } from './src/core/input';
 import { initAudio, updateAudio, updateSFXLoops, updateAmbience, playAmbience, stopAmbience } from './src/audio/AudioManager';
 import { perfFrameBegin, perfFrameEnd, profileBegin, profileEnd } from './src/debug/PerfHUD';
 import { initQualityManager, onFrame as qualityOnFrame } from './src/render/QualityManager';
+// 撤离玩法：启动时加载经济存档（若无存档则初始化为新手起步状态）
+import { loadExtractionProgress } from './src/extraction';
 
 // 调试期：解锁到设备上限（iPad 120Hz / 部分 Android 120Hz），便于真机观察各画质档位的真实压力
 // 设备不支持 120Hz 时会自动回落 60，不会报错
@@ -22,6 +24,9 @@ initAudio();
 
 // 初始化画质档位管理器（WebGL 光照的分辨率/VPL/漫散射会跟着它走）
 initQualityManager();
+
+// 撤离玩法：加载经济存档（若无存档则初始化为新手起步状态：100 金 + 4 格背包）
+loadExtractionProgress();
 
 // 初始化输入监听，传入重置回调（支持从指定关卡开始）
 initInput(

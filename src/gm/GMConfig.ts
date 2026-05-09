@@ -484,6 +484,21 @@ export const TABS: GMTab[] = [
             { type: 'number', label: 'HUD字号', path: 'perfHUD.fontSize', min: 8, max: 20, step: 1 },
         ]
     },
+    {
+        // 撤离玩法（阶段 1）：金币/背包/重置等基础调试入口
+        // 阶段 2 起会扩展为独立面板（详见 design/extraction/06-extraction-gm-panel.md）
+        name: '撤离',
+        items: [
+            { type: 'action', label: '+100 金', actionId: 'extractionAdd100' },
+            { type: 'action', label: '+1000 金', actionId: 'extractionAdd1000' },
+            { type: 'action', label: '送一件随机古物入背包', actionId: 'extractionFillBag' },
+            { type: 'bool', label: '🐛 显示拾取范围+Relic距离', path: 'extraction.debugPickupOverlay' },
+            { type: 'number', label: '拾取范围(px)', path: 'extraction.pickupRange', min: 60, max: 400, step: 10 },
+            { type: 'action', label: '🐛 调试：打印附近 Relic', actionId: 'extractionDebugRelics' },
+            { type: 'action', label: '打印 state.extraction（控制台）', actionId: 'extractionDumpState' },
+            { type: 'action', label: '⚠ 重置撤离数据（清档）', actionId: 'extractionReset' },
+        ]
+    },
 ];
 
 // 把 Debug / 性能 两个 Tab 置顶（用户偏好：调试和画质入口放最前面，避免每次都要左滑一堆 Tab）

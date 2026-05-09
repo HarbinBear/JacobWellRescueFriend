@@ -32,6 +32,27 @@ export function drawWheelButton() {
     // 是否为可交互态（false = 灰态，提示"停下就能交互"）
     const active = !!state.wheel.btnActive;
 
+    // 按上下文决定按钮文字
+    const ctxKind = (state.wheel as any).nearbyInfo ? (state.wheel as any).nearbyInfo.context : null;
+    let labelActive = '标记';
+    let labelInactive = '停下标记';
+    if (ctxKind === 'oxygenTank') {
+        labelActive = '安装氧气瓶';
+        labelInactive = '停下安装';
+    } else if (ctxKind === 'pickupRelic') {
+        labelActive = '拾取';
+        labelInactive = '停下拾取';
+    } else if (ctxKind === 'ropeEndWall') {
+        labelActive = '拆绳';
+        labelInactive = '停下拆绳';
+    } else if (ctxKind === 'ropingWall') {
+        labelActive = '结束铺绳';
+        labelInactive = '停下铺绳';
+    } else if (ctxKind === 'markedWall' || ctxKind === 'ropeMarkedMid') {
+        labelActive = '拆标记';
+        labelInactive = '停下拆标记';
+    }
+
     ctx.save();
 
     if (active) {
@@ -70,7 +91,7 @@ export function drawWheelButton() {
         ctx.font = '10px Arial';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
-        ctx.fillText('标记', btnX, btnY + radius + 6);
+        ctx.fillText(labelActive, btnX, btnY + radius + 6);
     } else {
         // =============== 灰态（移动中，提示"停下就能交互"）===============
         // 不画呼吸光晕，整体压低透明度
@@ -106,7 +127,7 @@ export function drawWheelButton() {
         ctx.font = '9px Arial';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
-        ctx.fillText('停下标记', btnX, btnY + radius + 6);
+        ctx.fillText(labelInactive, btnX, btnY + radius + 6);
     }
 
     ctx.restore();

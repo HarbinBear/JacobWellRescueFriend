@@ -7,6 +7,18 @@ import { handleHUDTouchStart, handleHUDTouchMove, handleHUDTouchEnd } from '../r
 import { buildWheelSectors, executeWheelAction } from '../logic/Marker';
 import { ALL_RELIC_KINDS } from '../logic/Relic';
 import { getWheelBtnPos } from '../render/RenderWheel';
+// 撤离玩法：debrief 阶段"全部卖出"按钮 hit-test
+import {
+    getSellAllBtnRect,
+    performSellAll,
+    isShopOpen,
+    openShop,
+    closeShop,
+    performShopBuy,
+    getShopEntryBtnRect,
+    getShopCloseBtnRect,
+    getShopBuyBtnRect,
+} from '../extraction';
 import {
     getBriefingAcceptBtnRect,
     getAbandonBtnRect,
@@ -354,6 +366,10 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                     const nearbyInfo = state.wheel.nearbyInfo;
                     if (nearbyInfo) {
                         const sectors = buildWheelSectors(nearbyInfo.context, !!nearbyInfo.existingMarker);
+                        // 撤离玩法：拾取扇区的 label 替换为带具体物品名（"拾取 · 黄铜指南针"）
+                        if (nearbyInfo.context === 'pickupRelic' && (nearbyInfo as any).pickupRelicLabel && sectors.length > 0) {
+                            sectors[0].label = (nearbyInfo as any).pickupRelicLabel;
+                        }
                         state.wheel.open = true;
                         state.wheel.sectors = sectors;
                         state.wheel.highlightIndex = -1;
@@ -809,6 +825,34 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
             if (!moved) {
                 const maze = state.mazeRescue;
 
+                // ---- 撤离玩法商店全屏页打开时的分发（最高优先级）----
+                if (isShopOpen()) {
+                    // 点关闭按钮
+                    const cr = getShopCloseBtnRect();
+                    if (cr && tx >= cr.x && tx <= cr.x + cr.w && ty >= cr.y && ty <= cr.y + cr.h) {
+                        playSFX('uiSecondary');
+                        closeShop();
+                        return;
+                    }
+                    // 点购买按钮（遍历 3 件可购物品）
+                    const candidates = ['bag8', 'bag12', 'bag16'];
+                    for (const itemId of candidates) {
+                        const r = getShopBuyBtnRect(itemId);
+                        if (r && tx >= r.x && tx <= r.x + r.w && ty >= r.y && ty <= r.y + r.h) {
+                            const ok = performShopBuy(itemId);
+                            if (ok) {
+                                playSFX('uiPrimary');
+                                console.log('[Extraction] 购买成功：' + itemId);
+                            } else {
+                                playSFX('uiSecondary');
+                            }
+                            return;
+                        }
+                    }
+                    // 商店内空白点击：不做任何动作（只有显式点关闭才关）
+                    return;
+                }
+
                 // ---- 图鉴全屏页打开时的分发 ----
                 if (maze.codexOpen) {
                     const selKind: string | null = (maze as any).codexSelectedKind || null;
@@ -852,6 +896,19 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                         if (!maze.shoreMapOpen) {
                             playSFX('uiSecondary');
                             maze.codexOpen = true;
+                            return;
+                        }
+                    }
+                }
+
+                // ---- 点击左上角"杂货铺"按钮：打开商店全屏页 ----
+                {
+                    const shopRect = getShopEntryBtnRect();
+                    if (shopRect && tx >= shopRect.x && tx <= shopRect.x + shopRect.w &&
+                        ty >= shopRect.y && ty <= shopRect.y + shopRect.h) {
+                        if (!maze.shoreMapOpen) {
+                            playSFX('uiPrimary');
+                            openShop();
                             return;
                         }
                     }
@@ -1021,6 +1078,20 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
             }
 
             // 探路结算页（debrief）
+            // 撤离玩法："全部卖出"按钮 hit-test（在右上角小卡内，优先级高于"回到岸上"）
+            {
+                const sellRect = getSellAllBtnRect();
+                if (sellRect && tx >= sellRect.x && tx <= sellRect.x + sellRect.w &&
+                    ty >= sellRect.y && ty <= sellRect.y + sellRect.h) {
+                    const earned = performSellAll();
+                    playSFX('uiPrimary');
+                    if (earned > 0) {
+                        console.log('[Extraction] 全部卖出，获得 ' + earned + ' 金');
+                    }
+                    return;
+                }
+            }
+
             // "回到岸上"按钮（底部居中）
             const shoreBtnW = cw * 0.55;
             const shoreBtnH = 44;
