@@ -67,6 +67,22 @@ export interface ExtractionState {
         pickedRelicIds: number[];
     };
 
+    /** 已购消耗品库存（itemId -> 数量；阶段 2 启用） */
+    consumables: { [itemId: string]: number };
+
+    /** 已购永久装备 id 列表（重复购买视为已拥有） */
+    ownedEquipment: string[];
+
+    /** 商店运行时态（每次进入岸上重置；不入存档） */
+    shop?: {
+        /** 当前货架物品 id 列表（4 个货架的扁平合集） */
+        slots: ShopSlot[];
+        /** 已使用换一批次数（影响下次费用） */
+        rerollCount: number;
+        /** 上次刷新的世界时间戳（隔时间自动刷新） */
+        lastRefreshAt: number;
+    };
+
     /** 一次性事件标志位（阶段 1 暂未使用） */
     flags: {
         /** 是否首次进入撤离系统（用于教程） */
@@ -82,6 +98,20 @@ export interface ExtractionState {
         /** 累计拾取物品数 */
         totalPickups: number;
     };
+}
+
+/** 商店一个货位（占商店 UI 的一个槽位） */
+export interface ShopSlot {
+    /** 唯一 id（点击 hit-test / 同一商品多次出现时区分） */
+    slotId: number;
+    /** 货架类型（影响展示分组） */
+    shelf: 'consumable' | 'emergency' | 'equipment' | 'special';
+    /** 物品 id */
+    itemId: string;
+    /** 售价（baseValue × 老板系数；可与 itemDef.baseValue 不同） */
+    price: number;
+    /** 是否已售（消耗品永远不消耗 slot；装备买完变 sold） */
+    sold: boolean;
 }
 
 // =============================================
@@ -103,6 +133,8 @@ export function getInitialExtractionState(): ExtractionState {
         diveSession: {
             pickedRelicIds: [],
         },
+        consumables: {},
+        ownedEquipment: ['bag4', 'finsBasic'],
         flags: {
             tutorialShown: false,
         },
@@ -148,6 +180,10 @@ export function patchExtractionState(ex: any): ExtractionState {
     if (!Array.isArray(ex.bag.items)) ex.bag.items = [];
     if (!ex.diveSession || typeof ex.diveSession !== 'object') ex.diveSession = def.diveSession;
     if (!Array.isArray(ex.diveSession.pickedRelicIds)) ex.diveSession.pickedRelicIds = [];
+    if (!ex.consumables || typeof ex.consumables !== 'object') ex.consumables = {};
+    if (!Array.isArray(ex.ownedEquipment)) ex.ownedEquipment = def.ownedEquipment.slice();
+    // shop 字段是运行时态，不入存档（这里清空）
+    if (ex.shop) ex.shop = undefined;
     if (!ex.flags || typeof ex.flags !== 'object') ex.flags = def.flags;
     if (typeof ex.flags.tutorialShown !== 'boolean') ex.flags.tutorialShown = false;
     if (!ex.stats || typeof ex.stats !== 'object') ex.stats = def.stats;

@@ -17,6 +17,8 @@ import { drawRelicsWorld, drawRelicHintsWorld } from './RenderRelic';
 import { getLifeDetectorRuntime } from '../logic/LifeDetector';
 // 撤离玩法：拾取调试可视化（GM 开关控制）
 import { drawPickupDebugOverlay } from '../extraction/render/PickupDebugOverlay';
+// 撤离玩法：水底丢弃物世界层渲染
+import { drawDroppedItemsWorld } from '../extraction/render/DroppedItemRender';
 import { drawGMButton, drawGMPanel } from '../gm/GMPanel';
 import { updateDustTime, drawDustDarkLayer, drawDustLitLayer } from './DustMotes';
 import { profileBegin, profileEnd, drawPerfHUD } from '../debug/PerfHUD';
@@ -413,6 +415,8 @@ export function draw() {
         drawOxygenFeedbackWorld(ctx);
         // 图鉴物件（静态、不可交互、仅 play 阶段世界层绘制）
         drawRelicsWorld(ctx, viewL, viewR, viewT, viewB);
+        // 撤离玩法：水底丢弃物（玩家从背包丢出的临时拾取物）
+        drawDroppedItemsWorld(viewL, viewR, viewT, viewB);
         // 撤离玩法：拾取范围调试可视化（GM 开关控制）
         drawPickupDebugOverlay();
     }

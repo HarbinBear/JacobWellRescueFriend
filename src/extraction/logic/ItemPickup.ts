@@ -13,11 +13,134 @@
 
 import { state, player } from '../../core/state';
 import { CONFIG } from '../../core/config';
-import { getTreasureByRelicKind } from '../core/ExtractionRegistry';
+import { getTreasureByRelicKind, getItemDef } from '../core/ExtractionRegistry';
 import { rollCondition, getItemDisplayName, computeItemPrice } from './Economy';
 import { addToBag, canFitInBag } from './Inventory';
 import { getExtractionState, ensureExtractionState } from '../core/ExtractionState';
 import type { Relic } from '../../logic/Relic';
+import {
+    findNearbyDroppedItem,
+    pickupDroppedItem,
+    findDroppedItemById,
+    dropItemAtPlayer,
+    DroppedItem,
+    resetDroppedItems,
+} from './DroppedItem';
+
+// =============================================
+// 拾取目标统一抽象（Relic + DroppedItem）
+// =============================================
+
+export type PickupTargetKind = 'relic' | 'dropped';
+
+export interface PickupTarget {
+    kind: PickupTargetKind;
+    /** Relic id 或 DroppedItem id */
+    id: number;
+    /** 显示名（轮盘 label 用） */
+    label: string;
+    /** 世界坐标（飘字用） */
+    x: number;
+    y: number;
+}
+
+/**
+ * 找玩家附近最近的可拾取目标（先 Relic 后 DroppedItem，距离最近优先）
+ */
+export function findNearbyPickupTarget(): PickupTarget | null {
+    const relic = findNearbyPickupRelic();
+    const dropped = findNearbyDroppedItem();
+
+    // 都没有
+    if (!relic && !dropped) return null;
+
+    // 只有一个
+    if (relic && !dropped) {
+        const def = getTreasureByRelicKind(relic.kind);
+        return {
+            kind: 'relic',
+            id: relic.id,
+            label: def ? '拾取 · ' + def.name : '拾取',
+            x: relic.x,
+            y: relic.y,
+        };
+    }
+    if (!relic && dropped) {
+        const def = getItemDef(dropped.itemId);
+        return {
+            kind: 'dropped',
+            id: dropped.id,
+            label: def ? '拾起 · ' + def.name : '拾起',
+            x: dropped.x,
+            y: dropped.y,
+        };
+    }
+
+    // 两个都有：选距离更近的
+    const r = relic!;
+    const d = dropped!;
+    const dr = Math.hypot(player.x - r.x, player.y - r.y);
+    const dd = Math.hypot(player.x - d.x, player.y - d.y);
+    if (dd <= dr) {
+        const def = getItemDef(d.itemId);
+        return {
+            kind: 'dropped',
+            id: d.id,
+            label: def ? '拾起 · ' + def.name : '拾起',
+            x: d.x,
+            y: d.y,
+        };
+    } else {
+        const def = getTreasureByRelicKind(r.kind);
+        return {
+            kind: 'relic',
+            id: r.id,
+            label: def ? '拾取 · ' + def.name : '拾取',
+            x: r.x,
+            y: r.y,
+        };
+    }
+}
+
+/** 统一的拾取入口（Relic 走 performPickup；DroppedItem 走 performPickupDropped） */
+export function performPickupTarget(target: PickupTarget): PickupResult {
+    if (target.kind === 'relic') {
+        return performPickup(target.id);
+    } else {
+        return performPickupDropped(target.id);
+    }
+}
+
+/** 拾起一个丢弃物 */
+export function performPickupDropped(droppedId: number): PickupResult {
+    const it = findDroppedItemById(droppedId);
+    if (!it) return { ok: false, reason: 'noRelic' };
+
+    const def = getItemDef(it.itemId);
+    if (!def) return { ok: false, reason: 'unknownItem' };
+
+    if (!canFitInBag(it.slots)) {
+        pushPickupHint('背包已满 (' + it.slots + ' 格)', it.x, it.y);
+        return { ok: false, reason: 'bagFull' };
+    }
+
+    const r = pickupDroppedItem(droppedId);
+    if (!r.ok) {
+        if (r.reason === 'bagFull') pushPickupHint('背包已满', it.x, it.y);
+        return { ok: false, reason: r.reason };
+    }
+
+    // 飘字反馈："拾起 完美的怀表"（不显示金额，因为已经在仓库估算过了）
+    const display = getItemDisplayName(def.id, it.condition);
+    pushPickupHint('✓ ' + display, it.x, it.y);
+
+    return {
+        ok: true,
+        displayName: display,
+        fromX: it.x,
+        fromY: it.y,
+    };
+}
 
 // =============================================
 // 配置（默认值，未来可走 CONFIG.extraction.*）
@@ -152,11 +275,42 @@ export function getRelicPickupLabel(relicId: number): string {
 // 下潜钩子
 // =============================================
 
-/** 每次下潜开始：清空本次拾取记录 + 清空飘字 */
+/** 每次下潜开始/结束：清空本次拾取记录 + 清空飘字 + 清空丢弃物 */
 export function resetPickupForDive(): void {
     const ex = ensureExtractionState();
     ex.diveSession.pickedRelicIds = [];
     _pickupHints = [];
+    resetDroppedItems();
+}
+
+// =============================================
+// 丢弃物品（背包 → 水底丢弃物）
+// =============================================
+
+/** 把背包某件物品丢到水底（玩家身边落下，可重新拾起） */
+export function discardBagItemAtPlayer(itemUniqueId: number): {
+    ok: boolean;
+    reason?: string;
+} {
+    const ex = ensureExtractionState();
+    const idx = ex.bag.items.findIndex(b => b.id === itemUniqueId);
+    if (idx < 0) return { ok: false, reason: 'notFound' };
+
+    const it = ex.bag.items[idx];
+    const def = getItemDef(it.itemId);
+    if (!def) return { ok: false, reason: 'unknownItem' };
+
+    // 落到玩家身边
+    const dropped = dropItemAtPlayer(it.itemId, it.condition, it.slots);
+    if (!dropped) return { ok: false, reason: 'dropFailed' };
+
+    // 从背包移除
+    ex.bag.items.splice(idx, 1);
+
+    // 飘字提示
+    pushPickupHint('丢弃 ' + getItemDisplayName(it.itemId, it.condition), dropped.x, dropped.y);
+
+    return { ok: true };
 }
 
 // =============================================

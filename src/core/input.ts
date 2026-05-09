@@ -7,7 +7,7 @@ import { handleHUDTouchStart, handleHUDTouchMove, handleHUDTouchEnd } from '../r
 import { buildWheelSectors, executeWheelAction } from '../logic/Marker';
 import { ALL_RELIC_KINDS } from '../logic/Relic';
 import { getWheelBtnPos } from '../render/RenderWheel';
-// 撤离玩法：debrief 阶段"全部卖出"按钮 hit-test
+// 撤离玩法：UI hit-test 入口集中导入
 import {
     getSellAllBtnRect,
     performSellAll,
@@ -15,9 +15,22 @@ import {
     openShop,
     closeShop,
     performShopBuy,
+    performShopRerollAction,
+    openShopSlotDetail,
     getShopEntryBtnRect,
     getShopCloseBtnRect,
+    getShopRerollBtnRect,
+    getShopSlotHitTests,
     getShopBuyBtnRect,
+    isDetailCardOpen,
+    closeDetailCard,
+    getDetailCardData,
+    getDetailCardCloseRect,
+    getDetailCardActionRect,
+    listDetailCardActionIds,
+    getInventorySlotHitTests,
+    openBagItemDetail,
+    discardBagItemAtPlayer,
 } from '../extraction';
 import {
     getBriefingAcceptBtnRect,
@@ -210,6 +223,54 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
         const gmTouch = res.touches[res.touches.length - 1];
         if (gmTouch && handleGMTouchStart(gmTouch.clientX, gmTouch.clientY)) {
             return;
+        }
+
+        // === 撤离玩法：物品详情卡（最高优先级，遮罩拦截全屏） ===
+        // 详情卡打开时，所有点击都进入这个分支，不会下传给迷宫/HUD/轮盘
+        if (isDetailCardOpen()) {
+            const t = res.changedTouches[0] || res.touches[res.touches.length - 1];
+            if (!t) return;
+            const tx = t.clientX, ty = t.clientY;
+
+            // 点关闭 X
+            const xR = getDetailCardCloseRect();
+            if (xR && tx >= xR.x && tx <= xR.x + xR.w && ty >= xR.y && ty <= xR.y + xR.h) {
+                playSFX('uiSecondary');
+                closeDetailCard();
+                return;
+            }
+
+            // 点动作按钮（遍历）
+            const actionIds = listDetailCardActionIds();
+            for (const aid of actionIds) {
+                const ar = getDetailCardActionRect(aid);
+                if (ar && tx >= ar.x && tx <= ar.x + ar.w && ty >= ar.y && ty <= ar.y + ar.h) {
+                    handleDetailCardAction(aid);
+                    return;
+                }
+            }
+            // 点其他位置（遮罩）→ 关闭
+            // （为避免误关，限制一下：必须落在卡片外）
+            // 简化：直接关闭
+            playSFX('uiSecondary');
+            closeDetailCard();
+            return;
+        }
+
+        // === 撤离玩法：水下点击背包格子 → 打开详情卡（含丢弃按钮）===
+        if (state.screen === 'mazeRescue' && state.mazeRescue && state.mazeRescue.phase === 'play') {
+            const t = res.changedTouches[0] || res.touches[res.touches.length - 1];
+            if (t) {
+                const slotHits = getInventorySlotHitTests();
+                for (const sh of slotHits) {
+                    if (t.clientX >= sh.x && t.clientX <= sh.x + sh.w &&
+                        t.clientY >= sh.y && t.clientY <= sh.y + sh.h) {
+                        playSFX('uiSecondary');
+                        openBagItemDetail(sh.itemUniqueId);
+                        return;
+                    }
+                }
+            }
         }
 
         // 左上角 HUD 栏始终优先（即使 GM 开着也允许交互）
@@ -834,22 +895,29 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                         closeShop();
                         return;
                     }
-                    // 点购买按钮（遍历 3 件可购物品）
-                    const candidates = ['bag8', 'bag12', 'bag16'];
-                    for (const itemId of candidates) {
-                        const r = getShopBuyBtnRect(itemId);
-                        if (r && tx >= r.x && tx <= r.x + r.w && ty >= r.y && ty <= r.y + r.h) {
-                            const ok = performShopBuy(itemId);
-                            if (ok) {
-                                playSFX('uiPrimary');
-                                console.log('[Extraction] 购买成功：' + itemId);
-                            } else {
-                                playSFX('uiSecondary');
-                            }
+                    // 点"换一批"按钮
+                    const rr = getShopRerollBtnRect();
+                    if (rr && tx >= rr.x && tx <= rr.x + rr.w && ty >= rr.y && ty <= rr.y + rr.h) {
+                        const r = performShopRerollAction();
+                        if (r.ok) {
+                            playSFX('uiPrimary');
+                            console.log('[Extraction] 换一批，花费 ' + r.cost + ' 金');
+                        } else {
+                            playSFX('uiSecondary');
+                            console.log('[Extraction] 换一批失败：' + r.reason);
+                        }
+                        return;
+                    }
+                    // 点货架卡片 → 打开详情卡（含"购买"按钮）
+                    const slotHits = getShopSlotHitTests();
+                    for (const sh of slotHits) {
+                        if (tx >= sh.x && tx <= sh.x + sh.w && ty >= sh.y && ty <= sh.y + sh.h) {
+                            playSFX('uiSecondary');
+                            openShopSlotDetail(sh.slotId);
                             return;
                         }
                     }
-                    // 商店内空白点击：不做任何动作（只有显式点关闭才关）
+                    // 商店内空白点击：什么都不做
                     return;
                 }
 
@@ -1310,3 +1378,49 @@ function handleTouchEnd(changedTouches) {
         }
     }
 }
+
+// =============================================
+// 撤离玩法：物品详情卡的动作分发
+// =============================================
+function handleDetailCardAction(actionId: string): void {
+    // close
+    if (actionId === 'close') {
+        playSFX('uiSecondary');
+        closeDetailCard();
+        return;
+    }
+
+    // discard:<bagItemId>
+    if (actionId.indexOf('discard:') === 0) {
+        const id = parseInt(actionId.slice(8), 10);
+        if (!isNaN(id)) {
+            const r = discardBagItemAtPlayer(id);
+            if (r.ok) {
+                playSFX('uiPrimary');
+                console.log('[Extraction] 已丢到水底（可重新拾起）');
+            } else {
+                playSFX('uiSecondary');
+            }
+        }
+        closeDetailCard();
+        return;
+    }
+
+    // buy:<slotId>（商店购买）
+    if (actionId.indexOf('buy:') === 0) {
+        const r = performShopBuy(actionId);
+        if (r.ok) {
+            playSFX('uiPrimary');
+            console.log('[Extraction] 购买成功');
+        } else {
+            playSFX('uiSecondary');
+            console.log('[Extraction] 购买失败：' + r.reason);
+        }
+        return;
+    }
+
+    // sell:<warehouseItemId>（阶段 3 才用）
+    // 默认：未识别
+    console.log('[Extraction] 未知详情卡动作: ' + actionId);
+}
+

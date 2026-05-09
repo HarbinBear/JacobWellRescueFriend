@@ -9,6 +9,7 @@ import { drawInventoryHUD } from '../extraction/render/InventoryHUD';
 import { drawExtractionSettlement } from '../extraction/render/DebriefExtension';
 import { drawShop, drawShopEntryBtn, isShopOpen as isExtractionShopOpen } from '../extraction/render/ShopUI';
 import { drawPickupHints } from '../extraction/render/PickupHints';
+import { drawItemDetailCard } from '../extraction/render/ItemDetailCard';
 
 // 本文件已按职责拆分到 src/render/mazeUI/ 目录：
 //   - mazeUI/shore.ts    岸上界面 + 全屏认知地图 + 下潜记录列表 / 单次手绘回放
@@ -90,6 +91,8 @@ export function drawMazeHUD() {
         // 撤离玩法商店全屏页：独立分发
         if (isExtractionShopOpen()) {
             drawShop(cw, ch, time);
+            // 详情卡（在商店上方）
+            drawItemDetailCard();
             ctx.restore();
             return;
         }
@@ -112,6 +115,8 @@ export function drawMazeHUD() {
         if (!maze.briefingShown && !maze.shoreMapOpen) {
             drawCaseBriefing(maze, cw, ch, time);
         }
+        // 详情卡（最高层）
+        drawItemDetailCard();
         ctx.restore();
         return;
     }
@@ -127,6 +132,7 @@ export function drawMazeHUD() {
         // 撤离玩法商店全屏页：独立分发
         if (isExtractionShopOpen()) {
             drawShop(cw, ch, time);
+            drawItemDetailCard();
             ctx.restore();
             return;
         }
@@ -311,6 +317,8 @@ export function drawMazeHUD() {
     drawInventoryHUD();
     // --- 撤离玩法：拾取/容量飘字（世界坐标跟随，跟随相机变换） ---
     drawPickupHints();
+    // --- 撤离玩法：物品详情卡（play 阶段也可能打开，最顶层） ---
+    drawItemDetailCard();
 
     // 仅保留"氧气拾取后屏幕级别的 +X% 飘字"（HUDTopLeft 内部不负责这个世界级飘字）
     if (maze.oxygenFeedback && maze.oxygenFeedback.floatText) {

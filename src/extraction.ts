@@ -54,14 +54,26 @@ export {
 } from './extraction/logic/Inventory';
 
 // =============================================
-// 拾取
+// 拾取（Relic + 丢弃物 统一）
 // =============================================
 export {
     findNearbyPickupRelic,
     performPickup,
     getRelicPickupLabel,
+    findNearbyPickupTarget,
+    performPickupTarget,
+    performPickupDropped,
+    discardBagItemAtPlayer,
     resetPickupForDive,
 } from './extraction/logic/ItemPickup';
+
+// 丢弃物
+export {
+    getDroppedItems,
+    resetDroppedItems,
+    dropItemAtPlayer,
+    findNearbyDroppedItem,
+} from './extraction/logic/DroppedItem';
 
 // =============================================
 // 装备
@@ -71,6 +83,22 @@ export {
     restoreLoadoutAfterDive,
     equipPermanent,
 } from './extraction/logic/Loadout';
+
+// =============================================
+// 商店
+// =============================================
+export {
+    refreshShopSlots,
+    ensureShopInitialized,
+    getRerollCost,
+    performShopReroll,
+    performShopBuySlot,
+    isEquipmentOwned,
+    getConsumableCount,
+    consumeConsumable,
+    addConsumable,
+    shopPriceFor,
+} from './extraction/logic/Shop';
 
 // =============================================
 // 下潜钩子（MazeLogic 唯一接入点）
@@ -100,6 +128,8 @@ export {
 // UI 模块的"按钮矩形 getter"与"动作执行"导出（input.ts 静态 import 用）
 // =============================================
 export { getSellAllBtnRect, performSellAll } from './extraction/render/DebriefExtension';
+
+// 商店 UI
 export {
     drawShop,
     drawShopEntryBtn,
@@ -107,7 +137,30 @@ export {
     openShop,
     closeShop,
     performShopBuy,
+    performShopRerollAction,
+    openShopSlotDetail,
     getShopEntryBtnRect,
     getShopCloseBtnRect,
+    getShopRerollBtnRect,
     getShopBuyBtnRect,
+    getShopSlotHitTests,
 } from './extraction/render/ShopUI';
+
+// 背包 HUD
+export { getInventorySlotHitTests, openBagItemDetail } from './extraction/render/InventoryHUD';
+
+// 物品详情卡
+export {
+    drawItemDetailCard,
+    isDetailCardOpen,
+    openDetailCard,
+    closeDetailCard,
+    getDetailCardData,
+    getDetailCardBackdropRect,
+    getDetailCardCloseRect,
+    getDetailCardActionRect,
+    listDetailCardActionIds,
+} from './extraction/render/ItemDetailCard';
+
+// 丢弃物世界层渲染
+export { drawDroppedItemsWorld } from './extraction/render/DroppedItemRender';

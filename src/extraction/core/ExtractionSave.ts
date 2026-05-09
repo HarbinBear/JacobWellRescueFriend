@@ -66,6 +66,9 @@ export function saveExtractionProgress(): boolean {
         diveSession: {
             pickedRelicIds: [],
         },
+        consumables: { ...(ex.consumables || {}) },
+        ownedEquipment: (ex.ownedEquipment || []).slice(),
+        // shop 是运行时态，不保存
         flags: {
             tutorialShown: ex.flags.tutorialShown,
         },

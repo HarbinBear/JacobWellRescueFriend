@@ -5,9 +5,8 @@ import { pathLength, samplePolyline } from './Pathfinding';
 import { findNearbyOxygenTank, startInstallTank, cancelInstallTank } from './OxygenTank';
 // 撤离玩法：水下战利品拾取轮盘上下文（接入点见 detectWheelContext / executeWheelAction）
 import {
-    findNearbyPickupRelic,
-    performPickup,
-    getRelicPickupLabel,
+    findNearbyPickupTarget,
+    performPickupTarget,
     ExtractionEnabled,
 } from '../extraction';
 
@@ -171,6 +170,7 @@ interface NearbyInfo {
     oxygenTankId?: number; // 附近氧气瓶 id（context=oxygenTank 时有效）
     pickupRelicId?: number; // 附近水下战利品 id（context=pickupRelic 时有效）
     pickupRelicLabel?: string; // 拾取扇区显示文本（"拾取 · 黄铜指南针"）
+    pickupTargetKind?: 'relic' | 'dropped'; // 拾取目标种类（撤离玩法）
 }
 
 /** 检测玩家附近的可交互对象，返回上下文信息 */
@@ -189,15 +189,16 @@ export function detectWheelContext(): NearbyInfo {
         }
     }
 
-    // === 0.5 次高优先：水下战利品拾取（撤离玩法）===
+    // === 0.5 次高优先：水下战利品 / 丢弃物拾取（撤离玩法）===
     // 仅在迷宫模式 play 阶段 + 撤离玩法启用时启用；不与铺绳/标记冲突
     if (ExtractionEnabled && ExtractionEnabled() &&
         state.screen === 'mazeRescue' && state.mazeRescue && state.mazeRescue.phase === 'play') {
-        const relic = findNearbyPickupRelic();
-        if (relic) {
+        const target = findNearbyPickupTarget();
+        if (target) {
             result.context = 'pickupRelic';
-            result.pickupRelicId = relic.id;
-            result.pickupRelicLabel = getRelicPickupLabel(relic.id);
+            result.pickupRelicId = target.id;
+            result.pickupRelicLabel = target.label;
+            result.pickupTargetKind = target.kind;
             return result;
         }
     }
@@ -528,14 +529,18 @@ export function executeWheelAction(action: WheelAction) {
             break;
         }
         case 'pickupRelic': {
-            // 撤离玩法：水下战利品拾取——立即入背包
+            // 撤离玩法：拾取水下战利品 / 丢弃物——立即入背包
             if (info.pickupRelicId != null) {
-                const r = performPickup(info.pickupRelicId);
+                const kind = info.pickupTargetKind || 'relic';
+                const r = performPickupTarget({
+                    kind,
+                    id: info.pickupRelicId,
+                    label: info.pickupRelicLabel || '',
+                    x: 0, y: 0,
+                });
                 if (r.ok) {
-                    // 简单飘字提示（复用 storyManager 风格的小提示由调用方处理；
-                    // 这里只做静默拾取，UI 反馈靠右下角背包格子的填入）
+                    // 静默拾取，UI 反馈走右下角背包格子点亮 + 世界层飘字
                 } else if (r.reason === 'bagFull') {
-                    // 背包满：不拾取，玩家应该先丢东西。后续 UI 可以做更明显的反馈
                     console.log('[Pickup] 背包已满，无法拾取');
                 }
             }
