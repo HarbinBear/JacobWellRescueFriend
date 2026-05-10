@@ -191,6 +191,11 @@ function getMouthPos(): { x: number; y: number } {
 // 生成一个气泡粒子
 // =============================================
 function spawnBubble(intensity: number) {
+    // CCR（闭式循环呼吸器）不向外排气泡：呼出的气体被 CO2 吸收罐处理后回收循环，物理上看不到气泡
+    // 撞岩石的"撞击吐气"气泡（spawnImpactBurst）不在此路径，照常表现，因为那是物理冲击不是呼吸
+    const ex = (state as any).extraction;
+    if (ex?.equipped?.suit === 'suitCCR') return;
+
     const cfg = CONFIG.breath;
     const mouth = getMouthPos();
     const jitter = cfg.spawnJitter;

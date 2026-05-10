@@ -23,7 +23,7 @@ import { setBagMaxSlots } from './Inventory';
 
 const CONSUMABLE_POOL = ['airTankS', 'airTankM', 'airTankL', 'batteryWeak', 'batteryStd', 'batteryHigh', 'ropePack5', 'ropePack15'];
 const EMERGENCY_POOL: string[] = []; // 阶段 3 添加 'beacon', 'sharkRepellent'
-const EQUIPMENT_POOL = ['bag8', 'bag12', 'bag16', 'finsRacing', 'finsEndurance'];
+const EQUIPMENT_POOL = ['bag8', 'bag12', 'bag16', 'finsRacing', 'finsEndurance', 'suitDeep', 'suitCCR'];
 
 /** 商店一次刷出的槽位总数 */
 const SHOP_TOTAL_SLOTS = 8;
@@ -167,15 +167,15 @@ export function performShopReroll(): { ok: boolean; cost: number; reason?: strin
 /**
  * 当前持有某件装备的数量（含正穿在身上的那件）。
  *
- * 保底装备（bag4 / finsBasic）始终视作 1（穿在身上，永远在）。
+ * 保底装备（bag4 / finsBasic / suitBasic）始终视作 1（穿在身上，永远在）。
  * 其他装备从 equipmentStock 读取。
  */
 export function getEquipmentStock(itemId: string): number {
-    if (itemId === 'bag4' || itemId === 'finsBasic') return 1;
+    if (itemId === 'bag4' || itemId === 'finsBasic' || itemId === 'suitBasic') return 1;
     const ex = ensureExtractionState();
     const n = (ex.equipmentStock && ex.equipmentStock[itemId]) || 0;
     // 当前装备的那件如果不在 stock 里（例如老存档迁移路径），仍然显示 1
-    if (n === 0 && (ex.equipped?.bag === itemId || ex.equipped?.fins === itemId)) return 1;
+    if (n === 0 && (ex.equipped?.bag === itemId || ex.equipped?.fins === itemId || ex.equipped?.suit === itemId)) return 1;
     return n;
 }
 
@@ -187,7 +187,7 @@ export function getEquipmentStock(itemId: string): number {
  * @deprecated 新代码请用 getEquipmentStock(); UI 应展示"持有 N"
  */
 export function isEquipmentOwned(itemId: string): boolean {
-    return itemId === 'bag4' || itemId === 'finsBasic';
+    return itemId === 'bag4' || itemId === 'finsBasic' || itemId === 'suitBasic';
 }
 
 // =============================================
@@ -204,14 +204,18 @@ function equipmentTier(itemId: string): number {
         case 'finsBasic':     return 1;
         case 'finsEndurance': return 2;
         case 'finsRacing':    return 3;
+        case 'suitBasic':     return 1;
+        case 'suitDeep':      return 2;
+        case 'suitCCR':       return 3;
         default:              return 0;
     }
 }
 
-/** 装备类别：'bag' 或 'fins'，其它返回 null */
-function equipmentSlotKind(itemId: string): 'bag' | 'fins' | null {
+/** 装备类别：'bag' / 'fins' / 'suit'，其它返回 null */
+function equipmentSlotKind(itemId: string): 'bag' | 'fins' | 'suit' | null {
     if (itemId === 'bag4' || itemId === 'bag8' || itemId === 'bag12' || itemId === 'bag16') return 'bag';
     if (itemId === 'finsBasic' || itemId === 'finsRacing' || itemId === 'finsEndurance') return 'fins';
+    if (itemId === 'suitBasic' || itemId === 'suitDeep' || itemId === 'suitCCR') return 'suit';
     return null;
 }
 
@@ -219,17 +223,30 @@ function equipmentSlotKind(itemId: string): 'bag' | 'fins' | null {
  * 当某件升级装备库存归零（被失败撤离销毁），自动回退到次优。
  * 选择规则：从同槽位的所有装备里挑库存 > 0 的、tier 最高的；都没有就回到保底。
  */
-export function fallbackEquippedSlot(slot: 'bag' | 'fins'): string {
+export function fallbackEquippedSlot(slot: 'bag' | 'fins' | 'suit'): string {
     const ex = ensureExtractionState();
-    const candidates = slot === 'bag'
-        ? ['bag16', 'bag12', 'bag8']
-        : ['finsRacing', 'finsEndurance'];
+    let candidates: string[];
+    let baseline: string;
+    switch (slot) {
+        case 'bag':
+            candidates = ['bag16', 'bag12', 'bag8'];
+            baseline = 'bag4';
+            break;
+        case 'fins':
+            candidates = ['finsRacing', 'finsEndurance'];
+            baseline = 'finsBasic';
+            break;
+        case 'suit':
+            candidates = ['suitCCR', 'suitDeep'];
+            baseline = 'suitBasic';
+            break;
+    }
     for (const id of candidates) {
         if ((ex.equipmentStock?.[id] || 0) > 0) {
             return id;
         }
     }
-    return slot === 'bag' ? 'bag4' : 'finsBasic';
+    return baseline;
 }
 
 /** 取消耗品当前库存数量 */
@@ -278,8 +295,10 @@ export function performShopBuySlot(slotId: number): { ok: boolean; reason?: stri
 
         const slotKind = equipmentSlotKind(slot.itemId);
         if (slotKind) {
-            if (!ex.equipped) ex.equipped = { bag: 'bag4', fins: 'finsBasic' };
-            const curEquipped = slotKind === 'bag' ? ex.equipped.bag : ex.equipped.fins;
+            if (!ex.equipped) ex.equipped = { bag: 'bag4', fins: 'finsBasic', suit: 'suitBasic' };
+            const curEquipped = slotKind === 'bag' ? ex.equipped.bag
+                              : slotKind === 'fins' ? ex.equipped.fins
+                              : ex.equipped.suit;
             // 如果新买的等级 ≥ 当前装备的等级，自动换上（== 时也换，因为可能从 stock 取首件）
             if (equipmentTier(slot.itemId) >= equipmentTier(curEquipped)) {
                 if (slotKind === 'bag') {
@@ -288,9 +307,12 @@ export function performShopBuySlot(slotId: number): { ok: boolean; reason?: stri
                     if (eff?.inventorySlots != null) {
                         setBagMaxSlots(eff.inventorySlots);
                     }
-                } else {
+                } else if (slotKind === 'fins') {
                     ex.equipped.fins = slot.itemId;
                     // fins 的 moveSpeedMul / o2DrainMul 在下次下潜 applyLoadoutForDive 时生效
+                } else {
+                    ex.equipped.suit = slot.itemId;
+                    // suit 的 maxDepthMeters 在下次下潜 applyLoadoutForDive 时生效
                 }
             }
         }

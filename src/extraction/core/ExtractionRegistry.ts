@@ -68,6 +68,12 @@ export interface EquipmentEffects {
     inventorySlots?: number;
     /** 起始绳索段数 */
     startRopeCount?: number;
+    /**
+     * 安全可下潜深度上限（米）—— 永久装备：潜水衣 / 呼吸器
+     * 玩家深度 > 该值时，氧气消耗 ×3，画面边缘脉冲红光，提示"超出潜水衣极限"
+     * 不做硬卡墙（违和），靠快速失氧逼玩家上浮
+     */
+    maxDepthMeters?: number;
 }
 
 export interface EquipmentDef extends ItemDef {
@@ -172,6 +178,11 @@ const EQUIPMENT_ITEMS: EquipmentDef[] = [
     { id: 'finsBasic',     name: '普通脚蹼',   desc: '基础脚蹼。',                          category: 'equipment', baseValue: 0,    weight: 0, slots: 0, rarity: 'common',   spawnWeight: 0, conditionPool: 'defaultPool', effects: { moveSpeedMul: 1.0 } },
     { id: 'finsRacing',    name: '竞速脚蹼',   desc: '速度提升 1.2×，节省下潜时间。',       category: 'equipment', baseValue: 400,  weight: 0, slots: 0, rarity: 'rare',     spawnWeight: 0, conditionPool: 'defaultPool', effects: { moveSpeedMul: 1.2 } },
     { id: 'finsEndurance', name: '长续航脚蹼', desc: '速度 0.95×，氧耗 0.85×，深水玩家爱。', category: 'equipment', baseValue: 350,  weight: 0, slots: 0, rarity: 'rare',     spawnWeight: 0, conditionPool: 'defaultPool', effects: { moveSpeedMul: 0.95, o2DrainMul: 0.85 } },
+    // 潜水衣 / 呼吸器：决定本次下潜可达的最大安全深度
+    // 超深时不硬卡（保留游泳手感），但氧气消耗 ×3 + 画面红警，逼玩家上浮
+    { id: 'suitBasic',     name: '简易潜水衣', desc: '基础潜水服，安全深度 30m。再深就吃不消了。', category: 'equipment', baseValue: 0,    weight: 0, slots: 0, rarity: 'common',   spawnWeight: 0, conditionPool: 'defaultPool', effects: { maxDepthMeters: 30 } },
+    { id: 'suitDeep',      name: '深水潜水衣', desc: '加厚抗压，安全深度 60m。',           category: 'equipment', baseValue: 500,  weight: 0, slots: 0, rarity: 'rare',     spawnWeight: 0, conditionPool: 'defaultPool', effects: { maxDepthMeters: 60 } },
+    { id: 'suitCCR',       name: 'CCR 循环呼吸机', desc: '闭式循环呼吸器，安全深度 100m，深水玩家终极装备。', category: 'equipment', baseValue: 2000, weight: 0, slots: 0, rarity: 'epic',     spawnWeight: 0, conditionPool: 'defaultPool', effects: { maxDepthMeters: 100 } },
 ];
 
 // =============================================

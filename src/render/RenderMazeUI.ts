@@ -397,9 +397,12 @@ export function drawMazeHUD() {
     // 氧气拾取拾取后的全屏绿色辉光（在所有 HUD 之前绘制，不遮挖 HUD）
     drawOxygenScreenGlow(ctx, cw, ch);
 
-    // --- 左上角 HUD（氧气环 / 手动挡 / 音频 / 生命探知仪，统一由 HUDTopLeft 管理） ---
+    // --- 左上角 HUD（氧气环 / 深度仪表 / 手动挡 / 音频 / 生命探知仪，统一由 HUDTopLeft 管理） ---
     ensureMazeHUDInitialized();
     drawHUDTopLeft(time);
+
+    // --- 顶部居中深度标牌 + 超深红警（场景内可视化"本次最大深度极限"） ---
+    drawDepthBanner(maze, cw, ch);
 
     // --- 撤离玩法：右下角背包胶囊 HUD（仅 play 阶段显示） ---
     drawInventoryHUD();
@@ -741,4 +744,91 @@ function drawMazeMinimap(maze: any, cw: number, ch: number, time: number) {
 
         ctx.globalAlpha = 1;
     }
+}
+
+// =============================================
+// 顶部深度标牌 + 超深红警
+// =============================================
+//
+// 设计：
+// - 顶部居中（避开微信胶囊和左上 HUD）显示"30 / 60m"两段数字
+// - 超过潜水衣极限时：标牌底变红 + 屏幕四周脉冲红雾（提示风险）
+// - 不阻塞玩家视线（高度仅 26px、宽度约 110px）
+function drawDepthBanner(maze: any, cw: number, ch: number): void {
+    if (!maze || maze.phase !== 'play') return;
+
+    const tile = maze.mazeTileSize || 120;
+    const curDepth = Math.max(0, Math.floor(player.y / tile));
+    const maxAllowed = (maze.maxDepthAllowed | 0) || 30;
+    const overLimit = curDepth > maxAllowed;
+    const ratio = Math.min(1.2, curDepth / Math.max(1, maxAllowed));
+
+    // === 1. 屏幕边缘红警（仅超深时） ===
+    if (overLimit) {
+        const pulse = 0.35 + 0.25 * Math.sin(Date.now() / 250);
+        // 四周径向暗角变红
+        const grad = ctx.createRadialGradient(cw / 2, ch / 2, ch * 0.35, cw / 2, ch / 2, Math.hypot(cw, ch) * 0.55);
+        grad.addColorStop(0, 'rgba(180, 0, 0, 0)');
+        grad.addColorStop(1, `rgba(180, 0, 0, ${pulse})`);
+        ctx.save();
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, cw, ch);
+        ctx.restore();
+    }
+
+    // === 2. 顶部居中标牌 ===
+    // 位置：避开左上 HUD（左 92px 内是 HUD 区）和右上微信胶囊（右 110px 内）
+    // 标牌宽 110、高 26，水平居中（如果可用宽度足够）
+    const bannerW = 110;
+    const bannerH = 26;
+    const bannerX = (cw - bannerW) / 2;
+    const bannerY = 16;
+
+    ctx.save();
+
+    // 底色：常态深蓝 / 临界（≥85%）橙色 / 超限红色
+    let bgColor: string;
+    let strokeColor: string;
+    if (overLimit) {
+        bgColor = 'rgba(140, 20, 20, 0.92)';
+        strokeColor = 'rgba(255, 100, 100, 0.95)';
+    } else if (ratio >= 0.85) {
+        bgColor = 'rgba(80, 50, 10, 0.88)';
+        strokeColor = 'rgba(255, 200, 100, 0.85)';
+    } else {
+        bgColor = 'rgba(15, 30, 50, 0.85)';
+        strokeColor = 'rgba(140, 200, 240, 0.55)';
+    }
+
+    ctx.fillStyle = bgColor;
+    ctx.beginPath();
+    rrect(ctx, bannerX, bannerY, bannerW, bannerH, 13);
+    ctx.fill();
+    ctx.strokeStyle = strokeColor;
+    ctx.lineWidth = overLimit ? 1.6 : 1.1;
+    ctx.beginPath();
+    rrect(ctx, bannerX, bannerY, bannerW, bannerH, 13);
+    ctx.stroke();
+
+    // 文字："深度 30 / 60m"
+    const textColor = overLimit ? 'rgba(255, 220, 220, 0.98)'
+                    : ratio >= 0.85 ? 'rgba(255, 230, 180, 0.95)'
+                    : 'rgba(220, 240, 255, 0.95)';
+    ctx.fillStyle = textColor;
+    ctx.font = 'bold 12px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    const cx = bannerX + bannerW / 2;
+    const cy = bannerY + bannerH / 2;
+
+    if (overLimit) {
+        ctx.fillText(`⚠ ${curDepth}m / 极限 ${maxAllowed}m`, cx, cy);
+    } else {
+        ctx.fillText(`深度 ${curDepth} / ${maxAllowed}m`, cx, cy);
+    }
+
+    ctx.textAlign = 'start';
+    ctx.textBaseline = 'alphabetic';
+    ctx.restore();
 }

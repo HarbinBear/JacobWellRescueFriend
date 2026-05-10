@@ -48,6 +48,7 @@ import {
     isDetailCardOpen,
 } from './ItemDetailCard';
 import { SAFE_TOP, SAFE_LEFT, SAFE_RIGHT } from './UISafeArea';
+import { drawShopItemIcon, hasShopItemIcon } from './ShopItemIcons';
 
 // 圆角矩形
 function rrect(c: any, x: number, y: number, w: number, h: number, r: number) {
@@ -565,24 +566,39 @@ function drawSlotCard(slot: ShopSlot, x: number, y: number, w: number, h: number
         ctx.fillText('×' + stockCount, bx, by + 8);
     }
 
-    // 图标（圆形 + 首字）
+    // 图标（矢量画法：背包/脚蹼/潜水衣/氧气瓶/电池/绳索 都有专属图标）
     const iconCx = x + w / 2;
     const iconCy = y + 38;
-    const iconR = 22;
-    ctx.fillStyle = sold ? 'rgba(100, 80, 60, 0.5)' : 'rgba(180, 140, 80, 0.65)';
-    ctx.beginPath();
-    ctx.arc(iconCx, iconCy, iconR, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = sold ? 'rgba(120, 100, 80, 0.4)' : 'rgba(220, 180, 100, 0.7)';
-    ctx.lineWidth = 1.2;
-    ctx.beginPath();
-    ctx.arc(iconCx, iconCy, iconR, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.fillStyle = sold ? 'rgba(140, 130, 120, 0.7)' : 'rgba(255, 240, 200, 0.95)';
-    ctx.font = 'bold 18px "PingFang SC", Arial';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(def.name.charAt(0), iconCx, iconCy);
+    const iconSize = 56;
+
+    // 优先用矢量图标；不认识的 itemId 兜底到"圆形 + 首字"
+    if (hasShopItemIcon(slot.itemId)) {
+        // 售出态用半透明叠加压暗
+        if (sold) {
+            ctx.save();
+            ctx.globalAlpha = 0.45;
+            drawShopItemIcon(ctx, slot.itemId, iconCx, iconCy, iconSize);
+            ctx.restore();
+        } else {
+            drawShopItemIcon(ctx, slot.itemId, iconCx, iconCy, iconSize);
+        }
+    } else {
+        const iconR = 22;
+        ctx.fillStyle = sold ? 'rgba(100, 80, 60, 0.5)' : 'rgba(180, 140, 80, 0.65)';
+        ctx.beginPath();
+        ctx.arc(iconCx, iconCy, iconR, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = sold ? 'rgba(120, 100, 80, 0.4)' : 'rgba(220, 180, 100, 0.7)';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.arc(iconCx, iconCy, iconR, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = sold ? 'rgba(140, 130, 120, 0.7)' : 'rgba(255, 240, 200, 0.95)';
+        ctx.font = 'bold 18px "PingFang SC", Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(def.name.charAt(0), iconCx, iconCy);
+    }
 
     // 名称（居中）
     ctx.fillStyle = sold ? 'rgba(160, 140, 120, 0.7)' : 'rgba(220, 200, 160, 0.95)';

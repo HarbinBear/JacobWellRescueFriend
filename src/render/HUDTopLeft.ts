@@ -31,6 +31,7 @@ import { getLifeDetectorRuntime } from '../logic/LifeDetector';
 import { toggleGMOpen, isGMOpen } from '../gm/GMPanel';
 import { getBreathPhaseAngle, getBreathPhase, getBreathPressure, getLungVolume } from '../logic/BreathSystem';
 import { playSFX } from '../audio/AudioManager';
+import { getActiveAirTanks } from '../extraction/logic/Loadout';
 
 // ========== 布局常量 ==========
 // 起点 X/Y，每项尺寸、间距（垂直排列）
@@ -384,9 +385,29 @@ export function initMazeHUDTopLeft(): void {
         onShortTap: () => { /* 无副作用；只弹tip */ },
         tipText: () => {
             const o2 = Math.ceil(player.o2);
+            const o2Max = Math.max(1, Math.round(player.o2Max || 100));
+            const tanks = getActiveAirTanks();
+            const tankCnt = tanks.length;
             const maze = state.mazeRescue;
             const depth = maze ? Math.max(0, Math.floor(player.y / (maze.mazeTileSize || 40))) : 0;
-            return `氧气：${o2}%\n深度：${depth}m`;
+            const tankLine = tankCnt > 1 ? `\n气瓶：双瓶携带` : (tankCnt === 1 ? `\n气瓶：单瓶` : '');
+            return `氧气：${o2}/${o2Max}${tankLine}\n深度：${depth}m`;
+        },
+    });
+
+    // 2. 深度仪表（显示当前深度 / 装备最大安全深度）
+    registerHUDItem({
+        id: 'depth',
+        visible: () => true,
+        iconDraw: drawDepthIcon,
+        supportsLongPress: false,
+        onShortTap: () => { /* 只弹 tip */ },
+        tipText: () => {
+            const maze = state.mazeRescue;
+            const depth = maze ? Math.max(0, Math.floor(player.y / (maze.mazeTileSize || 120))) : 0;
+            const maxAllowed = maze ? ((maze as any).maxDepthAllowed || 30) : 30;
+            const overFlag = depth > maxAllowed ? '\n⚠ 已超出潜水衣极限！' : '';
+            return `当前深度：${depth}m\n潜水衣极限：${maxAllowed}m${overFlag}`;
         },
     });
 
@@ -458,18 +479,49 @@ export function initMazeHUDTopLeft(): void {
 // ========== 图标绘制函数 ==========
 
 // 氧气环图标：显示氧气百分比的圆环（替代原深度数字，现在只专注氧气视觉）
+//
+// 双瓶模式：用同心两条环表达
+//   - 外圈 = 第一瓶（先被消耗，氧耗时由满 → 空）
+//   - 内圈 = 第二瓶（外圈耗光后才开始消耗）
+// 单瓶模式：保留原来的单一圆环外观（仅外圈）
 function drawOxygenIcon(c: CanvasRenderingContext2D, cx: number, cy: number, size: number, time: number): void {
     const maze = state.mazeRescue;
     // 动画值优先（拾取时平滑上涨）
     const o2DisplayRaw = (maze && maze.oxygenFeedback && typeof maze.oxygenFeedback.o2DisplayAnim === 'number')
         ? maze.oxygenFeedback.o2DisplayAnim
         : player.o2;
-    const o2Ratio = Math.max(0, Math.min(1, o2DisplayRaw / 100));
+
+    // === 解析当前携带的氧气瓶组合，算出每瓶的剩余比率 ===
+    // 规则：瓶 0 先被耗光，再耗瓶 1。
+    //   bottleRemaining[i] = clamp(o2 - sumOfPrevCaps, 0, cap[i]) / cap[i]
+    //   bottleCap[i] 取自 startO2（airTankS=60 / M=100 / L=150）
+    const tanks = getActiveAirTanks();
+    const tankCaps: number[] = [];
+    for (const id of tanks) {
+        if (id === 'airTankL') tankCaps.push(150);
+        else if (id === 'airTankM') tankCaps.push(100);
+        else tankCaps.push(60);   // S 或未知
+    }
+    if (tankCaps.length === 0) tankCaps.push(Math.max(1, player.o2Max || 100));
+    let totalCap = 0;
+    for (const c of tankCaps) totalCap += c;
+    if (totalCap < 1) totalCap = 1;
+
+    // 各瓶余量 ratio（0~1）
+    let remaining = Math.max(0, o2DisplayRaw);
+    const bottleRatios: number[] = [];
+    for (const cap of tankCaps) {
+        const here = Math.max(0, Math.min(cap, remaining));
+        bottleRatios.push(here / cap);
+        remaining -= here;
+    }
+    // 总比率（用于颜色/低氧脉冲判定）
+    const o2Ratio = Math.max(0, Math.min(1, o2DisplayRaw / totalCap));
 
     const ringR = size / 2 - 2;
     const ringW = 3.5;
 
-    // 氧气颜色
+    // 氧气颜色（按总比率）
     const o2Color = o2Ratio > 0.5 ? 'rgba(80,210,255,0.95)' :
                     o2Ratio > 0.25 ? 'rgba(255,200,80,0.95)' : 'rgba(255,80,80,0.95)';
     const o2ColorDim = o2Ratio > 0.5 ? 'rgba(80,210,255,0.18)' :
@@ -477,42 +529,55 @@ function drawOxygenIcon(c: CanvasRenderingContext2D, cx: number, cy: number, siz
 
     c.save();
 
-    // 背景圆（磨砂感，统一所有图标的底）
+    // 背景圆（磨砂感）
     c.fillStyle = 'rgba(10,22,38,0.55)';
     c.beginPath();
     c.arc(cx, cy, ringR + 3, 0, Math.PI * 2);
     c.fill();
 
-    // 暗色轨道
-    c.strokeStyle = o2ColorDim;
-    c.lineWidth = ringW;
-    c.beginPath();
-    c.arc(cx, cy, ringR, 0, Math.PI * 2);
-    c.stroke();
-
-    // 氧气进度环（从顶部顺时针）
-    c.strokeStyle = o2Color;
-    c.lineWidth = ringW;
-    c.lineCap = 'round';
     const start = -Math.PI / 2;
-    const end = start + Math.PI * 2 * o2Ratio;
-    if (o2Ratio > 0.005) {
+    const drawRing = (radius: number, ratio: number, dim: string, fill: string) => {
+        // 暗色轨道
+        c.strokeStyle = dim;
+        c.lineWidth = ringW;
         c.beginPath();
-        c.arc(cx, cy, ringR, start, end);
+        c.arc(cx, cy, radius, 0, Math.PI * 2);
         c.stroke();
-    }
-    c.lineCap = 'butt';
+        // 进度环
+        if (ratio > 0.005) {
+            c.strokeStyle = fill;
+            c.lineWidth = ringW;
+            c.lineCap = 'round';
+            c.beginPath();
+            c.arc(cx, cy, radius, start, start + Math.PI * 2 * ratio);
+            c.stroke();
+            c.lineCap = 'butt';
+        }
+    };
 
-    // 撞岩石损失红色弧：从 o2LossToRatio（撞后位置）到 o2LossFromRatio（撞前位置）
-    // 表示"这一波损失的这一段氧气"，1s 内迅速衰减消失
+    if (bottleRatios.length >= 2) {
+        // 双瓶：外圈=瓶 0，内圈=瓶 1（半径再小 5）
+        drawRing(ringR, bottleRatios[0], o2ColorDim, o2Color);
+        drawRing(ringR - ringW - 1.6, bottleRatios[1], o2ColorDim, o2Color);
+    } else {
+        drawRing(ringR, bottleRatios[0] || 0, o2ColorDim, o2Color);
+    }
+
+    // 撞岩石损失红色弧（按总比率算位置；只画在外圈上，反映"刚损失的总量"）
     const lossT = (maze && maze.oxygenFeedback && maze.oxygenFeedback.o2LossTimer) || 0;
     if (lossT > 0) {
-        const fromRatio = Math.max(0, Math.min(1, maze!.oxygenFeedback!.o2LossFromRatio));
-        const toRatio = Math.max(0, Math.min(1, maze!.oxygenFeedback!.o2LossToRatio));
+        // o2LossFromRatio / o2LossToRatio 是按 o2Max 归一化（见 OxygenTank.triggerO2LossFlash）
+        // 这里只展示在外圈，把总比率范围映射到外圈瓶 0 的弧上
+        const cap0 = tankCaps[0];
+        const cap0Ratio = cap0 / totalCap;   // 瓶 0 占总容量的比例
+        const fromTotal = Math.max(0, Math.min(1, maze!.oxygenFeedback!.o2LossFromRatio));
+        const toTotal = Math.max(0, Math.min(1, maze!.oxygenFeedback!.o2LossToRatio));
+        // 把"总比率"投影到瓶 0 的弧（瓶 1 的损失我们简单跳过；多数玩家的红条都集中在瓶 0 段）
+        const fromRatio = Math.min(1, fromTotal / Math.max(0.0001, cap0Ratio));
+        const toRatio = Math.min(1, toTotal / Math.max(0.0001, cap0Ratio));
         if (fromRatio > toRatio + 0.002) {
             const lossStart = start + Math.PI * 2 * toRatio;
             const lossEnd = start + Math.PI * 2 * fromRatio;
-            // 透明度随时间从 0.95 快速衰减到 0
             const lossAlpha = lossT * 0.95;
             c.save();
             c.globalAlpha = lossAlpha;
@@ -522,7 +587,6 @@ function drawOxygenIcon(c: CanvasRenderingContext2D, cx: number, cy: number, siz
             c.beginPath();
             c.arc(cx, cy, ringR, lossStart, lossEnd);
             c.stroke();
-            // 附加一层柔光（更强的视觉冲击）
             c.globalAlpha = lossAlpha * 0.5;
             c.strokeStyle = 'rgba(255, 120, 120, 1)';
             c.lineWidth = ringW + 4;
@@ -534,14 +598,14 @@ function drawOxygenIcon(c: CanvasRenderingContext2D, cx: number, cy: number, siz
         }
     }
 
-    // 低氧脉冲
+    // 低氧脉冲（按总比率）
     if (o2Ratio <= 0.25) {
         const pulse = 0.3 + 0.2 * Math.sin(time * 5);
         c.globalAlpha = pulse;
         c.strokeStyle = 'rgba(255,60,60,0.4)';
         c.lineWidth = 7;
         c.beginPath();
-        c.arc(cx, cy, ringR + 2, start, end);
+        c.arc(cx, cy, ringR + 2, start, start + Math.PI * 2 * o2Ratio);
         c.stroke();
         c.lineWidth = ringW;
         c.globalAlpha = 1;
@@ -560,8 +624,7 @@ function drawOxygenIcon(c: CanvasRenderingContext2D, cx: number, cy: number, siz
         c.globalAlpha = 1;
     }
 
-    // 中心显示"肺"形图标：吸气（pause）膨胀、吐气（exhale）收缩
-    // 颜色随氧气状态变化：充足=健康粉、中等=粉紫、低氧=灰紫、濒死=发青
+    // 中心显示"肺"形图标
     drawLungs(c, cx, cy, ringR, o2Ratio);
 
     c.restore();
@@ -682,6 +745,142 @@ function drawLungs(c: CanvasRenderingContext2D, cx: number, cy: number, ringR: n
     }
 
     c.lineCap = 'butt';
+    c.restore();
+}
+
+// 深度仪表图标（直观的"垂直水深尺 + 游标 + 大数字"）
+//
+// 视觉语义：
+//   左半 = 垂直水深尺（顶部 0m / 底部 = 安全极限），尺子上有几条横向刻度线
+//   右半 = 一个明显的三角游标，沿尺子高度移动表示当前深度比率
+//   底部 = 大字号当前深度数字（比如 "12m"）
+//   超过极限：尺子整体红光 + 三角游标变成警告"!"
+function drawDepthIcon(c: CanvasRenderingContext2D, cx: number, cy: number, size: number, _time: number): void {
+    const maze = state.mazeRescue;
+    const tile = maze ? (maze.mazeTileSize || 120) : 120;
+    const curDepth = maze ? Math.max(0, Math.floor(player.y / tile)) : 0;
+    const maxAllowed = maze ? ((maze as any).maxDepthAllowed || 30) : 30;
+    // 比率（用 1.0 表示到达极限；可超过 1）
+    const ratio = curDepth / Math.max(1, maxAllowed);
+    const overLimit = curDepth > maxAllowed;
+    const r = size / 2 - 2;
+
+    c.save();
+
+    // === 底圆（仪表盘背景，统一其他 HUD 风格）===
+    const baseColor = overLimit
+        ? 'rgba(60, 10, 10, 0.95)'
+        : (ratio > 0.85 ? 'rgba(40, 30, 15, 0.92)' : 'rgba(8, 22, 36, 0.92)');
+    c.fillStyle = baseColor;
+    c.beginPath();
+    c.arc(cx, cy, r, 0, Math.PI * 2);
+    c.fill();
+
+    // 描边（超限脉冲红）
+    if (overLimit) {
+        const pulse = 0.7 + 0.3 * Math.sin(Date.now() / 150);
+        c.strokeStyle = `rgba(255, 90, 90, ${pulse})`;
+        c.lineWidth = 1.8;
+    } else {
+        c.strokeStyle = 'rgba(140, 200, 240, 0.55)';
+        c.lineWidth = 1.2;
+    }
+    c.beginPath();
+    c.arc(cx, cy, r, 0, Math.PI * 2);
+    c.stroke();
+
+    // === 垂直水深尺：放在图标左半部分 ===
+    // 把 ratio 钳到 [0, 1.15]：超过 1 时游标会冒出极限红线一截，强调"超深"
+    const ratioVis = Math.max(0, Math.min(1.15, ratio));
+    const scaleX = cx - r * 0.20;          // 尺子的中心 X
+    const scaleTop = cy - r * 0.62;        // 尺子顶（0m）
+    const scaleH = r * 1.18;               // 尺子高度（对应 0~maxAllowed）
+    const scaleW = 4;                      // 尺子主轴宽度
+
+    // 主轴
+    c.strokeStyle = overLimit ? 'rgba(255, 130, 130, 0.85)' : 'rgba(160, 210, 240, 0.7)';
+    c.lineWidth = scaleW;
+    c.lineCap = 'round';
+    c.beginPath();
+    c.moveTo(scaleX, scaleTop);
+    c.lineTo(scaleX, scaleTop + scaleH);
+    c.stroke();
+    c.lineCap = 'butt';
+
+    // 刻度线（4 等分：0% / 33% / 66% / 100%）
+    const ticks = [0, 1 / 3, 2 / 3, 1];
+    for (let i = 0; i < ticks.length; i++) {
+        const ty = scaleTop + scaleH * ticks[i];
+        const isLimit = ticks[i] === 1;
+        c.strokeStyle = isLimit
+            ? (overLimit ? 'rgba(255, 90, 90, 1)' : 'rgba(255, 140, 90, 0.9)')
+            : 'rgba(180, 220, 240, 0.55)';
+        c.lineWidth = isLimit ? 1.6 : 1;
+        const tickW = isLimit ? 6 : 3;
+        c.beginPath();
+        c.moveTo(scaleX - tickW, ty);
+        c.lineTo(scaleX + tickW, ty);
+        c.stroke();
+    }
+
+    // === 三角游标（指示当前深度位置）===
+    // 游标从尺子右侧伸出小三角，y 随 ratioVis 移动
+    const cursorY = scaleTop + scaleH * Math.min(1.05, ratioVis);
+    const cursorX = scaleX + 5;
+    const cursorW = 9;
+    const cursorH = 7;
+    if (overLimit) {
+        // 超限：游标变成红色警示三角 + 闪烁
+        const blink = 0.6 + 0.4 * Math.sin(Date.now() / 90);
+        c.fillStyle = `rgba(255, 90, 90, ${blink})`;
+    } else if (ratio > 0.85) {
+        c.fillStyle = 'rgba(255, 200, 100, 0.95)';
+    } else {
+        c.fillStyle = 'rgba(120, 220, 255, 0.95)';
+    }
+    c.beginPath();
+    c.moveTo(cursorX, cursorY);                       // 三角尖（指向尺子）
+    c.lineTo(cursorX + cursorW, cursorY - cursorH / 2);
+    c.lineTo(cursorX + cursorW, cursorY + cursorH / 2);
+    c.closePath();
+    c.fill();
+    // 游标描边（增加可读性）
+    c.strokeStyle = 'rgba(0, 0, 0, 0.5)';
+    c.lineWidth = 0.8;
+    c.stroke();
+
+    // === 右上角：极限数字（小字，灰色）===
+    c.fillStyle = overLimit ? 'rgba(255, 180, 180, 0.95)' : 'rgba(200, 230, 245, 0.7)';
+    c.font = 'bold 7px Arial';
+    c.textAlign = 'right';
+    c.textBaseline = 'middle';
+    c.fillText(maxAllowed + 'm', cx + r * 0.85, cy - r * 0.55);
+    // 顶部 0m 标
+    c.fillStyle = 'rgba(200, 230, 245, 0.55)';
+    c.fillText('0m', cx + r * 0.85, scaleTop + 1);
+
+    // === 右半中部：当前深度大数字（视觉重点）===
+    c.fillStyle = overLimit ? 'rgba(255, 200, 200, 1)' : 'rgba(230, 245, 255, 0.98)';
+    c.font = 'bold 12px Arial';
+    c.textAlign = 'right';
+    c.textBaseline = 'middle';
+    c.fillText(String(curDepth), cx + r * 0.92, cy + 2);
+    c.font = 'bold 7px Arial';
+    c.fillStyle = 'rgba(180, 220, 240, 0.75)';
+    c.fillText('m', cx + r * 0.95, cy + 11);
+
+    // 超限时左下角追加警示符
+    if (overLimit) {
+        const blink = 0.5 + 0.5 * Math.sin(Date.now() / 100);
+        c.fillStyle = `rgba(255, 90, 90, ${blink})`;
+        c.font = 'bold 11px Arial';
+        c.textAlign = 'left';
+        c.textBaseline = 'middle';
+        c.fillText('!', cx - r * 0.7, cy + r * 0.55);
+    }
+
+    c.textAlign = 'left';
+    c.textBaseline = 'alphabetic';
     c.restore();
 }
 

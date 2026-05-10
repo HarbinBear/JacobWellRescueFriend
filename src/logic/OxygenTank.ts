@@ -497,7 +497,7 @@ export function updateOxygenTanks() {
         if (arrived && !fly.done) {
             // 到达玩家，触发真正的氧气补充 + 气泡爆发 + 屏幕辉光
             fly.done = true;
-            player.o2 = Math.min(100, player.o2 + fly.amount);
+            player.o2 = Math.min(player.o2Max || 100, player.o2 + fly.amount);
             spawnBubbleBurst(fb, player.x, player.y, 24);
             fb.screenGlowTimer = 1;
             fb.o2RingPulse = 1;
@@ -549,7 +549,7 @@ export function updateOxygenTanks() {
 
 // =============================================
 // 撞岩石扣氧时触发氧气环上的红色损失弧动画
-// - fromO2 / toO2 为 0~100 的原始氧气数值
+// - fromO2 / toO2 为氧气数值（0~o2Max），按 o2Max 归一化为 0~1 比率
 // - 累加规则：如果前一次动画还没衰减完，且新损失跟前一次损失相接，直接把 fromRatio 取更高的那个（表现为"损失条持续向右延伸"）
 // =============================================
 export function triggerO2LossFlash(fromO2: number, toO2: number): void {
@@ -557,8 +557,9 @@ export function triggerO2LossFlash(fromO2: number, toO2: number): void {
     if (!maze) return;
     if (!maze.oxygenFeedback) maze.oxygenFeedback = createOxygenFeedback();
     const fb: OxygenFeedback = maze.oxygenFeedback;
-    const newFrom = Math.max(0, Math.min(1, fromO2 / 100));
-    const newTo = Math.max(0, Math.min(1, toO2 / 100));
+    const o2Max = Math.max(1, player.o2Max || 100);
+    const newFrom = Math.max(0, Math.min(1, fromO2 / o2Max));
+    const newTo = Math.max(0, Math.min(1, toO2 / o2Max));
     if (fb.o2LossTimer > 0) {
         // 累加：fromRatio 取两者最大，toRatio 取当前最新的 toRatio（本次损失终点）
         fb.o2LossFromRatio = Math.max(fb.o2LossFromRatio, newFrom);

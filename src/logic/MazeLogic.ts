@@ -150,7 +150,9 @@ export function resetMazeLogic() {
 
     // === 没有存档：走原来的逻辑生成一张新地图 ===
     // 重置基础状态（不调用 resetState，避免污染主线地图）
+    // o2/o2Max 占位为 100；下潜真正开始时 applyLoadoutForDive 会按携带的氧气瓶覆盖
     player.o2 = 100;
+    player.o2Max = 100;
     player.silt = 0;
     player.vx = 0;
     player.vy = 0;
@@ -428,7 +430,9 @@ export function startMazeDive(diveType: string) {
     maze.resultTimer = 0;
 
     // 重置玩家状态
+    // o2/o2Max 占位为 100；applyLoadoutForDive 会按双瓶覆盖
     player.o2 = 100;
+    player.o2Max = 100;
     player.silt = 0;
     player.vx = 0;
     player.vy = 0;
@@ -512,6 +516,7 @@ export function startMazeDive(diveType: string) {
     maze.thisRopeCountBefore = state.rope ? state.rope.ropes.length : 0;
     maze.thisMaxDepth = 0;
     maze.thisNewThemes = [];
+    (maze as any)._overDepthWarned = false;   // 重置超深一次性提示标志
     maze.currentThemeKey = '';
     maze.playerPath = [{x: player.x, y: player.y}];
 
@@ -1253,7 +1258,30 @@ export function updateMaze() {
 
     // --- 氧气消耗（阶梯式：只在吐气瞬间扣一大口；未激活时走 o2IdleDrain 兜底） ---
     // 阶梯扣氧后，用 triggerO2LossFlash 让氧气环红条闪一下，直观展示“这一口扣了多少”
-    const o2Consumption = consumeBreathO2();
+    let o2Consumption = consumeBreathO2();
+
+    // === 潜水衣超深惩罚：当玩家深度 > 装备的 maxDepthAllowed 时，氧气消耗 ×3 ===
+    // 不硬卡墙（保留游泳手感），靠快速失氧 + 红警逼玩家上浮
+    {
+        const maxDepth = (maze as any).maxDepthAllowed;   // 米
+        if (maxDepth && maxDepth > 0) {
+            const curDepth = Math.max(0, Math.floor(player.y / (maze.mazeTileSize || 120)));
+            if (curDepth > maxDepth) {
+                o2Consumption *= 3;
+                // 一次性提示：进入超深区域时提醒玩家（不要每帧 spam，用 flag 限制）
+                if (!(maze as any)._overDepthWarned) {
+                    (maze as any)._overDepthWarned = true;
+                    storyManager.showText('⚠ 超出潜水衣极限！氧气加速消耗', '#ff5050', 3000);
+                }
+            } else {
+                // 上浮回到安全深度后，重置一次性提示标志（下次再下深可再提示）
+                if ((maze as any)._overDepthWarned && curDepth < maxDepth - 2) {
+                    (maze as any)._overDepthWarned = false;
+                }
+            }
+        }
+    }
+
     if (o2Consumption > 0 && player.o2 > 0 && !CONFIG.infiniteO2) {
         const fromO2 = player.o2;
         const toO2 = Math.max(0, fromO2 - o2Consumption);
@@ -1269,7 +1297,7 @@ export function updateMaze() {
     }
 
     // 无限氧气开关
-    if (CONFIG.infiniteO2) player.o2 = 100;
+    if (CONFIG.infiniteO2) player.o2 = player.o2Max || 100;
 
     // 氧气耗尽 = 撤离失败（本次战利品全损）
     if (player.o2 <= 0) {

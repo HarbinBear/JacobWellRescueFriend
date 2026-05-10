@@ -19,6 +19,8 @@ import { getLifeDetectorRuntime } from '../logic/LifeDetector';
 import { drawPickupDebugOverlay } from '../extraction/render/PickupDebugOverlay';
 // 撤离玩法：水底丢弃物世界层渲染
 import { drawDroppedItemsWorld } from '../extraction/render/DroppedItemRender';
+// 撤离玩法：本次下潜携带的氧气瓶数量（双瓶时潜水员腋下各一只）
+import { getActiveAirTanks } from '../extraction/logic/Loadout';
 import { drawGMButton, drawGMPanel } from '../gm/GMPanel';
 import { updateDustTime, drawDustDarkLayer, drawDustLitLayer } from './DustMotes';
 import { profileBegin, profileEnd, drawPerfHUD } from '../debug/PerfHUD';
@@ -464,9 +466,18 @@ export function draw() {
     // 绘制玩家
     let hasTank = !state.story.flags.tankDamaged;
     const isAutoSwim = !CONFIG.manualDrive.enabled;
-    drawDiver(ctx, player.x, player.y, player.angle, null, {
+    // 撤离玩法：根据装备的潜水衣 / 脚蹼调色，让外观随装备等级变化
+    const playerColors = buildPlayerDiverColors();
+    // 撤离玩法：根据本次携带的氧气瓶数量决定画一只还是两只
+    // 主线/竞技场：getActiveAirTanks() 在没有 applyLoadout 时返回 []，回退到 1 瓶
+    const activeTanks = getActiveAirTanks();
+    const tankCountForDiver = hasTank
+        ? (state.screen === 'mazeRescue' ? Math.max(1, activeTanks.length) : 1)
+        : 0;
+    drawDiver(ctx, player.x, player.y, player.angle, playerColors, {
         animTime: player.animTime,
         hasTank,
+        tankCount: tankCountForDiver,
         vx: player.vx,
         vy: player.vy,
         leftKickProgress: state.manualDrive.leftKickProgress,
@@ -1116,6 +1127,75 @@ export function draw() {
     drawGMPanel(ctx);
     drawPerfHUD(ctx);
     profileEnd('draw.gm');
+}
+
+// =============================================
+// 玩家潜水员配色：根据当前装备的潜水衣 / 脚蹼变化
+// =============================================
+// 视觉差异化：让玩家看到装备升级后角色"穿戴换了一身"，提供升级反馈
+//
+// 三档潜水衣：
+//   suitBasic（保底）：默认深灰蓝，气瓶白银色 → 普通休闲潜水
+//   suitDeep（深水）：深海军蓝，气瓶银色 + 黄色腰带 accent → 厚重防压
+//   suitCCR（循环呼吸）：深棕红服 + 翠绿色"气瓶"（实际是 CO2 吸收罐），银色配饰 → 闭式循环装备
+//
+// 两档脚蹼：
+//   finsBasic / finsEndurance：与服装同色（默认）
+//   finsRacing：橙红色高亮（速度感）
+function buildPlayerDiverColors(): {
+    suit?: string; body?: string; tank?: string; mask?: string;
+    fin?: string; accent?: string; skin?: string;
+} {
+    const ex: any = (state as any).extraction;
+    const suit: string = ex?.equipped?.suit || 'suitBasic';
+    const fins: string = ex?.equipped?.fins || 'finsBasic';
+
+    let suitColor: string;
+    let bodyColor: string;
+    let tankColor: string;
+    let maskColor: string;
+    let accentColor: string;
+
+    switch (suit) {
+        case 'suitDeep':
+            // 厚重深海军蓝潜水衣，金属银气瓶
+            suitColor = '#1c3654';
+            bodyColor = '#5a7088';
+            tankColor = '#aab8c4';
+            maskColor = '#ffd35a';   // 金黄色面镜（深水款标志）
+            accentColor = '#e0b85c'; // 黄色腰带 / 缝线
+            break;
+        case 'suitCCR':
+            // 闭式循环呼吸器：暗棕红服 + 翠绿气瓶（CO2 吸收罐）
+            suitColor = '#3a2820';
+            bodyColor = '#7a5247';
+            tankColor = '#3da46a';   // 标志性的绿色循环罐
+            maskColor = '#cfd6dc';
+            accentColor = '#c8c0b4'; // 银色管路配饰
+            break;
+        case 'suitBasic':
+        default:
+            // 起步装：默认配色（与原 RenderDiver 默认值一致）
+            suitColor = '#2d3b43';
+            bodyColor = '#576b74';
+            tankColor = '#c7d8df';
+            maskColor = '#8ea1ab';
+            accentColor = '#5f7078';
+            break;
+    }
+
+    // 脚蹼颜色：竞速款独立高亮，其他与服装同色
+    const finColor = fins === 'finsRacing' ? '#d96a3a' : suitColor;
+
+    return {
+        suit: suitColor,
+        body: bodyColor,
+        tank: tankColor,
+        mask: maskColor,
+        fin: finColor,
+        accent: accentColor,
+        // skin 不变（玩家肤色与装备无关）
+    };
 }
 
 // 生命探知仪：玩家身上的小 LED 灯

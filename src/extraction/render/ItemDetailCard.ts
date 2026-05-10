@@ -19,6 +19,7 @@ import { ensureExtractionState } from '../core/ExtractionState';
 import { computeItemPrice, getItemDisplayName } from '../logic/Economy';
 import { drawRelicIconAt } from '../../render/RenderRelic';
 import { ALL_RELIC_KINDS } from '../../logic/Relic';
+import { drawShopItemIcon, hasShopItemIcon } from './ShopItemIcons';
 
 // 物品 id 是否是古物
 const RELIC_ID_SET: { [k: string]: boolean } = (() => {
@@ -335,9 +336,11 @@ export function drawItemDetailCard(): void {
         ctx.arc(cx, cy, 38, 0, Math.PI * 2);
         ctx.stroke();
 
-        // 物品图标：古物用矢量图 / 其他用暖金圆 + 首字
+        // 物品图标：古物矢量 / 装备消耗品矢量 / 兜底"暖金圆 + 首字"
         if (RELIC_ID_SET[def.id]) {
             drawRelicIconAt(ctx, def.id as any, cx, cy, 48);
+        } else if (hasShopItemIcon(def.id)) {
+            drawShopItemIcon(ctx, def.id, cx, cy, 64);
         } else {
             ctx.fillStyle = 'rgba(200, 165, 90, 0.85)';
             ctx.beginPath();

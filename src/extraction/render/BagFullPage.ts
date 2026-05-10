@@ -34,6 +34,7 @@ import { openDetailCard } from './ItemDetailCard';
 import { SAFE_TOP, SAFE_LEFT, SAFE_RIGHT } from './UISafeArea';
 import { drawRelicIconAt } from '../../render/RenderRelic';
 import { ALL_RELIC_KINDS } from '../../logic/Relic';
+import { drawShopItemIcon, hasShopItemIcon } from './ShopItemIcons';
 
 // 物品 id 是否是古物（可以用 RelicKind 矢量图标绘制）
 const RELIC_ID_SET: { [k: string]: boolean } = (() => {
@@ -43,14 +44,19 @@ const RELIC_ID_SET: { [k: string]: boolean } = (() => {
 })();
 
 /**
- * 在格子中心绘制物品图标。古物用矢量图（drawRelicIconAt），其他类别（消耗品/装备）用首字占位。
+ * 在格子中心绘制物品图标。
+ * 优先级：古物矢量图（drawRelicIconAt）→ 装备/消耗品矢量图（drawShopItemIcon）→ 首字占位
  */
 function drawItemIcon(itemId: string, cx: number, cy: number, iconSize: number, fallbackName: string): void {
     if (RELIC_ID_SET[itemId]) {
         drawRelicIconAt(ctx, itemId as any, cx, cy, iconSize);
         return;
     }
-    // 非古物：圆形暖金底 + 首字
+    if (hasShopItemIcon(itemId)) {
+        drawShopItemIcon(ctx, itemId, cx, cy, iconSize);
+        return;
+    }
+    // 兜底：圆形暖金底 + 首字
     ctx.fillStyle = 'rgba(190, 155, 80, 0.9)';
     ctx.beginPath();
     ctx.arc(cx, cy, iconSize * 0.42, 0, Math.PI * 2);

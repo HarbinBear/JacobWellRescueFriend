@@ -84,7 +84,7 @@ export interface ExtractionState {
     equipmentStock: { [itemId: string]: number };
 
     /**
-     * 当前装备的两件主装备（背包 + 脚蹼）。
+     * 当前装备的三件主装备（背包 + 脚蹼 + 潜水衣）。
      *
      * 下潜开始时由 Loadout.applyLoadoutForDive 读取并应用效果。
      * 撤离失败时由 Economy.loseEquippedOnFailure 把对应装备从 stock 扣 1，
@@ -93,6 +93,7 @@ export interface ExtractionState {
     equipped: {
         bag: string;     // 默认 'bag4'（保底）
         fins: string;    // 默认 'finsBasic'（保底）
+        suit: string;    // 默认 'suitBasic'（保底，决定本次最大可下潜深度）
     };
 
     /**
@@ -169,7 +170,7 @@ export function getInitialExtractionState(): ExtractionState {
         },
         consumables: {},
         equipmentStock: {},                             // 装备库存（保底装备不入此表）
-        equipped: { bag: 'bag4', fins: 'finsBasic' },   // 起步只穿保底
+        equipped: { bag: 'bag4', fins: 'finsBasic', suit: 'suitBasic' },   // 起步只穿保底
         ownedEquipment: [],                              // 已废弃，保留空数组兼容
         flags: {
             tutorialShown: false,
@@ -221,17 +222,18 @@ export function patchExtractionState(ex: any): ExtractionState {
     // === 装备体系迁移：从老的 ownedEquipment 转到新的 equipmentStock + equipped ===
     if (!ex.equipmentStock || typeof ex.equipmentStock !== 'object') ex.equipmentStock = {};
     if (!ex.equipped || typeof ex.equipped !== 'object') {
-        ex.equipped = { bag: 'bag4', fins: 'finsBasic' };
+        ex.equipped = { bag: 'bag4', fins: 'finsBasic', suit: 'suitBasic' };
     }
     if (typeof ex.equipped.bag !== 'string') ex.equipped.bag = 'bag4';
     if (typeof ex.equipped.fins !== 'string') ex.equipped.fins = 'finsBasic';
+    if (typeof ex.equipped.suit !== 'string') ex.equipped.suit = 'suitBasic';   // 老存档兜底：保底潜水衣
 
     // 老存档迁移：ownedEquipment 数组 → 折算为 stock + equipped
     if (Array.isArray(ex.ownedEquipment) && ex.ownedEquipment.length > 0) {
         const owned: string[] = ex.ownedEquipment.slice();
         // 把非保底的装备按 1 件入 stock（如果还没入过）
         for (const id of owned) {
-            if (id === 'bag4' || id === 'finsBasic') continue;
+            if (id === 'bag4' || id === 'finsBasic' || id === 'suitBasic') continue;
             if (!ex.equipmentStock[id]) ex.equipmentStock[id] = 1;
         }
         // 推断 equipped.bag：根据 maxSlots（最稳的"已生效"指标）
@@ -244,6 +246,10 @@ export function patchExtractionState(ex: any): ExtractionState {
         if (owned.indexOf('finsRacing') >= 0) ex.equipped.fins = 'finsRacing';
         else if (owned.indexOf('finsEndurance') >= 0) ex.equipped.fins = 'finsEndurance';
         else ex.equipped.fins = 'finsBasic';
+        // 潜水衣：按 owned 顺序选最优（suitCCR > suitDeep > suitBasic）；老存档没有，默认保底
+        if (owned.indexOf('suitCCR') >= 0) ex.equipped.suit = 'suitCCR';
+        else if (owned.indexOf('suitDeep') >= 0) ex.equipped.suit = 'suitDeep';
+        // 否则保持 'suitBasic'
         // 迁移完毕，清空老字段（避免下次 load 重复迁移）
         ex.ownedEquipment = [];
     } else {

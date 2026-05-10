@@ -13,6 +13,8 @@ import { state, player } from '../core/state';
 import { createFishEnemy, findMazeFishSpawnPosition, findSafeSpawnPosition } from '../logic/FishEnemy';
 import { setPreset, onItemEdited as qualityOnItemEdited, setAuto as qualitySetAuto } from '../render/QualityManager';
 import { playSFX } from '../audio/AudioManager';
+// GM 调试：扣氧时同步触发氧气环红色损失动画
+import { triggerO2LossFlash } from '../logic/OxygenTank';
 // 撤离玩法：GM 调试 action（加钱 / 重置经济等）
 import {
     addCoins as exAddCoins,
@@ -470,6 +472,21 @@ function _executeAction(actionId: string): void {
                 if (it) console.log('[GM][Extraction] 背包入物：' + kind + ' (' + condition + ')');
                 else console.log('[GM][Extraction] 背包已满');
             }
+            break;
+        }
+        case 'extractionDrainO2_10':
+        case 'extractionDrainO2_50': {
+            // 调试：直接扣玩家氧气（用于测试低氧、双瓶切换、超深红警等）
+            // 在迷宫模式（mazeRescue 的 phase=play）以及主线 play 模式都生效；其他界面忽略
+            const drain = actionId === 'extractionDrainO2_10' ? 10 : 50;
+            const fromO2 = player.o2;
+            const toO2 = Math.max(0, fromO2 - drain);
+            player.o2 = toO2;
+            // 在迷宫模式触发氧气环上的红色损失弧动画
+            if (state.screen === 'mazeRescue' && state.mazeRescue && state.mazeRescue.phase === 'play') {
+                triggerO2LossFlash(fromO2, toO2);
+            }
+            console.log('[GM][Extraction] -' + drain + ' 氧气：' + fromO2.toFixed(1) + ' → ' + toO2.toFixed(1) + ' / ' + (player.o2Max || 100));
             break;
         }
         case 'extractionDumpState': {

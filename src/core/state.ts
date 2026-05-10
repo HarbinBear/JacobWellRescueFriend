@@ -403,6 +403,16 @@ export const player = {
     targetAngle: Math.PI/2,
     vx: 0, vy: 0,
     o2: 100,
+    /**
+     * 氧气最大值（动态）。
+     *
+     * 主线/竞技场默认 100；撤离玩法在 applyLoadoutForDive 时按携带的氧气瓶设置：
+     *   小瓶=60 / 中瓶=100 / 大瓶=150；双瓶=两者之和（最高 300）。
+     *
+     * 所有"氧气百分比"相关显示都统一用 o2/o2Max 而不是 o2/100，
+     * 这样双瓶时 HUD 上能看到"满"的状态。
+     */
+    o2Max: 100,
     silt: 0,
     animTime: 0 // 动画时间（用于脚蹼动画）
 };
@@ -434,6 +444,7 @@ export function resetState() {
     }
     
     player.o2 = 100; 
+    player.o2Max = 100;
     player.silt = 0;
     player.vx = 0; 
     player.vy = 0;

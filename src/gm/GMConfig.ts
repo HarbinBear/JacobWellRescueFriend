@@ -492,6 +492,8 @@ export const TABS: GMTab[] = [
             { type: 'action', label: '+100 金', actionId: 'extractionAdd100' },
             { type: 'action', label: '+1000 金', actionId: 'extractionAdd1000' },
             { type: 'action', label: '送一件随机古物入背包', actionId: 'extractionFillBag' },
+            { type: 'action', label: '🫁 -10 氧气', actionId: 'extractionDrainO2_10' },
+            { type: 'action', label: '🫁 -50 氧气', actionId: 'extractionDrainO2_50' },
             { type: 'bool', label: '🐛 显示拾取范围+Relic距离', path: 'extraction.debugPickupOverlay' },
             { type: 'number', label: '拾取范围(px)', path: 'extraction.pickupRange', min: 60, max: 400, step: 10 },
             { type: 'action', label: '🐛 调试：打印附近 Relic', actionId: 'extractionDebugRelics' },

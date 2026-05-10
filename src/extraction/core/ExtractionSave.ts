@@ -71,6 +71,7 @@ export function saveExtractionProgress(): boolean {
         equipped: {
             bag: ex.equipped?.bag || 'bag4',
             fins: ex.equipped?.fins || 'finsBasic',
+            suit: ex.equipped?.suit || 'suitBasic',
         },
         ownedEquipment: [],   // 已废弃；保留空数组兼容老代码
         // shop 是运行时态，不保存

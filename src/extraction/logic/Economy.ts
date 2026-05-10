@@ -198,8 +198,8 @@ export type ExtractReason = 'retreat' | 'o2' | 'fishkill' | 'beacon' | 'rescued'
 export interface LostEquipmentEntry {
     /** 物品 id（如 'bag12'） */
     itemId: string;
-    /** 槽位（背包 / 脚蹼） */
-    slot: 'bag' | 'fins';
+    /** 槽位（背包 / 脚蹼 / 潜水衣） */
+    slot: 'bag' | 'fins' | 'suit';
     /** 销毁后自动回退到的次优 / 保底装备 id */
     fallbackTo: string;
 }
@@ -223,15 +223,15 @@ export interface DiveSettlement {
  * 撤离失败时销毁当前装备的一件，并自动回退到次优 / 保底。
  *
  * 规则：
- * - 当前装备（equipped.bag / equipped.fins）若为保底（bag4 / finsBasic）→ 不销毁（保底不可消失）
+ * - 当前装备（equipped.bag / equipped.fins / equipped.suit）若为保底（bag4 / finsBasic / suitBasic）→ 不销毁（保底不可消失）
  * - 否则：equipmentStock[id]-- ，归零则从 stock 删 key；equipped 自动 fallback
  *
- * 返回销毁清单（一般 0~2 项：背包 + 脚蹼）供结算页展示。
+ * 返回销毁清单（一般 0~3 项：背包 + 脚蹼 + 潜水衣）供结算页展示。
  */
 function loseEquippedOnFailure(): LostEquipmentEntry[] {
     const ex = ensureExtractionState();
     const lost: LostEquipmentEntry[] = [];
-    if (!ex.equipped) ex.equipped = { bag: 'bag4', fins: 'finsBasic' };
+    if (!ex.equipped) ex.equipped = { bag: 'bag4', fins: 'finsBasic', suit: 'suitBasic' };
     if (!ex.equipmentStock) ex.equipmentStock = {};
 
     // 背包
@@ -264,6 +264,20 @@ function loseEquippedOnFailure(): LostEquipmentEntry[] {
         ex.equipped.fins = fb;
         lost.push({ itemId: curFins, slot: 'fins', fallbackTo: fb });
         // fins 不影响 maxSlots，无需同步
+    }
+
+    // 潜水衣
+    const curSuit = ex.equipped.suit;
+    if (curSuit && curSuit !== 'suitBasic') {
+        const cur = ex.equipmentStock[curSuit] || 0;
+        if (cur > 0) {
+            ex.equipmentStock[curSuit] = cur - 1;
+            if (ex.equipmentStock[curSuit] <= 0) delete ex.equipmentStock[curSuit];
+        }
+        const fb = fallbackEquippedSlot('suit');
+        ex.equipped.suit = fb;
+        lost.push({ itemId: curSuit, slot: 'suit', fallbackTo: fb });
+        // suit 的 maxDepthMeters 在下次下潜 applyLoadoutForDive 时重新生效
     }
 
     return lost;

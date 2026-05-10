@@ -13,6 +13,11 @@ type DiverColors = {
 type DiverMotion = {
     animTime?: number;
     hasTank?: boolean;
+    /**
+     * 携带的氧气瓶数量（0=无瓶；1=单瓶；2=双瓶 左右腋下各一只）
+     * 不传时按 hasTank 兼容老逻辑（hasTank=true → 1, false → 0）。
+     */
+    tankCount?: number;
     vx?: number;
     vy?: number;
     leftKickProgress?: number;
@@ -437,7 +442,10 @@ export function drawDiver(
 
     const cfg = CONFIG.diver;
     const time = motion.animTime ?? Date.now() / 150;
-    const hasTank = motion.hasTank !== false;
+    // tankCount 优先：传 0/1/2 直接生效；不传则按 hasTank 推（true→1, false→0）
+    const tankCount = motion.tankCount != null
+        ? Math.max(0, Math.min(2, motion.tankCount | 0))
+        : (motion.hasTank !== false ? 1 : 0);
     const vx = motion.vx ?? 0;
     const vy = motion.vy ?? 0;
     const speed = Math.hypot(vx, vy);
@@ -646,7 +654,7 @@ export function drawDiver(
     renderCtx.ellipse(2.5, -2.8 + bodyYaw * 0.15, 9.5, 2.6, -0.18, 0, Math.PI * 2);
     renderCtx.fill();
 
-    if (hasTank) {
+    if (tankCount > 0) {
         renderCtx.save();
         renderCtx.translate(-0.8, bodyYaw * 0.5);
         const tankGradient = renderCtx.createLinearGradient(8, 0, -10, 0);
@@ -655,21 +663,53 @@ export function drawDiver(
         tankGradient.addColorStop(0.65, '#9eb3bd');
         tankGradient.addColorStop(1, '#748894');
         renderCtx.fillStyle = tankGradient;
-        drawCapsule(renderCtx, -1.4, 0, 17.5, 4.2);
-        renderCtx.fill();
+        if (tankCount >= 2) {
+            // 双瓶：左右腋下各一只略小的气瓶（沿 y 轴 ±3.6）
+            // 单瓶尺寸 17.5×4.2 → 双瓶各 14×3.2，使总宽接近原观感但更壮
+            const tankLen = 14;
+            const tankR = 3.2;
+            const tankYOffset = 3.6;
+            // 左瓶
+            drawCapsule(renderCtx, -1.4, -tankYOffset, tankLen, tankR);
+            renderCtx.fill();
+            // 右瓶
+            drawCapsule(renderCtx, -1.4, tankYOffset, tankLen, tankR);
+            renderCtx.fill();
+            // 阀门接头：每瓶一只小方块
+            renderCtx.fillStyle = '#485962';
+            drawRoundRectPath(renderCtx, 4.0, -tankYOffset - 1.6, 3.0, 3.2, 1.0);
+            renderCtx.fill();
+            drawRoundRectPath(renderCtx, 4.0, tankYOffset - 1.6, 3.0, 3.2, 1.0);
+            renderCtx.fill();
+            // 罐身分割线（每瓶一条）
+            renderCtx.strokeStyle = 'rgba(32,40,46,0.6)';
+            renderCtx.lineWidth = 1.0;
+            renderCtx.beginPath();
+            // 左瓶环
+            renderCtx.moveTo(-3.5, -tankYOffset - tankR);
+            renderCtx.lineTo(-3.5, -tankYOffset + tankR);
+            // 右瓶环
+            renderCtx.moveTo(-3.5, tankYOffset - tankR);
+            renderCtx.lineTo(-3.5, tankYOffset + tankR);
+            renderCtx.stroke();
+        } else {
+            // 单瓶：原有视觉
+            drawCapsule(renderCtx, -1.4, 0, 17.5, 4.2);
+            renderCtx.fill();
 
-        renderCtx.fillStyle = '#485962';
-        drawRoundRectPath(renderCtx, 4.5, -2.3, 3.8, 4.6, 1.2);
-        renderCtx.fill();
+            renderCtx.fillStyle = '#485962';
+            drawRoundRectPath(renderCtx, 4.5, -2.3, 3.8, 4.6, 1.2);
+            renderCtx.fill();
 
-        renderCtx.strokeStyle = 'rgba(32,40,46,0.65)';
-        renderCtx.lineWidth = 1.3;
-        renderCtx.beginPath();
-        renderCtx.moveTo(-5.2, -5.2);
-        renderCtx.lineTo(-5.2, 5.2);
-        renderCtx.moveTo(1.8, -5.2);
-        renderCtx.lineTo(1.8, 5.2);
-        renderCtx.stroke();
+            renderCtx.strokeStyle = 'rgba(32,40,46,0.65)';
+            renderCtx.lineWidth = 1.3;
+            renderCtx.beginPath();
+            renderCtx.moveTo(-5.2, -5.2);
+            renderCtx.lineTo(-5.2, 5.2);
+            renderCtx.moveTo(1.8, -5.2);
+            renderCtx.lineTo(1.8, 5.2);
+            renderCtx.stroke();
+        }
         renderCtx.restore();
     }
 
