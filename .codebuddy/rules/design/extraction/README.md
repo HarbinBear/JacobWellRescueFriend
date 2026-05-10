@@ -16,6 +16,7 @@
 | [05-rescue-integration.md](./05-rescue-integration.md) | 救援任务与经济玩法的穿插策略、名声系统 | 🟡 中 |
 | [06-extraction-gm-panel.md](./06-extraction-gm-panel.md) | 撤离玩法专属 GM 面板（与现有 GMConfig 物理隔离） | 🟢 低 |
 | [07-engineering-isolation.md](./07-engineering-isolation.md) | 工程隔离方案（独立模块树、独立存档键、独立配置块） | 🟢 低 |
+| [08-decompression-system.md](./08-decompression-system.md) | 减压停留系统（氮气负荷 / 4 档停留 / 长按加速 / DCS 惩罚 / deco 失败分支） | 🟡 中 |
 
 ## 阅读顺序建议
 

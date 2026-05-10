@@ -538,7 +538,8 @@ function _executeAction(actionId: string): void {
         default:
             // ---- 减压系统 action ----
             if (actionId === 'decoSetYellow' || actionId === 'decoSetRed' || actionId === 'decoSetCritical' || actionId === 'decoClear') {
-                // 直接改运行时 nitrogenLoad，同时清空当前减压任务（让系统下一帧按新负荷重新生成任务）
+                // 直接改运行时 nitrogenLoad，同时清空当前减压任务与锁定状态
+                // （让系统下一帧按新负荷重新判定是否要生成任务 / 是否要锁定）
                 const rt = getDecoRuntime() as any;
                 let target = 0;
                 if (actionId === 'decoSetYellow') target = 0.7;
@@ -547,17 +548,18 @@ function _executeAction(actionId: string): void {
                 rt.nitrogenLoad = target;
                 rt.currentStopIdx = -1;
                 rt.stopProgress = [0, 0, 0, 0];
+                rt.lockActive = false;           // 显式解锁：GM 调试不应被锁住
                 rt.hasShownWarning = false;
-                console.log('[GM][Deco] nitrogenLoad=' + target);
+                console.log('[GM][Deco] nitrogenLoad=' + target + ' lockActive=false');
                 break;
             }
             if (actionId === 'decoTriggerPenaltyLv1' || actionId === 'decoTriggerPenaltyLv2') {
-                // 先把 N2 拉到对应阈值，再触发一次 surface 惩罚判定
+                // 模拟触发 DCS：需要 lockActive=true 才会真正写入惩罚
                 const rt = getDecoRuntime() as any;
                 rt.nitrogenLoad = actionId === 'decoTriggerPenaltyLv2' ? 1.6 : 1.1;
+                rt.lockActive = true;   // 模拟正在减压任务中
                 const sev = triggerDecoPenaltyOnSurface();
                 console.log('[GM][Deco] 模拟触发 DCS 惩罚，severity=' + sev);
-                // 不清零 N2，让玩家继续看 HUD 变化
                 break;
             }
             if (actionId === 'decoClearPenalty') {

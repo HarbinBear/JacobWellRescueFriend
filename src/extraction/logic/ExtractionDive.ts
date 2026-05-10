@@ -81,6 +81,7 @@ export function onDiveEnd(reason: string): void {
         case 'fishkill': mapped = 'fishkill'; break;
         case 'rescued':  mapped = 'rescued';  break;
         case 'beacon':   mapped = 'beacon';   break;
+        case 'deco':     mapped = 'deco';     break;
         default:         mapped = 'retreat';  break;
     }
 

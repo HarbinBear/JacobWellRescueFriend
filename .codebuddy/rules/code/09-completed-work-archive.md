@@ -764,3 +764,125 @@ i: APP-SERVICE-SDK:setStorageSync:fail:entry size limit reached
 ```
 
 请输出合并后完整的代码。
+
+---
+
+## 减压停留系统（2026-05-11）
+
+**设计文档**：[design/extraction/08-decompression-system.md](../design/extraction/08-decompression-system.md)
+
+**设计目标**：把"上浮"从"秒出水面"改造为"必须按 12/9/6/3m 逐档停留完成"的硬核节奏决策，让"深潜 + 上浮"形成真正的闭环，而不是现在的"深度只扣氧"单薄表达。
+
+**技术分两阶段落地**：
+
+### 第一阶段：基础系统（commit 4d579d9）
+
+**核心思路**：简化 Bühlmann ZH-L16 为**单值氮负荷**（nitrogenLoad ∈ [0, 2]）按深度吸排，配合 4 档停留任务。所有数值都通过 `CONFIG.deco` 暴露在 GM 面板调参。
+
+**关键实现**：
+
+1. **新建 `src/logic/DecompressionSystem.ts`（~300 行）**：
+   - 运行时 `DecoRuntime { nitrogenLoad, stopProgress[], currentStopIdx, inHoldWindow, boostActive, ... }`
+   - 对外 API：`updateDecompressionSystem(dt)` / `resetDecompressionSystem()` / `getDecoRuntime()` / `getDecoLevel()` / `getCurrentStopInfo()` / `setDecoBoost(on)` / `isDecoBoostActive()` / `getDecoO2Mul()` / `triggerDecoPenaltyOnSurface()` / `consumeDecoPenaltyDive()` / `getPenaltyO2MaxMul()` / `getPenaltyLootMul()` / `isPurpleDebuffActive()` / `consumeDecoWarningRequest()`
+   - 吸氮：`depth > ingestDepth(20m)` 时 `rate = ingestRatePerSec × (depth - ingestDepth)`，超出 `maxDepthAllowed` 时再 × `overDepthRateMul(2)`
+   - 排氮：`depth < releaseDepth(10m)` 时 `nitrogenLoad -= releaseRatePerSec × dt`
+   - 4 档减压表：`stopDepths=[12,9,6,3]` / `stopHoldSec=[3,5,8,12]` / `stopReduce=[0.3,0.35,0.4,0.45]`，起始档由首次进黄线时的等级决定
+
+2. **HUD 减压灯**（`src/render/HUDTopLeft.ts` 新增 `drawDecoIcon` + HUD 项注册）：
+   - 左上角栏第 3 位（氧气环 → 深度仪表 → 减压灯 → 手动挡 → 音频 → 探知仪 → GM）
+   - 4 种视觉状态：绿（暗点 + "N₂"）/ 黄（"DECO" + 百分比）/ 红（脉冲红框 + 警告三角）/ 正在减压（蓝绿 progress 环 + 档位深度数字 + 剩余秒）
+   - 支持长按：走 HUD 框架 `supportsLongPress/onLongHoldStart/onLongHoldEnd`，调 `setDecoBoost(true/false)`
+   - 长按生效（boost + inHoldWindow）时环色变亮黄 + 中央 "×5" 小字替代剩余秒
+
+3. **DCS 惩罚**：
+   - `state.extraction.decoPenalty?: { severity: 1|2, o2MaxMul, remainingDives, currentLootMul? }` —— optional 字段，老存档 undefined = 无惩罚
+   - Loadout 应用：`applyLoadoutForDive()` 里 `totalO2 = round(totalO2 × getPenaltyO2MaxMul())`，下次下潜 O2Max 直接 -30%
+   - 战利品打折：Economy.settleDiveExtraction 里成功撤离的 kept 列表按 `lootMul` 比例随机打乱分配到 lost（lv1 丢 50% 物品，lv2 全丢，保持 keptValue/lostValue 自动正确）
+   - remainingDives：每次 finishMazeDive 调 consumeDecoPenaltyDive() -=1，减到 0 清除；currentLootMul 首次生效后立即清 undefined 避免跨潜反复打折
+
+4. **GM 面板"减压" Tab**：24 参数 + 8 测试按钮（decoSetYellow/Red/Critical/Clear、decoTriggerPenaltyLv1/Lv2、decoClearPenalty、decoDump）。`GMPanel._executeAction` 的 default 分支追加减压相关 if 串。
+
+5. **MazeLogic 钩子**：
+   - `startMazeDive()` 调 `resetDecompressionSystem()`
+   - `updateMaze()` 在 `updateBreathSystem()` 后调 `updateDecompressionSystem(1/60)` + 轮询 `consumeDecoWarningRequest()` 弹首次黄灯教学
+   - `finishMazeDive()` 在 `onExtractionDiveEnd()` **之前**调 `triggerDecoPenaltyOnSurface()`（让 settle 能读到 currentLootMul），**之后**调 `consumeDecoPenaltyDive()`（把本次算作一次消耗）
+
+### 第二阶段：锁定模型修复（2026-05-11 本次 commit）
+
+**第一阶段的致命 bug**：
+- nitrogenLoad < thresholdGreen × 0.5 时任务被自动清空 → 玩家漂到水面自然排氮就绕过所有惩罚
+- "直接上浮无事、减压 UI 还自己重置到安全状态"
+
+**根因**：任务是"随氮负荷动态取消"的，没有"锁定"概念，只要玩家不停留、让氮负荷被浅水排掉，系统就以为"任务自然解决了"。
+
+**修复方案 —— 引入 lockActive 锁定位**：
+
+1. `DecoRuntime` 新增 `lockActive: boolean` 字段
+2. **触发锁定**：首次 nitrogenLoad >= thresholdYellow 时 `lockActive = true`
+3. **解锁条件**（只有 3 个）：
+   - 按顺序完成所有档位（currentStopIdx 越过最后一档）
+   - `resetDecompressionSystem()`（新一潜）
+   - GM `decoClear`（调试）
+4. **彻底删除**"自然排氮取消任务"的代码分支 —— 浅水漂泊再也不能绕过减压
+5. `updateDecompressionSystem` 里生成任务的判断加上 `&& !runtime.lockActive`，避免重复生成
+6. 完成最后一档时：`lockActive = false`、`nitrogenLoad = 0`、`currentStopIdx = -1`
+7. `triggerDecoPenaltyOnSurface()` 改为 **只在 lockActive=true 时触发**（未进过黄线 / 已完成减压 = 无惩罚）
+8. `isDecompressionRequired()` 和 HUD visible 加入 `lockActive` 判断，锁定中 HUD 灯始终可见
+
+**新失败分支 `surfacingReason='deco'`**：
+
+1. `ExtractReason` 类型加 `'deco'`
+2. `Economy.settleDiveExtraction` 里 `fishkill/o2/deco` 同视作失败撤离（物品全损 + 装备销毁）
+3. `ExtractionDive.onDiveEnd` switch 加 `case 'deco': mapped = 'deco'`
+4. `DebriefExtension.ts` reasonLabel 加 `case 'deco': return '撤离失败 · 减压病'`
+5. `RenderMazeUI.ts::drawMazeHUD` 的 `failed` 分支：deco 走紫色色罩（`rgba(60, 10, 55, 0.35*k)`）+ 边缘紫色径向压缩 + 主文字紫色 + 副文字"未完成减压 · 重度减压病 · 本次物品全部遗失"
+6. `MazeLogic.ts` failed 分支物理：deco 时玩家持续下沉（vy 推到正值）+ 动画加快（抽搐感）
+
+**MazeLogic 出水路径全线加锁定判定**：
+
+1. 撤离长按完成：`isDecoLockActive()` → `phase='failed' / surfacingReason='deco'`（玩家表达了"走"的意图，直接失败）
+2. 救援到出口：首次 → 弹警告 + 记 `_decoBlockedRescuedSince`；滞留 5s 仍锁定 → 判 deco 失败（带着 NPC 也算失败）
+3. finishMazeDive 惩罚提示：若 `returnReason === 'deco'` 就不弹"DCS 叠加"文案，避免和失败画面重复
+
+**教学文案加强**：
+
+从"氮气开始累积，注意减压！"改成：
+
+```
+⚠ 氮气累积，必须做减压停留！
+出水前需在 12/9/6/3m 逐段停留
+不完成减压直接出水 = 重度减压病
+```
+
+**GM decoSet/Clear 同步重置 lockActive**：
+
+调试数值时不应被锁死。所有 `decoSetX/Clear` action 里显式 `rt.lockActive = false`；`decoTriggerPenaltyLv1/2` 反向显式 `rt.lockActive = true` 模拟锁定中。
+
+### 完整文件改动清单
+
+**新建**：
+- `src/logic/DecompressionSystem.ts`（~370 行）
+- `.codebuddy/rules/design/extraction/08-decompression-system.md`（设计文档）
+
+**修改**：
+- `src/core/config/gameplay.ts`：新增 `deco` 子对象（24 参数）
+- `src/logic/MazeLogic.ts`：import 减压系统 + `startMazeDive` 重置 + `updateMaze` tick + `finishMazeDive` 惩罚 + 撤离/胜利检测加锁定判定 + failed 分支 deco 物理
+- `src/extraction/core/ExtractionState.ts`：新增 optional `decoPenalty` 字段
+- `src/extraction/logic/Loadout.ts`：应用 `getPenaltyO2MaxMul()` 打折 O2Max
+- `src/extraction/logic/Economy.ts`：`ExtractReason` 加 `'deco'` + settle 按 `lootMul` 随机丢弃保留物品
+- `src/extraction/logic/ExtractionDive.ts`：onDiveEnd switch 加 `'deco'`
+- `src/extraction/render/DebriefExtension.ts`：reasonLabel 加 deco 映射
+- `src/render/HUDTopLeft.ts`：新增 `deco` HUD 项 + `drawDecoIcon` 绘制函数
+- `src/render/RenderMazeUI.ts`：failed 分支 deco 紫色画面
+- `src/gm/GMConfig.ts`：新增"减压" Tab
+- `src/gm/GMPanel.ts`：7 个减压 action 处理
+
+### 典型陷阱
+
+1. **`lockActive` 是任务生命周期的唯一真相**：不要依赖 nitrogenLoad 的数值变化来决定任务状态。氮负荷是"资源"，lockActive 是"状态"，两者独立。GM 调试时尤其要注意：改 nitrogenLoad 不会自动解锁。
+2. **`consumeDecoPenaltyDive()` 调用顺序**：必须在 `triggerDecoPenaltyOnSurface()` 之后。反了会把刚写入的 remainingDives 立刻 -=1 到 0，惩罚被立刻清除。
+3. **`currentLootMul` 只用一次**：首次 consume 时置 undefined，避免下次下潜再打折。remainingDives 是跨下潜的 O2Max 惩罚计数，两者语义不同。
+4. **救援出口滞留 5s 判死**：`_decoBlockedRescuedSince` 时间戳不进持久化，玩家中途退游戏回来会重置，这是故意的——避免老时间戳导致读档瞬间判死。
+5. **长按加速 × 3 耗氧尚未接入 BreathSystem**：`getDecoO2Mul()` 已导出但 `consumeBreathO2()` 还没乘这个倍率。下次迭代需要在 BreathSystem 的 o2 消耗处乘以此值，才能完整实现"加速 = 更费氧"的设计意图。
+6. **`npm run typecheck` 通过**：整个系统（两个阶段）都过了全量 tsc，hint 级别的未使用变量警告是预先存在的、与本功能无关。
+

@@ -34,6 +34,7 @@ import { playSFX } from '../audio/AudioManager';
 import { getActiveAirTanks } from '../extraction/logic/Loadout';
 import {
     getDecoRuntime, getDecoLevel, getCurrentStopInfo, isDecompressionRequired,
+    isDecoLockActive,
     setDecoBoost, getCurrentDepthMeters,
 } from '../logic/DecompressionSystem';
 
@@ -423,9 +424,12 @@ export function initMazeHUDTopLeft(): void {
         visible: () => {
             const cfg: any = (CONFIG as any).deco;
             if (!cfg || !cfg.enabled || !cfg.hudVisible) return false;
-            // 只要 nitrogenLoad > 0 就显示（即下过 >20m 就常显），避免图标突然出现造成困惑
+            // 显示条件：
+            //   - 锁定中（正在做减压任务）→ 始终显示
+            //   - 或氮负荷 > 0（下过深水就显示，让玩家对它有感知）
+            //   - 或系统判定需要减压
             const rt = getDecoRuntime();
-            return rt.nitrogenLoad > 0.001 || isDecompressionRequired();
+            return isDecoLockActive() || rt.nitrogenLoad > 0.001 || isDecompressionRequired();
         },
         iconDraw: drawDecoIcon,
         supportsLongPress: true,
@@ -436,18 +440,19 @@ export function initMazeHUDTopLeft(): void {
             const pct = Math.round((rt.nitrogenLoad / (cfg?.thresholdCritical || 1.5)) * 100);
             const stop = getCurrentStopInfo();
             const depth = Math.floor(getCurrentDepthMeters());
+            const lockHint = isDecoLockActive() ? '\n🔒 强行出水 = 重度减压病' : '';
             if (!stop) {
-                if (getDecoLevel() === 0) {
+                if (getDecoLevel() === 0 && !isDecoLockActive()) {
                     return `氮气：${pct}%（安全）\n深度：${depth}m\n（深于 20m 开始累积）`;
                 }
-                return `氮气：${pct}%\n深度：${depth}m`;
+                return `氮气：${pct}%\n深度：${depth}m${lockHint}`;
             }
             const remain = Math.max(0, (stop.hold - stop.progress)).toFixed(1);
             const diff = depth - stop.depth;
             const depthHint = Math.abs(diff) <= 1.5
                 ? '✓ 已在档内，静止即可减压'
                 : (diff > 0 ? `↑ 上浮 ${diff}m 到停留点` : `↓ 下沉 ${-diff}m 到停留点`);
-            return `氮气：${pct}%\n下一档：${stop.depth}m（剩 ${remain}s）\n${depthHint}\n长按 5× 加速（耗氧 3×）`;
+            return `氮气：${pct}%\n下一档：${stop.depth}m（剩 ${remain}s）\n${depthHint}\n长按 5× 加速（耗氧 3×）${lockHint}`;
         },
         onLongHoldStart: () => {
             setDecoBoost(true);

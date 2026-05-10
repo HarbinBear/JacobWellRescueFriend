@@ -50,7 +50,7 @@ type: always
 - **改画面统一性、Playdead 风格方法论、相机体感、表现层优先级**：优先读 `07-playdead-methodology-design.md`
 - **讨论主线叙事的未来走向、失忆/女孩/梦境/八音盒/三线合一、完美结局条件**：优先读 `08-toner-master-narrative.md`（注意：这是目标形态，不是当前实现）
 - **做"玩家感知被救者"这类和未来叙事绑定的新能力**：先读 `08-toner-master-narrative.md` 的第五节，再回到对应玩法分卷
-- **做撤离玩法 / 经济循环 / 装备购买 / 背包搜刮 / 物品定价 / 商店刷新 / 救援与赚钱穿插**：先读 `09-extraction-loop-design.md`（顶层入口），按需打开 [`design/extraction/`](./design/extraction/) 子目录的 7 卷分册
+- **做撤离玩法 / 经济循环 / 装备购买 / 背包搜刮 / 物品定价 / 商店刷新 / 救援与赚钱穿插 / 减压停留 / DCS 惩罚**：先读 `09-extraction-loop-design.md`（顶层入口），按需打开 [`design/extraction/`](./design/extraction/) 子目录的 8 卷分册
 
 ## 设计文档与技术文档分工
 

@@ -209,6 +209,7 @@ export function drawExtractionSettlement(maze: any, cw: number, ch: number, time
                 case 'fishkill': return '撤离失败 · 遇袭';
                 case 'rescued':  return '救援成功';
                 case 'beacon':   return '紧急撤离';
+                case 'deco':     return '撤离失败 · 减压病';
                 default:         return '撤离结束';
             }
         })();

@@ -53,6 +53,17 @@ interface DecoRuntime {
     stopProgress: number[];
     /** 当前应做档位索引（0~3），-1 表示没有减压任务 */
     currentStopIdx: number;
+    /**
+     * 减压任务锁定标志。一旦氮负荷进入黄线并生成任务，此标志置 true。
+     * 只有"按顺序完成全部档位"才会清为 false；
+     * 玩家在浅水自然排氮不会解锁；重置系统（新一潜）也会解锁。
+     *
+     * 外部（MazeLogic）根据此标志决定：
+     *   - 锁定中玩家无法主动撤离（retreat）
+     *   - 锁定中玩家无法通过出口判胜利（rescued）
+     *   - 锁定中玩家若强行触达水面（y<=tileSize/2）→ 判 deco 失败
+     */
+    lockActive: boolean;
     /** 本帧是否处于"减压窗口"（深度匹配 + 速度合格）——供 HUD 显示 "holding" 动画 */
     inHoldWindow: boolean;
     /** 玩家是否正在长按加速 */
@@ -67,6 +78,7 @@ const runtime: DecoRuntime = {
     nitrogenLoad: 0,
     stopProgress: [0, 0, 0, 0],
     currentStopIdx: -1,
+    lockActive: false,
     inHoldWindow: false,
     boostActive: false,
     lastDepth: 0,
@@ -113,9 +125,14 @@ export function getCurrentStopInfo(): { idx: number, depth: number, hold: number
     };
 }
 
-/** 玩家是否处于"需要减压"状态（灯是黄或更亮，或还有未完成档位） */
+/** 玩家是否处于"需要减压"状态（灯是黄或更亮，或还有未完成档位，或锁定中） */
 export function isDecompressionRequired(): boolean {
-    return runtime.currentStopIdx >= 0 || getDecoLevel() >= 1;
+    return runtime.lockActive || runtime.currentStopIdx >= 0 || getDecoLevel() >= 1;
+}
+
+/** 减压任务是否锁定：锁定中玩家不能自由出水，出水即判 DCS 失败 */
+export function isDecoLockActive(): boolean {
+    return runtime.lockActive;
 }
 
 // =============================================
@@ -148,6 +165,7 @@ export function resetDecompressionSystem(): void {
     runtime.nitrogenLoad = 0;
     runtime.stopProgress = [0, 0, 0, 0];
     runtime.currentStopIdx = -1;
+    runtime.lockActive = false;
     runtime.inHoldWindow = false;
     runtime.boostActive = false;
     runtime.lastDepth = 0;
@@ -187,22 +205,20 @@ export function updateDecompressionSystem(dt: number): void {
     }
     // 中间段（releaseDepth ~ ingestDepth）保持不变，模拟"组织平衡区"
 
-    // === 2. 触发减压任务（当氮负荷首次跨过阈值时，根据等级生成任务）===
+    // === 2. 触发减压任务（当氮负荷跨过黄线时，生成任务并锁定）===
     const level = getDecoLevel();
-    if (runtime.currentStopIdx < 0 && level >= 1) {
+    if (runtime.currentStopIdx < 0 && !runtime.lockActive && level >= 1) {
         // 还没有任务：按等级起档
         const startIdxArr: number[] = cfg.startIdxByLevel || [3, 2, 1, 0];
         const startIdx = startIdxArr[level] !== undefined ? startIdxArr[level] : 3;
         if (startIdx >= 0 && startIdx < (cfg.stopDepths || []).length) {
             runtime.currentStopIdx = startIdx;
             runtime.stopProgress = (cfg.stopDepths as number[]).map(() => 0);
+            runtime.lockActive = true;   // 锁定：直到按顺序完成所有档位才解锁
         }
     }
-    // 如果氮负荷跌回绿区（玩家在浅处自然排氮到低阈值），任务取消
-    if (runtime.currentStopIdx >= 0 && runtime.nitrogenLoad < cfg.thresholdGreen * 0.5) {
-        runtime.currentStopIdx = -1;
-        runtime.stopProgress = [0, 0, 0, 0];
-    }
+    // 注意：一旦 lockActive，浅水自然排氮不会取消任务——必须做完停留才能解锁
+    // 玩家如果在任务已生成后继续下深，氮负荷会再涨，但当前档位不会回退
 
     // === 3. 减压窗口判定 + 进度推进 ===
     runtime.inHoldWindow = false;
@@ -228,9 +244,11 @@ export function updateDecompressionSystem(dt: number): void {
                 runtime.nitrogenLoad = Math.max(0, runtime.nitrogenLoad - reduce);
                 runtime.stopProgress[i] = 0;
                 runtime.currentStopIdx = i + 1;
-                // 超出最后一档 → 任务完成
+                // 超出最后一档 → 任务完成，解锁
                 if (runtime.currentStopIdx >= (cfg.stopDepths as number[]).length) {
                     runtime.currentStopIdx = -1;
+                    runtime.lockActive = false;
+                    runtime.nitrogenLoad = 0;  // 减压完成，氮负荷归零
                 }
             }
         }
@@ -264,17 +282,23 @@ export function consumeDecoWarningRequest(): boolean {
 // =============================================
 
 /**
- * surfacing 结算时调用。根据当前 nitrogenLoad 决定是否写入 state.extraction.decoPenalty。
- * 注意：即使玩家撤离失败（o2 耗尽），也要走这个判定——溺亡+DCS=双倍惩罚，是玩家的教训。
+ * surfacing / failed 结算时调用。判断是否写入 DCS 惩罚。
  *
- * 返回值：severity（0 = 没事 / 1 = 轻度 DCS / 2 = 重度 DCS），供调用方决定是否要播音效/文案。
+ * 新规则（lockActive 模型下）：
+ *   - 未锁定（没进过黄线 or 已完成减压解锁）→ 无惩罚
+ *   - 锁定中被强制出水（deco 失败）→ 按氮负荷严重度给 severity 1 或 2
+ *   - 锁定中因其他原因结束（fishkill / o2）→ 同样叠加一次 DCS 惩罚（双重打击）
+ *
+ * 返回 severity：0 = 没事 / 1 = 轻度 / 2 = 重度
  */
 export function triggerDecoPenaltyOnSurface(): 0 | 1 | 2 {
     const cfg: any = (CONFIG as any).deco;
     if (!cfg || !cfg.enabled) return 0;
-    const n = runtime.nitrogenLoad;
-    if (n < cfg.thresholdYellow) return 0;
+    // 只有锁定中才算 DCS 惩罚场景（已完成减压 / 未触发过黄线 = 安全）
+    if (!runtime.lockActive) return 0;
 
+    const n = runtime.nitrogenLoad;
+    // 锁定中出水最低也是 lv1（即使氮负荷因浅水排氮被蒙混到黄线以下，玩家也算"闯关失败"）
     const severity: 1 | 2 = (n >= cfg.thresholdCritical ? 2 : 1);
     const pen = cfg.penalty || {};
 
@@ -289,7 +313,6 @@ export function triggerDecoPenaltyOnSurface(): 0 | 1 | 2 {
         // 已经有更严重的惩罚了，不覆盖，但本次战利品打折用新旧里更严的那个
         ex.decoPenalty = {
             ...existing,
-            // 本次撤离的打折用"更严的那个值"，保持玩家痛感
             currentLootMul: Math.min(existing.currentLootMul ?? 1, lootMul),
         };
     } else {

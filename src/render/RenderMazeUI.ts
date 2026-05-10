@@ -343,6 +343,17 @@ export function drawMazeHUD() {
             // 被咬死：血红 → 暗红 淡出（FishEnemy 已把 redOverlay 拉到过 1.0，这里在它上面叠黑）
             ctx.fillStyle = `rgba(60, 10, 10, ${0.35 * k})`;
             ctx.fillRect(0, 0, cw, ch);
+        } else if (maze.surfacingReason === 'deco') {
+            // 减压病：紫色色调（关节疼痛 + 氮气析出视觉联想）
+            ctx.fillStyle = `rgba(60, 10, 55, ${0.35 * k})`;
+            ctx.fillRect(0, 0, cw, ch);
+            // 边缘紫色压缩（痛感聚焦）
+            const edgeGrad = ctx.createRadialGradient(cw / 2, ch / 2, ch * (0.3 - k * 0.15),
+                                                       cw / 2, ch / 2, ch * 0.75);
+            edgeGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+            edgeGrad.addColorStop(1, `rgba(80, 20, 90, ${0.5 * k})`);
+            ctx.fillStyle = edgeGrad;
+            ctx.fillRect(0, 0, cw, ch);
         } else {
             // 溺水：冷蓝 + 视野边缘压缩（缺氧瞳孔缩小）
             const edgeGrad = ctx.createRadialGradient(cw / 2, ch / 2, ch * (0.35 - k * 0.2),
@@ -367,21 +378,22 @@ export function drawMazeHUD() {
         if (k > 0.25) {
             const textK = Math.min(1, (k - 0.25) / 0.35) * Math.max(0, 1 - blackK * 0.9);
             if (textK > 0.02) {
-                ctx.fillStyle = maze.surfacingReason === 'fishkill'
-                    ? `rgba(255, 180, 180, ${textK})`
-                    : `rgba(180, 220, 255, ${textK})`;
+                const isDeco = maze.surfacingReason === 'deco';
+                const isFish = maze.surfacingReason === 'fishkill';
+                ctx.fillStyle = isFish ? `rgba(255, 180, 180, ${textK})`
+                             : isDeco  ? `rgba(230, 180, 255, ${textK})`
+                                       : `rgba(180, 220, 255, ${textK})`;
                 ctx.font = 'bold 22px "PingFang SC", Arial';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
-                const msg = maze.surfacingReason === 'fishkill' ? '撤离失败' : '撤离失败';
-                ctx.fillText(msg, cw / 2, ch / 2 - 14);
+                ctx.fillText('撤离失败', cw / 2, ch / 2 - 14);
                 ctx.font = '12px "PingFang SC", Arial';
-                ctx.fillStyle = maze.surfacingReason === 'fishkill'
-                    ? `rgba(220, 140, 140, ${textK * 0.85})`
-                    : `rgba(150, 190, 220, ${textK * 0.85})`;
-                const sub = maze.surfacingReason === 'fishkill'
-                    ? '被食人鱼撕碎 · 本次物品全部遗失'
-                    : '氧气耗尽 · 本次物品全部遗失';
+                ctx.fillStyle = isFish ? `rgba(220, 140, 140, ${textK * 0.85})`
+                             : isDeco  ? `rgba(200, 160, 230, ${textK * 0.85})`
+                                       : `rgba(150, 190, 220, ${textK * 0.85})`;
+                const sub = isFish ? '被食人鱼撕碎 · 本次物品全部遗失'
+                         : isDeco  ? '未完成减压 · 重度减压病 · 本次物品全部遗失'
+                                   : '氧气耗尽 · 本次物品全部遗失';
                 ctx.fillText(sub, cw / 2, ch / 2 + 14);
                 ctx.textAlign = 'start';
                 ctx.textBaseline = 'alphabetic';

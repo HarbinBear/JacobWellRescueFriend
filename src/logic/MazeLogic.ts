@@ -27,6 +27,7 @@ import {
     consumeDecoWarningRequest,
     triggerDecoPenaltyOnSurface,
     consumeDecoPenaltyDive,
+    isDecoLockActive,
 } from './DecompressionSystem';
 
 // 迷宫模式使用独立的 StoryManager 实例
@@ -681,15 +682,18 @@ function finishMazeDive(returnReason: string) {
     maze.resultTimer = 0;
     maze.finishTime = Date.now();
 
-    // === 减压结算：出水时检查氮负荷，写入 decoPenalty（若 nitrogenLoad 已过黄线）===
+    // === 减压结算：出水时检查氮负荷，写入 decoPenalty（若任务锁定中）===
     // 写入顺序重要：必须在 onExtractionDiveEnd 之前写，让本次战利品结算能读到 currentLootMul
     const decoSeverity = triggerDecoPenaltyOnSurface();
-    if (decoSeverity === 1) {
-        storyManager.showText('⚠ 减压病发作，关节剧痛……', '#ff8844', 3500);
-        playSFX('uiSecondary');
-    } else if (decoSeverity === 2) {
-        storyManager.showText('☠ 重度减压病！严重后果持续多次下潜', '#ff4444', 4000);
-        playSFX('uiSecondary');
+    // 只对"非 deco 死因"的玩家提示"DCS 叠加"——deco 死因本身已有自己的失败画面文案
+    if (decoSeverity > 0 && returnReason !== 'deco') {
+        if (decoSeverity === 1) {
+            storyManager.showText('⚠ 减压病发作，关节剧痛……', '#ff8844', 3500);
+            playSFX('uiSecondary');
+        } else {
+            storyManager.showText('☠ 重度减压病！严重后果持续多次下潜', '#ff4444', 4000);
+            playSFX('uiSecondary');
+        }
     }
 
     // 撤离玩法钩子：根据 returnReason 结算背包（成功 100%/半成功 50%/失败全损）+ 还原装备覆盖 + 落盘
@@ -948,6 +952,10 @@ export function updateMaze() {
             // 溺水：慢慢下沉 + 动作放慢
             player.vy = Math.min(player.vy * 0.92 + 0.15, 1.2);
             player.animTime += 0.04;
+        } else if (maze.surfacingReason === 'deco') {
+            // 减压病：玩家抽搐下沉（关节剧痛，身体失控）
+            player.vy = Math.min(player.vy * 0.88 + 0.2, 1.4);
+            player.animTime += 0.08;   // 动画稍快，表现抽搐感
         } else {
             // fishkill 或其他：完全冻结（被鱼叼住 / 昏迷）
             player.vy *= 0.5;
@@ -1258,13 +1266,22 @@ export function updateMaze() {
         const elapsed = (Date.now() - maze.retreatHoldStart) / 1000;
         if (elapsed >= CONFIG.maze.retreatHoldDuration) {
             maze.retreatHolding = false;
-            maze.phase = 'surfacing';
-            maze.surfacingReason = 'retreat';
-            maze.resultTimer = 0;
-            // 弹射出水：音效和初始预震一开始就拉起，萤幕竟为蓄力营造节奏
-            playSFX('quickReturn', { volume: 0.5 });
-            state.story.shake = Math.max(state.story.shake || 0, 4);
-            storyManager.showText('安全上浮中...', '#aef', 2000);
+            if (isDecoLockActive()) {
+                // 减压锁定中强行撤离：玩家明确表达了"走"的意图，直接判 deco 失败
+                maze.phase = 'failed';
+                maze.surfacingReason = 'deco';
+                maze.resultTimer = 0;
+                storyManager.showText('☠ 未完成减压，重度减压病发作\n本次物品全部遗失', '#c060ff', 4000);
+                playSFX('uiSecondary');
+            } else {
+                maze.phase = 'surfacing';
+                maze.surfacingReason = 'retreat';
+                maze.resultTimer = 0;
+                // 弹射出水：音效和初始预震一开始就拉起，萤幕竟为蓄力营造节奏
+                playSFX('quickReturn', { volume: 0.5 });
+                state.story.shake = Math.max(state.story.shake || 0, 4);
+                storyManager.showText('安全上浮中...', '#aef', 2000);
+            }
         }
     }
 
@@ -1272,13 +1289,33 @@ export function updateMaze() {
     if (maze.npcRescued && player.y <= maze.exitY + maze.mazeTileSize * 2) {
         const distToExit = Math.hypot(player.x - maze.exitX, player.y - maze.exitY);
         if (distToExit < maze.mazeTileSize * 2) {
-            maze.phase = 'rescued';
-            maze.resultTimer = 0;
-            maze.finishTime = Date.now();
-            // 记录到历史
-            finishMazeDive('rescued');
-            maze.phase = 'rescued'; // finishMazeDive会设为debrief，这里覆盖为rescued
-            storyManager.showText('🎉 成功救出！', '#ff0', 99999);
+            if (isDecoLockActive()) {
+                // 减压锁定中到出口：一次性警告；玩家若继续滞留在出口范围就直接判 deco 失败
+                // 首次触发只弹提示、不立刻失败，给玩家机会回头做减压
+                if (!(maze as any)._decoBlockedRescuedWarned) {
+                    (maze as any)._decoBlockedRescuedWarned = true;
+                    (maze as any)._decoBlockedRescuedSince = Date.now();
+                    storyManager.showText('⚠ 未完成减压停留！\n快去 3/6/9/12m 停留，否则减压病发作', '#ff8844', 4000);
+                    playSFX('uiSecondary');
+                } else if (Date.now() - ((maze as any)._decoBlockedRescuedSince || 0) > 5000) {
+                    // 5 秒后仍在出口且仍锁定 → 判 deco 失败（带着 NPC 也算失败）
+                    maze.phase = 'failed';
+                    maze.surfacingReason = 'deco';
+                    maze.resultTimer = 0;
+                    storyManager.showText('☠ 未完成减压，重度减压病发作\n本次物品全部遗失', '#c060ff', 4000);
+                    playSFX('uiSecondary');
+                }
+            } else {
+                (maze as any)._decoBlockedRescuedWarned = false;
+                (maze as any)._decoBlockedRescuedSince = 0;
+                maze.phase = 'rescued';
+                maze.resultTimer = 0;
+                maze.finishTime = Date.now();
+                // 记录到历史
+                finishMazeDive('rescued');
+                maze.phase = 'rescued'; // finishMazeDive会设为debrief，这里覆盖为rescued
+                storyManager.showText('🎉 成功救出！', '#ff0', 99999);
+            }
         }
     }
 
@@ -1385,7 +1422,10 @@ export function updateMaze() {
     // --- 减压停留系统：氮气吸排 / 减压任务进度 / 长按加速结算 ---
     updateDecompressionSystem(1 / 60);
     if (consumeDecoWarningRequest()) {
-        storyManager.showText('氮气开始累积，注意减压！\n上浮时需在 3/6/9/12m 逐段停留', '#ffd060', 4000);
+        storyManager.showText(
+            '⚠ 氮气累积，必须做减压停留！\n出水前需在 12/9/6/3m 逐段停留\n不完成减压直接出水 = 重度减压病',
+            '#ffd060', 5000
+        );
     }
 
     // --- 更新凶猛鱼 ---

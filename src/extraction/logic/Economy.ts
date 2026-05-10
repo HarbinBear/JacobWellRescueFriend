@@ -193,7 +193,7 @@ export function transferBagToWarehouse(): WarehouseItem[] {
 // 撤离结算（核心入口，由 ExtractionDive.onDiveEnd 调用）
 // =============================================
 
-export type ExtractReason = 'retreat' | 'o2' | 'fishkill' | 'beacon' | 'rescued';
+export type ExtractReason = 'retreat' | 'o2' | 'fishkill' | 'beacon' | 'rescued' | 'deco';
 
 /** 撤离失败时被销毁的一件装备的描述（结算页展示用） */
 export interface LostEquipmentEntry {
@@ -299,10 +299,11 @@ export function settleDiveExtraction(reason: ExtractReason): DiveSettlement {
     const lost: BagItem[] = [];
     let lostEquipment: LostEquipmentEntry[] = [];
 
-    if (reason === 'fishkill' || reason === 'o2') {
+    if (reason === 'fishkill' || reason === 'o2' || reason === 'deco') {
         // 撤离失败：
         //   - fishkill（被食人鱼咬死）
         //   - o2（氧气耗尽 / 溺水）
+        //   - deco（未完成减压停留强行出水 → 重度减压病）
         // 战利品全损 + 当前装备的那件被销毁（保底装备 bag4/finsBasic 永远在）
         for (const it of all) lost.push(it);
         lostEquipment = loseEquippedOnFailure();
