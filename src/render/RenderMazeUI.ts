@@ -6,6 +6,7 @@ import { drawHUDTopLeft, initMazeHUDTopLeft } from './HUDTopLeft';
 // 撤离玩法 UI 模块（独立于现有 mazeUI 子目录，与撤离系统所有代码同处一个独立树下）
 import { drawCoinHUD } from '../extraction/render/CoinHUD';
 import { drawInventoryHUD } from '../extraction/render/InventoryHUD';
+import { drawBagFullPage } from '../extraction/render/BagFullPage';
 import { drawExtractionSettlement } from '../extraction/render/DebriefExtension';
 import { drawShop, drawShopEntryBtn, isShopOpen as isExtractionShopOpen } from '../extraction/render/ShopUI';
 import { drawPickupHints } from '../extraction/render/PickupHints';
@@ -313,8 +314,10 @@ export function drawMazeHUD() {
     ensureMazeHUDInitialized();
     drawHUDTopLeft(time);
 
-    // --- 撤离玩法：右下角背包格子条（仅 play 阶段显示） ---
+    // --- 撤离玩法：右下角背包胶囊 HUD（仅 play 阶段显示） ---
     drawInventoryHUD();
+    // --- 撤离玩法：背包全屏页（点击胶囊后展开） ---
+    drawBagFullPage();
     // --- 撤离玩法：拾取/容量飘字（世界坐标跟随，跟随相机变换） ---
     drawPickupHints();
     // --- 撤离玩法：物品详情卡（play 阶段也可能打开，最顶层） ---

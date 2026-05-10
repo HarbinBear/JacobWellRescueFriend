@@ -96,3 +96,35 @@ export function getBagItems(): BagItem[] {
     if (!ex) return [];
     return ex.bag.items.slice();
 }
+
+/** 把背包数组里两件物品交换位置（用于拖拽重排） */
+export function swapBagItems(idA: number, idB: number): boolean {
+    const ex = getExtractionState();
+    if (!ex) return false;
+    let ia = -1, ib = -1;
+    for (let i = 0; i < ex.bag.items.length; i++) {
+        if (ex.bag.items[i].id === idA) ia = i;
+        if (ex.bag.items[i].id === idB) ib = i;
+    }
+    if (ia < 0 || ib < 0 || ia === ib) return false;
+    const tmp = ex.bag.items[ia];
+    ex.bag.items[ia] = ex.bag.items[ib];
+    ex.bag.items[ib] = tmp;
+    return true;
+}
+
+/** 把背包某件物品移动到指定索引位置（拖到空格） */
+export function moveBagItemToIndex(itemUniqueId: number, targetIndex: number): boolean {
+    const ex = getExtractionState();
+    if (!ex) return false;
+    let from = -1;
+    for (let i = 0; i < ex.bag.items.length; i++) {
+        if (ex.bag.items[i].id === itemUniqueId) { from = i; break; }
+    }
+    if (from < 0) return false;
+    const it = ex.bag.items[from];
+    ex.bag.items.splice(from, 1);
+    const insertAt = Math.max(0, Math.min(targetIndex, ex.bag.items.length));
+    ex.bag.items.splice(insertAt, 0, it);
+    return true;
+}

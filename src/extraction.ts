@@ -146,8 +146,23 @@ export {
     getShopSlotHitTests,
 } from './extraction/render/ShopUI';
 
-// 背包 HUD
-export { getInventorySlotHitTests, openBagItemDetail } from './extraction/render/InventoryHUD';
+// 背包 HUD（折叠胶囊）
+export {
+    drawInventoryHUD,
+    isInventoryHUDVisible,
+    getInventoryHUDCapsuleRect,
+    openBagFullPage,
+    closeBagFullPage,
+    isBagFullPageOpen,
+} from './extraction/render/InventoryHUD';
+
+// 背包全屏页
+export {
+    drawBagFullPage,
+    onBagPageTouchStart,
+    onBagPageTouchMove,
+    onBagPageTouchEnd,
+} from './extraction/render/BagFullPage';
 
 // 物品详情卡
 export {

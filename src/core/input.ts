@@ -28,9 +28,15 @@ import {
     getDetailCardCloseRect,
     getDetailCardActionRect,
     listDetailCardActionIds,
-    getInventorySlotHitTests,
-    openBagItemDetail,
     discardBagItemAtPlayer,
+    // 背包 HUD（胶囊态）
+    getInventoryHUDCapsuleRect,
+    openBagFullPage,
+    isBagFullPageOpen,
+    // 背包全屏页（拖拽与单击）
+    onBagPageTouchStart,
+    onBagPageTouchMove,
+    onBagPageTouchEnd,
 } from '../extraction';
 import {
     getBriefingAcceptBtnRect,
@@ -257,18 +263,29 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
             return;
         }
 
-        // === 撤离玩法：水下点击背包格子 → 打开详情卡（含丢弃按钮）===
+        // === 撤离玩法：背包全屏页（仅 play 阶段；最高优先级，独占触摸）===
+        if (isBagFullPageOpen()) {
+            const t = res.changedTouches[0] || res.touches[res.touches.length - 1];
+            if (t) {
+                onBagPageTouchStart(t.clientX, t.clientY);
+            }
+            return;
+        }
+
+        // === 撤离玩法：水下点击背包胶囊 → 打开全屏背包页 ===
         if (state.screen === 'mazeRescue' && state.mazeRescue && state.mazeRescue.phase === 'play') {
             const t = res.changedTouches[0] || res.touches[res.touches.length - 1];
             if (t) {
-                const slotHits = getInventorySlotHitTests();
-                for (const sh of slotHits) {
-                    if (t.clientX >= sh.x && t.clientX <= sh.x + sh.w &&
-                        t.clientY >= sh.y && t.clientY <= sh.y + sh.h) {
-                        playSFX('uiSecondary');
-                        openBagItemDetail(sh.itemUniqueId);
-                        return;
-                    }
+                const cap = getInventoryHUDCapsuleRect();
+                if (cap && t.clientX >= cap.x && t.clientX <= cap.x + cap.w &&
+                    t.clientY >= cap.y && t.clientY <= cap.y + cap.h) {
+                    playSFX('uiSecondary');
+                    openBagFullPage();
+                    // 立刻清空玩家移动输入，避免打开背包页时角色继续滑行
+                    input.move = 0;
+                    input.speedUp = false;
+                    touches.joystickId = null;
+                    return;
                 }
             }
         }
@@ -581,6 +598,13 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
     });
 
     wx.onTouchMove((res) => {
+        // === 撤离玩法：背包全屏页拖拽跟手 ===
+        if (isBagFullPageOpen()) {
+            const t = res.changedTouches[0] || res.touches[res.touches.length - 1];
+            if (t) onBagPageTouchMove(t.clientX, t.clientY);
+            return;
+        }
+
         // HUD 栏优先处理自己跟踪的触点（即使 GM 开着也要让 HUD 长按阐值继续生效）
         // HUD 只处理一开始注册过的 identifier，其他触点会被它忽略，不会误吃 GM 拖动
         if (state.screen === 'mazeRescue' && state.mazeRescue && state.mazeRescue.phase === 'play') {
@@ -758,6 +782,13 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
     });
 
     wx.onTouchEnd((res) => {
+        // === 撤离玩法：背包全屏页松手（拖拽放置 / 单击选中）===
+        if (isBagFullPageOpen()) {
+            const t = res.changedTouches[0] || res.touches[res.touches.length - 1];
+            if (t) onBagPageTouchEnd(t.clientX, t.clientY);
+            return;
+        }
+
         // HUD 栏优先处理自己跟踪的触点释放（即使 GM 开着，点齿轮关 GM 也走这条路）
         // HUD 只处理它自己注册过的 identifier，其他触点会被忽略，不会误吃 GM 面板事件
         if (state.screen === 'mazeRescue' && state.mazeRescue && state.mazeRescue.phase === 'play') {

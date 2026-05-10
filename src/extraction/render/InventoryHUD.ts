@@ -1,48 +1,21 @@
-// 下潜中的背包 HUD（右下角网格）
+// 下潜中的背包 HUD（折叠胶囊态）
 //
-// 仅在迷宫 play 阶段显示
-// 自适应布局：固定 4 列，行数 = ceil(slotN / 4)
-//   - 4 格 → 1 行 × 4 列
-//   - 8 格 → 2 行 × 4 列
-//   - 12 格 → 3 行 × 4 列
-//   - 16 格 → 4 行 × 4 列
-// 这样无论背包大小，整体宽度恒定，右下角贴边稳定，不会溢出屏幕
+// 设计：
+// - 折叠态：右下角胶囊小条 "🎒 背包 N/M"，位于拾取按钮上方（避免和轮盘按钮重叠）
+//   - 占用空间小，不挡视野
+//   - 容量将满时变金色脉冲提示
+// - 展开态：全屏背包页（BagFullPage）—— 由本模块的 openBagFullPage() 进入
 //
-// 交互：点击已占用的格子 → 打开物品详情卡（含丢弃按钮）
+// 注意：原"右下角格子条"已废弃（被全屏页接管）
+//       格子点击/拖拽都在 BagFullPage 内做，HUD 这里不再处理格子 hit-test
 
 import { CONFIG } from '../../core/config';
 import { state } from '../../core/state';
 import { ctx } from '../../render/Canvas';
-import { getBagItems, getBagOccupiedSlots } from '../logic/Inventory';
-import { getItemDef } from '../core/ExtractionRegistry';
+import { getBagOccupiedSlots } from '../logic/Inventory';
 import { ensureExtractionState } from '../core/ExtractionState';
-import { openDetailCard } from './ItemDetailCard';
 
-// =============================================
-// 业务：打开某件背包物品的详情卡
-// =============================================
-
-/** 玩家点了背包某个格子：打开详情卡，含"丢弃"按钮 */
-export function openBagItemDetail(itemUniqueId: number): void {
-    const items = getBagItems();
-    const it = items.find(b => b.id === itemUniqueId);
-    if (!it) return;
-    const def = getItemDef(it.itemId);
-    if (!def) return;
-
-    openDetailCard({
-        source: 'bag',
-        itemUniqueId: it.id,
-        itemId: it.itemId,
-        condition: it.condition,
-        actions: [
-            { id: 'close', label: '关闭', style: 'secondary' },
-            { id: 'discard:' + it.id, label: '丢到水底 ↓', style: 'danger' },
-        ],
-    });
-}
-
-// 兼容微信小游戏的圆角矩形
+// 圆角矩形
 function rrect(c: any, x: number, y: number, w: number, h: number, r: number) {
     r = Math.min(r, w / 2, h / 2);
     c.moveTo(x + r, y);
@@ -57,20 +30,9 @@ function rrect(c: any, x: number, y: number, w: number, h: number, r: number) {
     c.closePath();
 }
 
-// 品相 → 边框色（视觉差异化稀有度）
-function conditionColor(condition: string): string {
-    switch (condition) {
-        case 'perfect':    return 'rgba(255, 220, 130, 0.95)';   // 金
-        case 'inscribed':  return 'rgba(180, 130, 255, 0.95)';   // 紫
-        case 'pristine':   return 'rgba(140, 220, 255, 0.95)';   // 浅蓝
-        case 'intact':
-        case 'normal':     return 'rgba(180, 200, 220, 0.85)';   // 银白
-        case 'cracked':
-        case 'rusted':
-        case 'damaged':    return 'rgba(160, 130, 100, 0.7)';    // 锈褐
-        default:           return 'rgba(180, 200, 220, 0.7)';
-    }
-}
+// =============================================
+// HUD 可见性
+// =============================================
 
 export function isInventoryHUDVisible(): boolean {
     if (state.screen !== 'mazeRescue') return false;
@@ -79,32 +41,39 @@ export function isInventoryHUDVisible(): boolean {
     return maze.phase === 'play';
 }
 
-const COLS = 4;            // 固定 4 列
-const SLOT_SIZE = 32;      // 单格尺寸
-const SLOT_GAP = 4;        // 格间距
-const PAD_X = 8;           // 容器内边距
-const PAD_Y = 6;
-const TITLE_H = 12;        // 顶部标题区高度（"背包 N/M"）
-const RIGHT_MARGIN = 14;   // 距右边距
-const BOTTOM_MARGIN = 14;  // 距下边距
+// =============================================
+// 折叠态胶囊
+// =============================================
 
-// 格子的 hit-test 矩形（itemUniqueId -> rect）
-// 仅记录"已占用"的格子（空格不可点）
-const _slotRects: { [bagItemId: number]: { x: number; y: number; w: number; h: number } } = {};
+const HUD_W = 96;   // 胶囊宽度
+const HUD_H = 28;   // 胶囊高度
 
-/** 取背包格子矩形（input.ts hit-test 用），返回所有已占用格子的矩形列表 */
-export function getInventorySlotHitTests(): { itemUniqueId: number; x: number; y: number; w: number; h: number }[] {
-    const out: { itemUniqueId: number; x: number; y: number; w: number; h: number }[] = [];
-    for (const k in _slotRects) {
-        if (Object.prototype.hasOwnProperty.call(_slotRects, k)) {
-            const r = _slotRects[k];
-            out.push({ itemUniqueId: parseInt(k, 10), x: r.x, y: r.y, w: r.w, h: r.h });
-        }
-    }
-    return out;
+// hit-test 矩形（input.ts 用）
+let _hudCapsuleRect: { x: number; y: number; w: number; h: number } | null = null;
+
+export function getInventoryHUDCapsuleRect(): { x: number; y: number; w: number; h: number } | null {
+    return _hudCapsuleRect;
+}
+
+/** 计算折叠胶囊位置：紧贴拾取轮盘按钮上方 */
+function getCapsulePosition(cw: number, ch: number): { x: number; y: number } {
+    // 轮盘按钮位置（保持与 RenderWheel 同步）
+    const wheelOuterR = (CONFIG.marker as any).wheelOuterRadius || 100;
+    const margin = wheelOuterR + 12;
+    const rawX = cw * (CONFIG.marker as any).btnXRatio;
+    const rawY = ch * (CONFIG.marker as any).btnYRatio;
+    const wheelX = Math.max(margin, Math.min(cw - margin, rawX));
+    const wheelY = Math.max(margin, Math.min(ch - margin, rawY));
+    const wheelR = (CONFIG.marker as any).btnRadius || 36;
+
+    // 胶囊位置：在轮盘按钮上方（按钮顶边再上方 12px），右对齐到按钮右边
+    const x = wheelX + wheelR - HUD_W;
+    const y = wheelY - wheelR - 12 - HUD_H;
+    return { x, y };
 }
 
 export function drawInventoryHUD(): void {
+    _hudCapsuleRect = null;
     if (!isInventoryHUDVisible()) return;
 
     const ex = ensureExtractionState();
@@ -112,114 +81,95 @@ export function drawInventoryHUD(): void {
     const ch = CONFIG.screenHeight;
 
     const slotN = Math.max(1, ex.bag.maxSlots);
-    const items = getBagItems();
     const used = getBagOccupiedSlots();
+    const fillRatio = used / slotN;
 
-    // 自适应行数（按 4 列分行）
-    const rows = Math.max(1, Math.ceil(slotN / COLS));
-    const gridW = SLOT_SIZE * COLS + SLOT_GAP * (COLS - 1);
-    const gridH = SLOT_SIZE * rows + SLOT_GAP * (rows - 1);
-
-    // 容器外框
-    const containerW = gridW + PAD_X * 2;
-    const containerH = gridH + PAD_Y * 2 + TITLE_H + 4;
-    const containerX = cw - containerW - RIGHT_MARGIN;
-    const containerY = ch - containerH - BOTTOM_MARGIN;
+    const { x, y } = getCapsulePosition(cw, ch);
 
     ctx.save();
 
-    // === 容器背景（深玻璃质感） ===
-    ctx.fillStyle = 'rgba(15, 22, 32, 0.72)';
+    // 容量脉冲（>= 80% 时金色脉冲）
+    let glowAlpha = 0;
+    if (fillRatio >= 0.8) {
+        glowAlpha = 0.3 + 0.4 * (0.5 + 0.5 * Math.sin(Date.now() / 200));
+    }
+
+    // 背景胶囊
+    if (glowAlpha > 0) {
+        // 金色辉光圈
+        ctx.fillStyle = `rgba(255, 200, 100, ${glowAlpha * 0.4})`;
+        ctx.beginPath();
+        rrect(ctx, x - 3, y - 3, HUD_W + 6, HUD_H + 6, (HUD_H + 6) / 2);
+        ctx.fill();
+    }
+    ctx.fillStyle = 'rgba(15, 22, 32, 0.78)';
     ctx.beginPath();
-    rrect(ctx, containerX, containerY, containerW, containerH, 8);
+    rrect(ctx, x, y, HUD_W, HUD_H, HUD_H / 2);
     ctx.fill();
-    ctx.strokeStyle = 'rgba(120, 150, 180, 0.25)';
-    ctx.lineWidth = 1;
+
+    // 描边（容量越满颜色越暖）
+    let strokeColor = 'rgba(140, 170, 200, 0.45)';
+    if (used >= slotN) strokeColor = 'rgba(255, 200, 100, 0.95)';
+    else if (fillRatio >= 0.75) strokeColor = 'rgba(220, 200, 130, 0.7)';
+    ctx.strokeStyle = strokeColor;
+    ctx.lineWidth = 1.4;
     ctx.beginPath();
-    rrect(ctx, containerX, containerY, containerW, containerH, 8);
+    rrect(ctx, x, y, HUD_W, HUD_H, HUD_H / 2);
     ctx.stroke();
 
-    // === 顶部标题：背包 used/total ===
-    ctx.fillStyle = 'rgba(200, 220, 240, 0.78)';
-    ctx.font = 'bold 10px Arial';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-    ctx.fillText('背包', containerX + PAD_X, containerY + 4);
-    ctx.textAlign = 'right';
-    // 容量颜色：满了变金色提示
-    if (used >= slotN) {
-        ctx.fillStyle = 'rgba(255, 200, 100, 0.95)';
-    } else if (used >= slotN * 0.75) {
-        ctx.fillStyle = 'rgba(255, 230, 150, 0.85)';
-    } else {
-        ctx.fillStyle = 'rgba(180, 200, 220, 0.7)';
-    }
-    ctx.fillText(used + ' / ' + slotN, containerX + containerW - PAD_X, containerY + 4);
-
-    // === 网格起点 ===
-    const gridX = containerX + PAD_X;
-    const gridY = containerY + PAD_Y + TITLE_H + 4;
-
-    // 阶段 1：所有物品按 1 格画（slots 多格的合并表现留到阶段 2）
-    // 清空旧 hit-test
-    for (const k in _slotRects) delete _slotRects[k];
-
-    let slotIdx = 0;
-    for (let i = 0; i < slotN; i++) {
-        const r = Math.floor(i / COLS);
-        const c = i % COLS;
-        const x = gridX + c * (SLOT_SIZE + SLOT_GAP);
-        const y = gridY + r * (SLOT_SIZE + SLOT_GAP);
-
-        const filled = slotIdx < items.length;
-
-        // 格子底（已占用色更亮）
-        ctx.fillStyle = filled
-            ? 'rgba(50, 65, 85, 0.75)'
-            : 'rgba(30, 40, 55, 0.55)';
-        ctx.beginPath();
-        rrect(ctx, x, y, SLOT_SIZE, SLOT_SIZE, 4);
-        ctx.fill();
-
-        // 边框
-        if (filled) {
-            const it = items[slotIdx];
-            ctx.strokeStyle = conditionColor(it.condition);
-            ctx.lineWidth = 1.4;
+    // 内部填充进度条（背景层）
+    const innerPad = 4;
+    const fillW = (HUD_W - innerPad * 2) * fillRatio;
+    if (fillW > 0) {
+        const grad = ctx.createLinearGradient(x, y, x + HUD_W, y);
+        if (used >= slotN) {
+            grad.addColorStop(0, 'rgba(255, 180, 70, 0.35)');
+            grad.addColorStop(1, 'rgba(255, 200, 100, 0.45)');
         } else {
-            ctx.strokeStyle = 'rgba(140, 160, 185, 0.22)';
-            ctx.lineWidth = 1;
+            grad.addColorStop(0, 'rgba(120, 180, 220, 0.28)');
+            grad.addColorStop(1, 'rgba(160, 210, 240, 0.38)');
         }
+        ctx.fillStyle = grad;
         ctx.beginPath();
-        rrect(ctx, x, y, SLOT_SIZE, SLOT_SIZE, 4);
-        ctx.stroke();
-
-        // 物品图标占位（首字 + 圆形底）
-        if (filled) {
-            const it = items[slotIdx];
-            const def = getItemDef(it.itemId);
-            if (def) {
-                const cx = x + SLOT_SIZE / 2;
-                const cy = y + SLOT_SIZE / 2;
-                // 内圆：暖金色
-                ctx.fillStyle = 'rgba(190, 155, 80, 0.85)';
-                ctx.beginPath();
-                ctx.arc(cx, cy, SLOT_SIZE * 0.34, 0, Math.PI * 2);
-                ctx.fill();
-                // 首字
-                ctx.fillStyle = '#1a1a1a';
-                ctx.font = 'bold 12px "PingFang SC", Arial';
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                ctx.fillText(def.name.charAt(0), cx, cy + 0.5);
-            }
-            // 记录 hit-test 矩形（按 BagItem 唯一 id）
-            _slotRects[it.id] = { x, y, w: SLOT_SIZE, h: SLOT_SIZE };
-            slotIdx++;
-        }
+        rrect(ctx, x + innerPad, y + innerPad, fillW, HUD_H - innerPad * 2, (HUD_H - innerPad * 2) / 2);
+        ctx.fill();
     }
+
+    // 文字 "🎒 N / M"
+    const textColor = used >= slotN ? 'rgba(255, 230, 160, 0.98)' : 'rgba(220, 235, 250, 0.92)';
+    ctx.fillStyle = textColor;
+    ctx.font = 'bold 12px "PingFang SC", Arial';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('🎒', x + 10, y + HUD_H / 2);
+    ctx.font = 'bold 13px "PingFang SC", Arial';
+    ctx.fillText('背包', x + 30, y + HUD_H / 2);
+    ctx.textAlign = 'right';
+    ctx.font = 'bold 12px Arial';
+    ctx.fillText(used + '/' + slotN, x + HUD_W - 10, y + HUD_H / 2);
 
     ctx.textAlign = 'start';
     ctx.textBaseline = 'alphabetic';
     ctx.restore();
+
+    _hudCapsuleRect = { x, y, w: HUD_W, h: HUD_H };
+}
+
+// =============================================
+// 进入全屏背包页
+// =============================================
+
+export function openBagFullPage(): void {
+    const ex = ensureExtractionState() as any;
+    ex.bagPageOpen = true;
+}
+
+export function closeBagFullPage(): void {
+    const ex = ensureExtractionState() as any;
+    ex.bagPageOpen = false;
+}
+
+export function isBagFullPageOpen(): boolean {
+    const ex = ensureExtractionState() as any;
+    return !!ex.bagPageOpen;
 }
