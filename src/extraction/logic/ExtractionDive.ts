@@ -51,9 +51,10 @@ export function onDiveStart(): void {
     applyLoadoutForDive();
     resetPickupForDive();
     // 注意：本次背包应当从空开始（玩家上次撤离时已经清空了）
-    // 防御：以防万一上一次没清干净
+    // 防御：以防万一上一次没清干净（保持稀疏槽位结构）
     const ex = ensureExtractionState();
-    ex.bag.items = [];
+    const n = Math.max(1, ex.bag.maxSlots | 0);
+    ex.bag.items = new Array(n).fill(null) as any;
 }
 
 // =============================================

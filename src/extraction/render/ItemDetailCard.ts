@@ -17,6 +17,15 @@ import { CONFIG } from '../../core/config';
 import { getItemDef, CONDITION_NAMES, CONDITION_MULTIPLIERS } from '../core/ExtractionRegistry';
 import { ensureExtractionState } from '../core/ExtractionState';
 import { computeItemPrice, getItemDisplayName } from '../logic/Economy';
+import { drawRelicIconAt } from '../../render/RenderRelic';
+import { ALL_RELIC_KINDS } from '../../logic/Relic';
+
+// 物品 id 是否是古物
+const RELIC_ID_SET: { [k: string]: boolean } = (() => {
+    const m: { [k: string]: boolean } = {};
+    for (const k of ALL_RELIC_KINDS) m[k] = true;
+    return m;
+})();
 
 // =============================================
 // 类型与状态
@@ -311,7 +320,7 @@ export function drawItemDetailCard(): void {
     ctx.fill();
     py += stripeH + 12;
 
-    // === 图标占位（大圆 + 首字 + 类目小标签） ===
+    // === 图标区（大圆背景 + 古物矢量图 或 非古物首字 + 类目小标签） ===
     {
         const cx = cardX + CARD_W / 2;
         const cy = py + iconBoxH / 2;
@@ -325,20 +334,27 @@ export function drawItemDetailCard(): void {
         ctx.beginPath();
         ctx.arc(cx, cy, 38, 0, Math.PI * 2);
         ctx.stroke();
-        // 内圆暖金
-        ctx.fillStyle = 'rgba(200, 165, 90, 0.85)';
-        ctx.beginPath();
-        ctx.arc(cx, cy, 28, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = '#1a1a1a';
-        ctx.font = 'bold 26px "PingFang SC", Arial';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(def.name.charAt(0), cx, cy + 1);
+
+        // 物品图标：古物用矢量图 / 其他用暖金圆 + 首字
+        if (RELIC_ID_SET[def.id]) {
+            drawRelicIconAt(ctx, def.id as any, cx, cy, 48);
+        } else {
+            ctx.fillStyle = 'rgba(200, 165, 90, 0.85)';
+            ctx.beginPath();
+            ctx.arc(cx, cy, 28, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#1a1a1a';
+            ctx.font = 'bold 26px "PingFang SC", Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(def.name.charAt(0), cx, cy + 1);
+        }
 
         // 类目小标签（图标右下方）
         ctx.fillStyle = 'rgba(160, 180, 200, 0.7)';
         ctx.font = '10px "PingFang SC", Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
         ctx.fillText(categoryLabel(def.category), cx, cy + 50);
     }
     py += iconBoxH + 12;

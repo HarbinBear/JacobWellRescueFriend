@@ -57,8 +57,8 @@ export interface ExtractionState {
     bag: {
         /** 容量（格子数）—— 阶段 1 固定 4 */
         maxSlots: number;
-        /** 已装载物品 */
-        items: BagItem[];
+        /** 稀疏槽位数组：长度 = maxSlots，每个位置要么是 BagItem 要么是 null（空槽） */
+        items: (BagItem | null)[];
     };
 
     /** 当次下潜的运行时数据，结束清空 */
@@ -118,7 +118,7 @@ export interface ShopSlot {
 // 默认值
 // =============================================
 
-/** 阶段 1 起步配置：100 金 + 4 格背包 */
+/** 阶段 1 起步配置：100 金 + 4 格背包（全空） */
 export function getInitialExtractionState(): ExtractionState {
     return {
         version: 1,
@@ -128,7 +128,7 @@ export function getInitialExtractionState(): ExtractionState {
         nextItemId: 1,
         bag: {
             maxSlots: 4,
-            items: [],
+            items: [null, null, null, null] as any,
         },
         diveSession: {
             pickedRelicIds: [],

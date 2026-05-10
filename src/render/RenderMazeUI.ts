@@ -9,6 +9,11 @@ import { drawInventoryHUD } from '../extraction/render/InventoryHUD';
 import { drawBagFullPage } from '../extraction/render/BagFullPage';
 import { drawExtractionSettlement } from '../extraction/render/DebriefExtension';
 import { drawShop, drawShopEntryBtn, isShopOpen as isExtractionShopOpen } from '../extraction/render/ShopUI';
+import {
+    drawWarehousePage,
+    drawWarehouseEntryBtn,
+    isWarehousePageOpen,
+} from '../extraction/render/WarehousePage';
 import { drawPickupHints } from '../extraction/render/PickupHints';
 import { drawItemDetailCard } from '../extraction/render/ItemDetailCard';
 
@@ -97,12 +102,21 @@ export function drawMazeHUD() {
             ctx.restore();
             return;
         }
+        // 撤离玩法仓库全屏页
+        if (isWarehousePageOpen()) {
+            drawWarehousePage();
+            drawItemDetailCard();
+            ctx.restore();
+            return;
+        }
         drawMazeShore(maze, cw, ch, time);
         // 撤离玩法：顶部金币 HUD（仅在岸上 / resolved_idle 显示，避开警情通报和图鉴）
         if (!maze.shoreMapOpen && maze.briefingShown) {
             drawCoinHUD();
             // 商店入口按钮
             drawShopEntryBtn(cw, ch, time);
+            // 仓库入口按钮（商店下方一行）
+            drawWarehouseEntryBtn(cw, ch, time);
         }
         // 放弃救援按钮（仅在岸上主界面显示，全屏地图与通报覆盖时不显示）
         if (!maze.shoreMapOpen && maze.briefingShown) {
@@ -137,11 +151,19 @@ export function drawMazeHUD() {
             ctx.restore();
             return;
         }
+        // 撤离玩法仓库全屏页
+        if (isWarehousePageOpen()) {
+            drawWarehousePage();
+            drawItemDetailCard();
+            ctx.restore();
+            return;
+        }
         drawMazeShore(maze, cw, ch, time);
         if (!maze.shoreMapOpen) {
             // 撤离玩法：顶部金币 HUD
             drawCoinHUD();
             drawShopEntryBtn(cw, ch, time);
+            drawWarehouseEntryBtn(cw, ch, time);
             // 水面入口上盖一层"本案已结案"半透明遮罩
             ctx.fillStyle = 'rgba(0,0,0,0.45)';
             const poolX = cw * 0.5, poolY = ch * 0.44;

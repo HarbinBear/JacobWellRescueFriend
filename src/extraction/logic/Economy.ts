@@ -77,6 +77,7 @@ export function computeBagTotalValue(): number {
     if (!ex) return 0;
     let total = 0;
     for (const it of ex.bag.items) {
+        if (!it) continue;
         total += computeItemPrice(it.itemId, it.condition);
     }
     return total;
@@ -170,6 +171,7 @@ export function transferBagToWarehouse(): WarehouseItem[] {
     const ex = ensureExtractionState();
     const moved: WarehouseItem[] = [];
     for (const bagIt of ex.bag.items) {
+        if (!bagIt) continue;
         const it: WarehouseItem = {
             id: bagIt.id,           // 沿用 bag 里的 id（不重新申请）
             itemId: bagIt.itemId,
@@ -178,7 +180,9 @@ export function transferBagToWarehouse(): WarehouseItem[] {
         ex.warehouse.push(it);
         moved.push(it);
     }
-    ex.bag.items = [];
+    // 清空：保持槽位数不变，所有槽位置 null
+    const n = Math.max(1, ex.bag.maxSlots | 0);
+    ex.bag.items = new Array(n).fill(null) as any;
     return moved;
 }
 
@@ -207,7 +211,11 @@ export interface DiveSettlement {
  */
 export function settleDiveExtraction(reason: ExtractReason): DiveSettlement {
     const ex = ensureExtractionState();
-    const all = ex.bag.items.slice();
+    // 从稀疏槽位中取出所有非空物品
+    const all: BagItem[] = [];
+    for (const it of ex.bag.items) {
+        if (it) all.push(it);
+    }
     const kept: BagItem[] = [];
     const lost: BagItem[] = [];
 
@@ -236,8 +244,9 @@ export function settleDiveExtraction(reason: ExtractReason): DiveSettlement {
         lostValue += computeItemPrice(it.itemId, it.condition);
     }
 
-    // 清空背包
-    ex.bag.items = [];
+    // 清空背包（保持稀疏槽位结构）
+    const n = Math.max(1, ex.bag.maxSlots | 0);
+    ex.bag.items = new Array(n).fill(null) as any;
 
     // 累计统计
     ex.stats.totalDives++;

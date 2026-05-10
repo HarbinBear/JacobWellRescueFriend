@@ -164,6 +164,22 @@ export {
     onBagPageTouchEnd,
 } from './extraction/render/BagFullPage';
 
+// 仓库全屏页
+export {
+    drawWarehousePage,
+    drawWarehouseEntryBtn,
+    isWarehousePageOpen,
+    openWarehousePage,
+    closeWarehousePage,
+    getWarehouseCloseBtnRect,
+    getWarehouseSellAllBtnRect,
+    getWarehouseSlotHitTests,
+    getWarehouseEntryBtnRect,
+    openWarehouseItemDetail,
+    performWarehouseSell,
+    performWarehouseSellAll,
+} from './extraction/render/WarehousePage';
+
 // 物品详情卡
 export {
     drawItemDetailCard,

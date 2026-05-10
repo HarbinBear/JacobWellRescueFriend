@@ -47,7 +47,18 @@ function drawRelic(ctx: CanvasRenderingContext2D, relic: Relic) {
     ctx.rotate(relic.angle);
     ctx.scale(relic.size * RELIC_SCALE_MUL, relic.size * RELIC_SCALE_MUL);
 
-    switch (relic.kind) {
+    drawRelicKindShape(ctx, relic.kind);
+
+    ctx.restore();
+}
+
+/**
+ * 在当前变换下绘制 relic 图形（不做 translate/rotate/scale）。
+ * 每种 kind 的 drawXxx 都在单位坐标系（约 5~10px 量级）绘制。
+ * 调用方应提前 scale 到合适大小。
+ */
+function drawRelicKindShape(ctx: CanvasRenderingContext2D, kind: RelicKind) {
+    switch (kind) {
         case 'skeleton':    drawSkeleton(ctx); break;
         case 'coin':        drawCoin(ctx); break;
         case 'potshard':    drawPotshard(ctx); break;
@@ -81,7 +92,33 @@ function drawRelic(ctx: CanvasRenderingContext2D, relic: Relic) {
         case 'obsidian':    drawObsidian(ctx); break;
         case 'cameraHousing':drawCameraHousing(ctx); break;
     }
+}
 
+/**
+ * 在 UI 场景（屏幕坐标）中以指定 iconSize 绘制某种古物图标。
+ * 用于：背包格子、仓库格子、详情卡、商店卡片等。
+ *
+ * 单位坐标系下的古物轮廓约 14~18px；iconSize=32 表示最终图标占约 32px 宽。
+ * 内部 scale = iconSize / 18（保留一点边距）。
+ *
+ * @param ctx 画布上下文
+ * @param kind 古物类型
+ * @param cx 图标中心 x（屏幕坐标）
+ * @param cy 图标中心 y
+ * @param iconSize 图标目标尺寸（像素，直径概念）
+ */
+export function drawRelicIconAt(
+    ctx: CanvasRenderingContext2D,
+    kind: RelicKind,
+    cx: number,
+    cy: number,
+    iconSize: number,
+) {
+    const scale = iconSize / 18;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(scale, scale);
+    drawRelicKindShape(ctx, kind);
     ctx.restore();
 }
 

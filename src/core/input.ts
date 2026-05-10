@@ -37,6 +37,17 @@ import {
     onBagPageTouchStart,
     onBagPageTouchMove,
     onBagPageTouchEnd,
+    // 仓库全屏页
+    isWarehousePageOpen,
+    openWarehousePage,
+    closeWarehousePage,
+    getWarehouseCloseBtnRect,
+    getWarehouseSellAllBtnRect,
+    getWarehouseSlotHitTests,
+    getWarehouseEntryBtnRect,
+    openWarehouseItemDetail,
+    performWarehouseSell,
+    performWarehouseSellAll,
 } from '../extraction';
 import {
     getBriefingAcceptBtnRect,
@@ -952,6 +963,39 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                     return;
                 }
 
+                // ---- 撤离玩法仓库全屏页打开时的分发 ----
+                if (isWarehousePageOpen()) {
+                    // 点关闭按钮
+                    const cr = getWarehouseCloseBtnRect();
+                    if (cr && tx >= cr.x && tx <= cr.x + cr.w && ty >= cr.y && ty <= cr.y + cr.h) {
+                        playSFX('uiSecondary');
+                        closeWarehousePage();
+                        return;
+                    }
+                    // 点"全部卖出"按钮
+                    const sr = getWarehouseSellAllBtnRect();
+                    if (sr && tx >= sr.x && tx <= sr.x + sr.w && ty >= sr.y && ty <= sr.y + sr.h) {
+                        const earned = performWarehouseSellAll();
+                        if (earned > 0) {
+                            playSFX('uiPrimary');
+                            console.log('[Extraction] 仓库全部卖出，获得 ' + earned + ' 金');
+                        } else {
+                            playSFX('uiSecondary');
+                        }
+                        return;
+                    }
+                    // 点格子 → 详情卡
+                    const slotHits = getWarehouseSlotHitTests();
+                    for (const sh of slotHits) {
+                        if (tx >= sh.x && tx <= sh.x + sh.w && ty >= sh.y && ty <= sh.y + sh.h) {
+                            playSFX('uiSecondary');
+                            openWarehouseItemDetail(sh.itemUniqueId);
+                            return;
+                        }
+                    }
+                    return;
+                }
+
                 // ---- 图鉴全屏页打开时的分发 ----
                 if (maze.codexOpen) {
                     const selKind: string | null = (maze as any).codexSelectedKind || null;
@@ -1008,6 +1052,18 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                         if (!maze.shoreMapOpen) {
                             playSFX('uiPrimary');
                             openShop();
+                            return;
+                        }
+                    }
+                }
+
+                // ---- 点击"仓库"按钮：打开仓库全屏页 ----
+                {
+                    const wr = getWarehouseEntryBtnRect();
+                    if (wr && tx >= wr.x && tx <= wr.x + wr.w && ty >= wr.y && ty <= wr.y + wr.h) {
+                        if (!maze.shoreMapOpen) {
+                            playSFX('uiPrimary');
+                            openWarehousePage();
                             return;
                         }
                     }
@@ -1450,7 +1506,19 @@ function handleDetailCardAction(actionId: string): void {
         return;
     }
 
-    // sell:<warehouseItemId>（阶段 3 才用）
+    // sell:<warehouseItemId>（仓库单件卖出）
+    if (actionId.indexOf('sell:') === 0) {
+        const r = performWarehouseSell(actionId);
+        if (r.ok) {
+            playSFX('uiPrimary');
+            console.log('[Extraction] 卖出成功，+' + r.earned + ' 金');
+        } else {
+            playSFX('uiSecondary');
+            console.log('[Extraction] 卖出失败：' + r.reason);
+        }
+        return;
+    }
+
     // 默认：未识别
     console.log('[Extraction] 未知详情卡动作: ' + actionId);
 }

@@ -19,14 +19,48 @@
 import { ctx } from '../../render/Canvas';
 import { CONFIG } from '../../core/config';
 import { state } from '../../core/state';
-import { getBagItems, swapBagItems, moveBagItemToIndex } from '../logic/Inventory';
+import {
+    getBagItems,
+    getBagSlots,
+    swapBagSlots,
+    moveBagItemToSlot,
+} from '../logic/Inventory';
 import { getItemDef } from '../core/ExtractionRegistry';
-import { ensureExtractionState } from '../core/ExtractionState';
+import { ensureExtractionState, BagItem } from '../core/ExtractionState';
 import { computeItemPrice, getItemDisplayName } from '../logic/Economy';
 import { discardBagItemAtPlayer } from '../logic/ItemPickup';
 import { isBagFullPageOpen, closeBagFullPage } from './InventoryHUD';
 import { openDetailCard } from './ItemDetailCard';
 import { SAFE_TOP, SAFE_LEFT, SAFE_RIGHT } from './UISafeArea';
+import { drawRelicIconAt } from '../../render/RenderRelic';
+import { ALL_RELIC_KINDS } from '../../logic/Relic';
+
+// 物品 id 是否是古物（可以用 RelicKind 矢量图标绘制）
+const RELIC_ID_SET: { [k: string]: boolean } = (() => {
+    const m: { [k: string]: boolean } = {};
+    for (const k of ALL_RELIC_KINDS) m[k] = true;
+    return m;
+})();
+
+/**
+ * 在格子中心绘制物品图标。古物用矢量图（drawRelicIconAt），其他类别（消耗品/装备）用首字占位。
+ */
+function drawItemIcon(itemId: string, cx: number, cy: number, iconSize: number, fallbackName: string): void {
+    if (RELIC_ID_SET[itemId]) {
+        drawRelicIconAt(ctx, itemId as any, cx, cy, iconSize);
+        return;
+    }
+    // 非古物：圆形暖金底 + 首字
+    ctx.fillStyle = 'rgba(190, 155, 80, 0.9)';
+    ctx.beginPath();
+    ctx.arc(cx, cy, iconSize * 0.42, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#1a1a1a';
+    ctx.font = 'bold ' + Math.round(iconSize * 0.55) + 'px "PingFang SC", Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(fallbackName.charAt(0), cx, cy + 1);
+}
 
 // 圆角矩形
 function rrect(c: any, x: number, y: number, w: number, h: number, r: number) {
@@ -207,16 +241,11 @@ export function onBagPageTouchEnd(tx: number, ty: number): void {
             return;
         }
 
-        // 2) 落到另一个格子 → 交换 / 移动
+        // 2) 落到另一个格子（含空格）→ 移到该槽位
         for (const sh of _slotHitTests) {
             if (tx >= sh.x && tx <= sh.x + sh.w && ty >= sh.y && ty <= sh.y + sh.h) {
-                if (sh.itemUniqueId == null) {
-                    // 落到空格 → 移动到该索引
-                    moveBagItemToIndex(drag.itemUniqueId, sh.index);
-                } else if (sh.itemUniqueId !== drag.itemUniqueId) {
-                    // 落到另一个物品 → 交换
-                    swapBagItems(drag.itemUniqueId, sh.itemUniqueId);
-                }
+                // moveBagItemToSlot 统一处理：空槽直接占据、有物品则交换
+                moveBagItemToSlot(drag.itemUniqueId, sh.index);
                 return;
             }
         }
@@ -380,13 +409,16 @@ export function drawBagFullPage(): void {
     // 网格起点在丢弃区下方 + 20
     const gridStartY = discardZoneY + discardZoneH + 28;
 
+    // 背包稀疏槽位（长度 = slotN，空位为 null）
+    const bagSlots = getBagSlots();
+
     for (let i = 0; i < slotN; i++) {
         const r = Math.floor(i / COLS);
         const c = i % COLS;
         const x = gridStartX + c * (SLOT + SLOT_GAP);
         const y = gridStartY + r * (SLOT + SLOT_GAP);
 
-        const it = i < items.length ? items[i] : null;
+        const it = i < bagSlots.length ? bagSlots[i] : null;
         const itemId = it ? it.id : null;
         const isDraggingThis = _page.drag && _page.drag.itemUniqueId === itemId;
 
@@ -472,18 +504,10 @@ function drawSlot(
     const def = getItemDef(it.itemId);
     if (!def) return;
 
-    // 内圆 + 首字
+    // 物品图标（古物用矢量图，其他类别用首字占位）
     const cx = x + size / 2;
     const cy = y + size / 2 - 4;
-    ctx.fillStyle = 'rgba(190, 155, 80, 0.9)';
-    ctx.beginPath();
-    ctx.arc(cx, cy, size * 0.28, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#1a1a1a';
-    ctx.font = 'bold 18px "PingFang SC", Arial';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(def.name.charAt(0), cx, cy + 1);
+    drawItemIcon(it.itemId, cx, cy, Math.round(size * 0.62), def.name);
 
     // 价格小标签（底部居中）
     const price = computeItemPrice(def.id, it.condition);
@@ -528,15 +552,8 @@ function drawDragGhost(
     rrect(ctx, x, y, size, size, 8);
     ctx.stroke();
 
-    ctx.fillStyle = 'rgba(190, 155, 80, 0.95)';
-    ctx.beginPath();
-    ctx.arc(cx, cy, size * 0.28, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#1a1a1a';
-    ctx.font = 'bold 18px "PingFang SC", Arial';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(def.name.charAt(0), cx, cy + 1);
+    // 物品图标
+    drawItemIcon(it.itemId, cx, cy, Math.round(size * 0.62), def.name);
 
     ctx.restore();
 }
@@ -584,13 +601,7 @@ function drawBottomInfoBar(
     ctx.beginPath();
     rrect(ctx, iconX, iconY, iconSize, iconSize, 8);
     ctx.stroke();
-    ctx.fillStyle = 'rgba(190, 155, 80, 0.9)';
-    ctx.beginPath();
-    ctx.arc(iconX + iconSize / 2, iconY + iconSize / 2, iconSize * 0.32, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#1a1a1a';
-    ctx.font = 'bold 18px "PingFang SC", Arial';
-    ctx.textAlign = 'center';
+    drawItemIcon(it.itemId, iconX + iconSize / 2, iconY + iconSize / 2, Math.round(iconSize * 0.7), def.name);
     ctx.textBaseline = 'middle';
     ctx.fillText(def.name.charAt(0), iconX + iconSize / 2, iconY + iconSize / 2 + 1);
 

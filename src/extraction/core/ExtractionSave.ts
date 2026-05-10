@@ -60,8 +60,8 @@ export function saveExtractionProgress(): boolean {
         bag: {
             // 永久装备的容量保存（运行时由装备效果覆盖；这里存当前值）
             maxSlots: ex.bag.maxSlots,
-            // 不保存背包临时内容
-            items: [],
+            // 不保存背包临时内容（稀疏槽位保持空）
+            items: new Array(Math.max(1, ex.bag.maxSlots | 0)).fill(null) as any,
         },
         diveSession: {
             pickedRelicIds: [],

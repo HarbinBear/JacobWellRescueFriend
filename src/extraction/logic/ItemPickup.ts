@@ -293,10 +293,15 @@ export function discardBagItemAtPlayer(itemUniqueId: number): {
     reason?: string;
 } {
     const ex = ensureExtractionState();
-    const idx = ex.bag.items.findIndex(b => b.id === itemUniqueId);
+    // 稀疏槽位数组：通过 id 找到槽位索引（注意 null 跳过）
+    let idx = -1;
+    for (let i = 0; i < ex.bag.items.length; i++) {
+        const b = ex.bag.items[i];
+        if (b && b.id === itemUniqueId) { idx = i; break; }
+    }
     if (idx < 0) return { ok: false, reason: 'notFound' };
 
-    const it = ex.bag.items[idx];
+    const it = ex.bag.items[idx]!;
     const def = getItemDef(it.itemId);
     if (!def) return { ok: false, reason: 'unknownItem' };
 
@@ -304,8 +309,8 @@ export function discardBagItemAtPlayer(itemUniqueId: number): {
     const dropped = dropItemAtPlayer(it.itemId, it.condition, it.slots);
     if (!dropped) return { ok: false, reason: 'dropFailed' };
 
-    // 从背包移除
-    ex.bag.items.splice(idx, 1);
+    // 从背包移除（保留槽位结构：置 null 而非 splice）
+    ex.bag.items[idx] = null;
 
     // 飘字提示
     pushPickupHint('丢弃 ' + getItemDisplayName(it.itemId, it.condition), dropped.x, dropped.y);
