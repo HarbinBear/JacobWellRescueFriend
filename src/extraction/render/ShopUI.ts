@@ -32,6 +32,7 @@ import {
     closeDetailCard,
     isDetailCardOpen,
 } from './ItemDetailCard';
+import { SAFE_TOP, SAFE_LEFT, SAFE_RIGHT } from './UISafeArea';
 
 // 圆角矩形
 function rrect(c: any, x: number, y: number, w: number, h: number, r: number) {
@@ -136,10 +137,12 @@ export function drawShopEntryBtn(cw: number, ch: number, time: number): void {
     if (maze.shoreMapOpen) return;
     if (maze.codexOpen) return;
 
+    // 位置：贴左 SAFE_LEFT，顶部 SAFE_TOP（避开胶囊和摄像头）
+    // 与右上"图鉴"按钮形成左右对称
     const btnW = 90;
     const btnH = 32;
-    const btnX = 14;
-    const btnY = 64;
+    const btnX = SAFE_LEFT;
+    const btnY = SAFE_TOP;
 
     ctx.save();
     ctx.fillStyle = 'rgba(60, 38, 22, 0.85)';
@@ -194,32 +197,17 @@ export function drawShop(cw: number, ch: number, time: number): void {
         ctx.stroke();
     }
 
-    // === 顶部标题 ===
-    const titleY = 50;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = 'rgba(255, 220, 150, 0.95)';
-    ctx.font = 'bold 22px Georgia, serif';
-    ctx.fillText('雅各布井杂货铺', cw / 2, titleY);
+    // === 顶部布局（全部在 SAFE_TOP 之下，避开胶囊和摄像头）===
+    // 第一行（SAFE_TOP）：左[返回] - 中[标题] - 右[金币]（避开胶囊：金币要在 cw - SAFE_RIGHT 内）
+    // 第二行（SAFE_TOP + 36）：右[换一批]
+    // 标题副标题（SAFE_TOP + 42）：居中显示老板话术
 
-    ctx.font = 'italic 12px Georgia, serif';
-    ctx.fillStyle = 'rgba(220, 200, 160, 0.6)';
-    ctx.fillText('"' + bossLine() + '"', cw / 2, titleY + 22);
-
-    // 顶部金币显示（右上）
-    const coins = getCoins();
-    ctx.font = 'bold 16px Arial';
-    ctx.fillStyle = 'rgba(255, 220, 140, 0.95)';
-    ctx.textAlign = 'right';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('💰 ' + coins, cw - 14, 30);
-
-    // === 关闭按钮（左上） ===
+    // 关闭按钮（贴左）
     {
         const btnW = 64;
         const btnH = 28;
-        const btnX = 14;
-        const btnY = 14;
+        const btnX = SAFE_LEFT;
+        const btnY = SAFE_TOP + 2;
         ctx.fillStyle = 'rgba(80, 60, 40, 0.85)';
         ctx.beginPath();
         rrect(ctx, btnX, btnY, btnW, btnH, btnH / 2);
@@ -237,13 +225,40 @@ export function drawShop(cw: number, ch: number, time: number): void {
         _closeBtnRect = { x: btnX, y: btnY, w: btnW, h: btnH };
     }
 
-    // === "换一批" 按钮（右上，紧邻金币）===
+    // 标题（居中，但要避开右侧胶囊；位置考虑胶囊宽度后微调到画面真实中心偏左）
+    const usableW = cw - SAFE_RIGHT;
+    const titleCx = usableW / 2;
+    const titleY = SAFE_TOP + 16;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = 'rgba(255, 220, 150, 0.95)';
+    ctx.font = 'bold 20px Georgia, serif';
+    ctx.fillText('雅各布井杂货铺', titleCx, titleY);
+
+    // 副标题（老板话术）
+    ctx.font = 'italic 11px Georgia, serif';
+    ctx.fillStyle = 'rgba(220, 200, 160, 0.6)';
+    ctx.fillText('"' + bossLine() + '"', titleCx, titleY + 22);
+
+    // 金币显示（左侧，紧贴关闭按钮右边）
+    const coins = getCoins();
+    {
+        const coinX = SAFE_LEFT + 64 + 10;
+        const coinY = SAFE_TOP + 2 + 28 / 2;
+        ctx.font = 'bold 15px Arial';
+        ctx.fillStyle = 'rgba(255, 220, 140, 0.95)';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('💰 ' + coins, coinX, coinY);
+    }
+
+    // === "换一批" 按钮（贴右，避开胶囊）===
     {
         const cost = getRerollCost();
         const btnW = 96;
         const btnH = 28;
-        const btnX = cw - 14 - btnW;
-        const btnY = 14 + 36; // 在金币下方
+        const btnX = cw - SAFE_RIGHT - btnW;
+        const btnY = SAFE_TOP + 2;
 
         ctx.fillStyle = coins >= cost ? 'rgba(50, 80, 100, 0.9)' : 'rgba(50, 60, 70, 0.6)';
         ctx.beginPath();
@@ -275,7 +290,8 @@ export function drawShop(cw: number, ch: number, time: number): void {
     }
 
     const shelfOrder = ['consumable', 'equipment', 'special', 'emergency'];
-    let shelfY = 110;
+    // 货架起点：副标题（titleY + 22）下方再加 28
+    let shelfY = titleY + 22 + 28;
 
     for (const shelfId of shelfOrder) {
         const list = grouped[shelfId];

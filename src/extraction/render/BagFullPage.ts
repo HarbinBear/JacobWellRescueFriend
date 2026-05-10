@@ -26,6 +26,7 @@ import { computeItemPrice, getItemDisplayName } from '../logic/Economy';
 import { discardBagItemAtPlayer } from '../logic/ItemPickup';
 import { isBagFullPageOpen, closeBagFullPage } from './InventoryHUD';
 import { openDetailCard } from './ItemDetailCard';
+import { SAFE_TOP, SAFE_LEFT, SAFE_RIGHT } from './UISafeArea';
 
 // 圆角矩形
 function rrect(c: any, x: number, y: number, w: number, h: number, r: number) {
@@ -292,26 +293,14 @@ export function drawBagFullPage(): void {
     ctx.fillStyle = 'rgba(8, 14, 22, 0.86)';
     ctx.fillRect(0, 0, cw, ch);
 
-    // === 顶部：标题 + 关闭 X ===
-    const titleY = 36;
-    ctx.fillStyle = 'rgba(220, 230, 240, 0.95)';
-    ctx.font = 'bold 22px "PingFang SC", Arial';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('🎒  背包', 24, titleY);
+    // === 顶部：关闭按钮（左）+ 标题（中）+ 容量（右，避开胶囊）===
+    // 全部在 SAFE_TOP 之下，避开微信胶囊和摄像头
+    const titleY = SAFE_TOP + 14;
 
-    // 容量小字
-    let capColor = 'rgba(180, 200, 220, 0.7)';
-    if (items.length >= slotN) capColor = 'rgba(255, 200, 100, 0.95)';
-    else if (items.length / slotN >= 0.75) capColor = 'rgba(220, 200, 130, 0.85)';
-    ctx.fillStyle = capColor;
-    ctx.font = 'bold 14px Arial';
-    ctx.fillText(items.length + ' / ' + slotN, 130, titleY);
-
-    // 关闭 X（右上角）
+    // 关闭按钮（左侧，圆形 X）
     {
-        const r = 18;
-        const cx = cw - 28;
+        const r = 16;
+        const cx = SAFE_LEFT + r;
         const cy = titleY;
         ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
         ctx.beginPath();
@@ -326,16 +315,34 @@ export function drawBagFullPage(): void {
         _closeBtnRect = { x: cx - r, y: cy - r, w: r * 2, h: r * 2 };
     }
 
+    // 标题（居中到"可用区"中心：cw - SAFE_RIGHT 的中点）
+    const usableW = cw - SAFE_RIGHT;
+    const titleCx = usableW / 2;
+    ctx.fillStyle = 'rgba(220, 230, 240, 0.95)';
+    ctx.font = 'bold 20px "PingFang SC", Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('🎒  背包', titleCx, titleY);
+
+    // 容量（在标题正下方一行，居中）
+    let capColor = 'rgba(180, 200, 220, 0.7)';
+    if (items.length >= slotN) capColor = 'rgba(255, 200, 100, 0.95)';
+    else if (items.length / slotN >= 0.75) capColor = 'rgba(220, 200, 130, 0.85)';
+    ctx.fillStyle = capColor;
+    ctx.font = 'bold 13px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText(items.length + ' / ' + slotN, titleCx, titleY + 22);
+
     // 提示文字
     ctx.fillStyle = 'rgba(160, 180, 200, 0.55)';
     ctx.font = '11px "PingFang SC", Arial';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('单击查看 · 按住拖动 · 拖到顶部丢弃', cw / 2, titleY + 24);
+    ctx.fillText('单击查看 · 按住拖动 · 拖到顶部丢弃', titleCx, titleY + 42);
 
     // === 顶部丢弃区 ===
     const discardZoneH = 52;
-    const discardZoneY = titleY + 40;
+    const discardZoneY = titleY + 60;
     const dragging = _page.drag != null;
     {
         const x = 24;

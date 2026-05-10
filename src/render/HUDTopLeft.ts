@@ -34,8 +34,10 @@ import { playSFX } from '../audio/AudioManager';
 
 // ========== 布局常量 ==========
 // 起点 X/Y，每项尺寸、间距（垂直排列）
+// 注意：HUD_START_Y 必须避开微信小游戏右上角胶囊和设备前置摄像头
+//       设计安全区基线 SAFE_TOP=62，图标顶边 = 62 → 中心 = 62 + ITEM_SIZE/2
 const HUD_START_X = 46;         // 所有图标的中心X（左侧留足边距）
-const HUD_START_Y = 48;         // 第一个图标中心Y
+const HUD_START_Y = 84;         // 第一个图标中心Y（= SAFE_TOP 62 + HUD_ITEM_SIZE/2 22）
 const HUD_ITEM_SIZE = 44;       // 图标直径（作为hitTest和视觉尺寸基准）
 const HUD_ITEM_GAP = 18;        // 图标之间的垂直间距（从边缘到边缘）
 const HUD_TIP_OFFSET_X = 8;     // tip面板相对图标右侧的X偏移
