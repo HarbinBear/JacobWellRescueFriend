@@ -31,13 +31,13 @@ let _appliedSnapshot: ConfigSnapshot | null = null;
 /**
  * 下潜启动时应用装备效果。
  *
- * 阶段 1：硬编码默认装备组合：
- *   - 背包：state.extraction.bag.maxSlots（来自永久装备，默认 4）
- *   - 脚蹼：阶段 1 不区分，统一 1.0×
- *   - 氧气瓶：阶段 1 用默认起始 100（与原迷宫一致）
- *   - 电池：阶段 1 用默认照射距离
+ * 装备来源（消耗式装备模型）：
+ *   - 背包：state.extraction.equipped.bag（默认保底 'bag4'）
+ *   - 脚蹼：state.extraction.equipped.fins（默认保底 'finsBasic'）
+ *   两者都从 ExtractionRegistry 取 effects 合并应用
  *
- * 阶段 2：从 state.extraction.loadout 读取玩家选择的装备 id，并合成 effects。
+ * 阶段 2：未来如果加"出发准备页"，可以让玩家手动从 equipmentStock 选择装备一件作为本次出战；
+ * 现在简单粗暴用 equipped。
  */
 export function applyLoadoutForDive(): void {
     const ex = ensureExtractionState();
@@ -52,10 +52,23 @@ export function applyLoadoutForDive(): void {
         breathO2Peak: (CONFIG.breath as any).o2PerBreathPeak || 2.5,
     };
 
-    // 阶段 1：合并所有效果（目前只有背包）
+    // 合并装备效果（背包 + 脚蹼）
     const merged: EquipmentEffects = {};
-    // 背包容量（永久装备）—— 阶段 1 直接用 state.extraction.bag.maxSlots（已经记录了"当前装备的背包大小"）
-    merged.inventorySlots = ex.bag.maxSlots;
+    const bagId = ex.equipped?.bag || 'bag4';
+    const finsId = ex.equipped?.fins || 'finsBasic';
+
+    const bagEff = getEquipmentEffects(bagId);
+    if (bagEff?.inventorySlots != null) {
+        merged.inventorySlots = bagEff.inventorySlots;
+    } else {
+        merged.inventorySlots = ex.bag.maxSlots;  // 兜底：用持久化的 maxSlots
+    }
+
+    const finsEff = getEquipmentEffects(finsId);
+    if (finsEff) {
+        if (finsEff.moveSpeedMul != null) merged.moveSpeedMul = finsEff.moveSpeedMul;
+        if (finsEff.o2DrainMul != null) merged.o2DrainMul = finsEff.o2DrainMul;
+    }
 
     applyEffects(merged);
 }

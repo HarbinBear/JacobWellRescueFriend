@@ -1,17 +1,16 @@
 // 商店刷新与购买逻辑（黄金矿工式）
 //
-// 货架结构：
-//   消耗品架：3 槽（氧气瓶/电池/绳索 池）
-//   应急架：2 槽（救生信标/防鲨喷雾 池；阶段 2 暂只放占位）
-//   装备架：2 槽（背包/脚蹼 永久装备池）
-//   特价架：1~2 槽（随机一件 6~8 折特价；阶段 2 暂无）
+// 设计：所有商品平等，不做"消耗品/装备/特价"分类
+//   - 一次刷出 SHOP_TOTAL_SLOTS 个槽位（默认 8）
+//   - 商品池来源：消耗品池 + 装备池 + （阶段 3）应急品池
+//   - 每次刷新随机指定 1~2 件作为"今日特价"（0.7× 价），用 slot.isSpecial 标记
 //
 // 刷新规则：
 // - 进入岸上时若 shop.slots 不存在则首次刷新
 // - "换一批"按钮触发：第 1 次免费、第 2 次 20、第 3 次 50、之后 100
-// - 装备架已拥有的物品仍可显示（标"已拥有"），但不阻塞其他装备出现
+// - 装备可重复购买（升级是消耗式装备）
 //
-// 详见 design/extraction/02-shop-randomization.md
+// 详见 design/extraction/02-shop-randomization.md（旧分类设计已弃用）
 
 import { ensureExtractionState, ShopSlot } from '../core/ExtractionState';
 import { getItemDef, listItemsByCategory } from '../core/ExtractionRegistry';
@@ -19,21 +18,17 @@ import { spendCoins } from './Economy';
 import { setBagMaxSlots } from './Inventory';
 
 // =============================================
-// 池配置（阶段 2 简化版；阶段 3 可改为 JSON）
+// 池配置
 // =============================================
 
 const CONSUMABLE_POOL = ['airTankS', 'airTankM', 'airTankL', 'batteryWeak', 'batteryStd', 'batteryHigh', 'ropePack5', 'ropePack15'];
 const EMERGENCY_POOL: string[] = []; // 阶段 3 添加 'beacon', 'sharkRepellent'
 const EQUIPMENT_POOL = ['bag8', 'bag12', 'bag16', 'finsRacing', 'finsEndurance'];
-// 特价池：从消耗品里抽，但价格 0.7×
-const SPECIAL_POOL = CONSUMABLE_POOL;
 
-const SHELF_SLOTS = {
-    consumable: 3,
-    emergency: 2,
-    equipment: 2,
-    special: 1,
-};
+/** 商店一次刷出的槽位总数 */
+const SHOP_TOTAL_SLOTS = 8;
+/** 每次刷新随机抽多少个槽走特价 */
+const SPECIAL_SLOT_COUNT = 1;
 
 const REROLL_COST_TABLE = [0, 20, 50, 100, 100, 100];
 
@@ -63,7 +58,7 @@ function nextSlotId(): number {
 // 价格策略
 // =============================================
 
-/** 商店售价（baseValue × 老板系数；阶段 2 简化为 1.0×；特价 0.7×） */
+/** 商店售价（baseValue × 老板系数；普通 1.0×，特价 0.7×；价格不少于 1） */
 export function shopPriceFor(itemId: string, isSpecial: boolean): number {
     const def = getItemDef(itemId);
     if (!def) return 9999;
@@ -76,65 +71,50 @@ export function shopPriceFor(itemId: string, isSpecial: boolean): number {
 // 刷新
 // =============================================
 
-/** 重新生成所有槽位（黄金矿工式：每个货架抽不同的 N 件） */
+/**
+ * 重新生成所有槽位（不分类版本）：
+ * - 把消耗品 + 装备 + 应急三个池合并，按总数 SHOP_TOTAL_SLOTS 抽
+ * - 同 itemId 不重复（一次刷新里）
+ * - 随机挑 SPECIAL_SLOT_COUNT 个槽走特价（标 isSpecial=true，价格 0.7×）
+ *
+ * 备注：装备类槽位 sold=true 表示这次已被买走（同次内不再买，下次刷新才会再出）
+ *       消耗品类槽位 sold 永远 false（可重复购买）
+ */
 export function refreshShopSlots(): void {
     const ex = ensureExtractionState();
+
+    // 合并所有池
+    const fullPool: string[] = [];
+    for (const id of CONSUMABLE_POOL) fullPool.push(id);
+    for (const id of EQUIPMENT_POOL) fullPool.push(id);
+    for (const id of EMERGENCY_POOL) fullPool.push(id);
+
+    // 抽 SHOP_TOTAL_SLOTS 个不重复的 itemId
+    const picks = pickN(fullPool, SHOP_TOTAL_SLOTS, new Set());
+
+    // 随机选若干个走特价
+    const specialIdxSet = new Set<number>();
+    {
+        const indices = picks.map((_, i) => i);
+        for (let n = 0; n < SPECIAL_SLOT_COUNT && indices.length > 0; n++) {
+            const i = Math.floor(Math.random() * indices.length);
+            specialIdxSet.add(indices[i]);
+            indices.splice(i, 1);
+        }
+    }
+
     const slots: ShopSlot[] = [];
-
-    // 消耗品架：3 槽，从池里抽不重复
-    {
-        const picks = pickN(CONSUMABLE_POOL, SHELF_SLOTS.consumable, new Set());
-        for (const id of picks) {
-            slots.push({
-                slotId: nextSlotId(),
-                shelf: 'consumable',
-                itemId: id,
-                price: shopPriceFor(id, false),
-                sold: false,
-            });
-        }
-    }
-
-    // 装备架：2 槽，从装备池里抽（已拥有的物品仍可出，UI 标"已拥有"）
-    {
-        const picks = pickN(EQUIPMENT_POOL, SHELF_SLOTS.equipment, new Set());
-        for (const id of picks) {
-            slots.push({
-                slotId: nextSlotId(),
-                shelf: 'equipment',
-                itemId: id,
-                price: shopPriceFor(id, false),
-                sold: false,
-            });
-        }
-    }
-
-    // 特价架：1 槽，从消耗品池抽 1 件，价格 0.7×
-    {
-        const picks = pickN(SPECIAL_POOL, SHELF_SLOTS.special, new Set());
-        for (const id of picks) {
-            slots.push({
-                slotId: nextSlotId(),
-                shelf: 'special',
-                itemId: id,
-                price: shopPriceFor(id, true),
-                sold: false,
-            });
-        }
-    }
-
-    // 应急架：阶段 2 暂无品，留空（阶段 3 启用）
-    if (EMERGENCY_POOL.length > 0) {
-        const picks = pickN(EMERGENCY_POOL, SHELF_SLOTS.emergency, new Set());
-        for (const id of picks) {
-            slots.push({
-                slotId: nextSlotId(),
-                shelf: 'emergency',
-                itemId: id,
-                price: shopPriceFor(id, false),
-                sold: false,
-            });
-        }
+    for (let i = 0; i < picks.length; i++) {
+        const id = picks[i];
+        const isSpecial = specialIdxSet.has(i);
+        slots.push({
+            slotId: nextSlotId(),
+            shelf: 'shelf',         // 已不分类；保留字段兼容旧结构
+            itemId: id,
+            price: shopPriceFor(id, isSpecial),
+            sold: false,
+            isSpecial,
+        });
     }
 
     if (!ex.shop) {
@@ -180,16 +160,76 @@ export function performShopReroll(): { ok: boolean; cost: number; reason?: strin
 // 购买
 // =============================================
 
-/** 是否已拥有某件永久装备 */
-export function isEquipmentOwned(itemId: string): boolean {
+// =============================================
+// 装备库存查询（取代旧的 isEquipmentOwned 概念）
+// =============================================
+
+/**
+ * 当前持有某件装备的数量（含正穿在身上的那件）。
+ *
+ * 保底装备（bag4 / finsBasic）始终视作 1（穿在身上，永远在）。
+ * 其他装备从 equipmentStock 读取。
+ */
+export function getEquipmentStock(itemId: string): number {
+    if (itemId === 'bag4' || itemId === 'finsBasic') return 1;
     const ex = ensureExtractionState();
-    if (ex.ownedEquipment && ex.ownedEquipment.indexOf(itemId) >= 0) return true;
-    // 兼容：背包基于 maxSlots 判定
-    const def = getItemDef(itemId);
-    if (def && (def as any).effects?.inventorySlots != null) {
-        return ex.bag.maxSlots >= (def as any).effects.inventorySlots;
+    const n = (ex.equipmentStock && ex.equipmentStock[itemId]) || 0;
+    // 当前装备的那件如果不在 stock 里（例如老存档迁移路径），仍然显示 1
+    if (n === 0 && (ex.equipped?.bag === itemId || ex.equipped?.fins === itemId)) return 1;
+    return n;
+}
+
+/**
+ * 旧 API：是否"已拥有"。
+ * 在新模型下，只用来判断保底装备是否买重复（没意义，永远拥有）。
+ * 升级装备一律返回 false（允许重复买作为备用件）。
+ *
+ * @deprecated 新代码请用 getEquipmentStock(); UI 应展示"持有 N"
+ */
+export function isEquipmentOwned(itemId: string): boolean {
+    return itemId === 'bag4' || itemId === 'finsBasic';
+}
+
+// =============================================
+// 装备槽位 / 自动装上更优件
+// =============================================
+
+/** 装备等级（数字越大越好，仅用于自动装上"刚买的更好的那件"） */
+function equipmentTier(itemId: string): number {
+    switch (itemId) {
+        case 'bag4':          return 1;
+        case 'bag8':          return 2;
+        case 'bag12':         return 3;
+        case 'bag16':         return 4;
+        case 'finsBasic':     return 1;
+        case 'finsEndurance': return 2;
+        case 'finsRacing':    return 3;
+        default:              return 0;
     }
-    return false;
+}
+
+/** 装备类别：'bag' 或 'fins'，其它返回 null */
+function equipmentSlotKind(itemId: string): 'bag' | 'fins' | null {
+    if (itemId === 'bag4' || itemId === 'bag8' || itemId === 'bag12' || itemId === 'bag16') return 'bag';
+    if (itemId === 'finsBasic' || itemId === 'finsRacing' || itemId === 'finsEndurance') return 'fins';
+    return null;
+}
+
+/**
+ * 当某件升级装备库存归零（被失败撤离销毁），自动回退到次优。
+ * 选择规则：从同槽位的所有装备里挑库存 > 0 的、tier 最高的；都没有就回到保底。
+ */
+export function fallbackEquippedSlot(slot: 'bag' | 'fins'): string {
+    const ex = ensureExtractionState();
+    const candidates = slot === 'bag'
+        ? ['bag16', 'bag12', 'bag8']
+        : ['finsRacing', 'finsEndurance'];
+    for (const id of candidates) {
+        if ((ex.equipmentStock?.[id] || 0) > 0) {
+            return id;
+        }
+    }
+    return slot === 'bag' ? 'bag4' : 'finsBasic';
 }
 
 /** 取消耗品当前库存数量 */
@@ -228,23 +268,33 @@ export function performShopBuySlot(slotId: number): { ok: boolean; reason?: stri
     const def = getItemDef(slot.itemId);
     if (!def) return { ok: false, reason: 'unknownItem' };
 
-    // 永久装备 + 已拥有 → 不允许重复购买
-    if (def.category === 'equipment' && isEquipmentOwned(slot.itemId)) {
-        return { ok: false, reason: 'owned' };
-    }
-
     // 扣金
     if (!spendCoins(slot.price)) return { ok: false, reason: 'noCoin' };
 
-    // 永久装备 → 加入 ownedEquipment + 应用效果（背包升级走 setBagMaxSlots）
+    // 永久装备 → 入装备库存（stock++）；如果比当前装备更好，自动装上
     if (def.category === 'equipment') {
-        if (ex.ownedEquipment.indexOf(slot.itemId) < 0) ex.ownedEquipment.push(slot.itemId);
-        const eff = (def as any).effects;
-        if (eff?.inventorySlots != null) {
-            // 立刻应用（下次下潜生效；当前数据层马上变）
-            setBagMaxSlots(eff.inventorySlots);
+        if (!ex.equipmentStock) ex.equipmentStock = {};
+        ex.equipmentStock[slot.itemId] = (ex.equipmentStock[slot.itemId] || 0) + 1;
+
+        const slotKind = equipmentSlotKind(slot.itemId);
+        if (slotKind) {
+            if (!ex.equipped) ex.equipped = { bag: 'bag4', fins: 'finsBasic' };
+            const curEquipped = slotKind === 'bag' ? ex.equipped.bag : ex.equipped.fins;
+            // 如果新买的等级 ≥ 当前装备的等级，自动换上（== 时也换，因为可能从 stock 取首件）
+            if (equipmentTier(slot.itemId) >= equipmentTier(curEquipped)) {
+                if (slotKind === 'bag') {
+                    ex.equipped.bag = slot.itemId;
+                    const eff = (def as any).effects;
+                    if (eff?.inventorySlots != null) {
+                        setBagMaxSlots(eff.inventorySlots);
+                    }
+                } else {
+                    ex.equipped.fins = slot.itemId;
+                    // fins 的 moveSpeedMul / o2DrainMul 在下次下潜 applyLoadoutForDive 时生效
+                }
+            }
         }
-        // 标售（装备槽位单件）
+        // 标售（装备槽位单件，下次刷新才会再出）
         slot.sold = true;
     } else if (def.category === 'consumable' || def.category === 'emergency') {
         // 消耗品 → 加库存（同一槽位可多次买）

@@ -1,11 +1,10 @@
 // 岸上顶部金币 HUD
 //
-// 显示位置：左上方"杂货铺"按钮的右侧（横排排列），位于 SAFE_TOP 安全区下方
-// 这样既避开了微信小游戏右上角胶囊和设备前置摄像头，
-// 也与右上"图鉴"按钮形成左右对称的布局。
+// 显示位置：顶栏第二行（y = SAFE_TOP + 40），与杂货铺按钮左对齐
+// 第一行（y = SAFE_TOP）已经被 [返回 / 杂货铺 / 仓库 / 图鉴] 占满，
+// 在 cw=360 的小屏幕上没有空间再塞金币卡片，因此放第二行单独成行。
 // 仅在迷宫 shore / resolved_idle 阶段显示
 
-import { CONFIG } from '../../core/config';
 import { state } from '../../core/state';
 import { ctx } from '../../render/Canvas';
 import { getCoins } from '../logic/Economy';
@@ -34,31 +33,26 @@ export function isCoinHUDVisible(): boolean {
     return phase === 'shore' || phase === 'resolved_idle';
 }
 
-// 杂货铺按钮的固定参数（与 ShopUI 中的 drawShopEntryBtn 保持一致）
-const SHOP_BTN_W = 90;
-const SHOP_BTN_H = 32;
-const GAP_BETWEEN = 8;  // 杂货铺按钮与金币 HUD 之间的间隙
+// 顶栏第一行的几何：返回 (14, SAFE_TOP, 72, 30) → 杂货铺 (94, 61, 92, 32)
+// CoinHUD 与杂货铺按钮左对齐，纵向放在第一行下方 8px
+const COIN_X = SAFE_LEFT + 72 + 8;       // 与杂货铺按钮左对齐 = 94
+const COIN_Y_OFFSET = 32 + 8;            // 第一行底部 + 间距
+const COIN_HUD_H = 28;
 
 /** 取金币 HUD 的位置矩形（外部 hit-test 不需要，但布局调试可能用） */
 export function getCoinHUDRect(): { x: number; y: number; w: number; h: number } {
-    const cw = CONFIG.screenWidth;
     const coins = getCoins();
     const text = String(coins);
 
     ctx.save();
-    ctx.font = 'bold 16px Arial';
+    ctx.font = 'bold 15px Arial';
     const labelW = ctx.measureText(text).width;
     ctx.restore();
 
     const padX = 12;
-    const cardW = labelW + padX * 2 + 26;
-    const cardH = 32;
+    const cardW = labelW + padX * 2 + 22;
 
-    // 紧贴杂货铺按钮右侧
-    const cardX = SAFE_LEFT + SHOP_BTN_W + GAP_BETWEEN;
-    const cardY = SAFE_TOP;
-    void cw;
-    return { x: cardX, y: cardY, w: cardW, h: cardH };
+    return { x: COIN_X, y: SAFE_TOP + COIN_Y_OFFSET, w: cardW, h: COIN_HUD_H };
 }
 
 export function drawCoinHUD(): void {
@@ -68,13 +62,13 @@ export function drawCoinHUD(): void {
     const text = String(coins);
 
     ctx.save();
-    ctx.font = 'bold 16px Arial';
+    ctx.font = 'bold 15px Arial';
     const labelW = ctx.measureText(text).width;
     const padX = 12;
-    const cardW = labelW + padX * 2 + 26; // 留 26 像素给金币图标
-    const cardH = SHOP_BTN_H; // 与杂货铺按钮等高，视觉对齐
-    const cardX = SAFE_LEFT + SHOP_BTN_W + GAP_BETWEEN;
-    const cardY = SAFE_TOP;
+    const cardW = labelW + padX * 2 + 22;
+    const cardH = COIN_HUD_H;
+    const cardX = COIN_X;
+    const cardY = SAFE_TOP + COIN_Y_OFFSET;
 
     // 阴影底
     ctx.fillStyle = 'rgba(20, 28, 40, 0.78)';
@@ -92,7 +86,7 @@ export function drawCoinHUD(): void {
     // 金币图标
     const coinX = cardX + 14;
     const coinY = cardY + cardH / 2;
-    const coinR = 8;
+    const coinR = 7;
     ctx.fillStyle = '#f4c860';
     ctx.beginPath();
     ctx.arc(coinX, coinY, coinR, 0, Math.PI * 2);
@@ -105,14 +99,14 @@ export function drawCoinHUD(): void {
     ctx.font = 'bold 9px Arial';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('¥', coinX, coinY + 0.5);
+    ctx.fillText('¥', coinX, coinY);
 
-    // 金额
-    ctx.font = 'bold 16px Arial';
+    // 金额（垂直居中）
+    ctx.font = 'bold 15px Arial';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = 'rgba(255, 220, 140, 0.95)';
-    ctx.fillText(text, cardX + 28, coinY + 1);
+    ctx.fillText(text, cardX + 26, coinY);
 
     ctx.textAlign = 'start';
     ctx.textBaseline = 'alphabetic';

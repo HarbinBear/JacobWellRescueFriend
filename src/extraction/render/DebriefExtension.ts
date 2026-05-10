@@ -7,8 +7,9 @@
 //     左栏（固定 110px）：本次净收益（金色大字）+ 撤离方式标签
 //     中栏（弹性）：物品图标横排 + "本次收获"小字标题
 //     右栏（固定 144px）：金库/仓库小字 + "全部卖给老板"按钮
-// - 半成功撤离时在条带上方追加 22px 高的红色丢失提示条
+// - 撤离失败时在条带上方追加丢失提示条（含战利品遗失行 + 装备遗失行）
 // - 失败/无收获时整体灰色调降级显示
+// - 撤离失败（o2 溺水 / fishkill 被咬死）：所有战利品都进 lostItems，装备消耗一件并显示回退去向
 //
 // 与 debrief 主页的兼容：
 // - 原 debrief 在 mapY + mapH 之后画 4 KPI（用时/深度/探索/绳索）+ tipY 文字流
@@ -91,11 +92,13 @@ export function drawExtractionSettlement(maze: any, cw: number, ch: number, time
     // 条带与按钮的间隙 8px
     const barY = ch - 72 - 8 - barH;
 
-    // 半成功撤离：上方加 22px 高丢失提示条
+    // 半成功 / 失败撤离：上方加丢失提示条（如有遗失装备则增加一行高度）
     const hasLost = settlement.lostItems.length > 0;
-    const lostBannerH = hasLost ? 22 : 0;
-    const totalY = barY - lostBannerH - (hasLost ? 4 : 0);
-    const totalH = barH + lostBannerH + (hasLost ? 4 : 0);
+    const hasLostEquip = (settlement.lostEquipment && settlement.lostEquipment.length > 0);
+    const lostBannerH = hasLost ? (hasLostEquip ? 40 : 22) : (hasLostEquip ? 22 : 0);
+    const showLostBanner = hasLost || hasLostEquip;
+    const totalY = barY - lostBannerH - (showLostBanner ? 4 : 0);
+    const totalH = barH + lostBannerH + (showLostBanner ? 4 : 0);
 
     ctx.save();
     ctx.globalAlpha = showAlpha;
@@ -109,8 +112,8 @@ export function drawExtractionSettlement(maze: any, cw: number, ch: number, time
     ctx.fillStyle = fadeGrad;
     ctx.fillRect(barX, totalY - fadeH, barW, fadeH);
 
-    // === 1. 丢失提示横条（仅半成功撤离）===
-    if (hasLost) {
+    // === 1. 丢失提示横条（撤离失败 / 半成功）===
+    if (showLostBanner) {
         ctx.fillStyle = 'rgba(80, 30, 25, 0.92)';
         ctx.beginPath();
         rrect(ctx, barX, barY - lostBannerH - 4, barW, lostBannerH, 6);
@@ -121,19 +124,54 @@ export function drawExtractionSettlement(maze: any, cw: number, ch: number, time
         rrect(ctx, barX, barY - lostBannerH - 4, barW, lostBannerH, 6);
         ctx.stroke();
 
-        let lostValue = 0;
-        for (const it of settlement.lostItems) {
-            lostValue += computeItemPrice(it.itemId, it.condition);
+        const bannerTop = barY - lostBannerH - 4;
+        const lineH = 18;
+        let lineY = bannerTop + 2;
+
+        // 行 1：战利品遗失
+        if (hasLost) {
+            let lostValue = 0;
+            for (const it of settlement.lostItems) {
+                lostValue += computeItemPrice(it.itemId, it.condition);
+            }
+            const cy = lineY + lineH / 2;
+            ctx.fillStyle = 'rgba(255, 180, 160, 0.95)';
+            ctx.font = 'bold 11px "PingFang SC", Arial';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('⚠ 战利品遗失 ' + settlement.lostItems.length + ' 件', barX + 12, cy);
+            ctx.textAlign = 'right';
+            ctx.fillStyle = 'rgba(220, 140, 130, 0.85)';
+            ctx.fillText('-' + lostValue + ' 金', barX + barW - 12, cy);
+            lineY += lineH;
         }
-        const bannerCY = barY - lostBannerH - 4 + lostBannerH / 2;
-        ctx.fillStyle = 'rgba(255, 180, 160, 0.95)';
-        ctx.font = 'bold 11px "PingFang SC", Arial';
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('⚠ 呛水丢失 ' + settlement.lostItems.length + ' 件', barX + 12, bannerCY);
-        ctx.textAlign = 'right';
-        ctx.fillStyle = 'rgba(220, 140, 130, 0.85)';
-        ctx.fillText('-' + lostValue + ' 金', barX + barW - 12, bannerCY);
+
+        // 行 2：装备遗失（撤离失败时销毁的当前装备）
+        if (hasLostEquip) {
+            const cy = lineY + lineH / 2;
+            const names: string[] = [];
+            for (const eq of settlement.lostEquipment) {
+                const def = getItemDef(eq.itemId);
+                if (def) names.push(def.name);
+            }
+            ctx.fillStyle = 'rgba(255, 200, 170, 0.95)';
+            ctx.font = 'bold 11px "PingFang SC", Arial';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('💔 装备遗失：' + names.join(' / '), barX + 12, cy);
+            ctx.textAlign = 'right';
+            ctx.fillStyle = 'rgba(200, 160, 150, 0.8)';
+            ctx.font = '10px "PingFang SC", Arial';
+            // 显示回退后的装备
+            const fallbackNames: string[] = [];
+            for (const eq of settlement.lostEquipment) {
+                const fbDef = getItemDef(eq.fallbackTo);
+                if (fbDef) fallbackNames.push(fbDef.name);
+            }
+            if (fallbackNames.length > 0) {
+                ctx.fillText('回退至 ' + fallbackNames.join(' / '), barX + barW - 12, cy);
+            }
+        }
     }
 
     // === 2. 主条带背景 ===
@@ -146,7 +184,7 @@ export function drawExtractionSettlement(maze: any, cw: number, ch: number, time
     ctx.fill();
 
     let strokeColor = 'rgba(120, 200, 160, 0.55)';
-    if (settlement.reason === 'o2') strokeColor = 'rgba(220, 170, 90, 0.6)';
+    if (settlement.reason === 'o2') strokeColor = 'rgba(220, 110, 110, 0.55)';
     else if (settlement.reason === 'fishkill') strokeColor = 'rgba(220, 110, 110, 0.55)';
     else if (settlement.reason === 'rescued') strokeColor = 'rgba(120, 220, 180, 0.65)';
     ctx.strokeStyle = strokeColor;
@@ -167,8 +205,8 @@ export function drawExtractionSettlement(maze: any, cw: number, ch: number, time
         const reasonLabel = (() => {
             switch (settlement.reason) {
                 case 'retreat':  return '完整撤离';
-                case 'o2':       return '半成功撤离';
-                case 'fishkill': return '撤离失败';
+                case 'o2':       return '撤离失败 · 溺水';
+                case 'fishkill': return '撤离失败 · 遇袭';
                 case 'rescued':  return '救援成功';
                 case 'beacon':   return '紧急撤离';
                 default:         return '撤离结束';

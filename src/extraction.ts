@@ -94,6 +94,7 @@ export {
     performShopReroll,
     performShopBuySlot,
     isEquipmentOwned,
+    getEquipmentStock,
     getConsumableCount,
     consumeConsumable,
     addConsumable,

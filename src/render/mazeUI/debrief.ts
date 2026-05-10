@@ -109,11 +109,11 @@ export function drawMazeDebrief(maze: any, cw: number, ch: number, time: number)
         ctx.fillText('救援成功', cw / 2, titleY);
     } else {
         const reason = lastDive ? lastDive.returnReason : 'retreat';
-        ctx.fillStyle = reason === 'o2' ? 'rgba(255,180,80,0.95)' :
+        ctx.fillStyle = reason === 'o2' ? 'rgba(255,100,100,0.95)' :
                         reason === 'fishkill' ? 'rgba(255,100,100,0.95)' : 'rgba(160,210,255,0.95)';
         ctx.font = 'bold 20px Arial';
-        ctx.fillText(reason === 'o2' ? '氧气不足' :
-                     reason === 'fishkill' ? '被食人鱼袭击' : '安全返回', cw / 2, titleY);
+        ctx.fillText(reason === 'o2' ? '撤离失败 · 溺水' :
+                     reason === 'fishkill' ? '撤离失败 · 遇袭' : '安全返回', cw / 2, titleY);
     }
 
     const mapPadding = 28;

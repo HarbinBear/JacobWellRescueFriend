@@ -4,7 +4,7 @@ export const characterConfig = {
     // ===== 手动挡（搓屏移动）配置 =====
     // 物理模型：推力沿输入方向施加，身体朝向被动跟随速度方向
     manualDrive: {
-        enabled: true,             // 是否启用手动挡模式（false=自动挡/摇杆）
+        enabled: false,            // 是否启用手动挡模式（false=自动挡/摇杆，默认）；玩家可在 HUD 短按切换
 
         // --- 输入行程参数 ---
         effectiveDistance: 184,      // 一次输入可持续生效的有效行程（像素）

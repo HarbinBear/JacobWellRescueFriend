@@ -384,8 +384,9 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
             if (state.screen === 'mazeRescue' && state.mazeRescue && state.mazeRescue.phase === 'diving_in') {
                 return;
             }
-            // 迷宫模式：上浮动画阶段不响应操作
-            if (state.screen === 'mazeRescue' && state.mazeRescue && state.mazeRescue.phase === 'surfacing') {
+            // 迷宫模式：上浮/失败转场阶段不响应操作
+            if (state.screen === 'mazeRescue' && state.mazeRescue &&
+                (state.mazeRescue.phase === 'surfacing' || state.mazeRescue.phase === 'failed')) {
                 return;
             }
             // 迷宫模式：游戏进行中允许正常操作
@@ -624,11 +625,13 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
             }
         }
 
-        // 放弃救援长按：岸上持续按在按钮上 2s 触发 abandonCase；手指离开按钮则立即取消
+        // 放弃救援长按取消检测：手指离开按钮则立即取消
+        // 注意：长按到时触发已移到 MazeLogic.updateMaze（每帧轮询），这里只管"半途松开/移开取消"
+        //      理由：PC 微信开发者工具按住鼠标不动不发 onTouchMove，原本写在这里的"到时触发"在 PC 永远不响应
         if (state.screen === 'mazeRescue' && state.mazeRescue && state.mazeRescue.phase === 'shore') {
             const maze: any = state.mazeRescue;
             if (maze.abandonHolding && maze.abandonTouchId !== null) {
-                // 找到对应触点
+                // 找到对应触点，确认仍在按钮范围内
                 let stillOnBtn = false;
                 const ar = getAbandonBtnRect(CONFIG.screenWidth, CONFIG.screenHeight);
                 for (const t of res.touches) {
@@ -644,14 +647,8 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                     maze.abandonHolding = false;
                     maze.abandonHoldStart = 0;
                     maze.abandonTouchId = null;
-                } else if (Date.now() - maze.abandonHoldStart >= 2000) {
-                    // 长按完成 → 进入结案页
-                    maze.abandonHolding = false;
-                    maze.abandonHoldStart = 0;
-                    maze.abandonTouchId = null;
-                    playSFX('uiPrimary');
-                    if (onAbandonCase) onAbandonCase();
                 }
+                // 注意：到时触发由 MazeLogic.updateMaze 处理，这里不再判定 >= 2000
             }
         }
 
@@ -1175,8 +1172,10 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                     return;
                 }
 
-                // "返回主菜单"按钮（左上角）
-                if (tx < 80 && ty < 50) {
+                // "返回主菜单"按钮（左上角，与杂货铺/图鉴同基线 SAFE_TOP=62）
+                // 实际渲染位置：x=14, y=62, w=72, h=30（见 mazeUI/shore.ts）
+                // 这里用稍宽松的 hit-test 提高可点性
+                if (tx >= 8 && tx <= 92 && ty >= 56 && ty <= 96) {
                     playSFX('uiSecondary');
                     state.screen = 'menu';
                     state.menuScreen = 'main';

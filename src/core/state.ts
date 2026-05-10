@@ -192,7 +192,7 @@ export const state = {
     // 迷宫纯享版模式状态（多次下潜闭环）
     mazeRescue: null as null | {
         // === 阶段控制 ===
-        phase: string;          // 'shore'（岸上）| 'play'（水下游戏中）| 'surfacing'（上浮中）| 'debrief'（返岸结算）| 'rescued'（救援成功）
+        phase: string;          // 'shore'（岸上）| 'play'（水下游戏中）| 'surfacing'（成功撤离上浮中）| 'failed'（撤离失败转场）| 'debrief'（返岸结算）| 'rescued'（救援成功）
         diveType: string;       // 'scout'（侦察）| 'rescue'（正式救援）
         resultTimer: number;    // 结算页计时（帧）
         surfacingReason: string; // 上浮原因：'retreat'（主动撤离）| 'o2'（氧气耗尽）| 'rescued'（救援成功）
@@ -246,7 +246,7 @@ export const state = {
         abandonHoldStart: number;    // 放弃长按开始时间戳（ms）
         abandonTouchId: number | null; // 放弃长按触点ID
         // 结案页计时器：phase === 'resolved' 或 'abandoned' 时推进，用于渐显动画
-        // 注：phase 取值扩展为 'shore' | 'play' | 'surfacing' | 'diving_in' | 'debrief'
+        // 注：phase 取值扩展为 'shore' | 'play' | 'surfacing' | 'failed' | 'diving_in' | 'debrief'
         //     | 'rescued'（救援成功瞬间，旧状态保留兼容）
         //     | 'resolved'（全屏"成功营救"结案页；玩家在此页选择下一关或留在本关）
         //     | 'abandoned'（全屏"搜寻终止"结案页；玩家点击后进入下一关）

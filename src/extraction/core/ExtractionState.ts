@@ -70,7 +70,35 @@ export interface ExtractionState {
     /** 已购消耗品库存（itemId -> 数量；阶段 2 启用） */
     consumables: { [itemId: string]: number };
 
-    /** 已购永久装备 id 列表（重复购买视为已拥有） */
+    /**
+     * 装备库存（不含保底装备 bag4 / finsBasic）。
+     *
+     * 设计：装备是"消耗式"的。
+     * - 玩家在商店买装备 → stock[id]++（同款可叠加，作为备用件）
+     * - 撤离失败（o2 / fishkill）→ 当前装备的那件销毁：stock[equipped.bag]--
+     * - 库存归零时自动回退到次优（按等级降序），最差回退到保底 bag4 / finsBasic
+     *
+     * 注意：bag4 / finsBasic 是"穿在身上的"保底装备，永远存在，不入此 stock
+     * （所以即使 stock 全空，玩家仍能下水，不会破产）。
+     */
+    equipmentStock: { [itemId: string]: number };
+
+    /**
+     * 当前装备的两件主装备（背包 + 脚蹼）。
+     *
+     * 下潜开始时由 Loadout.applyLoadoutForDive 读取并应用效果。
+     * 撤离失败时由 Economy.loseEquippedOnFailure 把对应装备从 stock 扣 1，
+     * 若 stock 归零则自动 fallback 到次优 / 保底。
+     */
+    equipped: {
+        bag: string;     // 默认 'bag4'（保底）
+        fins: string;    // 默认 'finsBasic'（保底）
+    };
+
+    /**
+     * @deprecated 旧字段，已被 equipmentStock + equipped 替代。
+     * 保留仅用于老存档迁移（patchExtractionState 会读它然后清空）。
+     */
     ownedEquipment: string[];
 
     /** 商店运行时态（每次进入岸上重置；不入存档） */
@@ -100,25 +128,31 @@ export interface ExtractionState {
     };
 }
 
-/** 商店一个货位（占商店 UI 的一个槽位） */
+/** 商店一个货位（不分类版：所有商品平铺在一个池子里） */
 export interface ShopSlot {
     /** 唯一 id（点击 hit-test / 同一商品多次出现时区分） */
     slotId: number;
-    /** 货架类型（影响展示分组） */
-    shelf: 'consumable' | 'emergency' | 'equipment' | 'special';
+    /**
+     * 货架类型（已弃用：所有商品平铺）。
+     * 新刷新逻辑统一赋值为 'shelf'；保留字段是为了不破坏老存档（运行时 shop 不存档但避免兼容问题）。
+     * @deprecated 使用 isSpecial 区分特价
+     */
+    shelf: 'consumable' | 'emergency' | 'equipment' | 'special' | 'shelf';
     /** 物品 id */
     itemId: string;
     /** 售价（baseValue × 老板系数；可与 itemDef.baseValue 不同） */
     price: number;
     /** 是否已售（消耗品永远不消耗 slot；装备买完变 sold） */
     sold: boolean;
+    /** 是否走特价（0.7× 价；UI 用金色描边/百分比角标突出） */
+    isSpecial?: boolean;
 }
 
 // =============================================
 // 默认值
 // =============================================
 
-/** 阶段 1 起步配置：100 金 + 4 格背包（全空） */
+/** 阶段 1 起步配置：100 金 + 4 格背包（全空） + 保底装备 */
 export function getInitialExtractionState(): ExtractionState {
     return {
         version: 1,
@@ -134,7 +168,9 @@ export function getInitialExtractionState(): ExtractionState {
             pickedRelicIds: [],
         },
         consumables: {},
-        ownedEquipment: ['bag4', 'finsBasic'],
+        equipmentStock: {},                             // 装备库存（保底装备不入此表）
+        equipped: { bag: 'bag4', fins: 'finsBasic' },   // 起步只穿保底
+        ownedEquipment: [],                              // 已废弃，保留空数组兼容
         flags: {
             tutorialShown: false,
         },
@@ -181,7 +217,39 @@ export function patchExtractionState(ex: any): ExtractionState {
     if (!ex.diveSession || typeof ex.diveSession !== 'object') ex.diveSession = def.diveSession;
     if (!Array.isArray(ex.diveSession.pickedRelicIds)) ex.diveSession.pickedRelicIds = [];
     if (!ex.consumables || typeof ex.consumables !== 'object') ex.consumables = {};
-    if (!Array.isArray(ex.ownedEquipment)) ex.ownedEquipment = def.ownedEquipment.slice();
+
+    // === 装备体系迁移：从老的 ownedEquipment 转到新的 equipmentStock + equipped ===
+    if (!ex.equipmentStock || typeof ex.equipmentStock !== 'object') ex.equipmentStock = {};
+    if (!ex.equipped || typeof ex.equipped !== 'object') {
+        ex.equipped = { bag: 'bag4', fins: 'finsBasic' };
+    }
+    if (typeof ex.equipped.bag !== 'string') ex.equipped.bag = 'bag4';
+    if (typeof ex.equipped.fins !== 'string') ex.equipped.fins = 'finsBasic';
+
+    // 老存档迁移：ownedEquipment 数组 → 折算为 stock + equipped
+    if (Array.isArray(ex.ownedEquipment) && ex.ownedEquipment.length > 0) {
+        const owned: string[] = ex.ownedEquipment.slice();
+        // 把非保底的装备按 1 件入 stock（如果还没入过）
+        for (const id of owned) {
+            if (id === 'bag4' || id === 'finsBasic') continue;
+            if (!ex.equipmentStock[id]) ex.equipmentStock[id] = 1;
+        }
+        // 推断 equipped.bag：根据 maxSlots（最稳的"已生效"指标）
+        const ms = ex.bag.maxSlots | 0;
+        if (ms >= 16 && (ex.equipmentStock['bag16'] || owned.indexOf('bag16') >= 0)) ex.equipped.bag = 'bag16';
+        else if (ms >= 12 && (ex.equipmentStock['bag12'] || owned.indexOf('bag12') >= 0)) ex.equipped.bag = 'bag12';
+        else if (ms >= 8 && (ex.equipmentStock['bag8'] || owned.indexOf('bag8') >= 0)) ex.equipped.bag = 'bag8';
+        else ex.equipped.bag = 'bag4';
+        // 推断 equipped.fins：按老 owned 顺序选最优（finsRacing > finsEndurance > finsBasic）
+        if (owned.indexOf('finsRacing') >= 0) ex.equipped.fins = 'finsRacing';
+        else if (owned.indexOf('finsEndurance') >= 0) ex.equipped.fins = 'finsEndurance';
+        else ex.equipped.fins = 'finsBasic';
+        // 迁移完毕，清空老字段（避免下次 load 重复迁移）
+        ex.ownedEquipment = [];
+    } else {
+        ex.ownedEquipment = [];
+    }
+
     // shop 字段是运行时态，不入存档（这里清空）
     if (ex.shop) ex.shop = undefined;
     if (!ex.flags || typeof ex.flags !== 'object') ex.flags = def.flags;

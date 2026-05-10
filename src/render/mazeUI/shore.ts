@@ -1,9 +1,27 @@
 // 岸上界面 + 全屏认知地图 + 下潜记录列表 + 单次下潜手绘地图回放 + 历史 legacy 铅笔素描地图
 // 从原 RenderMazeUI.ts 抽出。调用方：RenderMazeUI.drawMazeHUD（shore / resolved_idle 两个 phase）
+//
+// === 顶栏布局规范（避免遮挡）===
+// 所有顶部按钮以 SAFE_TOP=62 为基线（避开 iOS 刘海 + 微信胶囊高度）。
+//   ┌────────────────────────────────────────────┐
+//   │ [← 返回] [🏪 杂货铺]      [图鉴 N/M]        │ ← y = SAFE_TOP，所有按钮共线
+//   │                                              │
+//   │              岸上营地                         │ ← y = SAFE_TOP + 50（标题在按钮下方避免重叠）
+//   │                                              │
+//   │         （风景画 + 水池）                    │
+//   │                                              │
+//   │   ┌──────────────────────────────────┐       │
+//   │   │ 探索记录（折叠/展开卡）           │       │
+//   │   └──────────────────────────────────┘       │
+//   └────────────────────────────────────────────┘
 
 import { state } from '../../core/state';
 import { ctx } from '../Canvas';
 import { drawCodexEntryBtn } from './codex';
+
+// UI 安全区常量（与 src/extraction/render/UISafeArea.ts 保持一致；这里直接引用避免循环依赖）
+const SAFE_TOP = 62;
+const SAFE_LEFT = 14;
 
 // 兼容微信小游戏的圆角矩形（本文件内部私有工具）
 function rrect(c: any, x: number, y: number, w: number, h: number, r: number) {
@@ -212,24 +230,41 @@ export function drawMazeShore(maze: any, cw: number, ch: number, time: number) {
 
     ctx.globalAlpha = 1;
 
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 20px Arial';
-    ctx.textAlign = 'center';
-    ctx.shadowColor = 'rgba(0,0,0,0.5)';
-    ctx.shadowBlur = 4;
-    ctx.fillText('岸上营地', cw / 2, ch * 0.06 + 20);
-    ctx.shadowBlur = 0;
+    // === 顶栏：返回主菜单按钮（左上，与杂货铺/图鉴按钮同基线）===
+    {
+        const btnW = 72;
+        const btnH = 30;
+        const btnX = SAFE_LEFT;
+        const btnY = SAFE_TOP;
+        ctx.globalAlpha = 0.85;
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+        ctx.beginPath();
+        rrect(ctx, btnX, btnY, btnW, btnH, btnH / 2);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        rrect(ctx, btnX, btnY, btnW, btnH, btnH / 2);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 13px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('← 返回', btnX + btnW / 2, btnY + btnH / 2);
+        ctx.textAlign = 'start';
+        ctx.textBaseline = 'alphabetic';
+    }
 
-    ctx.globalAlpha = 0.8;
-    ctx.fillStyle = 'rgba(0,0,0,0.4)';
-    ctx.beginPath();
-    rrect(ctx, 8, 8, 64, 32, 16);
-    ctx.fill();
+    // === "岸上营地" 主标题（位于顶栏下方 18px，居中）===
     ctx.fillStyle = '#fff';
-    ctx.font = '14px Arial';
+    ctx.font = 'bold 22px Arial';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('← 返回', 40, 24);
+    ctx.shadowColor = 'rgba(0,0,0,0.55)';
+    ctx.shadowBlur = 4;
+    ctx.fillText('岸上营地', cw / 2, SAFE_TOP + 30 + 18 + 11);
+    ctx.shadowBlur = 0;
     ctx.textBaseline = 'alphabetic';
 
     const cardX = cw * 0.06;
@@ -340,9 +375,9 @@ export function drawMazeShore(maze: any, cw: number, ch: number, time: number) {
             ctx.fillStyle = '#777';
             ctx.font = '12px Arial';
             const reasonText = lastDive.returnReason === 'retreat' ? '主动撤离' :
-                              lastDive.returnReason === 'o2' ? '氧气不足' :
+                              lastDive.returnReason === 'o2' ? '溺水失败' :
                               lastDive.returnReason === 'rescued' ? '救援成功' :
-                              lastDive.returnReason === 'fishkill' ? '被食人鱼袭击' : '返回';
+                              lastDive.returnReason === 'fishkill' ? '遇袭失败' : '返回';
             ctx.fillText(`上次：${reasonText} | 深度${lastDive.maxDepth}m | 新探索${lastDive.newExploredCount}格`, infoX, infoY);
             infoY += 18;
             ctx.fillText(`      绳索+${lastDive.ropePlaced} | 用时${Math.floor(lastDive.duration / 60)}分${lastDive.duration % 60}秒`, infoX, infoY);
@@ -543,11 +578,11 @@ function drawShoreDiveList(maze: any, cw: number, ch: number, time: number) {
         txtY += 18;
         const reason = record.returnReason;
         const reasonText = reason === 'retreat' ? '主动撤离' :
-                          reason === 'o2' ? '氧气耗尽' :
+                          reason === 'o2' ? '溺水失败' :
                           reason === 'rescued' ? '救援成功' :
-                          reason === 'fishkill' ? '被食人鱼袭击' : '返回';
+                          reason === 'fishkill' ? '遇袭失败' : '返回';
         const reasonColor = reason === 'rescued' ? 'rgba(40,120,60,0.95)' :
-                           reason === 'o2' ? 'rgba(180,100,30,0.95)' :
+                           reason === 'o2' ? 'rgba(160,40,30,0.95)' :
                            reason === 'fishkill' ? 'rgba(160,40,30,0.95)' :
                            'rgba(70,55,45,0.85)';
         ctx.fillStyle = reasonColor;
@@ -798,9 +833,9 @@ function drawShoreDiveReplay(maze: any, record: any, idx: number, cw: number, ch
     const minutes = Math.floor(record.duration / 60);
     const seconds = record.duration % 60;
     const reasonText = record.returnReason === 'retreat' ? '主动撤离' :
-                      record.returnReason === 'o2' ? '氧气耗尽' :
+                      record.returnReason === 'o2' ? '溺水失败' :
                       record.returnReason === 'rescued' ? '救援成功' :
-                      record.returnReason === 'fishkill' ? '被食人鱼袭击' : '返回';
+                      record.returnReason === 'fishkill' ? '遇袭失败' : '返回';
     ctx.fillText(`${reasonText} · 用时 ${minutes}:${seconds < 10 ? '0' + seconds : seconds} · 深度 ${record.maxDepth}m · 新探索 +${record.newExploredCount} · 绳索 +${record.ropePlaced}`, cw / 2, infoBarY);
 
     maze.shoreMapAnimTimer = (maze.shoreMapAnimTimer || 0) + 1;

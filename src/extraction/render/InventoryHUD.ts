@@ -55,20 +55,22 @@ export function getInventoryHUDCapsuleRect(): { x: number; y: number; w: number;
     return _hudCapsuleRect;
 }
 
-/** 计算折叠胶囊位置：紧贴拾取轮盘按钮上方 */
+/**
+ * 计算折叠胶囊位置：左下角，紧贴撤离按钮上方（与撤离按钮中线左对齐，自然形成"撤离 + 背包"竖排）
+ *
+ * 撤离按钮中心 (cw * retreatBtnXRatio, ch * retreatBtnYRatio)，半径 retreatBtnRadius。
+ * 背包胶囊横向：跟撤离按钮共享中线 → 居中对齐
+ * 背包胶囊纵向：撤离按钮顶边再上方 12px
+ */
 function getCapsulePosition(cw: number, ch: number): { x: number; y: number } {
-    // 轮盘按钮位置（保持与 RenderWheel 同步）
-    const wheelOuterR = (CONFIG.marker as any).wheelOuterRadius || 100;
-    const margin = wheelOuterR + 12;
-    const rawX = cw * (CONFIG.marker as any).btnXRatio;
-    const rawY = ch * (CONFIG.marker as any).btnYRatio;
-    const wheelX = Math.max(margin, Math.min(cw - margin, rawX));
-    const wheelY = Math.max(margin, Math.min(ch - margin, rawY));
-    const wheelR = (CONFIG.marker as any).btnRadius || 36;
+    const retreatCx = cw * (CONFIG.maze as any).retreatBtnXRatio;
+    const retreatCy = ch * (CONFIG.maze as any).retreatBtnYRatio;
+    const retreatR = (CONFIG.maze as any).retreatBtnRadius || 36;
 
-    // 胶囊位置：在轮盘按钮上方（按钮顶边再上方 12px），右对齐到按钮右边
-    const x = wheelX + wheelR - HUD_W;
-    const y = wheelY - wheelR - 12 - HUD_H;
+    // 居中对齐撤离按钮
+    const x = retreatCx - HUD_W / 2;
+    // 撤离按钮顶边上方 12px
+    const y = retreatCy - retreatR - 12 - HUD_H;
     return { x, y };
 }
 

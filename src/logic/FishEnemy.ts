@@ -1065,17 +1065,17 @@ export function updateFishBiteState() {
         state.story.redOverlay = Math.min(1, 0.6 + state.fishBite.timer / cfg.deathFadeDuration * 0.4);
         if (state.fishBite.timer >= cfg.deathFadeDuration) {
             if (isMazeMode()) {
-                // 迷宫模式：被鱼咬死视为氧气耗尽，强制上浮返回岸上
+                // 迷宫模式：被鱼咬死视为撤离失败，本次战利品全损
+                // 注意：不走 'surfacing' 的弹射飞升动画（失败不配做成功撤离的视觉）
+                //       而是进入 'failed' 短转场，屏幕红屏淡出后直接到 debrief
                 state.fishBite.active = false;
                 state.story.redOverlay = 0;
                 state.story.shake = 0;
                 const maze = state.mazeRescue!;
-                maze.phase = 'surfacing';
+                maze.phase = 'failed';
                 maze.surfacingReason = 'fishkill';
                 maze.resultTimer = 0;
-                // 弹射出水音效 + 预震
-                playSFX('quickReturn');
-                state.story.shake = 4;
+                // 失败不播 quickReturn（那是成功撤离音），fishBiteDie 已在 triggerPlayerBitten 播过
             } else {
                 // 主线/竞技场：进入失败画面
                 state.screen = 'lose';

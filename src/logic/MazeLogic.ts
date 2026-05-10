@@ -770,8 +770,20 @@ export function updateMaze() {
     const maze = state.mazeRescue;
     if (!maze) return;
 
-    // === 岸上阶段：不需要更新游戏逻辑 ===
+    // === 岸上阶段：不需要更新游戏逻辑，但需要轮询"结束搜寻"长按完成 ===
+    // 把判定放在主循环，是为了在 PC（鼠标按住不动 wx 模拟器不发 onTouchMove）也能触发：
+    // input.ts 的 wx.onTouchStart 已把 maze.abandonHolding 设为 true 并记录 abandonHoldStart；
+    // 这里每帧检查时间是否到达，到了就触发结案。
     if (maze.phase === 'shore') {
+        if ((maze as any).abandonHolding && (maze as any).abandonHoldStart > 0) {
+            if (Date.now() - (maze as any).abandonHoldStart >= 2000) {
+                (maze as any).abandonHolding = false;
+                (maze as any).abandonHoldStart = 0;
+                (maze as any).abandonTouchId = null;
+                playSFX('uiPrimary');
+                abandonCase();
+            }
+        }
         return;
     }
 
@@ -829,6 +841,7 @@ export function updateMaze() {
     //   帧 0..8  蓄力阶段（~0.15s）：玩家速度归零原地压缩，轻微下沉一点做"蹲下预备"
     //   帧 8..22 爆发阶段（~0.23s）：vy 给一个很大负值，easeOut 快速衰减；屏幕持续震动
     //   帧 22..30 破水阶段（~0.13s）：水花爆裂全屏特效（由渲染层读 resultTimer 绘制）
+    // 注意：仅用于"主动撤离 / 救援成功"这类成功撤离；失败撤离（o2 溺水 / 鱼咬死）走 'failed'
     if (maze.phase === 'surfacing') {
         maze.resultTimer++;
         const t = maze.resultTimer;
@@ -880,6 +893,47 @@ export function updateMaze() {
         if (maze.resultTimer >= CONFIG.maze.surfacingDuration) {
             state.story.shake = 0;
             finishMazeDive(maze.surfacingReason || 'retreat');
+        }
+        updateParticles();
+        updateSplashes();
+        return;
+    }
+
+    // === 撤离失败阶段（氧气耗尽 / 被食人鱼咬死）===
+    // 节奏（45帧 ≈ 0.75s）：
+    //   - 玩家原地失去控制：速度归零、轻微下沉（溺水）或被咬住不动
+    //   - 屏幕渐暗（渲染层在 failed 分支绘制黑幕淡入 + 冷蓝/血红色调，不做飞升转场）
+    //   - 不触发"弹射出水"音效 / 震屏；fishkill 的红屏保留由 FishEnemy 模块控制
+    //   - 计时到期直接进入 debrief，本次下潜的战利品全损
+    if (maze.phase === 'failed') {
+        maze.resultTimer++;
+        const t = maze.resultTimer;
+
+        if (!player.animTime) player.animTime = 0;
+
+        // 玩家原地摆烂：水平速度快速归零，垂直方向依 reason 决定
+        player.vx *= 0.85;
+        if (maze.surfacingReason === 'o2') {
+            // 溺水：慢慢下沉 + 动作放慢
+            player.vy = Math.min(player.vy * 0.92 + 0.15, 1.2);
+            player.animTime += 0.04;
+        } else {
+            // fishkill 或其他：完全冻结（被鱼叼住 / 昏迷）
+            player.vy *= 0.5;
+            player.animTime += 0.02;
+        }
+        player.x += player.vx;
+        player.y += player.vy;
+
+        // 震屏回落（fishkill 时 FishEnemy 会留有红屏，这里不再叠加震动）
+        state.story.shake = Math.max(0, (state.story.shake || 0) - 0.6);
+
+        // 时间到：进入 debrief，结算全损
+        if (maze.resultTimer >= CONFIG.maze.failedDuration) {
+            state.story.shake = 0;
+            // 失败撤离时清掉红屏（如果还没清干净）
+            state.story.redOverlay = 0;
+            finishMazeDive(maze.surfacingReason || 'o2');
         }
         updateParticles();
         updateSplashes();
@@ -1217,16 +1271,15 @@ export function updateMaze() {
     // 无限氧气开关
     if (CONFIG.infiniteO2) player.o2 = 100;
 
-    // 氧气耗尽 = 被迫返回岸上（保留成果）
+    // 氧气耗尽 = 撤离失败（本次战利品全损）
     if (player.o2 <= 0) {
         player.o2 = 0;
-        storyManager.showText('氧气不足，紧急上浮...', '#f80', 2500);
-        maze.phase = 'surfacing';
+        storyManager.showText('氧气耗尽，溺水失败…', '#6ac8ff', 2500);
+        maze.phase = 'failed';
         maze.surfacingReason = 'o2';
         maze.resultTimer = 0;
-        // 弹射出水音效 + 预震
-        playSFX('quickReturn');
-        state.story.shake = Math.max(state.story.shake || 0, 4);
+        // 失败不做弹射，不震屏；仅保留一个轻微的"呛水"反馈（可按需配音）
+        // TODO(音效): 接入 endingFailDrown 专属音（当前仅 QuickReturn.mp3 不再使用）
     }
 
     // --- 场景辨识度：检测当前区域主题 ---

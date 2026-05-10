@@ -437,8 +437,10 @@ export function getWarehouseEntryBtnRect() { return _entryBtnRect; }
 
 /**
  * 岸上的"仓库"入口按钮
- * 位置策略：与商店入口按钮横向并排，放在商店按钮正下方一行
- * 避免与金币 HUD 冲突（金币 HUD 已在商店右边）
+ *
+ * 位置：顶栏第一行，紧挨杂货铺按钮右侧（icon-only 紧凑按钮，给金币 HUD 让出第二行空间）
+ * 第一行布局：[← 返回][🏪 杂货铺][📦²]    [图鉴]
+ *              14   86       180         右上
  */
 export function drawWarehouseEntryBtn(cw: number, ch: number, time: number): void {
     _entryBtnRect = null;
@@ -449,11 +451,11 @@ export function drawWarehouseEntryBtn(cw: number, ch: number, time: number): voi
     if (maze.shoreMapOpen) return;
     if (maze.codexOpen) return;
 
-    const btnW = 90;
+    // icon-only 按钮（44×32），与杂货铺按钮（94, 61, 92, 32）右侧 8px 间距对齐
+    const btnW = 44;
     const btnH = 32;
-    // 位置：商店按钮（SAFE_LEFT, SAFE_TOP）正下方一行
-    const btnX = SAFE_LEFT;
-    const btnY = SAFE_TOP + 32 + 8;
+    const btnX = SAFE_LEFT + 72 + 8 + 92 + 8;   // = 14 + 72 + 8 + 92 + 8 = 194
+    const btnY = SAFE_TOP - 1;                  // 与杂货铺同基线
 
     const ex = ensureExtractionState();
     const stockCount = ex.warehouse.length;
@@ -471,34 +473,35 @@ export function drawWarehouseEntryBtn(cw: number, ch: number, time: number): voi
     rrect(ctx, btnX, btnY, btnW, btnH, btnH / 2);
     ctx.stroke();
 
+    // 仓库图标（emoji 居中）
     ctx.fillStyle = 'rgba(255, 220, 150, 0.95)';
-    ctx.font = 'bold 13px Arial';
+    ctx.font = 'bold 18px "PingFang SC", Arial';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('📦 仓库', btnX + btnW / 2, btnY + btnH / 2 + 1);
+    ctx.fillText('📦', btnX + btnW / 2, btnY + btnH / 2);
 
-    // 库存徽章
+    // 库存徽章（右上角，红圈数字）
     if (stockCount > 0) {
-        const bx = btnX + btnW - 8;
-        const by = btnY + 2;
-        const radius = 10;
+        const bx = btnX + btnW - 6;
+        const by = btnY + 4;
+        const radius = 9;
         // 库存满 pulse
         if (stockCount >= 8) {
             const glow = 0.3 + 0.3 * (0.5 + 0.5 * Math.sin(Date.now() / 200));
             ctx.fillStyle = `rgba(255, 180, 80, ${glow})`;
             ctx.beginPath();
-            ctx.arc(bx, by + 8, radius + 2, 0, Math.PI * 2);
+            ctx.arc(bx, by + 6, radius + 2, 0, Math.PI * 2);
             ctx.fill();
         }
         ctx.fillStyle = 'rgba(180, 60, 50, 0.95)';
         ctx.beginPath();
-        ctx.arc(bx, by + 8, radius, 0, Math.PI * 2);
+        ctx.arc(bx, by + 6, radius, 0, Math.PI * 2);
         ctx.fill();
         ctx.fillStyle = 'rgba(255, 240, 220, 0.98)';
         ctx.font = 'bold 10px Arial';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(String(stockCount), bx, by + 8);
+        ctx.fillText(String(stockCount), bx, by + 6);
     }
 
     ctx.textAlign = 'start';

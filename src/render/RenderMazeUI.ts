@@ -327,6 +327,71 @@ export function drawMazeHUD() {
         return;
     }
 
+    // === 撤离失败转场（氧气耗尽 / 鱼咬死）===
+    // 与 surfacing 的飞升不同：
+    //   - 没有弹射/速度线/破水爆裂
+    //   - 仅一个渐进的"失去视线"黑幕 + reason 专属色调
+    //   - 45 帧内平滑铺底，然后切到 debrief（debrief 自己还有 fade-in）
+    if (maze.phase === 'failed') {
+        const t = maze.resultTimer;
+        const dur = CONFIG.maze.failedDuration; // 45
+        const k = Math.min(1, t / dur);
+        ctx.save();
+
+        // 1. 色调层：根据原因给一个淡淡的色罩
+        if (maze.surfacingReason === 'fishkill') {
+            // 被咬死：血红 → 暗红 淡出（FishEnemy 已把 redOverlay 拉到过 1.0，这里在它上面叠黑）
+            ctx.fillStyle = `rgba(60, 10, 10, ${0.35 * k})`;
+            ctx.fillRect(0, 0, cw, ch);
+        } else {
+            // 溺水：冷蓝 + 视野边缘压缩（缺氧瞳孔缩小）
+            const edgeGrad = ctx.createRadialGradient(cw / 2, ch / 2, ch * (0.35 - k * 0.2),
+                                                       cw / 2, ch / 2, ch * 0.75);
+            edgeGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+            edgeGrad.addColorStop(1, `rgba(2, 10, 28, ${0.55 * k})`);
+            ctx.fillStyle = edgeGrad;
+            ctx.fillRect(0, 0, cw, ch);
+            // 轻微冷色调
+            ctx.fillStyle = `rgba(20, 50, 90, ${0.18 * k})`;
+            ctx.fillRect(0, 0, cw, ch);
+        }
+
+        // 2. 黑幕淡入（末段加深，为 debrief 铺底）
+        const blackK = Math.max(0, (k - 0.45) / 0.55);
+        if (blackK > 0) {
+            ctx.fillStyle = `rgba(0, 0, 0, ${0.75 * blackK})`;
+            ctx.fillRect(0, 0, cw, ch);
+        }
+
+        // 3. 末尾一行小字提示（淡入后淡出），告诉玩家发生了什么
+        if (k > 0.25) {
+            const textK = Math.min(1, (k - 0.25) / 0.35) * Math.max(0, 1 - blackK * 0.9);
+            if (textK > 0.02) {
+                ctx.fillStyle = maze.surfacingReason === 'fishkill'
+                    ? `rgba(255, 180, 180, ${textK})`
+                    : `rgba(180, 220, 255, ${textK})`;
+                ctx.font = 'bold 22px "PingFang SC", Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                const msg = maze.surfacingReason === 'fishkill' ? '撤离失败' : '撤离失败';
+                ctx.fillText(msg, cw / 2, ch / 2 - 14);
+                ctx.font = '12px "PingFang SC", Arial';
+                ctx.fillStyle = maze.surfacingReason === 'fishkill'
+                    ? `rgba(220, 140, 140, ${textK * 0.85})`
+                    : `rgba(150, 190, 220, ${textK * 0.85})`;
+                const sub = maze.surfacingReason === 'fishkill'
+                    ? '被食人鱼撕碎 · 本次物品全部遗失'
+                    : '氧气耗尽 · 本次物品全部遗失';
+                ctx.fillText(sub, cw / 2, ch / 2 + 14);
+                ctx.textAlign = 'start';
+                ctx.textBaseline = 'alphabetic';
+            }
+        }
+
+        ctx.restore();
+        ctx.restore();
+        return;
+    }
     // === 游戏中 HUD ===
 
     // 氧气拾取拾取后的全屏绿色辉光（在所有 HUD 之前绘制，不遮挖 HUD）

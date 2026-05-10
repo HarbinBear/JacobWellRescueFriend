@@ -67,7 +67,12 @@ export function saveExtractionProgress(): boolean {
             pickedRelicIds: [],
         },
         consumables: { ...(ex.consumables || {}) },
-        ownedEquipment: (ex.ownedEquipment || []).slice(),
+        equipmentStock: { ...(ex.equipmentStock || {}) },
+        equipped: {
+            bag: ex.equipped?.bag || 'bag4',
+            fins: ex.equipped?.fins || 'finsBasic',
+        },
+        ownedEquipment: [],   // 已废弃；保留空数组兼容老代码
         // shop 是运行时态，不保存
         flags: {
             tutorialShown: ex.flags.tutorialShown,

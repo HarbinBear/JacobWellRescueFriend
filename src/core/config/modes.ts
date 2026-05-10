@@ -210,7 +210,8 @@ export const modesConfig = {
         retreatBtnRadius: 36,       // 撤离按钮半径
         retreatBtnXRatio: 0.18,     // 撤离按钮X位置比例
         retreatBtnYRatio: 0.88,     // 撤离按钮Y位置比例
-        surfacingDuration: 30,      // 上浮动画帧数（0.5秒，蓄力→爆发→破水）
+        surfacingDuration: 30,      // 上浮动画帧数（0.5秒，蓄力→爆发→破水）——仅用于成功撤离/救援
+        failedDuration: 45,         // 撤离失败转场帧数（~0.75s，黑幕淡入，没有飞升动画）
         debriefShowDelay: 30,       // 结算页延迟显示帧数
     },
 };

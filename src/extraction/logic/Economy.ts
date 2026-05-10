@@ -21,6 +21,8 @@ import {
     WarehouseItem,
     BagItem,
 } from '../core/ExtractionState';
+import { fallbackEquippedSlot } from './Shop';
+import { setBagMaxSlots } from './Inventory';
 
 // =============================================
 // 品相 roll
@@ -192,6 +194,16 @@ export function transferBagToWarehouse(): WarehouseItem[] {
 
 export type ExtractReason = 'retreat' | 'o2' | 'fishkill' | 'beacon' | 'rescued';
 
+/** 撤离失败时被销毁的一件装备的描述（结算页展示用） */
+export interface LostEquipmentEntry {
+    /** 物品 id（如 'bag12'） */
+    itemId: string;
+    /** 槽位（背包 / 脚蹼） */
+    slot: 'bag' | 'fins';
+    /** 销毁后自动回退到的次优 / 保底装备 id */
+    fallbackTo: string;
+}
+
 export interface DiveSettlement {
     /** 撤离原因 */
     reason: ExtractReason;
@@ -203,6 +215,58 @@ export interface DiveSettlement {
     keptValue: number;
     /** 丢失的物品估值 */
     lostValue: number;
+    /** 失败撤离时被销毁的装备清单（成功撤离时为空数组） */
+    lostEquipment: LostEquipmentEntry[];
+}
+
+/**
+ * 撤离失败时销毁当前装备的一件，并自动回退到次优 / 保底。
+ *
+ * 规则：
+ * - 当前装备（equipped.bag / equipped.fins）若为保底（bag4 / finsBasic）→ 不销毁（保底不可消失）
+ * - 否则：equipmentStock[id]-- ，归零则从 stock 删 key；equipped 自动 fallback
+ *
+ * 返回销毁清单（一般 0~2 项：背包 + 脚蹼）供结算页展示。
+ */
+function loseEquippedOnFailure(): LostEquipmentEntry[] {
+    const ex = ensureExtractionState();
+    const lost: LostEquipmentEntry[] = [];
+    if (!ex.equipped) ex.equipped = { bag: 'bag4', fins: 'finsBasic' };
+    if (!ex.equipmentStock) ex.equipmentStock = {};
+
+    // 背包
+    const curBag = ex.equipped.bag;
+    if (curBag && curBag !== 'bag4') {
+        const cur = ex.equipmentStock[curBag] || 0;
+        if (cur > 0) {
+            ex.equipmentStock[curBag] = cur - 1;
+            if (ex.equipmentStock[curBag] <= 0) delete ex.equipmentStock[curBag];
+        }
+        const fb = fallbackEquippedSlot('bag');
+        ex.equipped.bag = fb;
+        lost.push({ itemId: curBag, slot: 'bag', fallbackTo: fb });
+        // 同步当前持久化的 maxSlots（让岸上 UI 正确显示）
+        const fbEff = getItemDef(fb) as any;
+        if (fbEff?.effects?.inventorySlots != null) {
+            setBagMaxSlots(fbEff.effects.inventorySlots);
+        }
+    }
+
+    // 脚蹼
+    const curFins = ex.equipped.fins;
+    if (curFins && curFins !== 'finsBasic') {
+        const cur = ex.equipmentStock[curFins] || 0;
+        if (cur > 0) {
+            ex.equipmentStock[curFins] = cur - 1;
+            if (ex.equipmentStock[curFins] <= 0) delete ex.equipmentStock[curFins];
+        }
+        const fb = fallbackEquippedSlot('fins');
+        ex.equipped.fins = fb;
+        lost.push({ itemId: curFins, slot: 'fins', fallbackTo: fb });
+        // fins 不影响 maxSlots，无需同步
+    }
+
+    return lost;
 }
 
 /**
@@ -218,18 +282,17 @@ export function settleDiveExtraction(reason: ExtractReason): DiveSettlement {
     }
     const kept: BagItem[] = [];
     const lost: BagItem[] = [];
+    let lostEquipment: LostEquipmentEntry[] = [];
 
-    if (reason === 'fishkill') {
-        // 死亡撤离：全损
+    if (reason === 'fishkill' || reason === 'o2') {
+        // 撤离失败：
+        //   - fishkill（被食人鱼咬死）
+        //   - o2（氧气耗尽 / 溺水）
+        // 战利品全损 + 当前装备的那件被销毁（保底装备 bag4/finsBasic 永远在）
         for (const it of all) lost.push(it);
-    } else if (reason === 'o2') {
-        // 半成功撤离：每件 50% 概率丢失
-        for (const it of all) {
-            if (Math.random() < 0.5) lost.push(it);
-            else kept.push(it);
-        }
+        lostEquipment = loseEquippedOnFailure();
     } else {
-        // retreat / beacon / rescued 都是完整撤离
+        // retreat / beacon / rescued 都是完整撤离：物品和装备都保留
         for (const it of all) kept.push(it);
     }
 
@@ -257,5 +320,6 @@ export function settleDiveExtraction(reason: ExtractReason): DiveSettlement {
         lostItems: lost,
         keptValue,
         lostValue,
+        lostEquipment,
     };
 }
