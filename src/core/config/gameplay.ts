@@ -291,4 +291,88 @@ export const gameplayConfig = {
         pickupRange: 180,               // 玩家拾取战利品的距离（像素）
         debugPickupOverlay: false,      // 调试可视化：拾取范围圆圈 + Relic 距离标签（GM 面板可开关）
     },
+
+    // ===== 减压停留系统（Decompression System） =====
+    //
+    // 设计灵感：Bühlmann ZH-L16 简化版（单隔室近似）。
+    //   - 玩家在深水区（>ingestDepth）吸氮 → nitrogenLoad 随时间累积
+    //   - 上浮到浅水区（<releaseDepth）后排氮 → 数值下降
+    //   - nitrogenLoad 超过阈值：出水前必须在 12/9/6/3m 四档停留窗口逐段停足时间
+    //   - 停留窗口：处于目标深度 ±tolerance 且 |vy| < speedMax，累计 holdSec 秒完成该档
+    //   - 未完成减压就触达水面：记 DCS 惩罚（O2 上限 -30% + 战利品折扣 + 可能附加 debuff）
+    //
+    // 为什么只做单值 nitrogenLoad 而不是 16 隔室：
+    //   - 游戏需要的是"有感且可教学"的节奏，不是医学级精度
+    //   - 单值配合 4 档停留已经足够制造"从底部一路慢慢停回水面"的感受
+    //
+    // 玩家入口：HUD 左上角"减压灯"图标（绿=免减压 / 黄=接近 / 红=必须减压 / 蓝绿环=正在停留）
+    //   短按：弹 tip 显示氮负荷 %、下一个停留档深度、剩余时间
+    //   长按：在正确深度停留时，时间流速 ×speedUpMul，但氧气消耗 ×speedUpO2Mul
+    deco: {
+        enabled: true,                   // 系统总开关
+
+        // ---- 氮气吸排速率 ----
+        // 每秒吸氮量 = ingestRatePerSec × max(0, depth - ingestDepth)
+        // depth 单位：米；nitrogenLoad 目标范围 [0, 1.5+]
+        // 数值选择：20m→1.0 需要约 (1.0 / (0.0028 × 10)) = 36 秒。即在 30m 泡 36s 就进红区
+        ingestDepth: 20,                 // 米：深于此值开始累积氮（真实潜水是 10m，但游戏用 20m 放过早期浅关）
+        ingestRatePerSec: 0.0028,        // 每秒吸氮 = 系数 × (深度 - 阈值)，在 30m 约 +0.028/s
+        // 浅水排氮：depth < releaseDepth 时 nitrogenLoad -= releaseRatePerSec × dt
+        releaseDepth: 10,                // 浅于此深度开始排氮
+        releaseRatePerSec: 0.06,         // 静止排氮约 16 秒清空 1.0 的负荷
+        // 超深惩罚：深度 > maxDepthAllowed（装备极限）时，吸氮系数再乘以此倍率
+        overDepthRateMul: 2.0,
+
+        // ---- 阈值（决定减压灯颜色） ----
+        thresholdGreen: 0.6,             // < 0.6：免减压（绿灯）
+        thresholdYellow: 1.0,            // 0.6~1.0：黄灯，建议减压
+        thresholdRed: 1.3,               // 1.0~1.3：红灯，强制减压
+        thresholdCritical: 1.5,          // > 1.3：深红闪烁，DCS 严重级
+
+        // ---- 减压停留四档（从深到浅顺序执行）----
+        // 每档：目标深度 ± tolerance 米、玩家垂直速度 |vy| < speedMax、持续 holdSec 秒 = 完成
+        // 完成一档后 nitrogenLoad -= reduce[i]，减压灯进入下一档
+        // 数值：12/9/6/3m 分别停 3/5/8/12 秒，合计 28s 可做完最深档减压（对应现实约 28min 的重度 deco）
+        stopDepths: [12, 9, 6, 3],       // 四档目标深度（米）
+        stopHoldSec: [3, 5, 8, 12],      // 每档需要停留的秒数
+        stopReduce: [0.3, 0.35, 0.4, 0.45], // 每档完成减少的氮负荷（累计 1.5，能把深红清零）
+        depthTolerance: 1.5,             // 允许偏离目标深度的米数（上下 1.5m 都算"在档内"）
+        holdSpeedMax: 0.8,               // 判定"静止"的 |vy| 上限（像素/帧；moveSpeed=17 所以 0.8 很严格）
+
+        // ---- 起步减压档位：nitrogenLoad 多高以上，要从第几档开始？----
+        // 索引表达"nitrogenLoad < 阈值时从第 N 档开始"，深红从 12m 起；
+        // 黄灯（>=0.6 && <1.0）实质上只需要做 3m 一档（= "安全停留"），
+        // 红灯（>=1.0 && <1.3）做 6m+3m；
+        // 深红（>=1.3）做 9m+6m+3m；
+        // critical（>=1.5）做 12/9/6/3m 全四档
+        // 取值：[thresholdGreen, thresholdYellow, thresholdRed, thresholdCritical]
+        // 对应的起始档索引（从 stopDepths[idx] 开始做到末尾）：
+        startIdxByLevel: [3, 2, 1, 0],   // 绿/黄/红/深红 起始档的 stopDepths 索引（-1=不需要任何档）
+
+        // ---- 长按加速 ----
+        speedUpMul: 5.0,                 // 长按时减压时间流速倍率
+        speedUpO2Mul: 3.0,               // 长按时氧气消耗倍率（乘在 breath.o2PerBreath 上）
+
+        // ---- DCS 惩罚（跳过减压出水）----
+        // 触发条件：surfacing（finishMazeDive）时 nitrogenLoad > thresholdYellow（即已进黄灯且未做完减压）
+        // severity：
+        //   1 = nitrogenLoad < thresholdCritical（黄~红~深红之间）
+        //   2 = nitrogenLoad >= thresholdCritical
+        penalty: {
+            // O2Max 打折倍率：0.7 = -30%
+            o2MaxMulLv1: 0.70,
+            o2MaxMulLv2: 0.70,
+            // 持续多少次下潜（lv1=1 次 lv2=2 次）；每次 finishMazeDive 结束自动 -1，减到 0 清除
+            durationDivesLv1: 1,
+            durationDivesLv2: 2,
+            // 本次撤离战利品价值倍率（撤离失败本来就全损，所以仅在 retreat/rescued 成功撤离时生效）
+            lootMulLv1: 0.5,
+            lootMulLv2: 0.0,
+            // 屏幕视觉 debuff：岸上显示紫色指示带 + 文字（lv2 才启用）
+            showPurpleBadgeLv2: true,
+        },
+
+        // ---- UI ----
+        hudVisible: true,                // 减压灯在 HUD 左上角显示
+    },
 };

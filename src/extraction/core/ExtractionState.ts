@@ -127,6 +127,28 @@ export interface ExtractionState {
         /** 累计拾取物品数 */
         totalPickups: number;
     };
+
+    /**
+     * DCS（减压病）惩罚状态。
+     * 未触发 DCS 时该字段为 undefined。
+     * 由 `logic/DecompressionSystem.triggerDecoPenaltyOnSurface` 写入，
+     * 由 `consumeDecoPenaltyDive` 每次下潜结束扣一次 remainingDives，减到 0 时清除。
+     *
+     * 作用位置：
+     *   - Loadout.applyLoadoutForDive：读取 o2MaxMul 把 player.o2Max 打折
+     *   - Economy（战利品结算）：读取 currentLootMul 把本次战利品价值打折
+     *   - HUD / 岸上 UI：读 severity == 2 显示紫色 debuff 标
+     */
+    decoPenalty?: {
+        /** 1 = 轻度；2 = 重度 */
+        severity: 1 | 2;
+        /** 下潜 O2Max 倍率（0.7 = -30%） */
+        o2MaxMul: number;
+        /** 还剩多少次下潜受这个惩罚影响（每次 finishMazeDive 扣 1） */
+        remainingDives: number;
+        /** 本次撤离战利品价值倍率（首次生效后由 consumeDecoPenaltyDive 清除，避免跨下潜反复打折） */
+        currentLootMul?: number;
+    };
 }
 
 /** 商店一个货位（不分类版：所有商品平铺在一个池子里） */

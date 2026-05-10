@@ -32,6 +32,10 @@ import { toggleGMOpen, isGMOpen } from '../gm/GMPanel';
 import { getBreathPhaseAngle, getBreathPhase, getBreathPressure, getLungVolume } from '../logic/BreathSystem';
 import { playSFX } from '../audio/AudioManager';
 import { getActiveAirTanks } from '../extraction/logic/Loadout';
+import {
+    getDecoRuntime, getDecoLevel, getCurrentStopInfo, isDecompressionRequired,
+    setDecoBoost, getCurrentDepthMeters,
+} from '../logic/DecompressionSystem';
 
 // ========== 布局常量 ==========
 // 起点 X/Y，每项尺寸、间距（垂直排列）
@@ -411,7 +415,49 @@ export function initMazeHUDTopLeft(): void {
         },
     });
 
-    // 2. 手动/自动挡切换（短按切换）
+    // 2b. 减压指示灯（只在进入"需要减压"状态或正在执行减压时显示）
+    // 短按：弹 tip 显示氮负荷、下一档深度、剩余时间
+    // 长按：在档位内长按可 5x 加速减压，但氧气 3x 消耗
+    registerHUDItem({
+        id: 'deco',
+        visible: () => {
+            const cfg: any = (CONFIG as any).deco;
+            if (!cfg || !cfg.enabled || !cfg.hudVisible) return false;
+            // 只要 nitrogenLoad > 0 就显示（即下过 >20m 就常显），避免图标突然出现造成困惑
+            const rt = getDecoRuntime();
+            return rt.nitrogenLoad > 0.001 || isDecompressionRequired();
+        },
+        iconDraw: drawDecoIcon,
+        supportsLongPress: true,
+        onShortTap: () => { /* 只弹 tip */ },
+        tipText: () => {
+            const rt = getDecoRuntime();
+            const cfg: any = (CONFIG as any).deco;
+            const pct = Math.round((rt.nitrogenLoad / (cfg?.thresholdCritical || 1.5)) * 100);
+            const stop = getCurrentStopInfo();
+            const depth = Math.floor(getCurrentDepthMeters());
+            if (!stop) {
+                if (getDecoLevel() === 0) {
+                    return `氮气：${pct}%（安全）\n深度：${depth}m\n（深于 20m 开始累积）`;
+                }
+                return `氮气：${pct}%\n深度：${depth}m`;
+            }
+            const remain = Math.max(0, (stop.hold - stop.progress)).toFixed(1);
+            const diff = depth - stop.depth;
+            const depthHint = Math.abs(diff) <= 1.5
+                ? '✓ 已在档内，静止即可减压'
+                : (diff > 0 ? `↑ 上浮 ${diff}m 到停留点` : `↓ 下沉 ${-diff}m 到停留点`);
+            return `氮气：${pct}%\n下一档：${stop.depth}m（剩 ${remain}s）\n${depthHint}\n长按 5× 加速（耗氧 3×）`;
+        },
+        onLongHoldStart: () => {
+            setDecoBoost(true);
+        },
+        onLongHoldEnd: () => {
+            setDecoBoost(false);
+        },
+    });
+
+    // 3. 手动/自动挡切换（短按切换）
     registerHUDItem({
         id: 'driveMode',
         visible: () => true,
@@ -748,26 +794,25 @@ function drawLungs(c: CanvasRenderingContext2D, cx: number, cy: number, ringR: n
     c.restore();
 }
 
-// 深度仪表图标（直观的"垂直水深尺 + 游标 + 大数字"）
+// 深度仪表图标（极简的"两数值"风格）
 //
 // 视觉语义：
-//   左半 = 垂直水深尺（顶部 0m / 底部 = 安全极限），尺子上有几条横向刻度线
-//   右半 = 一个明显的三角游标，沿尺子高度移动表示当前深度比率
-//   底部 = 大字号当前深度数字（比如 "12m"）
-//   超过极限：尺子整体红光 + 三角游标变成警告"!"
+//   上半 = 当前深度（大字）
+//   下半 = 最大可下潜深度（小字，灰色）
+//   两者中间一条短分隔线，像"分子 / 分母"
+//   超过极限：上半数字红色 + 闪烁，描边变红
 function drawDepthIcon(c: CanvasRenderingContext2D, cx: number, cy: number, size: number, _time: number): void {
     const maze = state.mazeRescue;
     const tile = maze ? (maze.mazeTileSize || 120) : 120;
     const curDepth = maze ? Math.max(0, Math.floor(player.y / tile)) : 0;
     const maxAllowed = maze ? ((maze as any).maxDepthAllowed || 30) : 30;
-    // 比率（用 1.0 表示到达极限；可超过 1）
     const ratio = curDepth / Math.max(1, maxAllowed);
     const overLimit = curDepth > maxAllowed;
     const r = size / 2 - 2;
 
     c.save();
 
-    // === 底圆（仪表盘背景，统一其他 HUD 风格）===
+    // === 底圆（仪表盘背景）===
     const baseColor = overLimit
         ? 'rgba(60, 10, 10, 0.95)'
         : (ratio > 0.85 ? 'rgba(40, 30, 15, 0.92)' : 'rgba(8, 22, 36, 0.92)');
@@ -789,98 +834,231 @@ function drawDepthIcon(c: CanvasRenderingContext2D, cx: number, cy: number, size
     c.arc(cx, cy, r, 0, Math.PI * 2);
     c.stroke();
 
-    // === 垂直水深尺：放在图标左半部分 ===
-    // 把 ratio 钳到 [0, 1.15]：超过 1 时游标会冒出极限红线一截，强调"超深"
-    const ratioVis = Math.max(0, Math.min(1.15, ratio));
-    const scaleX = cx - r * 0.20;          // 尺子的中心 X
-    const scaleTop = cy - r * 0.62;        // 尺子顶（0m）
-    const scaleH = r * 1.18;               // 尺子高度（对应 0~maxAllowed）
-    const scaleW = 4;                      // 尺子主轴宽度
-
-    // 主轴
-    c.strokeStyle = overLimit ? 'rgba(255, 130, 130, 0.85)' : 'rgba(160, 210, 240, 0.7)';
-    c.lineWidth = scaleW;
-    c.lineCap = 'round';
-    c.beginPath();
-    c.moveTo(scaleX, scaleTop);
-    c.lineTo(scaleX, scaleTop + scaleH);
-    c.stroke();
-    c.lineCap = 'butt';
-
-    // 刻度线（4 等分：0% / 33% / 66% / 100%）
-    const ticks = [0, 1 / 3, 2 / 3, 1];
-    for (let i = 0; i < ticks.length; i++) {
-        const ty = scaleTop + scaleH * ticks[i];
-        const isLimit = ticks[i] === 1;
-        c.strokeStyle = isLimit
-            ? (overLimit ? 'rgba(255, 90, 90, 1)' : 'rgba(255, 140, 90, 0.9)')
-            : 'rgba(180, 220, 240, 0.55)';
-        c.lineWidth = isLimit ? 1.6 : 1;
-        const tickW = isLimit ? 6 : 3;
-        c.beginPath();
-        c.moveTo(scaleX - tickW, ty);
-        c.lineTo(scaleX + tickW, ty);
-        c.stroke();
-    }
-
-    // === 三角游标（指示当前深度位置）===
-    // 游标从尺子右侧伸出小三角，y 随 ratioVis 移动
-    const cursorY = scaleTop + scaleH * Math.min(1.05, ratioVis);
-    const cursorX = scaleX + 5;
-    const cursorW = 9;
-    const cursorH = 7;
+    // === 上半：当前深度（大字）===
     if (overLimit) {
-        // 超限：游标变成红色警示三角 + 闪烁
-        const blink = 0.6 + 0.4 * Math.sin(Date.now() / 90);
-        c.fillStyle = `rgba(255, 90, 90, ${blink})`;
+        const blink = 0.65 + 0.35 * Math.sin(Date.now() / 110);
+        c.fillStyle = `rgba(255, 110, 110, ${blink})`;
     } else if (ratio > 0.85) {
-        c.fillStyle = 'rgba(255, 200, 100, 0.95)';
+        c.fillStyle = 'rgba(255, 220, 140, 1)';
     } else {
-        c.fillStyle = 'rgba(120, 220, 255, 0.95)';
+        c.fillStyle = 'rgba(230, 245, 255, 1)';
     }
+    c.font = 'bold 16px Arial';
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.fillText(String(curDepth), cx - r * 0.05, cy - r * 0.32);
+    // 单位 m
+    c.font = 'bold 8px Arial';
+    c.fillStyle = overLimit ? 'rgba(255, 180, 180, 0.95)' : 'rgba(200, 230, 245, 0.85)';
+    c.fillText('m', cx + r * 0.45, cy - r * 0.28);
+
+    // === 中间分隔线 ===
+    c.strokeStyle = 'rgba(180, 220, 240, 0.5)';
+    c.lineWidth = 1;
     c.beginPath();
-    c.moveTo(cursorX, cursorY);                       // 三角尖（指向尺子）
-    c.lineTo(cursorX + cursorW, cursorY - cursorH / 2);
-    c.lineTo(cursorX + cursorW, cursorY + cursorH / 2);
-    c.closePath();
-    c.fill();
-    // 游标描边（增加可读性）
-    c.strokeStyle = 'rgba(0, 0, 0, 0.5)';
-    c.lineWidth = 0.8;
+    c.moveTo(cx - r * 0.55, cy + r * 0.05);
+    c.lineTo(cx + r * 0.55, cy + r * 0.05);
     c.stroke();
 
-    // === 右上角：极限数字（小字，灰色）===
-    c.fillStyle = overLimit ? 'rgba(255, 180, 180, 0.95)' : 'rgba(200, 230, 245, 0.7)';
-    c.font = 'bold 7px Arial';
-    c.textAlign = 'right';
+    // === 下半：最大深度（小字）===
+    c.fillStyle = overLimit ? 'rgba(255, 160, 160, 0.85)' : 'rgba(180, 215, 235, 0.8)';
+    c.font = 'bold 10px Arial';
+    c.textAlign = 'center';
     c.textBaseline = 'middle';
-    c.fillText(maxAllowed + 'm', cx + r * 0.85, cy - r * 0.55);
-    // 顶部 0m 标
-    c.fillStyle = 'rgba(200, 230, 245, 0.55)';
-    c.fillText('0m', cx + r * 0.85, scaleTop + 1);
-
-    // === 右半中部：当前深度大数字（视觉重点）===
-    c.fillStyle = overLimit ? 'rgba(255, 200, 200, 1)' : 'rgba(230, 245, 255, 0.98)';
-    c.font = 'bold 12px Arial';
-    c.textAlign = 'right';
-    c.textBaseline = 'middle';
-    c.fillText(String(curDepth), cx + r * 0.92, cy + 2);
-    c.font = 'bold 7px Arial';
-    c.fillStyle = 'rgba(180, 220, 240, 0.75)';
-    c.fillText('m', cx + r * 0.95, cy + 11);
-
-    // 超限时左下角追加警示符
-    if (overLimit) {
-        const blink = 0.5 + 0.5 * Math.sin(Date.now() / 100);
-        c.fillStyle = `rgba(255, 90, 90, ${blink})`;
-        c.font = 'bold 11px Arial';
-        c.textAlign = 'left';
-        c.textBaseline = 'middle';
-        c.fillText('!', cx - r * 0.7, cy + r * 0.55);
-    }
+    c.fillText(maxAllowed + 'm', cx, cy + r * 0.42);
 
     c.textAlign = 'left';
     c.textBaseline = 'alphabetic';
+    c.restore();
+}
+
+// =============================================
+// 减压指示灯图标
+// ---------------------------------------------
+// 视觉分档：
+//   绿灯（level 0）：暗色底 + 中央小绿点，极低调
+//   黄灯（level 1）：暗色底 + 黄色大写 "DECO" + 半环亮度
+//   红灯（level 2~3）：红环脉冲 + "DECO" 红色 + 小三角警告
+//   正在减压（stop 存在）：
+//     底圆外围画一条蓝绿色 progress 环，按 stopProgress/stopHoldSec 顺时针填充
+//     中心显示当前档位深度数字（12/9/6/3）+ 小字 "m"
+//     如果玩家"在档内"（inHoldWindow），progress 环常亮+缓慢脉冲；
+//     如果偏离，progress 环变暗并闪"!"
+//   长按加速（boost）：
+//     progress 环色变亮黄 + ×5 小字叠加
+// =============================================
+function drawDecoIcon(c: CanvasRenderingContext2D, cx: number, cy: number, size: number, _time: number): void {
+    const rt = getDecoRuntime();
+    const level = getDecoLevel();
+    const stop = getCurrentStopInfo();
+    const r = size / 2 - 2;
+    const now = Date.now();
+
+    c.save();
+
+    // ==== 底圆 ====
+    let bgColor: string;
+    if (level >= 3)      bgColor = 'rgba(60, 10, 20, 0.95)';       // 深红
+    else if (level === 2) bgColor = 'rgba(55, 15, 15, 0.92)';      // 红
+    else if (level === 1) bgColor = 'rgba(45, 35, 10, 0.90)';      // 黄
+    else                  bgColor = 'rgba(10, 25, 30, 0.85)';      // 绿/暗
+    c.fillStyle = bgColor;
+    c.beginPath();
+    c.arc(cx, cy, r, 0, Math.PI * 2);
+    c.fill();
+
+    // ==== 边框 ====
+    let strokeColor: string;
+    let strokeW = 1.1;
+    if (level >= 2) {
+        // 红/深红：脉冲边框
+        const pulse = 0.65 + 0.35 * Math.sin(now / (level >= 3 ? 110 : 180));
+        strokeColor = `rgba(255, ${level >= 3 ? 60 : 100}, ${level >= 3 ? 80 : 100}, ${pulse})`;
+        strokeW = 1.8;
+    } else if (level === 1) {
+        strokeColor = 'rgba(255, 210, 90, 0.75)';
+        strokeW = 1.3;
+    } else {
+        strokeColor = 'rgba(120, 200, 180, 0.45)';
+    }
+    c.strokeStyle = strokeColor;
+    c.lineWidth = strokeW;
+    c.beginPath();
+    c.arc(cx, cy, r, 0, Math.PI * 2);
+    c.stroke();
+
+    // ==== 进度环（只在有减压任务时）====
+    if (stop) {
+        const cfg: any = (CONFIG as any).deco;
+        const holdSec = cfg.stopHoldSec[stop.idx] || 3;
+        const p = Math.max(0, Math.min(1, stop.progress / Math.max(0.01, holdSec)));
+        const start = -Math.PI / 2;
+        const ringR = r - 3;
+
+        // 暗色轨道
+        c.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+        c.lineWidth = 3;
+        c.beginPath();
+        c.arc(cx, cy, ringR, 0, Math.PI * 2);
+        c.stroke();
+
+        // 进度弧
+        if (p > 0.002) {
+            // 颜色：boost 亮黄、inHoldWindow 蓝绿、偏离时灰色
+            let arcColor: string;
+            if (rt.boostActive && rt.inHoldWindow) {
+                arcColor = 'rgba(255, 220, 100, 0.98)';
+            } else if (rt.inHoldWindow) {
+                arcColor = 'rgba(100, 255, 210, 0.95)';
+            } else {
+                arcColor = 'rgba(160, 180, 190, 0.55)';
+            }
+            c.strokeStyle = arcColor;
+            c.lineWidth = 3;
+            c.lineCap = 'round';
+            c.beginPath();
+            c.arc(cx, cy, ringR, start, start + Math.PI * 2 * p);
+            c.stroke();
+            c.lineCap = 'butt';
+        }
+
+        // 在档内脉冲外晕
+        if (rt.inHoldWindow) {
+            const glow = 0.45 + 0.35 * Math.sin(now / 220);
+            c.globalAlpha = glow;
+            c.strokeStyle = rt.boostActive ? 'rgba(255, 220, 100, 0.5)' : 'rgba(100, 255, 210, 0.45)';
+            c.lineWidth = 5.5;
+            c.beginPath();
+            c.arc(cx, cy, ringR + 1.5, 0, Math.PI * 2);
+            c.stroke();
+            c.globalAlpha = 1;
+        }
+
+        // 中心文字：档位深度（12 / 9 / 6 / 3）
+        c.fillStyle = rt.inHoldWindow ? 'rgba(230, 255, 245, 1)' : 'rgba(220, 230, 240, 0.85)';
+        c.font = 'bold 16px Arial';
+        c.textAlign = 'center';
+        c.textBaseline = 'middle';
+        c.fillText(String(stop.depth), cx - 3, cy - 2);
+        c.font = 'bold 8px Arial';
+        c.fillStyle = rt.inHoldWindow ? 'rgba(200, 255, 230, 0.9)' : 'rgba(200, 215, 225, 0.8)';
+        c.fillText('m', cx + 8, cy + 1);
+
+        // 底部小字：剩余秒数 或 "×5"（boost 时）
+        if (rt.boostActive && rt.inHoldWindow) {
+            c.fillStyle = 'rgba(255, 230, 120, 1)';
+            c.font = 'bold 9px Arial';
+            c.fillText('×5', cx, cy + r * 0.55);
+        } else {
+            const remain = Math.max(0, holdSec - stop.progress);
+            c.fillStyle = 'rgba(200, 220, 230, 0.85)';
+            c.font = 'bold 8px Arial';
+            c.fillText(remain.toFixed(1) + 's', cx, cy + r * 0.55);
+        }
+        c.textAlign = 'start';
+        c.textBaseline = 'alphabetic';
+    } else {
+        // ==== 没有减压任务：根据 level 画静态提示 ====
+        if (level === 0) {
+            // 绿灯：中央极小绿点
+            c.fillStyle = 'rgba(120, 230, 180, 0.9)';
+            c.beginPath();
+            c.arc(cx, cy, 2.2, 0, Math.PI * 2);
+            c.fill();
+            // 暗色字 "N2"
+            c.fillStyle = 'rgba(150, 200, 190, 0.55)';
+            c.font = 'bold 9px Arial';
+            c.textAlign = 'center';
+            c.textBaseline = 'middle';
+            c.fillText('N₂', cx, cy + r * 0.52);
+            c.textAlign = 'start';
+            c.textBaseline = 'alphabetic';
+        } else {
+            // 黄/红/深红：中间大字 "DECO" + 小三角
+            let textColor = 'rgba(255, 215, 110, 1)';
+            if (level >= 3) {
+                const blink = 0.6 + 0.4 * Math.sin(now / 130);
+                textColor = `rgba(255, 110, 120, ${blink})`;
+            } else if (level === 2) {
+                textColor = 'rgba(255, 140, 120, 1)';
+            }
+            c.fillStyle = textColor;
+            c.font = 'bold 11px Arial';
+            c.textAlign = 'center';
+            c.textBaseline = 'middle';
+            c.fillText('DECO', cx, cy - 2);
+
+            // 警告三角（红及以上）
+            if (level >= 2) {
+                const triY = cy + r * 0.42;
+                const triSize = 5;
+                c.fillStyle = textColor;
+                c.beginPath();
+                c.moveTo(cx, triY - triSize);
+                c.lineTo(cx + triSize, triY + triSize * 0.6);
+                c.lineTo(cx - triSize, triY + triSize * 0.6);
+                c.closePath();
+                c.fill();
+                // 中间竖杠
+                c.strokeStyle = 'rgba(40, 10, 10, 0.9)';
+                c.lineWidth = 1.2;
+                c.beginPath();
+                c.moveTo(cx, triY - 1);
+                c.lineTo(cx, triY + 2);
+                c.stroke();
+            } else {
+                // 黄色：底部氮负荷百分比
+                const cfg: any = (CONFIG as any).deco;
+                const pct = Math.round((rt.nitrogenLoad / (cfg?.thresholdCritical || 1.5)) * 100);
+                c.fillStyle = 'rgba(255, 225, 150, 0.9)';
+                c.font = 'bold 8px Arial';
+                c.fillText(pct + '%', cx, cy + r * 0.52);
+            }
+            c.textAlign = 'start';
+            c.textBaseline = 'alphabetic';
+        }
+    }
+
     c.restore();
 }
 

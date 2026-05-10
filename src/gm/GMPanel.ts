@@ -28,6 +28,9 @@ import {
     ExtractionEnabled as exEnabled,
 } from '../extraction';
 import { ALL_RELIC_KINDS } from '../logic/Relic';
+// 减压系统：GM 调试 action
+import { getDecoRuntime, triggerDecoPenaltyOnSurface, resetDecompressionSystem } from '../logic/DecompressionSystem';
+import { ensureExtractionState as exEnsureState } from '../extraction/core/ExtractionState';
 
 // 重新导出绘制函数，保持外部引用不变
 export { drawGMButton, drawGMPanel } from './GMRender';
@@ -533,6 +536,44 @@ function _executeAction(actionId: string): void {
             break;
         }
         default:
+            // ---- 减压系统 action ----
+            if (actionId === 'decoSetYellow' || actionId === 'decoSetRed' || actionId === 'decoSetCritical' || actionId === 'decoClear') {
+                // 直接改运行时 nitrogenLoad，同时清空当前减压任务（让系统下一帧按新负荷重新生成任务）
+                const rt = getDecoRuntime() as any;
+                let target = 0;
+                if (actionId === 'decoSetYellow') target = 0.7;
+                else if (actionId === 'decoSetRed') target = 1.1;
+                else if (actionId === 'decoSetCritical') target = 1.6;
+                rt.nitrogenLoad = target;
+                rt.currentStopIdx = -1;
+                rt.stopProgress = [0, 0, 0, 0];
+                rt.hasShownWarning = false;
+                console.log('[GM][Deco] nitrogenLoad=' + target);
+                break;
+            }
+            if (actionId === 'decoTriggerPenaltyLv1' || actionId === 'decoTriggerPenaltyLv2') {
+                // 先把 N2 拉到对应阈值，再触发一次 surface 惩罚判定
+                const rt = getDecoRuntime() as any;
+                rt.nitrogenLoad = actionId === 'decoTriggerPenaltyLv2' ? 1.6 : 1.1;
+                const sev = triggerDecoPenaltyOnSurface();
+                console.log('[GM][Deco] 模拟触发 DCS 惩罚，severity=' + sev);
+                // 不清零 N2，让玩家继续看 HUD 变化
+                break;
+            }
+            if (actionId === 'decoClearPenalty') {
+                const ex = exEnsureState() as any;
+                ex.decoPenalty = undefined;
+                resetDecompressionSystem();
+                console.log('[GM][Deco] 已清除 decoPenalty 并重置运行时');
+                break;
+            }
+            if (actionId === 'decoDump') {
+                const rt = getDecoRuntime();
+                const ex = exGetState() as any;
+                console.log('[GM][Deco] runtime=', rt);
+                console.log('[GM][Deco] decoPenalty=', ex ? ex.decoPenalty : '(no extraction state)');
+                break;
+            }
             console.log(`[GM] 未知操作: ${actionId}`);
     }
 }

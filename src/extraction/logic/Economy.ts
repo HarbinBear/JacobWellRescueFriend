@@ -23,6 +23,7 @@ import {
 } from '../core/ExtractionState';
 import { fallbackEquippedSlot } from './Shop';
 import { setBagMaxSlots } from './Inventory';
+import { getPenaltyLootMul } from '../../logic/DecompressionSystem';
 
 // =============================================
 // 品相 roll
@@ -308,6 +309,34 @@ export function settleDiveExtraction(reason: ExtractReason): DiveSettlement {
     } else {
         // retreat / beacon / rescued 都是完整撤离：物品和装备都保留
         for (const it of all) kept.push(it);
+    }
+
+    // === DCS 惩罚：成功撤离但未做完减压 → 按 lootMul 把一部分保留物品降级为"丢失"
+    // lv1 lootMul=0.5：随机丢掉 50% 物品（减压病让你吐掉一半战利品）
+    // lv2 lootMul=0.0：全部物品进 lost（关节剧痛摔碎）
+    // 失败撤离已经全损，这里不再重复打折
+    if (kept.length > 0) {
+        const lootMul = getPenaltyLootMul();
+        if (lootMul < 1) {
+            const dropCount = Math.floor(kept.length * (1 - lootMul) + 0.5);
+            // 随机打乱后取前 dropCount 个丢掉（保留剩下的）
+            const shuffled = kept.slice();
+            for (let i = shuffled.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                const tmp = shuffled[i]; shuffled[i] = shuffled[j]; shuffled[j] = tmp;
+            }
+            const dropped = shuffled.slice(0, dropCount);
+            const newKept: BagItem[] = [];
+            for (const it of kept) {
+                if (dropped.indexOf(it) >= 0) {
+                    lost.push(it);
+                } else {
+                    newKept.push(it);
+                }
+            }
+            kept.length = 0;
+            for (const it of newKept) kept.push(it);
+        }
     }
 
     // 把保留的物品搬进仓库（id 沿用）

@@ -20,6 +20,14 @@ import { loadMazeProgress, saveMazeProgress, clearMazeSave } from './MazeSave';
 import { setActiveSeededRandom, clearActiveSeededRandom } from '../core/SeededRandom';
 // 撤离玩法钩子：每次下潜开始/结束自动应用装备效果与结算战利品
 import { onExtractionDiveStart, onExtractionDiveEnd } from '../extraction';
+// 减压停留系统：氮气累积 / 减压任务 / DCS 惩罚
+import {
+    updateDecompressionSystem,
+    resetDecompressionSystem,
+    consumeDecoWarningRequest,
+    triggerDecoPenaltyOnSurface,
+    consumeDecoPenaltyDive,
+} from './DecompressionSystem';
 
 // 迷宫模式使用独立的 StoryManager 实例
 const storyManager = new StoryManager();
@@ -382,6 +390,9 @@ export function startMazeDive(diveType: string) {
     resetBreathSystem();
     resetBreathO2Consumer();
 
+    // 重置减压系统运行态：新一次下潜氮负荷归零、减压任务清空
+    resetDecompressionSystem();
+
     // 重置生命探知仪运行态（每次新下潜重新开始）
     resetLifeDetector();
 
@@ -670,8 +681,23 @@ function finishMazeDive(returnReason: string) {
     maze.resultTimer = 0;
     maze.finishTime = Date.now();
 
+    // === 减压结算：出水时检查氮负荷，写入 decoPenalty（若 nitrogenLoad 已过黄线）===
+    // 写入顺序重要：必须在 onExtractionDiveEnd 之前写，让本次战利品结算能读到 currentLootMul
+    const decoSeverity = triggerDecoPenaltyOnSurface();
+    if (decoSeverity === 1) {
+        storyManager.showText('⚠ 减压病发作，关节剧痛……', '#ff8844', 3500);
+        playSFX('uiSecondary');
+    } else if (decoSeverity === 2) {
+        storyManager.showText('☠ 重度减压病！严重后果持续多次下潜', '#ff4444', 4000);
+        playSFX('uiSecondary');
+    }
+
     // 撤离玩法钩子：根据 returnReason 结算背包（成功 100%/半成功 50%/失败全损）+ 还原装备覆盖 + 落盘
     onExtractionDiveEnd(returnReason);
+
+    // 消耗一次 DCS 惩罚计数：若之前就有未消耗的惩罚，这次下潜算掉一次
+    // （本次刚写入的惩罚 remainingDives=1 或 2，这里扣 1，剩下的作用于下次及之后的下潜）
+    consumeDecoPenaltyDive();
 
     // 一次下潜结束、本次成果已记录到 diveHistory，此时的 state 已经属于"回到岸上之后的进度"
     // 直接落盘，防止玩家在 debrief 页退出游戏导致本次记录丢失
@@ -1355,6 +1381,12 @@ export function updateMaze() {
 
     // --- 呼吸系统：气泡 + 音效，根据运动量调节节奏 ---
     updateBreathSystem();
+
+    // --- 减压停留系统：氮气吸排 / 减压任务进度 / 长按加速结算 ---
+    updateDecompressionSystem(1 / 60);
+    if (consumeDecoWarningRequest()) {
+        storyManager.showText('氮气开始累积，注意减压！\n上浮时需在 3/6/9/12m 逐段停留', '#ffd060', 4000);
+    }
 
     // --- 更新凶猛鱼 ---
     updateAllFishEnemies(1);

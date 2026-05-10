@@ -11,6 +11,7 @@ import { player, state } from '../../core/state';
 import { getEquipmentEffects, getItemDef, EquipmentEffects } from '../core/ExtractionRegistry';
 import { ensureExtractionState } from '../core/ExtractionState';
 import { setBagMaxSlots } from './Inventory';
+import { getPenaltyO2MaxMul } from '../../logic/DecompressionSystem';
 
 // =============================================
 // 运行时覆盖快照（卸载时还原）
@@ -194,6 +195,15 @@ export function applyLoadoutForDive(): void {
     let totalO2 = 0;
     for (const id of _activeAirTanks) totalO2 += tankCapacity(id);
     if (totalO2 <= 0) totalO2 = 60;  // 极端兜底
+
+    // === DCS 惩罚：若上次跳过了减压，这次下潜的 O2Max 打折（默认 -30%） ===
+    // 打折只作用在 o2Max（最大上限），同时 player.o2 初始也按打折后的满值给；
+    // 紫标 debuff 的视觉提示在岸上 UI 显示（见 isPurpleDebuffActive）
+    const decoMul = getPenaltyO2MaxMul();
+    if (decoMul < 1) {
+        totalO2 = Math.max(1, Math.round(totalO2 * decoMul));
+    }
+
     player.o2Max = totalO2;
     player.o2 = totalO2;
 

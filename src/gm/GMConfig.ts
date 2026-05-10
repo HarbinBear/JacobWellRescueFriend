@@ -501,6 +501,47 @@ export const TABS: GMTab[] = [
             { type: 'action', label: '⚠ 重置撤离数据（清档）', actionId: 'extractionReset' },
         ]
     },
+    {
+        // 减压停留系统：氮气负荷 / 减压停留 / DCS 惩罚
+        // 所有数值都可热调；action 按钮方便在游戏中把 nitrogenLoad 拉到测试阈值看 UI 表现
+        name: '减压',
+        items: [
+            { type: 'bool', label: '启用', path: 'deco.enabled' },
+            { type: 'bool', label: 'HUD 减压灯可见', path: 'deco.hudVisible' },
+            // ---- 吸排速率 ----
+            { type: 'number', label: '开始吸氮深度(m)', path: 'deco.ingestDepth', min: 5, max: 50, step: 1 },
+            { type: 'number', label: '吸氮率/秒/米', path: 'deco.ingestRatePerSec', min: 0.0005, max: 0.02, step: 0.0005, precision: 4 },
+            { type: 'number', label: '排氮起始深度(m)', path: 'deco.releaseDepth', min: 2, max: 20, step: 1 },
+            { type: 'number', label: '排氮率/秒', path: 'deco.releaseRatePerSec', min: 0.01, max: 0.4, step: 0.01, precision: 2 },
+            { type: 'number', label: '超深吸氮倍率', path: 'deco.overDepthRateMul', min: 1, max: 5, step: 0.25, precision: 2 },
+            // ---- 阈值 ----
+            { type: 'number', label: '黄灯阈值', path: 'deco.thresholdYellow', min: 0.3, max: 1.5, step: 0.05, precision: 2 },
+            { type: 'number', label: '红灯阈值', path: 'deco.thresholdRed', min: 0.8, max: 2.0, step: 0.05, precision: 2 },
+            { type: 'number', label: '深红阈值', path: 'deco.thresholdCritical', min: 1.0, max: 2.5, step: 0.05, precision: 2 },
+            // ---- 档位容差与判定 ----
+            { type: 'number', label: '档位容差(m)', path: 'deco.depthTolerance', min: 0.5, max: 4, step: 0.25, precision: 2 },
+            { type: 'number', label: '静止判定|vy|上限', path: 'deco.holdSpeedMax', min: 0.1, max: 3, step: 0.1, precision: 2 },
+            // ---- 长按加速 ----
+            { type: 'number', label: '长按加速倍率', path: 'deco.speedUpMul', min: 1, max: 10, step: 0.5, precision: 1 },
+            { type: 'number', label: '长按耗氧倍率', path: 'deco.speedUpO2Mul', min: 1, max: 6, step: 0.5, precision: 1 },
+            // ---- 惩罚 ----
+            { type: 'number', label: 'lv1 O2Max 倍率', path: 'deco.penalty.o2MaxMulLv1', min: 0.3, max: 1.0, step: 0.05, precision: 2 },
+            { type: 'number', label: 'lv2 O2Max 倍率', path: 'deco.penalty.o2MaxMulLv2', min: 0.3, max: 1.0, step: 0.05, precision: 2 },
+            { type: 'number', label: 'lv1 持续次数', path: 'deco.penalty.durationDivesLv1', min: 1, max: 5, step: 1 },
+            { type: 'number', label: 'lv2 持续次数', path: 'deco.penalty.durationDivesLv2', min: 1, max: 5, step: 1 },
+            { type: 'number', label: 'lv1 战利品倍率', path: 'deco.penalty.lootMulLv1', min: 0, max: 1, step: 0.1, precision: 2 },
+            { type: 'number', label: 'lv2 战利品倍率', path: 'deco.penalty.lootMulLv2', min: 0, max: 1, step: 0.1, precision: 2 },
+            // ---- 测试动作 ----
+            { type: 'action', label: '💨 立即把 N₂ 拉到 0.7（黄灯）', actionId: 'decoSetYellow' },
+            { type: 'action', label: '🩸 立即把 N₂ 拉到 1.1（红灯）', actionId: 'decoSetRed' },
+            { type: 'action', label: '☠ 立即把 N₂ 拉到 1.6（深红）', actionId: 'decoSetCritical' },
+            { type: 'action', label: '✅ 清零 N₂ / 取消减压任务', actionId: 'decoClear' },
+            { type: 'action', label: '🧪 模拟触发 lv1 DCS 惩罚', actionId: 'decoTriggerPenaltyLv1' },
+            { type: 'action', label: '🧪 模拟触发 lv2 DCS 惩罚', actionId: 'decoTriggerPenaltyLv2' },
+            { type: 'action', label: '🧹 清除 DCS 惩罚', actionId: 'decoClearPenalty' },
+            { type: 'action', label: '打印减压运行时（控制台）', actionId: 'decoDump' },
+        ]
+    },
 ];
 
 // 把 Debug / 性能 两个 Tab 置顶（用户偏好：调试和画质入口放最前面，避免每次都要左滑一堆 Tab）
