@@ -65,6 +65,7 @@ export {
     performPickupDropped,
     discardBagItemAtPlayer,
     resetPickupForDive,
+    updateCarryItemAnim,
 } from './extraction/logic/ItemPickup';
 
 // 丢弃物

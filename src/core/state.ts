@@ -433,6 +433,50 @@ export const player = {
         timer: 0,
         duration: 60,
         strength: 0,
+    },
+    /**
+     * 双手拾取动画（拾取战利品 / 丢弃物时触发）：
+     *   active   - 是否正在播放
+     *   timer    - 已播放帧数（0 起）
+     *   duration - 总帧数（60fps）
+     *   itemKind - 物品视觉 kind（与 RelicKind / DroppedItem.itemId 同字符串）；
+     *              用于决定双手中央绘制的 2D 矢量图形
+     *   fromX/fromY - 物品在世界中的起点（用于"从地面飘到双手"的过渡）
+     *
+     * 动画阶段（t = timer/duration 0~1）：
+     *   A 0.00~0.25  双手伸向地面物品（手臂渐入接管）
+     *   B 0.25~0.55  抓住后从起点飞到双手中心
+     *   C 0.55~0.85  双手抱住物品贴回胸前
+     *   D 0.85~1.00  手臂归位，物品淡出
+     *
+     * 不播放时 active=false，drawDiver 按原样渲染。
+     * 氧气罐拾取由 OxygenTank 的 flying 瓶 + 屏幕辉光特效负责，故不复用此字段。
+     */
+    carryItemAnim: {
+        active: false,
+        timer: 0,
+        duration: 75,
+        itemKind: '' as string,
+        fromX: 0,
+        fromY: 0,
+    },
+    /**
+     * 双臂张开"迎接氧气"动画（氧气罐安装完成时触发）：
+     *   active   - 是否正在播放
+     *   timer    - 已播放帧数
+     *   duration - 总帧数（60fps）
+     *
+     * 阶段（t = timer/duration 0~1）：
+     *   A 0.00~0.30  双臂从原姿态向身侧/后方张开（迎接姿态渐入）
+     *   B 0.30~0.70  保持张开（飞瓶到达 + 屏幕辉光 + 气泡爆发同步发生）
+     *   C 0.70~1.00  双臂归位
+     *
+     * 与 regulatorAnim / carryItemAnim 互斥（碰撞反应优先 > 抱物品 > 迎接）。
+     */
+    welcomeArmsAnim: {
+        active: false,
+        timer: 0,
+        duration: 60,
     }
 };
 

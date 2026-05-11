@@ -14,6 +14,7 @@
 
 import { state } from '../core/state';
 import { Relic, RelicKind, getRelicHints } from '../logic/Relic';
+import { getExtractionState } from '../extraction/core/ExtractionState';
 
 // 尺度放大系数：配合 Relic.ts 生成侧的 size 一起重调。
 // 在 drawRelic 统一 scale(size * RELIC_SCALE_MUL)，为后续运行期调整留出空间。
@@ -1256,9 +1257,16 @@ export function drawRelicsWorld(
     const relics: Relic[] = (maze as any).relics || [];
     if (relics.length === 0) return;
 
+    // 当次下潜已被拾取的 relic id 集合：必须在渲染层过滤掉，否则
+    // 拾取后图形仍留在原地（数据/检测层都已记录，仅渲染层漏过滤）
+    const ex = getExtractionState();
+    const pickedIds = ex ? ex.diveSession.pickedRelicIds : null;
+    const pickedSet = pickedIds && pickedIds.length > 0 ? new Set(pickedIds) : null;
+
     // 扩展 20px 的边缘兼底，避免物件跨视椒边界时突然闪掉
     const pad = 20;
     for (const relic of relics) {
+        if (pickedSet && pickedSet.has(relic.id)) continue;
         if (relic.x < viewL - pad || relic.x > viewR + pad) continue;
         if (relic.y < viewT - pad || relic.y > viewB + pad) continue;
         drawRelic(ctx, relic);

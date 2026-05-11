@@ -494,6 +494,8 @@ export function draw() {
         id: 'player',
         autoSwim: isAutoSwim,
         regulatorAnim: player.regulatorAnim,
+        carryItemAnim: player.carryItemAnim,
+        welcomeArmsAnim: player.welcomeArmsAnim,
     });
 
     // 生命探知仪：玩家身上的 LED 灯（与节拍同步闪烁）

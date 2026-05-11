@@ -1,4 +1,6 @@
 import { CONFIG } from '../core/config';
+import { drawRelicIconAt } from './RenderRelic';
+import type { RelicKind } from '../logic/Relic';
 
 type DiverColors = {
     suit: string;
@@ -53,6 +55,29 @@ type DiverMotion = {
         timer: number;
         duration: number;
         strength: number;
+    };
+    /**
+     * 双手抱拾取物动画。
+     * 阶段：A 双手伸向地面物品；B 物品从起点飞到双手中心；C 抱回胸前；D 手臂归位、物品淡出。
+     * itemKind 与 RelicKind / DroppedItem.itemId 同字符串，用于 drawRelicIconAt 绘制。
+     * fromX/fromY 是物品在世界中的起点（用于阶段 A→B 的世界→局部插值）。
+     */
+    carryItemAnim?: {
+        active: boolean;
+        timer: number;
+        duration: number;
+        itemKind: string;
+        fromX: number;
+        fromY: number;
+    };
+    /**
+     * 双臂张开"迎接氧气"动画（与 regulator/carry 互斥；优先级最低）。
+     * 阶段：A 张开（手臂渐入）；B 保持张开；C 归位。
+     */
+    welcomeArmsAnim?: {
+        active: boolean;
+        timer: number;
+        duration: number;
     };
 };
 
@@ -704,13 +729,13 @@ export function drawDiver(
                       * (1 - autoBlend * 0.6)  // 贴身姿态下衰减但不归零
                       * (idleBlend * 0.6 + speedNormForBody);
 
-    const leftArmUpper = baseL
+    const leftArmUpperBase = baseL
         + Math.sin(time * cfg.armIdleFrequency) * cfg.armIdleAmplitude * idleBlend
         + armBodySway
         + leftArmKick * cfg.armKickSwing * strokeScale
         - leftArmTurn * cfg.armTurnSwing
         + turnVisual * cfg.armTurnLeanFactor;
-    const rightArmUpper = baseR
+    const rightArmUpperBase = baseR
         - Math.sin(time * cfg.armIdleFrequency) * cfg.armIdleAmplitude * idleBlend
         - armBodySway
         - rightArmKick * cfg.armKickSwing * strokeScale
@@ -718,8 +743,50 @@ export function drawDiver(
         + turnVisual * cfg.armTurnLeanFactor;
     // 前臂在巡航姿态下也贴身伸直：把原本的 ±0.22 偏转衰减掉
     const forearmOffset = 0.22 * (1 - autoBlend * 0.85);
-    const leftArmLower = leftArmUpper + forearmOffset - leftArmKick * 0.08 * strokeScale + leftArmTurn * 0.12 - armClose * 0.18;
-    const rightArmLower = rightArmUpper - forearmOffset + rightArmKick * 0.08 * strokeScale - rightArmTurn * 0.12 + armClose * 0.18;
+    const leftArmLowerBase = leftArmUpperBase + forearmOffset - leftArmKick * 0.08 * strokeScale + leftArmTurn * 0.12 - armClose * 0.18;
+    const rightArmLowerBase = rightArmUpperBase - forearmOffset + rightArmKick * 0.08 * strokeScale - rightArmTurn * 0.12 + armClose * 0.18;
+
+    // ===== 双臂张开"迎接氧气"动画：直接对手臂角度做 blend（与 carry/regulator 互斥） =====
+    // 张开目标姿态：上臂指向身侧偏后（向外张），前臂顺势再外展一点 —— 形似"双臂张开拥抱迎接"
+    // 局部坐标：+x 为身体朝向，π 为正后方；左肩 y=-6.2，右肩 y=+6.2
+    // 左手目标角 π+0.95（上臂朝左后方约 54° 外展）；右手对称 π-0.95
+    const wa = motion.welcomeArmsAnim;
+    const welcomeActiveRaw = !!(wa && wa.active && wa.duration > 0);
+    // welcome 优先级最低：carryItem 先过滤；regulator 不影响左手但会接管右手，
+    // 所以 welcome 与 regulator 共存时也允许（regulator 后续会覆盖右手姿态）
+    const carryWillTakeover = !!(motion.carryItemAnim && motion.carryItemAnim.active);
+    const welcomeActive = welcomeActiveRaw && !carryWillTakeover;
+
+    let welcomeBlend = 0;
+    if (welcomeActive) {
+        const tw = Math.min(1, Math.max(0, wa!.timer / wa!.duration));
+        // A 0~0.30 张开（smoothstep 渐入）；B 0.30~0.70 保持；C 0.70~1.00 归位
+        if (tw < 0.30) {
+            const a = tw / 0.30;
+            welcomeBlend = a * a * (3 - 2 * a);
+        } else if (tw < 0.70) {
+            welcomeBlend = 1;
+        } else {
+            const c2 = (tw - 0.70) / 0.30;
+            const ec = c2 * c2 * (3 - 2 * c2);
+            welcomeBlend = 1 - ec;
+        }
+    }
+
+    // 张开动画期间叠加一点"接受能量"的呼吸抖动（让张开不死板）
+    const welcomeBreath = welcomeActive
+        ? Math.sin((wa!.timer / Math.max(1, wa!.duration)) * Math.PI * 4) * 0.05 * welcomeBlend
+        : 0;
+
+    const leftArmTargetUpper  = Math.PI + 0.95 + welcomeBreath;
+    const leftArmTargetLower  = leftArmTargetUpper + 0.18;
+    const rightArmTargetUpper = Math.PI - 0.95 - welcomeBreath;
+    const rightArmTargetLower = rightArmTargetUpper - 0.18;
+
+    const leftArmUpper  = leftArmUpperBase  + (leftArmTargetUpper  - leftArmUpperBase)  * welcomeBlend;
+    const leftArmLower  = leftArmLowerBase  + (leftArmTargetLower  - leftArmLowerBase)  * welcomeBlend;
+    const rightArmUpper = rightArmUpperBase + (rightArmTargetUpper - rightArmUpperBase) * welcomeBlend;
+    const rightArmLower = rightArmLowerBase + (rightArmTargetLower - rightArmLowerBase) * welcomeBlend;
 
     renderCtx.save();
     renderCtx.translate(x + driftX, y + driftY);
@@ -934,10 +1001,116 @@ export function drawDiver(
         }
     }
 
-    // --- 绘制左手臂（永远走原动画） ---
-    drawArm(renderCtx, 4.3, -6.2, leftArmUpper, leftArmLower, c);
+    // ========== 双手抱拾取物动画（与 regulator 互斥；regulator 优先） ==========
+    // 计算双手手腕目标点 + 物品在双手中央的位置（局部坐标）
+    const ca = motion.carryItemAnim;
+    const carryActiveRaw = !!(ca && ca.active && ca.duration > 0 && ca.itemKind);
+    // 若 regulator 正在抢右手，carry 让位（避免双手姿态打架）
+    const carryActive = carryActiveRaw && !regActive;
 
-    // --- 绘制右手臂：根据 handBlend 在原姿态 <-> "抓气嘴"姿态 之间过渡 ---
+    let carryArmBlend = 0;       // 0=走原双手动画，1=完全接管为"双手抱物"姿态
+    let carryItemX = 0;
+    let carryItemY = 0;
+    let carryItemAlpha = 0;      // 物品绘制透明度
+    let carryItemSize = 14;      // 物品图标尺寸（局部坐标 px）
+    let carryLeftWristX = 0, carryLeftWristY = 0;
+    let carryRightWristX = 0, carryRightWristY = 0;
+
+    if (carryActive) {
+        const t = Math.min(1, Math.max(0, ca!.timer / ca!.duration));
+
+        // 把世界起点换算到角色身体局部坐标（不计 driftX/driftY 与 rollSquash 微差）
+        const dwx = ca!.fromX - x;
+        const dwy = ca!.fromY - y;
+        const cosA = Math.cos(angle);
+        const sinA = Math.sin(angle);
+        const startLocalX =  cosA * dwx + sinA * dwy;
+        const startLocalY = -sinA * dwx + cosA * dwy;
+
+        // "抱住"目标位置：双手在身前合抱（胸前略偏外）
+        // 双手中央：身体局部 (carryHomeX, 0)；双手腕 ±carryHandSpread 分布
+        const carryHomeX = 17.5;     // 胸前外伸（接近头球前沿但稍内）
+        const carryHandSpread = 5.5; // 两腕 y 间距 / 2
+
+        // 阶段切分
+        const AEnd = 0.25;  // 双手伸出 + 物品起飞预备
+        const BEnd = 0.55;  // 物品从地面飞到双手中心
+        const CEnd = 0.85;  // 双手抱回胸前
+        // D: 0.85~1.0    手臂归位 + 物品淡出
+
+        // 物品的"地面"局部位置（A 阶段保持在起点）
+        const groundX = startLocalX;
+        const groundY = startLocalY;
+        // 抱住时的物品位置（双手中心）
+        const heldX = carryHomeX;
+        const heldY = 0;
+
+        if (t < AEnd) {
+            // A：双手伸向地面物品
+            const a = t / AEnd;
+            const ea = a * a * (3 - 2 * a); // smoothstep
+            carryArmBlend = ea;
+            carryItemX = groundX;
+            carryItemY = groundY;
+            carryItemAlpha = 1;
+            // 双手腕目标 = 物品位置上下分开（让双手"抓住"物品两侧）
+            carryLeftWristX = groundX;
+            carryLeftWristY = groundY - carryHandSpread;
+            carryRightWristX = groundX;
+            carryRightWristY = groundY + carryHandSpread;
+        } else if (t < BEnd) {
+            // B：物品从地面飞到双手中心；双手位置随物品同步插值
+            const b = (t - AEnd) / (BEnd - AEnd);
+            const eb = b * b * (3 - 2 * b);
+            carryArmBlend = 1;
+            carryItemX = groundX + (heldX - groundX) * eb;
+            carryItemY = groundY + (heldY - groundY) * eb;
+            carryItemAlpha = 1;
+            carryLeftWristX = carryItemX;
+            carryLeftWristY = carryItemY - carryHandSpread;
+            carryRightWristX = carryItemX;
+            carryRightWristY = carryItemY + carryHandSpread;
+        } else if (t < CEnd) {
+            // C：稳定抱住（小幅呼吸抖动）
+            const c2 = (t - BEnd) / (CEnd - BEnd);
+            const breathe = Math.sin(c2 * Math.PI * 2) * 0.6;
+            carryArmBlend = 1;
+            carryItemX = heldX + breathe * 0.3;
+            carryItemY = heldY;
+            carryItemAlpha = 1;
+            carryLeftWristX = carryItemX;
+            carryLeftWristY = carryItemY - carryHandSpread;
+            carryRightWristX = carryItemX;
+            carryRightWristY = carryItemY + carryHandSpread;
+        } else {
+            // D：手臂归位 + 物品淡出（"收进背包"的视觉提示）
+            const d = (t - CEnd) / (1 - CEnd);
+            carryArmBlend = 1 - d;
+            carryItemX = heldX;
+            carryItemY = heldY;
+            carryItemAlpha = 1 - d;
+            carryLeftWristX = carryItemX;
+            carryLeftWristY = carryItemY - carryHandSpread * (1 - d * 0.4);
+            carryRightWristX = carryItemX;
+            carryRightWristY = carryItemY + carryHandSpread * (1 - d * 0.4);
+        }
+    }
+
+    // --- 绘制左手臂（regulator 不接管左手；carry 接管时插值到目标手腕） ---
+    if (carryActive && carryArmBlend > 0.01) {
+        const lShoulderX = 4.3, lShoulderY = -6.2;
+        const lElbowX0 = lShoulderX + Math.cos(leftArmUpper) * ARM_UPPER_LEN;
+        const lElbowY0 = lShoulderY + Math.sin(leftArmUpper) * ARM_UPPER_LEN;
+        const lWristX0 = lElbowX0 + Math.cos(leftArmLower) * ARM_LOWER_LEN;
+        const lWristY0 = lElbowY0 + Math.sin(leftArmLower) * ARM_LOWER_LEN;
+        const blendedX = lWristX0 + (carryLeftWristX - lWristX0) * carryArmBlend;
+        const blendedY = lWristY0 + (carryLeftWristY - lWristY0) * carryArmBlend;
+        drawArmReach(renderCtx, lShoulderX, lShoulderY, blendedX, blendedY, c);
+    } else {
+        drawArm(renderCtx, 4.3, -6.2, leftArmUpper, leftArmLower, c);
+    }
+
+    // --- 绘制右手臂：regulator 优先；其次 carry；都没有则原姿态 ---
     let rightWristX = 0, rightWristY = 0; // 供气嘴阶段 C 吸附
     if (regActive && handBlend > 0.01) {
         // 原右手腕（通过原角度反推）：肩 (4.3, 6.2) → upper → lower
@@ -958,6 +1131,15 @@ export function drawDiver(
         const res = drawArmReach(renderCtx, rShoulderX, rShoulderY, blendedWristX, blendedWristY, c);
         rightWristX = res.wristX;
         rightWristY = res.wristY;
+    } else if (carryActive && carryArmBlend > 0.01) {
+        const rShoulderX = 4.3, rShoulderY = 6.2;
+        const rElbowX0 = rShoulderX + Math.cos(rightArmUpper) * ARM_UPPER_LEN;
+        const rElbowY0 = rShoulderY + Math.sin(rightArmUpper) * ARM_UPPER_LEN;
+        const rWristX0 = rElbowX0 + Math.cos(rightArmLower) * ARM_LOWER_LEN;
+        const rWristY0 = rElbowY0 + Math.sin(rightArmLower) * ARM_LOWER_LEN;
+        const blendedX = rWristX0 + (carryRightWristX - rWristX0) * carryArmBlend;
+        const blendedY = rWristY0 + (carryRightWristY - rWristY0) * carryArmBlend;
+        drawArmReach(renderCtx, rShoulderX, rShoulderY, blendedX, blendedY, c);
     } else {
         drawArm(renderCtx, 4.3, 6.2, rightArmUpper, rightArmLower, c);
     }
@@ -991,6 +1173,20 @@ export function drawDiver(
         // 加上自旋分量（阶段 A/B 的翻滚感）
         const drawAngle = faceAngle + regAngleLocal * 0.3;
         drawRegulatorAndHose(renderCtx, regX, regY, 2, 4, drawAngle, c);
+    }
+
+    // --- 双手抱拾取物：在最上层绘制（与气嘴并列优先级，但两者互斥不会同框） ---
+    if (carryActive && carryItemAlpha > 0.01) {
+        renderCtx.save();
+        renderCtx.globalAlpha *= carryItemAlpha;
+        // drawRelicIconAt 内部会再 translate + scale，传 cx/cy 即可
+        // 物品在双手中略微"持握感"旋转：随 timer 做缓慢漂动
+        renderCtx.translate(carryItemX, carryItemY);
+        const tNorm = ca!.timer / ca!.duration;
+        const wob = Math.sin(tNorm * Math.PI * 2) * 0.08;
+        renderCtx.rotate(wob);
+        drawRelicIconAt(renderCtx, ca!.itemKind as RelicKind, 0, 0, carryItemSize);
+        renderCtx.restore();
     }
 
     renderCtx.restore();

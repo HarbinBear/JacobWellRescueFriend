@@ -19,7 +19,7 @@ import { triggerCollisionImpact, resetCollisionImpact, updateRegulatorAnim } fro
 import { loadMazeProgress, saveMazeProgress, clearMazeSave } from './MazeSave';
 import { setActiveSeededRandom, clearActiveSeededRandom } from '../core/SeededRandom';
 // 撤离玩法钩子：每次下潜开始/结束自动应用装备效果与结算战利品
-import { onExtractionDiveStart, onExtractionDiveEnd } from '../extraction';
+import { onExtractionDiveStart, onExtractionDiveEnd, updateCarryItemAnim } from '../extraction';
 // 减压停留系统：氮气累积 / 减压任务 / DCS 惩罚
 import {
     updateDecompressionSystem,
@@ -1421,6 +1421,9 @@ export function updateMaze() {
 
     // --- 气嘴脱落动画推进（撞岩石后的"手捞气嘴塞回嘴"动画） ---
     updateRegulatorAnim();
+
+    // --- 双手抱拾取物动画推进（拾取战利品 / 丢弃物时） ---
+    updateCarryItemAnim();
 
     // --- 减压停留系统：氮气吸排 / 减压任务进度 / 长按加速结算 ---
     updateDecompressionSystem(1 / 60);

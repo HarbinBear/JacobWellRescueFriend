@@ -545,6 +545,16 @@ export function updateOxygenTanks() {
     if (fb.o2LossTimer > 0) {
         fb.o2LossTimer = Math.max(0, fb.o2LossTimer - 1 / 60);
     }
+
+    // === 双臂张开"迎接氧气"动画推进（completeInstall 启动；自然消亡）===
+    const wa = player.welcomeArmsAnim;
+    if (wa && wa.active) {
+        wa.timer += 1;
+        if (wa.timer >= wa.duration) {
+            wa.active = false;
+            wa.timer = 0;
+        }
+    }
 }
 
 // =============================================
@@ -596,6 +606,13 @@ function completeInstall(t: OxygenTank, fb: OxygenFeedback) {
         amount: t.amount,
         done: false,
     });
+
+    // 启动"双臂张开迎接"动画：与飞瓶/辉光/气泡同步，~1s 内完成 张开→保持→归位
+    if (player.welcomeArmsAnim) {
+        player.welcomeArmsAnim.active = true;
+        player.welcomeArmsAnim.timer = 0;
+        player.welcomeArmsAnim.duration = 60; // 60 帧 ≈ 1.0s
+    }
 }
 
 function spawnBubbleBurst(fb: OxygenFeedback, cx: number, cy: number, count: number) {

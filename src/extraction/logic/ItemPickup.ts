@@ -134,6 +134,9 @@ export function performPickupDropped(droppedId: number): PickupResult {
     const display = getItemDisplayName(def.id, it.condition);
     pushPickupHint('✓ ' + display, it.x, it.y);
 
+    // 启动"双手抱物品"动画：itemId 与 RelicKind 同字符串，可直接用作图标 kind
+    startCarryItemAnim(it.itemId, it.x, it.y);
+
     return {
         ok: true,
         displayName: display,
@@ -250,6 +253,9 @@ export function performPickup(relicId: number): PickupResult {
     const price = computeItemPrice(def.id, condition);
     pushPickupHint('✓ ' + display + '  +' + price + ' 金', relic.x, relic.y);
 
+    // 启动"双手抱物品"动画（relic.kind 与 RelicKind 同字符串）
+    startCarryItemAnim(relic.kind as string, relic.x, relic.y);
+
     return {
         ok: true,
         displayName: display,
@@ -275,12 +281,53 @@ export function getRelicPickupLabel(relicId: number): string {
 // 下潜钩子
 // =============================================
 
-/** 每次下潜开始/结束：清空本次拾取记录 + 清空飘字 + 清空丢弃物 */
+/** 每次下潜开始/结束：清空本次拾取记录 + 清空飘字 + 清空丢弃物 + 关闭双手动画 */
 export function resetPickupForDive(): void {
     const ex = ensureExtractionState();
     ex.diveSession.pickedRelicIds = [];
     _pickupHints = [];
     resetDroppedItems();
+    // 同步清掉残留的双手抱物品动画（避免跨场景/读档时有残影）
+    if (player.carryItemAnim) {
+        player.carryItemAnim.active = false;
+        player.carryItemAnim.timer = 0;
+        player.carryItemAnim.itemKind = '';
+    }
+}
+
+// =============================================
+// 双手抱拾取物动画启动 / 推进
+// =============================================
+
+/**
+ * 启动"双手伸向物品 → 抱回胸前 → 收入背包"动画。
+ * 由 performPickup / performPickupDropped 在拾取成功瞬间调用。
+ *   itemKind: 用于 drawRelicIconAt 渲染的图形 kind（与 RelicKind 同字符串；
+ *             非 RelicKind 时只播放双手动画、不显示物品图标）。
+ *   fromX/fromY: 物品在世界中的起点，用于"从地面飘到双手"的过渡。
+ */
+export function startCarryItemAnim(itemKind: string, fromX: number, fromY: number): void {
+    const ca = player.carryItemAnim;
+    if (!ca) return;
+    ca.active = true;
+    ca.timer = 0;
+    // 75 帧 ≈ 1.25s（A 0.31s + B 0.38s + C 0.38s + D 0.19s）
+    ca.duration = 75;
+    ca.itemKind = itemKind;
+    ca.fromX = fromX;
+    ca.fromY = fromY;
+}
+
+/** 每帧推进双手抱物品动画；由 Logic.update / MazeLogic.updateMaze 调用。 */
+export function updateCarryItemAnim(): void {
+    const ca = player.carryItemAnim;
+    if (!ca || !ca.active) return;
+    ca.timer += 1;
+    if (ca.timer >= ca.duration) {
+        ca.active = false;
+        ca.timer = 0;
+        ca.itemKind = '';
+    }
 }
 
 // =============================================
