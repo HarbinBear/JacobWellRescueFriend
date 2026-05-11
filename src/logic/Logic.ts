@@ -11,7 +11,7 @@ import { checkCollision, getNearestWallDist, checkMazeCollision } from './Collis
 
 import { updateCameraSpringArm, snapCameraToPlayer, getAdaptiveZoom } from './CameraLogic';
 import { updateMarkers, updateWheelButtonVisibility } from './Marker';
-import { triggerCollisionImpact, resetCollisionImpact } from './CollisionImpact';
+import { triggerCollisionImpact, resetCollisionImpact, updateRegulatorAnim } from './CollisionImpact';
 
 // 从拆分模块重新导出，保持外部导入路径不变
 export { resetArenaLogic, updateArena } from './ArenaLogic';
@@ -1018,6 +1018,9 @@ export function update() {
 
     // 呼吸系统：仅在主线 play 阶段有效（内部会自己判断 screen/stage）
     updateBreathSystem();
+
+    // 气嘴脱落动画推进（撞岩石后的"手捞气嘴塞回嘴"动画）
+    updateRegulatorAnim();
 
     // 更新凶猛鱼敌人
     updateAllFishEnemies(1);

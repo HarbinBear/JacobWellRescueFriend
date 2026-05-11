@@ -15,7 +15,7 @@ import { buildOxygenTanksForMaze, updateOxygenTanks, createOxygenFeedback, trigg
 import { buildRelicsForMaze, updateRelicDiscovery, resetRelicDiscoveryForDive, getThisDiveNewRelicIds, getThisDiveNewCodexCount } from './Relic';
 import { updateLifeDetector, resetLifeDetector } from './LifeDetector';
 import { playSFX } from '../audio/AudioManager';
-import { triggerCollisionImpact, resetCollisionImpact } from './CollisionImpact';
+import { triggerCollisionImpact, resetCollisionImpact, updateRegulatorAnim } from './CollisionImpact';
 import { loadMazeProgress, saveMazeProgress, clearMazeSave } from './MazeSave';
 import { setActiveSeededRandom, clearActiveSeededRandom } from '../core/SeededRandom';
 // 撤离玩法钩子：每次下潜开始/结束自动应用装备效果与结算战利品
@@ -1418,6 +1418,9 @@ export function updateMaze() {
 
     // --- 呼吸系统：气泡 + 音效，根据运动量调节节奏 ---
     updateBreathSystem();
+
+    // --- 气嘴脱落动画推进（撞岩石后的"手捞气嘴塞回嘴"动画） ---
+    updateRegulatorAnim();
 
     // --- 减压停留系统：氮气吸排 / 减压任务进度 / 长按加速结算 ---
     updateDecompressionSystem(1 / 60);

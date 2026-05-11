@@ -38,6 +38,22 @@ type DiverMotion = {
     // 为 false 则保持原带臂摇摆/划水姿态。适用于在摇杆／自动挡移动时
     // 突出“没有划手动作”的贴身巡航观感。
     autoSwim?: boolean;
+    /**
+     * 气嘴脱落→捞回塞嘴 动画数据（由 CollisionImpact 启动，Logic/MazeLogic 每帧推进）。
+     * active=false 时按原样渲染（气嘴藏在嘴里不显示）；
+     * active=true 时画一个脱开的气嘴+软管，右手脱离原动画去抓气嘴再送回嘴边。
+     *   阶段（t = timer / duration）：
+     *     A 0.00~0.20  气嘴被撞飞：从嘴部向前外侧弹出
+     *     B 0.20~0.55  右手伸出去"捞"气嘴
+     *     C 0.55~0.90  抓到气嘴后把它拖回嘴部
+     *     D 0.90~1.00  到位，手臂归位
+     */
+    regulatorAnim?: {
+        active: boolean;
+        timer: number;
+        duration: number;
+        strength: number;
+    };
 };
 
 // 模块级腿部相位时钟：每个角色独立追踪，由 drawDiver 每帧按速度+boost 推进
@@ -112,6 +128,128 @@ function drawArm(
     renderCtx.lineTo(elbowX, elbowY);
     renderCtx.lineTo(handX, handY);
     renderCtx.stroke();
+}
+
+// 手臂长度常量（用于反解去抓气嘴时的手腕限位）
+const ARM_UPPER_LEN = 8.2;
+const ARM_LOWER_LEN = 8.4;
+const ARM_MAX_REACH = ARM_UPPER_LEN + ARM_LOWER_LEN;
+
+/**
+ * 以"伸向手腕目标点"的方式绘制手臂（局部坐标系：+x 为角色朝向）。
+ * 简单策略：upperAngle = lowerAngle = atan2(targetDy, targetDx)，两段共线直接去抓。
+ * 若距离 > 最大伸展，按单位向量截断到最大伸展；若距离 < 最小展开（ARM_MAX_REACH * 0.3），
+ * 为了避免手臂"缩进身体里"，强制拉到最小展开距离并保持方向。
+ * 返回实际手腕位置（给上层画气嘴用）。
+ */
+function drawArmReach(
+    renderCtx: CanvasRenderingContext2D,
+    shoulderX: number,
+    shoulderY: number,
+    targetX: number,
+    targetY: number,
+    colors: DiverColors,
+): { wristX: number; wristY: number; angle: number } {
+    const dx = targetX - shoulderX;
+    const dy = targetY - shoulderY;
+    let dist = Math.hypot(dx, dy);
+    if (dist < 0.001) dist = 0.001;
+    const ang = Math.atan2(dy, dx);
+
+    // 长度限位：目标太远 → 伸直；目标太近 → 不画成反折，按最小 40% 伸展
+    const minReach = ARM_MAX_REACH * 0.4;
+    const reach = Math.max(minReach, Math.min(ARM_MAX_REACH, dist));
+
+    // 两段的弯曲点：在上臂末端、下臂起点（肘关节）
+    // 为了让手臂不像硬棍子，让肘略微离直线一点（向外侧偏）
+    const elbowFrac = ARM_UPPER_LEN / ARM_MAX_REACH;
+    const straightElbowX = shoulderX + Math.cos(ang) * reach * elbowFrac;
+    const straightElbowY = shoulderY + Math.sin(ang) * reach * elbowFrac;
+    // 法线偏移（让肘稍微拱出去）
+    const nx = -Math.sin(ang);
+    const ny = Math.cos(ang);
+    // 距离越短，肘拱得越明显（最多 2.2 像素）
+    const bendAmt = (1 - Math.min(1, dist / ARM_MAX_REACH)) * 2.2 + 0.6;
+    const elbowX = straightElbowX + nx * bendAmt;
+    const elbowY = straightElbowY + ny * bendAmt;
+
+    const wristX = shoulderX + Math.cos(ang) * reach;
+    const wristY = shoulderY + Math.sin(ang) * reach;
+
+    renderCtx.strokeStyle = colors.suit;
+    renderCtx.lineCap = 'round';
+    renderCtx.lineJoin = 'round';
+    renderCtx.lineWidth = 5.2;
+    renderCtx.beginPath();
+    renderCtx.moveTo(shoulderX, shoulderY);
+    renderCtx.lineTo(elbowX, elbowY);
+    renderCtx.lineTo(wristX, wristY);
+    renderCtx.stroke();
+
+    return { wristX, wristY, angle: ang };
+}
+
+/**
+ * 绘制气嘴（regulator mouthpiece）+ 软管。
+ * 局部坐标系：+x 为角色朝向；mouthX/Y 是嘴部位置；regX/Y 是气嘴当前位置；
+ * hoseAnchorX/Y 是软管"身体端"锚点（一般取背后氧气瓶肩膀位置，这里用胸前肩点作为近似）。
+ */
+function drawRegulatorAndHose(
+    renderCtx: CanvasRenderingContext2D,
+    regX: number,
+    regY: number,
+    hoseAnchorX: number,
+    hoseAnchorY: number,
+    regAngle: number,
+    colors: DiverColors,
+) {
+    // --- 软管：从胸前锚点到气嘴的三次贝塞尔，中间控制点给一个垂下的弧度 ---
+    const midX = (hoseAnchorX + regX) * 0.5;
+    const midY = (hoseAnchorY + regY) * 0.5;
+    // 软管弯曲：中点往朝向正方向（+x）和 +y 方向各拉一点，让软管像自然垂着
+    const ctrl1X = hoseAnchorX + (midX - hoseAnchorX) * 0.5 + 2;
+    const ctrl1Y = hoseAnchorY + (midY - hoseAnchorY) * 0.5 + 3;
+    const ctrl2X = regX - Math.cos(regAngle) * 3;
+    const ctrl2Y = regY - Math.sin(regAngle) * 3 + 2.5;
+
+    renderCtx.strokeStyle = '#1a2228';
+    renderCtx.lineCap = 'round';
+    renderCtx.lineWidth = 2.4;
+    renderCtx.beginPath();
+    renderCtx.moveTo(hoseAnchorX, hoseAnchorY);
+    renderCtx.bezierCurveTo(ctrl1X, ctrl1Y, ctrl2X, ctrl2Y, regX, regY);
+    renderCtx.stroke();
+    // 软管的橡胶波纹高光
+    renderCtx.strokeStyle = 'rgba(255,255,255,0.08)';
+    renderCtx.lineWidth = 1.0;
+    renderCtx.beginPath();
+    renderCtx.moveTo(hoseAnchorX, hoseAnchorY);
+    renderCtx.bezierCurveTo(ctrl1X, ctrl1Y, ctrl2X, ctrl2Y, regX, regY);
+    renderCtx.stroke();
+
+    // --- 气嘴本体：朝向 regAngle（咬嘴朝前、出气口朝后） ---
+    renderCtx.save();
+    renderCtx.translate(regX, regY);
+    renderCtx.rotate(regAngle);
+    // 机身（灰黑圆角矩形）
+    renderCtx.fillStyle = '#2a3238';
+    drawRoundRectPath(renderCtx, -3.2, -2.6, 6.4, 5.2, 1.4);
+    renderCtx.fill();
+    // 前端咬嘴（稍亮的橡胶色突出口）
+    renderCtx.fillStyle = colors.accent;
+    drawRoundRectPath(renderCtx, 1.5, -1.6, 2.4, 3.2, 1.0);
+    renderCtx.fill();
+    // 排气膜高光
+    renderCtx.fillStyle = 'rgba(255,255,255,0.12)';
+    renderCtx.beginPath();
+    renderCtx.ellipse(-0.4, -0.2, 1.6, 0.9, 0, 0, Math.PI * 2);
+    renderCtx.fill();
+    // 侧面排气口（小圆点）
+    renderCtx.fillStyle = '#14181c';
+    renderCtx.beginPath();
+    renderCtx.arc(-1.6, 1.6, 0.6, 0, Math.PI * 2);
+    renderCtx.fill();
+    renderCtx.restore();
 }
 
 function drawLegAndFin(
@@ -715,17 +853,153 @@ export function drawDiver(
 
     renderCtx.restore();
 
+    // ========== 气嘴脱落动画：右手伸出去抓 / 把气嘴塞回嘴 ==========
+    // 计算动画进度 t（0~1）；以及当前帧气嘴与右手腕位置
+    // 局部坐标：+x 为角色朝向、+y 为右侧
+    const ra = motion.regulatorAnim;
+    const regActive = !!(ra && ra.active && ra.duration > 0);
+    const headY = headYawLead * cfg.headOffsetScale;
+    const mouthX = 21.0;            // 嘴部（头球前沿）局部 x
+    const mouthY = headY;           // 嘴部局部 y（跟着头一起微动）
+
+    let handBlend = 0;              // 0=走原右手动画，1=完全接管为"抓气嘴"姿态
+    let regX = mouthX;
+    let regY = mouthY;
+    let regAngleLocal = 0;          // 气嘴自身旋转角（咬嘴朝前为 0）
+    let regVisible = false;         // 气嘴是否以"外露"状态绘制（在嘴里时不画）
+
+    if (regActive) {
+        const t = Math.min(1, Math.max(0, ra!.timer / ra!.duration));
+        const strengthMul = 0.7 + 0.5 * ra!.strength; // 轻撞 0.7，重撞 1.2
+
+        // 各阶段分段
+        // A: 0.00 ~ 0.20  气嘴被撞飞；手还来不及反应
+        // B: 0.20 ~ 0.55  手伸向气嘴
+        // C: 0.55 ~ 0.90  手抓着气嘴往回送
+        // D: 0.90 ~ 1.00  回到嘴边
+        const AEnd = 0.20;
+        const BEnd = 0.55;
+        const CEnd = 0.90;
+
+        // 气嘴被撞飞的"最远点"（朝右前下）：
+        //   y 正方向（角色右侧）14 像素 + x 方向前伸 8
+        //   加一点上下飘荡让它像漂在水里
+        const flungX = mouthX + 8 * strengthMul;
+        const flungY = mouthY + 15 * strengthMul;
+
+        // 胸前软管锚点（气瓶阀门口，位于身前中线偏右）
+        const hoseAnchorX = 2;
+        const hoseAnchorY = 4;
+
+        // 阶段 A：弹出（ease-out）
+        if (t < AEnd) {
+            const a = t / AEnd;
+            const ea = 1 - (1 - a) * (1 - a); // easeOut
+            regX = mouthX + (flungX - mouthX) * ea;
+            regY = mouthY + (flungY - mouthY) * ea;
+            handBlend = Math.min(0.3, a * 0.3); // 手才刚开始反应
+            regVisible = a > 0.05;
+            // 气嘴自旋一点
+            regAngleLocal = ea * 0.6;
+        } else if (t < BEnd) {
+            // 阶段 B：气嘴在最远处轻漂；手伸过去
+            const b = (t - AEnd) / (BEnd - AEnd);
+            // 轻漂：围绕 flung 小范围浮动
+            const drift = Math.sin(b * Math.PI * 2) * 0.8;
+            regX = flungX + drift * 0.3;
+            regY = flungY + drift;
+            handBlend = 0.3 + 0.7 * smoothstepLocal(b); // 渐入完全接管
+            regVisible = true;
+            regAngleLocal = 0.6 + Math.sin(b * Math.PI * 2) * 0.25;
+        } else if (t < CEnd) {
+            // 阶段 C：手抓着气嘴往嘴边送（气嘴跟随手腕）
+            const c2 = (t - BEnd) / (CEnd - BEnd);
+            const ec = c2 * c2 * (3 - 2 * c2); // smoothstep
+            // 气嘴位置由手腕驱动，这里占位成目标点，下面用 wrist 覆盖
+            regX = flungX + (mouthX - flungX) * ec;
+            regY = flungY + (mouthY - flungY) * ec;
+            handBlend = 1;
+            regVisible = true;
+            // 收回时气嘴自旋归零
+            regAngleLocal = 0.6 * (1 - ec);
+        } else {
+            // 阶段 D：回到嘴边，手撤回
+            const d = (t - CEnd) / (1 - CEnd);
+            regX = mouthX;
+            regY = mouthY;
+            handBlend = 1 - d; // 手缓缓归位
+            // 最后 30% 气嘴已经含住，不外露
+            regVisible = d < 0.7;
+            regAngleLocal = 0;
+        }
+    }
+
+    // --- 绘制左手臂（永远走原动画） ---
     drawArm(renderCtx, 4.3, -6.2, leftArmUpper, leftArmLower, c);
-    drawArm(renderCtx, 4.3, 6.2, rightArmUpper, rightArmLower, c);
+
+    // --- 绘制右手臂：根据 handBlend 在原姿态 <-> "抓气嘴"姿态 之间过渡 ---
+    let rightWristX = 0, rightWristY = 0; // 供气嘴阶段 C 吸附
+    if (regActive && handBlend > 0.01) {
+        // 原右手腕（通过原角度反推）：肩 (4.3, 6.2) → upper → lower
+        const rShoulderX = 4.3, rShoulderY = 6.2;
+        const rElbowX0 = rShoulderX + Math.cos(rightArmUpper) * ARM_UPPER_LEN;
+        const rElbowY0 = rShoulderY + Math.sin(rightArmUpper) * ARM_UPPER_LEN;
+        const rWristX0 = rElbowX0 + Math.cos(rightArmLower) * ARM_LOWER_LEN;
+        const rWristY0 = rElbowY0 + Math.sin(rightArmLower) * ARM_LOWER_LEN;
+
+        // 目标手腕：阶段 B 指向气嘴；阶段 C/D 紧贴气嘴位置（所以正好 = regX/regY）
+        const targetWristX = regX;
+        const targetWristY = regY;
+
+        // 在原手腕与目标手腕之间按 handBlend 线性插值
+        const blendedWristX = rWristX0 + (targetWristX - rWristX0) * handBlend;
+        const blendedWristY = rWristY0 + (targetWristY - rWristY0) * handBlend;
+
+        const res = drawArmReach(renderCtx, rShoulderX, rShoulderY, blendedWristX, blendedWristY, c);
+        rightWristX = res.wristX;
+        rightWristY = res.wristY;
+    } else {
+        drawArm(renderCtx, 4.3, 6.2, rightArmUpper, rightArmLower, c);
+    }
+
+    // 阶段 C/D：把气嘴锚定到手腕位置，让气嘴看起来是被手捧着送回嘴的
+    if (regActive && ra!.timer / ra!.duration >= 0.55 && ra!.timer / ra!.duration < 0.90) {
+        regX = rightWristX;
+        regY = rightWristY;
+    }
 
     // 头部：加入蛇形传导偏移（头先转、身后跟）
     // headYawLead 是沿身体 y 轴的微小偏移，让头颈看起来像先扭动
     renderCtx.fillStyle = c.suit;
     renderCtx.beginPath();
-    renderCtx.arc(15.8, headYawLead * cfg.headOffsetScale, 6.5, 0, Math.PI * 2);
+    renderCtx.arc(15.8, headY, 6.5, 0, Math.PI * 2);
     renderCtx.fill();
 
+    // --- 气嘴 + 软管（在头之后绘制，压在最上层） ---
+    if (regActive && regVisible) {
+        // 气嘴朝向：让咬嘴口指向嘴部（让视觉上"对着嘴"的阶段 C/D 很自然）
+        // 计算从气嘴指向嘴的方向作为咬嘴朝向
+        const dx = mouthX - regX;
+        const dy = mouthY - regY;
+        let faceAngle: number;
+        if (Math.hypot(dx, dy) > 2) {
+            faceAngle = Math.atan2(dy, dx);
+        } else {
+            // 太靠近嘴时直接指向 +x（朝前）
+            faceAngle = 0;
+        }
+        // 加上自旋分量（阶段 A/B 的翻滚感）
+        const drawAngle = faceAngle + regAngleLocal * 0.3;
+        drawRegulatorAndHose(renderCtx, regX, regY, 2, 4, drawAngle, c);
+    }
+
     renderCtx.restore();
+}
+
+// 局部 smoothstep（避免依赖上方工具的命名冲突）
+function smoothstepLocal(t: number): number {
+    const x = Math.max(0, Math.min(1, t));
+    return x * x * (3 - 2 * x);
 }
 
 export function drawLungs(renderCtx: CanvasRenderingContext2D, x: number, y: number, o2: number) {

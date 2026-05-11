@@ -414,7 +414,26 @@ export const player = {
      */
     o2Max: 100,
     silt: 0,
-    animTime: 0 // 动画时间（用于脚蹼动画）
+    animTime: 0, // 动画时间（用于脚蹼动画）
+    /**
+     * 气嘴脱落动画（撞岩石时触发）：
+     *   active  - 是否正在播放
+     *   timer   - 已播放帧数（0 起）
+     *   duration- 总帧数（60fps）
+     *   strength- 触发时的撞击强度（0~1），用于缩放气嘴飞出的距离
+     * 动画阶段（以 t = timer/duration 为进度 0~1）：
+     *   A  0.00~0.20  气嘴被撞飞：从嘴部向前外侧弹出，气泡爆发
+     *   B  0.20~0.55  右手伸出去"捞"气嘴（手臂目标角度指向气嘴位置）
+     *   C  0.55~0.90  手抓到气嘴后把它拖回嘴部
+     *   D  0.90~1.00  气嘴到位，手臂缓缓归位
+     * 不播放时 active=false，drawDiver 按原样渲染。
+     */
+    regulatorAnim: {
+        active: false,
+        timer: 0,
+        duration: 60,
+        strength: 0,
+    }
 };
 
 export const particles = []; // 扬尘与气泡

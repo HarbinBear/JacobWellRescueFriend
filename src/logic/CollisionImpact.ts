@@ -72,10 +72,30 @@ export function triggerCollisionImpact(preVx: number, preVy: number, x: number, 
     }
 
     // ---- 气泡爆发：走 BreathSystem 渲染管线，比呼吸气泡多得多也大得多 ----
+    // 气泡起点从"撞击点"改为"嘴部世界坐标"，和\"气嘴被撞掉\"动画一致——
+    // 视觉上气泡是从嘴前飞出来的气嘴处冒出，而不是撞击点四周随机散射
     try {
-        spawnImpactBurst(x, y, strength);
+        const mouthOffset: number = (CONFIG.breath as any)?.mouthOffsetForward ?? 22;
+        const mouthX = player.x + Math.cos(player.angle) * mouthOffset;
+        const mouthY = player.y + Math.sin(player.angle) * mouthOffset;
+        spawnImpactBurst(mouthX, mouthY, strength);
     } catch (e) {
-        // 气泡生成失败不影响音效和氧气损失
+        // 气泡生成失败不影响音效和氧气损失；兜底用撞击点
+        try { spawnImpactBurst(x, y, strength); } catch (_) { /* noop */ }
+    }
+
+    // ---- 角色动画：气嘴被撞掉，伸手捞回塞嘴 ----
+    // 动画时长随强度拉长（轻撞快速回收、重撞慢慢摸回）
+    try {
+        const durMin = 45;   // 帧（轻撞约 0.75s）
+        const durMax = 90;   // 帧（重撞约 1.5s）
+        const duration = Math.round(lerp(durMin, durMax, strength));
+        player.regulatorAnim.active = true;
+        player.regulatorAnim.timer = 0;
+        player.regulatorAnim.duration = duration;
+        player.regulatorAnim.strength = strength;
+    } catch (e) {
+        // 动画启动失败不影响其他反馈
     }
 
     // ---- 呼吸应激：把撞击强度注入呼吸压强系统，呼吸会变急促几秒后才平复 ----
@@ -113,4 +133,21 @@ export function triggerCollisionImpact(preVx: number, preVy: number, x: number, 
 // 重置冷却时间（模式切换/下潜开始时调用，避免跨场景被冷却误挡）
 export function resetCollisionImpact(): void {
     _lastImpactTime = 0;
+    // 同时清掉可能还在播放的气嘴动画（跨场景/模式切换）
+    player.regulatorAnim.active = false;
+    player.regulatorAnim.timer = 0;
+}
+
+/**
+ * 每帧推进"气嘴掉落→捞回塞嘴"动画计时；由 Logic.update / MazeLogic.updateMaze 调用。
+ * 动画时长到后自动关闭 active。
+ */
+export function updateRegulatorAnim(): void {
+    const ra = player.regulatorAnim;
+    if (!ra || !ra.active) return;
+    ra.timer += 1;
+    if (ra.timer >= ra.duration) {
+        ra.active = false;
+        ra.timer = 0;
+    }
 }

@@ -493,6 +493,7 @@ export function draw() {
         kickDrive: state.manualDrive.kickDrive,
         id: 'player',
         autoSwim: isAutoSwim,
+        regulatorAnim: player.regulatorAnim,
     });
 
     // 生命探知仪：玩家身上的 LED 灯（与节拍同步闪烁）
