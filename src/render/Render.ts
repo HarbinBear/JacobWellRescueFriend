@@ -72,8 +72,8 @@ export function draw() {
     // 每帧开始时确保dpr缩放生效
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    // 家场景（晚上回家剧情）：完全脱离水下世界渲染管线，直接由 RenderHomeScene 接管
-    if (state.screen === 'home_evening') {
+    // 家场景（晚上回家剧情）/ 剧情进度选择页：完全脱离水下世界渲染管线，直接由 RenderUI 接管
+    if (state.screen === 'home_evening' || state.screen === 'progressSelect') {
         ctx.fillStyle = '#000';
         ctx.fillRect(0, 0, logicW, logicH);
         profileEnd('draw.sky');

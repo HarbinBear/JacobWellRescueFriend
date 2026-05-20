@@ -4,6 +4,7 @@ import { ctx, canvas, logicW, logicH } from './Canvas';
 import { createFishEnemy } from '../logic/FishEnemy';
 import { triggerPlayerAttack } from '../logic/FishEnemy';
 import { drawMenu } from './RenderMenu';
+import { drawProgressSelect } from './RenderProgressSelect';
 import { drawArenaHUD } from './RenderArenaUI';
 import { drawMazeHUD } from './RenderMazeUI';
 import { drawHomeScene } from './RenderHomeScene';
@@ -117,6 +118,8 @@ export function drawUI(){
         ctx.fillText('点击屏幕返回主菜单', logicW/2, logicH/2 + 60);
     } else if(state.screen === 'menu') {
         drawMenu();
+    } else if(state.screen === 'progressSelect') {
+        drawProgressSelect();
     } else if(state.screen === 'fishArena') {
         drawArenaHUD();
     } else if(state.screen === 'mazeRescue') {

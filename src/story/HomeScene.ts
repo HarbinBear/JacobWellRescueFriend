@@ -14,7 +14,7 @@
 //   若 girlWillCome=false：waiting_knock 直接跳过 dialogue 进 free。
 //
 // 入口：MazeLogic.goHome() 切换到本场景。
-// 退出：sleeping 阶段结束后调用 returnToCampNextDay()。
+// 退出：sleeping 阶段结束后调用 exitHomeScene()。
 
 import { state } from '../core/state';
 import { logicW, logicH } from '../render/Canvas';
@@ -29,6 +29,7 @@ import {
 import { pickSceneForNight, getSceneById } from './scripts/_index';
 import { playSFX } from '../audio/AudioManager';
 import { saveMazeProgress } from '../logic/MazeSave';
+import { saveStoryProgress } from './StoryProgressSave';
 
 // =============================================
 // 时长（帧；60fps）
@@ -41,10 +42,18 @@ const FADE_IN_FRAMES = 60;         // 1s 由黑入景
 
 // =============================================
 // 入口：从营地切到家场景
+//
+// overrideSceneId：传入指定 sceneId 时进入"沙盒重玩"，使用该 scene 数据并不触发主存档推进。
+//                  普通流程不传，根据 nightIndex 自动选 scene。
 // =============================================
-export function enterHomeScene() {
-    const sceneId = pickSceneForNight(state.story2.nightIndex + 1);
-    const willCome = !!sceneId; // 当前所有 scene 都假定 girl 会来；若 pick 返回 null 则她不来
+export function enterHomeScene(overrideSceneId?: string) {
+    let sceneId: string | null;
+    if (overrideSceneId) {
+        sceneId = overrideSceneId;
+    } else {
+        sceneId = pickSceneForNight(state.story2.nightIndex + 1);
+    }
+    const willCome = !!sceneId;
 
     const cw = logicW;
     const ch = logicH;
@@ -68,7 +77,7 @@ export function enterHomeScene() {
         hotspotsClicked: [],
         sleepBtnVisible: false,
         knockPlayed: false,
-        fadeAlpha: 1, // 入场用黑场起手
+        fadeAlpha: 1,
         fadeMode: 'in',
     } as any;
     (state.home as any)._fadeDurationFrames = FADE_IN_FRAMES;
@@ -77,23 +86,32 @@ export function enterHomeScene() {
     state.screen = 'home_evening';
     resetDialogue();
 
-    // 男主从屏幕外往桌边走
-    // setMan 写入 immediate=false 模式
-    // 这里不立刻贴到 desk，要慢走过去
-    void setMan; // 类型守卫，本场景不立刻使用 immediate setMan
+    void setMan;
     void setGirl;
 }
 
 // =============================================
 // 离开家场景：黑场结束后调用
+//
+// 沙盒模式（_isProgressSandbox=true）下：不推进 nightIndex / dayHadAnyDive，直接回主菜单。
+// 普通模式：nightIndex++、dayHadAnyDive=false，回到营地。
 // =============================================
-function returnToCampNextDay() {
+function exitHomeScene() {
+    const sandbox = !!(state as any)._isProgressSandbox;
+    state.home = null;
+    resetDialogue();
+
+    if (sandbox) {
+        (state as any)._isProgressSandbox = false;
+        state.screen = 'menu';
+        return;
+    }
+
     state.story2.nightIndex = (state.story2.nightIndex || 0) + 1;
     state.story2.dayHadAnyDive = false;
-    state.home = null;
     state.screen = 'mazeRescue';
-    resetDialogue();
     saveMazeProgress();
+    saveStoryProgress();
 }
 
 // =============================================
@@ -205,7 +223,7 @@ function updateSleeping() {
     const home: any = state.home;
     // 等到黑场满
     if (home.fadeAlpha >= 1 && home.fadeMode === 'out') {
-        returnToCampNextDay();
+        exitHomeScene();
     }
 }
 
@@ -267,6 +285,15 @@ export function handleHomeTap(tx: number, ty: number) {
 export function getSleepBtnRect(cw: number, ch: number) {
     const w = 132, h = 40;
     return { x: cw - w - 18, y: ch - h - 24, w, h };
+}
+
+// =============================================
+// 沙盒重玩：从剧情进度页指定 sceneId 进入家场景
+// 不推进 nightIndex，结束后回主菜单
+// =============================================
+export function replayNight(sceneId: string) {
+    (state as any)._isProgressSandbox = true;
+    enterHomeScene(sceneId);
 }
 
 function startSleep() {

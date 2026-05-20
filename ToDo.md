@@ -9,7 +9,7 @@
 - [x] 阶段 1 · 删旧（已完成 2026-05-20）：StoryManager 13 stage / RenderEnding / 章节选择 / state.story 全部清除；提取 state.fx；TypeScript 编译通过
 - [x] 阶段 2 · 营地按钮统一（已完成 2026-05-21）：新建 `mazeUI/ShoreButtonBar.ts` 轻量注册表，"今天就到这吧"按钮就位（位于右上图鉴按钮下方，避开探索记录卡）；`finishMazeDive` / `abandonCase` 接入 `dayHadAnyDive`；TypeScript 编译通过
 - [x] 阶段 3 · 家场景上线（已完成 2026-05-21）：`state.home / DialogueRunner / HomeScene / RenderHomeScene / scripts/types`；3 晚剧本（night_01_arrival / night_04_silent / night_07_milk）；占位美术（纯几何客厅 + 简笔人）；`goHome()` 接通切到 home_evening；闭环跑通"白天潜水→晚上家→对话→睡觉→次日营地"
-- [ ] 阶段 4 · 主菜单 + 剧情进度选择（1~2 天）：4 项菜单、progressSelect 沙盒重玩
+- [x] 阶段 4 · 主菜单 + 剧情进度选择（已完成 2026-05-21）：主菜单 4 项布局（继续/剧情进度/新游戏/设置）；新游戏确认框；`RenderProgressSelect.ts` 列出已解锁的晚；`replayNight()` 沙盒重玩不污染主存档；新增 `StoryProgressSave.ts` 持久化 nightIndex/knownNights/flags
 
 ---
 

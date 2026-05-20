@@ -1,6 +1,7 @@
 import { initTextures, draw } from './src/render/Render';
 import { resetGameLogic, update, resetArenaLogic, updateArena, resetMazeLogic, replayMazeLogic, updateMaze, startMazeDive, returnToShore, abandonCase, acceptNewCase, stayInResolvedCase, markBriefingShown } from './src/logic/Logic';
 import { updateHome } from './src/story/HomeScene';
+import { loadStoryProgress } from './src/story/StoryProgressSave';
 import { state } from './src/core/state';
 import { initInput } from './src/core/input';
 import { initAudio, updateAudio, updateSFXLoops, updateAmbience, playAmbience, stopAmbience } from './src/audio/AudioManager';
@@ -28,6 +29,9 @@ initQualityManager();
 
 // 撤离玩法：加载经济存档（若无存档则初始化为新手起步状态：100 金 + 4 格背包）
 loadExtractionProgress();
+
+// 主线（《唐老师的救援》）：加载剧情进度（nightIndex / knownNights / flags）
+loadStoryProgress();
 
 // 初始化输入监听，传入重置回调
 initInput(

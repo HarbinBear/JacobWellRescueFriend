@@ -1,6 +1,10 @@
 import { CONFIG } from './config';
 export const state = {
     screen: 'menu', // menu, progressSelect, mazeRescue, home_evening, dream（旧 play/win/lose/ending/fishArena 已废弃；fishArena 仍可由 GM 强制进入）
+    // 主菜单"开始新游戏"确认框开关（运行时，不进存档）
+    _menuConfirmNewGame: false,
+    // 剧情进度页：当前是否为沙盒重玩模式（运行时）
+    _isProgressSandbox: false,
     map: [],
     walls: [], // 存储墙壁的渲染圆心
     invisibleWalls: [], // 仅对玩家生效的空气墙

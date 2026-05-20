@@ -61,7 +61,11 @@ import {
     getCodexCellRectByIndex,
 } from '../render/RenderMazeUI';
 import { tryShoreButtonBar } from '../render/mazeUI/ShoreButtonBar';
-import { handleHomeTap } from '../story/HomeScene';
+import { handleHomeTap, replayNight } from '../story/HomeScene';
+import { getMenuButtonRects, getNewGameConfirmRects, MenuButtonId } from '../render/RenderMenu';
+import { getProgressBackBtnRect, getProgressCardRect, getUnlockedScenes } from '../render/RenderProgressSelect';
+import { clearStoryProgress } from '../story/StoryProgressSave';
+import { clearMazeSave } from '../logic/MazeSave';
 import { playSFX } from '../audio/AudioManager';
 
 // 放弃救援按钮长按状态
@@ -83,6 +87,25 @@ let shoreTouchStartY = 0;
 // 主菜单触摸起始位置（用于 touchEnd 判断点击）
 let menuTouchStartX = 0;
 let menuTouchStartY = 0;
+
+// 主菜单按钮 → 行为
+function handleMenuButton(id: MenuButtonId, onMaze?: () => void) {
+    switch (id) {
+        case 'continue':
+            // 直接进迷宫救援营地（旧存档由 resetMazeLogic 自动 loadMazeProgress）
+            if (onMaze) onMaze();
+            return;
+        case 'progress':
+            state.screen = 'progressSelect';
+            return;
+        case 'newGame':
+            (state as any)._menuConfirmNewGame = true;
+            return;
+        case 'settings':
+            // 占位，阶段 4 暂不实装
+            return;
+    }
+}
 
 function consumeNextManualStrokeSide() {
     const md = state.manualDrive;
@@ -275,12 +298,18 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
             const touch = res.touches[0];
             const tx = touch.clientX;
             const ty = touch.clientY;
-            const cw = CONFIG.screenWidth;
-            const ch = CONFIG.screenHeight;
 
             // 主菜单：只记录起始位置，等 touchEnd 再判断点击
             menuTouchStartX = tx;
             menuTouchStartY = ty;
+            return;
+        }
+
+        // 剧情进度选择页：与主菜单共用 menuTouchStartX/Y，touchEnd 再分发
+        if (state.screen === 'progressSelect') {
+            const touch = res.touches[0];
+            menuTouchStartX = touch.clientX;
+            menuTouchStartY = touch.clientY;
             return;
         }
 
@@ -1169,34 +1198,77 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
             const touch = res.changedTouches[0];
             const tx = touch.clientX;
             const ty = touch.clientY;
-            const cw = CONFIG.screenWidth;
-            const ch = CONFIG.screenHeight;
 
-            if(state.screen === 'menu') {
-                // 判断手指没有明显移动（防止滑动误触）
-                const moved = Math.hypot(tx - menuTouchStartX, ty - menuTouchStartY) > 10;
-                if(!moved) {
-                    // "进入游戏"按钮（对应 RenderMenu 中 mazeBtnY = ch * 0.55，btnW=200, btnH=56）
-                    let mazeBtnY = ch * 0.55;
-                    let mazeBtnW = 200, mazeBtnH = 56;
-                    let mazeBtnX = cw / 2 - mazeBtnW / 2;
-                    if(tx >= mazeBtnX && tx <= mazeBtnX + mazeBtnW && ty >= mazeBtnY - mazeBtnH / 2 && ty <= mazeBtnY + mazeBtnH / 2) {
-                        if (!CONFIG.menuUnlock.mazeMode) {
-                            state.alertMsg = '尚未解锁！';
-                            state.alertColor = 'rgba(255,100,50,0.95)';
-                            if (state.msgTimer) clearTimeout(state.msgTimer);
-                            state.msgTimer = setTimeout(() => { state.alertMsg = ''; }, 2500);
-                            return;
-                        }
-                        if (onMaze) onMaze();
-                        playSFX('uiPrimary');
+            // 防止滑动误触
+            const moved = Math.hypot(tx - menuTouchStartX, ty - menuTouchStartY) > 10;
+            if(moved) return;
+
+            // ---- 新游戏确认框处理（最高优先级）----
+            if ((state as any)._menuConfirmNewGame) {
+                const cr = getNewGameConfirmRects();
+                if (tx >= cr.confirm.x && tx <= cr.confirm.x + cr.confirm.w &&
+                    ty >= cr.confirm.y && ty <= cr.confirm.y + cr.confirm.h) {
+                    playSFX('uiPrimary');
+                    clearStoryProgress();
+                    clearMazeSave();
+                    (state as any)._menuConfirmNewGame = false;
+                    if (onMaze) onMaze(); // 进迷宫救援营地
+                    return;
+                }
+                if (tx >= cr.cancel.x && tx <= cr.cancel.x + cr.cancel.w &&
+                    ty >= cr.cancel.y && ty <= cr.cancel.y + cr.cancel.h) {
+                    playSFX('uiSecondary');
+                    (state as any)._menuConfirmNewGame = false;
+                    return;
+                }
+                return; // 确认框打开时其余点击吃掉
+            }
+
+            // ---- 主菜单 4 个按钮 ----
+            const buttons = getMenuButtonRects();
+            for (const b of buttons) {
+                if (tx >= b.x && tx <= b.x + b.w && ty >= b.y && ty <= b.y + b.h) {
+                    if (!b.enabled) {
+                        playSFX('uiSecondary');
                         return;
                     }
+                    playSFX(b.id === 'continue' || b.id === 'newGame' ? 'uiPrimary' : 'uiSecondary');
+                    handleMenuButton(b.id, !!onMaze ? onMaze : undefined);
+                    return;
                 }
-                return;
             }
             return;
-        }        handleTouchEnd(res.changedTouches);
+        }
+
+        // ---- 剧情进度选择页 ----
+        if (state.screen === 'progressSelect') {
+            const touch = res.changedTouches[0];
+            const tx = touch.clientX;
+            const ty = touch.clientY;
+            const moved = Math.hypot(tx - menuTouchStartX, ty - menuTouchStartY) > 10;
+            if (moved) return;
+
+            // 返回按钮
+            const back = getProgressBackBtnRect();
+            if (tx >= back.x && tx <= back.x + back.w && ty >= back.y && ty <= back.y + back.h) {
+                playSFX('uiSecondary');
+                state.screen = 'menu';
+                return;
+            }
+
+            // 卡片
+            const unlocked = getUnlockedScenes();
+            for (let i = 0; i < unlocked.length; i++) {
+                const r = getProgressCardRect(i);
+                if (tx >= r.x && tx <= r.x + r.w && ty >= r.y && ty <= r.y + r.h) {
+                    playSFX('uiPrimary');
+                    replayNight(unlocked[i].id);
+                    return;
+                }
+            }
+            return;
+        }
+        handleTouchEnd(res.changedTouches);
     });
 
     wx.onTouchCancel((res) => {
