@@ -1,5 +1,6 @@
 import { initTextures, draw } from './src/render/Render';
 import { resetGameLogic, update, resetArenaLogic, updateArena, resetMazeLogic, replayMazeLogic, updateMaze, startMazeDive, returnToShore, abandonCase, acceptNewCase, stayInResolvedCase, markBriefingShown } from './src/logic/Logic';
+import { updateHome } from './src/story/HomeScene';
 import { state } from './src/core/state';
 import { initInput } from './src/core/input';
 import { initAudio, updateAudio, updateSFXLoops, updateAmbience, playAmbience, stopAmbience } from './src/audio/AudioManager';
@@ -62,6 +63,7 @@ function gameLoop() {
     profileBegin('update');        update();         profileEnd('update');
     profileBegin('updateArena');   updateArena();    profileEnd('updateArena');
     profileBegin('updateMaze');    updateMaze();     profileEnd('updateMaze');
+    profileBegin('updateHome');    updateHome();     profileEnd('updateHome');
     profileBegin('updateAudio');   updateAudio();    profileEnd('updateAudio');
     profileBegin('updateSFXLoops');updateSFXLoops(); profileEnd('updateSFXLoops');
     // 岸上营地环境音（鸟鸣）由 phase 驱动：只在 mazeRescue 的 shore / resolved_idle 两个真正暴露在营地的 phase 激活

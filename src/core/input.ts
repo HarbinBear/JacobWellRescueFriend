@@ -60,6 +60,8 @@ import {
     getCodexCellCount,
     getCodexCellRectByIndex,
 } from '../render/RenderMazeUI';
+import { tryShoreButtonBar } from '../render/mazeUI/ShoreButtonBar';
+import { handleHomeTap } from '../story/HomeScene';
 import { playSFX } from '../audio/AudioManager';
 
 // 放弃救援按钮长按状态
@@ -265,6 +267,9 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
 
         // GM 面板打开时拦截剩余所有游戏输入（HUD 栏已在上面优先处理完）
         if (isGMOpen()) return;
+
+        // 家场景：touchStart 阶段不做任何处理，所有交互在 touchEnd 里走 handleHomeTap
+        if (state.screen === 'home_evening') return;
 
         if(state.screen === 'menu') {
             const touch = res.touches[0];
@@ -679,6 +684,13 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
     });
 
     wx.onTouchEnd((res) => {
+        // 家场景（晚上）：完全独立的 UI 派发，不与营地/水下混用
+        if (state.screen === 'home_evening') {
+            const t = res.changedTouches[0] || res.touches[res.touches.length - 1];
+            if (t) handleHomeTap(t.clientX, t.clientY);
+            return;
+        }
+
         // === 撤离玩法：背包全屏页松手（拖拽放置 / 单击选中）===
         if (isBagFullPageOpen()) {
             const t = res.changedTouches[0] || res.touches[res.touches.length - 1];
@@ -913,6 +925,11 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                         }
                     }
                     // 点其它空白：保持页面打开，不做任何动作（只有显式点"返回"才关）
+                    return;
+                }
+
+                // ---- 营地按钮栏（新主线：今天就到这吧 等）优先派发 ----
+                if (tryShoreButtonBar(tx, ty, cw, ch)) {
                     return;
                 }
 

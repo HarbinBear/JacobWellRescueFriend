@@ -71,7 +71,21 @@ export function draw() {
     profileBegin('draw.sky');
     // 每帧开始时确保dpr缩放生效
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    
+
+    // 家场景（晚上回家剧情）：完全脱离水下世界渲染管线，直接由 RenderHomeScene 接管
+    if (state.screen === 'home_evening') {
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, logicW, logicH);
+        profileEnd('draw.sky');
+        profileBegin('draw.ui');
+        drawUI();
+        profileEnd('draw.ui');
+        profileBegin('draw.gm');
+        drawGMButton(ctx);
+        profileEnd('draw.gm');
+        return;
+    }
+
     let zoom = state.camera ? state.camera.zoom : 1;
     // 相机最终位置 = 弹簧臂位置 + 水中摇曳偏移
     const camX = (state.camera ? state.camera.x + state.camera.swayX : player.x);

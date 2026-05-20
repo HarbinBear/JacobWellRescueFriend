@@ -7,8 +7,8 @@
 
 - [x] 阶段 0 · 准备：决策、改造方案文档、阶段 1 待删清单
 - [x] 阶段 1 · 删旧（已完成 2026-05-20）：StoryManager 13 stage / RenderEnding / 章节选择 / state.story 全部清除；提取 state.fx；TypeScript 编译通过
-- [ ] 阶段 2 · 营地按钮统一（2~3 天）：ShoreButtonBar.ts 注册表，营地按钮全收编，"回家"按钮就位
-- [ ] 阶段 3 · 家场景上线（3~5 天 + 美术）：state.home / DialogueRunner / RenderHomeScene；首批 3 晚（Night 1/4/7）
+- [x] 阶段 2 · 营地按钮统一（已完成 2026-05-21）：新建 `mazeUI/ShoreButtonBar.ts` 轻量注册表，"今天就到这吧"按钮就位（位于右上图鉴按钮下方，避开探索记录卡）；`finishMazeDive` / `abandonCase` 接入 `dayHadAnyDive`；TypeScript 编译通过
+- [x] 阶段 3 · 家场景上线（已完成 2026-05-21）：`state.home / DialogueRunner / HomeScene / RenderHomeScene / scripts/types`；3 晚剧本（night_01_arrival / night_04_silent / night_07_milk）；占位美术（纯几何客厅 + 简笔人）；`goHome()` 接通切到 home_evening；闭环跑通"白天潜水→晚上家→对话→睡觉→次日营地"
 - [ ] 阶段 4 · 主菜单 + 剧情进度选择（1~2 天）：4 项菜单、progressSelect 沙盒重玩
 
 ---

@@ -36,6 +36,7 @@ import {
     drawResolvedIdleNewCaseBtn,
 } from './mazeUI/cases';
 import { drawMazeCodex } from './mazeUI/codex';
+import { drawShoreButtonBar } from './mazeUI/ShoreButtonBar';
 
 // 按钮矩形 getter 继续从本文件对外导出，兼容 input.ts 既有的
 // `import { ... } from '../render/RenderMazeUI'` 路径
@@ -130,6 +131,8 @@ export function drawMazeHUD() {
         if (!maze.briefingShown && !maze.shoreMapOpen) {
             drawCaseBriefing(maze, cw, ch, time);
         }
+        // 营地按钮栏（新主线 goHome 等；其内部 visible 已处理覆盖层互斥）
+        drawShoreButtonBar(cw, ch, time);
         // 详情卡（最高层）
         drawItemDetailCard();
         ctx.restore();
@@ -181,6 +184,8 @@ export function drawMazeHUD() {
             // 右上角"接受新任务"按钮
             drawResolvedIdleNewCaseBtn(cw, ch, time);
         }
+        // 营地按钮栏（resolved_idle 也允许展示 goHome）
+        drawShoreButtonBar(cw, ch, time);
         ctx.restore();
         return;
     }

@@ -28,19 +28,28 @@ export const state = {
         girlMissedCount: 0,                         // 决裂后她没来的晚数
         dayHadAnyDive: false,                       // 当日是否下过水（控制"回家"按钮启用）
     },
-    // 家场景运行态（screen='home_evening' 时使用）；阶段 1 仅占位，阶段 3 才正式接入
+    // 家场景运行态（screen='home_evening' 时使用）；运行时构造，存档不持久化
     home: null as null | {
         phase: 'arriving' | 'waiting_knock' | 'dialogue' | 'free' | 'sleeping';
-        timeInPhase: number;
-        sceneId: string;
+        timeInPhase: number;             // 帧
+        sceneId: string;                 // 当夜对话脚本 id
         girlWillCome: boolean;
-        dialogue: { nodeIndex: number; textProgress: number; autoAdvanceTimer: number };
-        actors: {
-            man:  { x: number; y: number; targetX: number; pose: string };
-            girl: { x: number; y: number; targetX: number; visible: boolean; pose: string };
+        dialogue: {
+            nodeIndex: number;            // 当前节点索引
+            textProgress: number;         // 当前节点文字打字机进度（字符数）
+            autoAdvanceTimer: number;     // 自动推进剩余帧
+            waitingForTap: boolean;       // 是否在等点击下一句
+            ended: boolean;               // 全部节点跑完
         };
-        hotspotsClicked: string[];
-        sleepBtnVisible: boolean;
+        actors: {
+            man:  { x: number; y: number; targetX: number; targetY: number; pose: string };
+            girl: { x: number; y: number; targetX: number; targetY: number; visible: boolean; pose: string };
+        };
+        hotspotsClicked: string[];        // 本晚已点过哪些屋内热点
+        sleepBtnVisible: boolean;         // free 阶段是否展示"睡觉"按钮
+        knockPlayed: boolean;             // arriving→waiting_knock 时敲门音是否已播
+        fadeAlpha: number;                // 黑场遮罩 0~1
+        fadeMode: 'none' | 'in' | 'out';  // none=无；in=由黑入景；out=入睡到黑
     },
     endingTimer: 0, // 结局动画计时器
     currentZone: null, // 当前所在区域

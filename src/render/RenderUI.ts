@@ -6,6 +6,7 @@ import { triggerPlayerAttack } from '../logic/FishEnemy';
 import { drawMenu } from './RenderMenu';
 import { drawArenaHUD } from './RenderArenaUI';
 import { drawMazeHUD } from './RenderMazeUI';
+import { drawHomeScene } from './RenderHomeScene';
 
 // 调试按鈕：生成凶猛鱼（右上角，与其他调试信息分开放）
 export const DEBUG_FISH_BTN = {
@@ -120,6 +121,8 @@ export function drawUI(){
         drawArenaHUD();
     } else if(state.screen === 'mazeRescue') {
         drawMazeHUD();
+    } else if(state.screen === 'home_evening') {
+        drawHomeScene();
     }
 }
 

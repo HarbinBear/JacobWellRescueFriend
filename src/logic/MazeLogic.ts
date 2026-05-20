@@ -3,6 +3,7 @@ import { state, player, particles, input } from '../core/state';
 import { generateMazeMap } from '../world/map';
 import { getMazeMainThemeConfig, getMazeSceneThemeKeyByIndex } from '../world/mazeScene';
 import { StoryManager } from '../story/StoryManager';
+import { enterHomeScene } from '../story/HomeScene';
 import { triggerSilt, updateParticles, updateSplashes } from './Particle';
 import { updateBreathSystem, resetBreathSystem, consumeBreathO2, resetBreathO2Consumer, computeBuoyancyOffset } from './BreathSystem';
 import { updateRopeSystem } from './Rope';
@@ -587,6 +588,9 @@ function finishMazeDive(returnReason: string) {
     const maze = state.mazeRescue;
     if (!maze) return;
 
+    // 新主线：标记本日已下过水，"今天就到这吧"按钮可以点了
+    state.story2.dayHadAnyDive = true;
+
     // 计算本次下潜成果
     const duration = Math.floor((Date.now() - maze.startTime) / 1000);
     let newExploredCount = 0;
@@ -761,6 +765,8 @@ export function markBriefingShown() {
 export function abandonCase() {
     const maze: any = state.mazeRescue;
     if (!maze) return;
+    // 新主线：放弃也算"今天努力过了"，回家按钮可以点
+    state.story2.dayHadAnyDive = true;
     maze.phase = 'abandoned';
     maze.caseResultTimer = 0;
     maze.abandonedEnterTime = Date.now();
@@ -795,6 +801,19 @@ export function stayInResolvedCase() {
     resetBreathSystem();
     resetBreathO2Consumer();
     saveMazeProgress();
+}
+
+// =============================================
+// 新主线·"今天就到这吧" → 回家
+// 入口：营地按钮栏 ShoreButtonBar 的 goHome 按钮
+//
+// 切换到家场景（screen='home_evening'）。具体的 nightIndex 自增、dayHadAnyDive 重置
+// 由 HomeScene 在入睡黑场结束后处理（见 HomeScene.returnToCampNextDay）。
+// =============================================
+export function goHome() {
+    if (!state.mazeRescue) return;
+    saveMazeProgress(); // 进家之前先把营地进度落盘
+    enterHomeScene();
 }
 
 // =============================================
