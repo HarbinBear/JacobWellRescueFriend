@@ -1,8 +1,6 @@
 import { CONFIG } from './config';
 export const state = {
-    screen: 'menu', // menu, play, win, lose, ending, fishArena, mazeRescue
-    menuScreen: 'main', // main, chapter
-    chapterScrollY: 0, // chapter select page scroll offset
+    screen: 'menu', // menu, progressSelect, mazeRescue, home_evening, dream（旧 play/win/lose/ending/fishArena 已废弃；fishArena 仍可由 GM 强制进入）
     map: [],
     walls: [], // 存储墙壁的渲染圆心
     invisibleWalls: [], // 仅对玩家生效的空气墙
@@ -15,51 +13,34 @@ export const state = {
     alertMsg: '',
     alertColor: '#fff',
     texts: [],
-    // 剧情相关状态
-    story: {
-        stage: 0, // 0:未开始, 1:第一次下潜, 2:黑屏过渡, 3:第二次下潜, 4:濒死, 5:获救, 6:结束(第二关结局过渡), 7:第三关下潜, 8:第三关结局
-        timer: 0,
-        shake: 0, // 屏幕晃动强度
-        redOverlay: 0, // 红色遮罩透明度
-        flags: {
-            seenSuit: false,
-            npcEntered: false,
-            collapsed: false,
-            blackScreen: false,
-            narrowVision: false,
-            rescued: false,
-            approachedTunnel: false,
-            tankDamaged: false,
-            deathPause: 0,
-            // 第二关：小潘发现走错路
-            npcWrongWay: false,
-            // 第三关：手电筒损坏
-            flashlightBroken: false,
-            flashlightBrokenOsShown: false,
-            // 第三关：玩家试图上岸
-            tryingToSurface: false,
-            surfaceOsShown: false,
-            // 第三关：到达二三洞室连接处
-            reachedChamber23Junction: false,
-            chamber23OsShown: false,
-            // 第三关：手电筒固定灭（靠近灰色物体后）
-            flashlightFixedOff: false,
-            flashlightOffStartTime: 0, // 手电筒固定灭的开始时间戳
-            // 第三关：恐怖鱼眼闪现
-            fishEyeTriggered: false,
-            fishEyeFlashTimer: 0,       // 鱼眼闪现进度（1.0->0）
-            fishEyeFlashStartTime: 0,   // 鱼眼开始闪现的时间戳
-            // 第三关：放弃救援按钮
-            abandonBtnVisible: false,
-            abandonBtnScheduledTime: 0, // 预定显示放弃按钮的时间戳
-            abandonBtnHolding: false,
-            abandonBtnHoldStartTime: 0, // 开始长按的时间戳
-            // 结局标记
-            bearDied: false,
-            stage2Ending: false
-        },
-        visitedZones: [], // 已访问的区域列表
-        lastBlockMsgTime: 0 // 上次显示阻挡消息的时间
+    // 全局视觉特效通道（曾经挂在 state.story 下，现独立出来供迷宫/竞技场/食人鱼等共用）
+    fx: {
+        shake: 0,         // 全局屏震强度（自然衰减；由各系统按需写入）
+        redOverlay: 0,    // 全局红屏遮罩透明度（自然衰减）
+    },
+    // 新主线（《唐老师的救援》）的剧情进度状态。旧的 state.story 已废弃。
+    // 详见 .codebuddy/rules/design/tang/改造方案.md
+    story2: {
+        nightIndex: 0,                              // 0=新游戏未开始，1+=已经历晚序号
+        flags: {} as { [key: string]: boolean },    // 剧情 flag
+        knownNights: [] as string[],                // 已经历过的对话 sceneId 列表
+        girlVisitCount: 0,                          // 累计她来过几晚
+        girlMissedCount: 0,                         // 决裂后她没来的晚数
+        dayHadAnyDive: false,                       // 当日是否下过水（控制"回家"按钮启用）
+    },
+    // 家场景运行态（screen='home_evening' 时使用）；阶段 1 仅占位，阶段 3 才正式接入
+    home: null as null | {
+        phase: 'arriving' | 'waiting_knock' | 'dialogue' | 'free' | 'sleeping';
+        timeInPhase: number;
+        sceneId: string;
+        girlWillCome: boolean;
+        dialogue: { nodeIndex: number; textProgress: number; autoAdvanceTimer: number };
+        actors: {
+            man:  { x: number; y: number; targetX: number; pose: string };
+            girl: { x: number; y: number; targetX: number; visible: boolean; pose: string };
+        };
+        hotspotsClicked: string[];
+        sleepBtnVisible: boolean;
     },
     endingTimer: 0, // 结局动画计时器
     currentZone: null, // 当前所在区域
@@ -517,8 +498,8 @@ export function resetState() {
     state.fishBite = null;
     state.flashlightOn = true; // 重置手电筒为开启状态
     // 重置屏幕特效，防止重新开始后残留红屏和震动
-    state.story.redOverlay = 0;
-    state.story.shake = 0;
+    state.fx.redOverlay = 0;
+    state.fx.shake = 0;
     state.playerAttack = {
         active: false,
         timer: 0,

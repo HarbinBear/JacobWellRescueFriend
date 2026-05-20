@@ -167,7 +167,7 @@ function shouldBeActive(): boolean {
         return true;
     }
     if (state.screen === 'play') {
-        if (state.story.flags.blackScreen) return false;
+        // 旧主线 blackScreen 已废弃。
         if (state.fishBite && state.fishBite.active) return false;
         return true;
     }

@@ -18,11 +18,12 @@ export const baseConfig = {
     infiniteO2: false,        // 无限氧气（所有模式生效）
 
     // ===== 主菜单解锁配置 =====
+    // 旧主线（startGame/chapterSelect）已废弃；新主线为"白天迷宫救援 + 晚上家场景"
+    // fishArena 数据保留但主菜单不暴露入口（GM 面板可强制进入做调试）
     menuUnlock: {
-        startGame: false,       // 开始游戏是否解锁
-        chapterSelect: false,   // 章节选择是否解锁
-        fishArena: false,       // 食人鱼竞技场是否解锁
-        mazeMode: true,        // 迷宫纯享版是否解锁
+        mainMenu: true,         // 新主菜单
+        fishArena: false,       // 隐藏，但代码保留
+        mazeMode: true,         // 主线唯一玩法（迷宫救援）
     },
 
     // 游戏参数

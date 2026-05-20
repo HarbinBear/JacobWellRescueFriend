@@ -4,7 +4,6 @@ import { ctx, canvas, logicW, logicH } from './Canvas';
 import { createFishEnemy } from '../logic/FishEnemy';
 import { triggerPlayerAttack } from '../logic/FishEnemy';
 import { drawMenu } from './RenderMenu';
-import { drawEnding } from './RenderEnding';
 import { drawArenaHUD } from './RenderArenaUI';
 import { drawMazeHUD } from './RenderMazeUI';
 
@@ -108,9 +107,7 @@ export function drawUI(){
         for(let i=0; i<lines.length; i++) ctx.fillText(lines[i], logicW/2, startY + i*30);
     }
 
-    if(state.screen === 'ending') {
-        drawEnding();
-    } else if(state.screen === 'lose') {
+    if(state.screen === 'lose') {
         ctx.fillStyle = 'rgba(0,0,0,0.8)'; ctx.fillRect(0,0,logicW,logicH);
         ctx.fillStyle = '#f00'; ctx.font = '30px Arial'; ctx.textAlign = 'center';
         ctx.fillText('任务失败', logicW/2, logicH/2 - 20);

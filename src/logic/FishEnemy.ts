@@ -415,8 +415,7 @@ function isFlashlightHittingFish(fish: FishEnemy): boolean {
     // 手电筒未开启时无效
     if (!state.flashlightOn) return false;
 
-    // 第三关手电筒固定灭时无效
-    if (state.story.flags.flashlightFixedOff) return false;
+    // 旧主线第三关 flashlightFixedOff 已废弃。
 
     // 计算鱼与玩家的距离
     const dx = fish.x - player.x;
@@ -445,12 +444,7 @@ function isFlashlightHittingFish(fish: FishEnemy): boolean {
     const angleFactor = 1 - Math.abs(angleDiff) / halfFov;
     let brightness = distFactor * angleFactor;
 
-    // 手电筒损坏时亮度打折
-    if (state.story.flags.flashlightBroken) {
-        const t = Date.now() / 1000;
-        const flicker = Math.sin(t * 1.3) * Math.sin(t * 1.7) * Math.sin(t * 2.1);
-        brightness *= Math.max(0, 0.5 + Math.abs(flicker) * 0.5);
-    }
+    // 旧主线第三关 flashlightBroken 闪烁打折已废弃。
 
     // 只有亮度超过阈值才能驱赶
     return brightness >= cfg.lightFearThreshold;
@@ -1054,23 +1048,23 @@ export function updateFishBiteState() {
     // 屏幕震动衰减
     if (state.fishBite.shakeIntensity > 0) {
         state.fishBite.shakeIntensity *= 0.92;
-        state.story.shake = state.fishBite.shakeIntensity;
+        state.fx.shake = state.fishBite.shakeIntensity;
     }
 
     if (state.fishBite.phase === 'bite') {
         // 撕咬阶段：震动 + 红屏
-        state.story.redOverlay = Math.min(0.6, state.fishBite.timer / cfg.biteDuration * 0.6);
+        state.fx.redOverlay = Math.min(0.6, state.fishBite.timer / cfg.biteDuration * 0.6);
     } else if (state.fishBite.phase === 'dead') {
         // 死亡阶段：红屏加深，然后进入 lose 画面
-        state.story.redOverlay = Math.min(1, 0.6 + state.fishBite.timer / cfg.deathFadeDuration * 0.4);
+        state.fx.redOverlay = Math.min(1, 0.6 + state.fishBite.timer / cfg.deathFadeDuration * 0.4);
         if (state.fishBite.timer >= cfg.deathFadeDuration) {
             if (isMazeMode()) {
                 // 迷宫模式：被鱼咬死视为撤离失败，本次战利品全损
                 // 注意：不走 'surfacing' 的弹射飞升动画（失败不配做成功撤离的视觉）
                 //       而是进入 'failed' 短转场，屏幕红屏淡出后直接到 debrief
                 state.fishBite.active = false;
-                state.story.redOverlay = 0;
-                state.story.shake = 0;
+                state.fx.redOverlay = 0;
+                state.fx.shake = 0;
                 const maze = state.mazeRescue!;
                 maze.phase = 'failed';
                 maze.surfacingReason = 'fishkill';
@@ -1082,8 +1076,8 @@ export function updateFishBiteState() {
                 state.alertMsg = '被凶猛鱼撕碎了...';
                 state.alertColor = '#f00';
                 state.fishBite.active = false;
-                state.story.redOverlay = 0;
-                state.story.shake = 0;
+                state.fx.redOverlay = 0;
+                state.fx.shake = 0;
             }
         }
     }
@@ -1140,7 +1134,7 @@ export function triggerPlayerAttack() {
         fish.vy *= 0.3;
 
         // 击中反馈：屏幕震动
-        state.story.shake = Math.max(state.story.shake || 0, CONFIG.attack.slashImpactShake);
+        state.fx.shake = Math.max(state.fx.shake || 0, CONFIG.attack.slashImpactShake);
     }
 }
 // =============================================

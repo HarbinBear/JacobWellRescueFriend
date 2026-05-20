@@ -20,7 +20,6 @@ export function resetArenaLogic() {
 
     // 竞技场专用：无限氧气、无NPC
     state.npc.active = false;
-    state.story.stage = 0;
     state.screen = 'fishArena';
 
     // 玩家出生在竞技场中心
@@ -109,9 +108,9 @@ export function updateArena() {
         player.o2 = 100;
 
         // 屏幕震动衰减（竞技场模式下StoryManager不运行，需手动衰减）
-        if (state.story.shake > 0) {
-            state.story.shake *= 0.9;
-            if (state.story.shake < 0.5) state.story.shake = 0;
+        if (state.fx.shake > 0) {
+            state.fx.shake *= 0.9;
+            if (state.fx.shake < 0.5) state.fx.shake = 0;
         }
 
         // 检测玩家死亡（被咬死）

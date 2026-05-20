@@ -28,9 +28,9 @@ initQualityManager();
 // 撤离玩法：加载经济存档（若无存档则初始化为新手起步状态：100 金 + 4 格背包）
 loadExtractionProgress();
 
-// 初始化输入监听，传入重置回调（支持从指定关卡开始）
+// 初始化输入监听，传入重置回调
 initInput(
-    (startStage: number = 1) => resetGameLogic(startStage, true),
+    () => resetGameLogic(true),
     () => resetArenaLogic(),
     () => resetMazeLogic(),
     () => replayMazeLogic(),
@@ -53,7 +53,7 @@ initInput(
 );
 
 // 启动游戏 (初始化但不开始)
-resetGameLogic(1, false);
+resetGameLogic(false);
 
 // 游戏主循环
 let _lastFrameT = 0;

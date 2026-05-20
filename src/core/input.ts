@@ -62,11 +62,6 @@ import {
 } from '../render/RenderMazeUI';
 import { playSFX } from '../audio/AudioManager';
 
-// 章节页滑动状态
-let chapterTouchStartY = 0;
-let chapterTouchStartScrollY = 0;
-let chapterTouchMoved = false;
-
 // 放弃救援按钮长按状态
 let abandonTouchId = null;
 
@@ -86,25 +81,6 @@ let shoreTouchStartY = 0;
 // 主菜单触摸起始位置（用于 touchEnd 判断点击）
 let menuTouchStartX = 0;
 let menuTouchStartY = 0;
-
-// 计算章节卡片的点击区域（与RenderUI中的布局保持一致，需传入scrollY偏移）
-function getChapterCardBounds(cw, ch, scrollY) {
-    let cardW = cw * 0.82;
-    let cardH = ch * 0.22;
-    let cardX = (cw - cardW) / 2;
-    let gap = ch * 0.025;
-    let listTop = 58;
-    let card1Y = listTop + 12 - scrollY;
-    let card2Y = card1Y + cardH + gap;
-    let card3Y = card2Y + cardH + gap;
-    let card4Y = card3Y + cardH + gap;
-    return [
-        { cardX, cardY: card1Y, cardW, cardH },
-        { cardX, cardY: card2Y, cardW, cardH },
-        { cardX, cardY: card3Y, cardW, cardH },
-        { cardX, cardY: card4Y, cardW, cardH }
-    ];
-}
 
 function consumeNextManualStrokeSide() {
     const md = state.manualDrive;
@@ -171,14 +147,12 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
         window.addEventListener('keydown', (e) => {
             if(state.screen === 'menu') {
                 if(e.code === 'Space') {
-                    if(state.menuScreen === 'chapter') {
-                        state.menuScreen = 'main';
-                    } else if(!state.transition.active) {
+                    if(!state.transition.active) {
                         state.transition.active = true;
                         state.transition.alpha = 0;
                         state.transition.mode = 'out';
                         state.transition.callback = () => {
-                            if (onReset) onReset(1);
+                            if (onReset) onReset();
                         };
                     }
                 }
@@ -186,29 +160,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
             }
 
             if(state.screen !== 'play') {
-                // 第二关结局：分页剧情
-                if (state.screen === 'ending' && state.story.flags.stage2Ending) {
-                    if (!state.endingTimer || state.endingTimer < 1200) return;
-                    if(e.code === 'Space' && !state.transition.active) {
-                        state.transition.active = true;
-                        state.transition.alpha = 0;
-                        state.transition.mode = 'out';
-                        state.transition.callback = () => {
-                            if (onReset) onReset(7);
-                        };
-                    }
-                    return;
-                }
-                // 熊子死亡结局
-                if (state.screen === 'ending' && state.story.flags.bearDied) {
-                    if (!state.endingTimer || state.endingTimer < 1200) return;
-                    if(e.code === 'Space') { state.screen = 'menu'; state.menuScreen = 'main'; }
-                    return;
-                }
-                // 如果是结局画面，必须等待播放完毕 (timer > 1320)
-                if (state.screen === 'ending' && (!state.endingTimer || state.endingTimer < 1320)) {
-                    return;
-                }
+                // 旧主线 ending 分支已废弃。
                 if(e.code === 'Space') state.screen = 'menu';
                 return;
             }
@@ -321,14 +273,6 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
             const cw = CONFIG.screenWidth;
             const ch = CONFIG.screenHeight;
 
-            if(state.menuScreen === 'chapter') {
-                // 记录触摸起始位置，用于判断是滑动还是点击
-                chapterTouchStartY = ty;
-                chapterTouchStartScrollY = state.chapterScrollY || 0;
-                chapterTouchMoved = false;
-                return;
-            }
-
             // 主菜单：只记录起始位置，等 touchEnd 再判断点击
             menuTouchStartX = tx;
             menuTouchStartY = ty;
@@ -407,39 +351,13 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
             if (state.screen === 'fishArena' && state.fishArena && state.fishArena.phase === 'dead') {
                 if (state.fishArena.deadTimer >= 120) {
                     state.screen = 'menu';
-                    state.menuScreen = 'main';
                     state.fishArena = null;
                 }
                 return;
             }
-            // 第二关结局：分页剧情，等到最后一页（timer > 1200）才能点击
-            if (state.screen === 'ending' && state.story.flags.stage2Ending) {
-                if (!state.endingTimer || state.endingTimer < 1200) return;
-                // 点击进入第三关
-                if(!state.transition.active) {
-                    state.transition.active = true;
-                    state.transition.alpha = 0;
-                    state.transition.mode = 'out';
-                    state.transition.callback = () => {
-                        if (onReset) onReset(7);
-                    };
-                }
-                return;
-            }
-            // 熊子死亡结局：等到最后一页才能点击
-            if (state.screen === 'ending' && state.story.flags.bearDied) {
-                if (!state.endingTimer || state.endingTimer < 1200) return;
-                state.screen = 'menu';
-                state.menuScreen = 'main';
-                return;
-            }
-            // 如果是结局画面，必须等待播放完毕 (timer > 1320)
-            if (state.screen === 'ending' && (!state.endingTimer || state.endingTimer < 1320)) {
-                return;
-            }
+            // 旧主线 ending 分支已废弃。
             // 游戏结束或失败，点击返回主菜单
             state.screen = 'menu';
-            state.menuScreen = 'main';
             return;
             } // else 结束
         }
@@ -563,21 +481,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                 }
             }
 
-            // 检测放弃救援按钮长按
-            if(state.story.flags.abandonBtnVisible && state.story.stage === 7) {
-                const cw = CONFIG.screenWidth;
-                const ch = CONFIG.screenHeight;
-                const btnW = 200, btnH = 64;
-                const btnX = cw / 2 - btnW / 2;
-                const btnY = ch * 0.28 - btnH / 2;
-                if(t.clientX >= btnX && t.clientX <= btnX + btnW &&
-                   t.clientY >= btnY && t.clientY <= btnY + btnH) {
-                    abandonTouchId = t.identifier;
-                    state.story.flags.abandonBtnHolding = true;
-                    state.story.flags.abandonBtnHoldStartTime = Date.now();
-                    continue;
-                }
-            }
+            // 旧主线第三关放弃按钮已废弃（迷宫的"放弃救援"是另外一个按钮，由 abandonHolding 管理）
 
             // 手动挡模式：记录滑动起始点，实时跟踪
             if (CONFIG.manualDrive.enabled) {
@@ -660,22 +564,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
         }
 
         // 放弃按钮长按计时（在 update 循环中处理，这里不需要）
-        if(state.screen === 'menu' && state.menuScreen === 'chapter') {
-            const touch = res.touches[0];
-            const dy = touch.clientY - chapterTouchStartY;
-            if(Math.abs(dy) > 5) chapterTouchMoved = true;
-            const ch = CONFIG.screenHeight;
-            const cardH = ch * 0.22;
-            const gap = ch * 0.025;
-            const totalContentH = 4 * cardH + 3 * gap + 20;
-            const listH = ch - 58;
-            const maxScroll = Math.max(0, totalContentH - listH + 12);
-            let newScroll = chapterTouchStartScrollY - dy;
-            if(newScroll < 0) newScroll = 0;
-            if(newScroll > maxScroll) newScroll = maxScroll;
-            state.chapterScrollY = newScroll;
-            return;
-        }
+        // 旧"章节选择"页滑动逻辑已废弃。
         // 轮盘打开时：滑动更新高亮扇区
         if (state.wheel && state.wheel.open && state.wheel.touchId !== null) {
             for (let t of res.touches) {
@@ -1178,7 +1067,6 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                 if (tx >= 8 && tx <= 92 && ty >= 56 && ty <= 96) {
                     playSFX('uiSecondary');
                     state.screen = 'menu';
-                    state.menuScreen = 'main';
                     state.mazeRescue = null;
                     return;
                 }
@@ -1267,74 +1155,17 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
             const cw = CONFIG.screenWidth;
             const ch = CONFIG.screenHeight;
 
-            if(state.menuScreen === 'main') {
+            if(state.screen === 'menu') {
                 // 判断手指没有明显移动（防止滑动误触）
                 const moved = Math.hypot(tx - menuTouchStartX, ty - menuTouchStartY) > 10;
                 if(!moved) {
-                    // 检测"开始游戏"按钮
-                    let btnY = ch * 0.46;
-                    let btnW = 180, btnH = 50;
-                    let btnX = cw / 2 - btnW / 2;
-                    if(tx >= btnX && tx <= btnX + btnW && ty >= btnY - btnH / 2 && ty <= btnY + btnH / 2) {
-                        if (!CONFIG.menuUnlock.startGame) {
-                            // 置灰状态，提示未解锁
-                            state.alertMsg = '这个游戏还拿不出手，先玩其他模式吧！';
-                            state.alertColor = 'rgba(255,100,50,0.95)';
-                            if (state.msgTimer) clearTimeout(state.msgTimer);
-                            state.msgTimer = setTimeout(() => { state.alertMsg = ''; }, 2500);
-                            return;
-                        }
-                        if(!state.transition.active) {
-                            playSFX('uiPrimary');
-                            state.transition.active = true;
-                            state.transition.alpha = 0;
-                            state.transition.mode = 'out';
-                            state.transition.callback = () => {
-                                if (onReset) onReset(1);
-                            };
-                        }
-                        return;
-                    }
-                    // 检测"章节选择"按钮
-                    let chBtnY = ch * 0.57;
-                    let chBtnW = 180, chBtnH = 50;
-                    let chBtnX = cw / 2 - chBtnW / 2;
-                    if(tx >= chBtnX && tx <= chBtnX + chBtnW && ty >= chBtnY - chBtnH / 2 && ty <= chBtnY + chBtnH / 2) {
-                        if (!CONFIG.menuUnlock.chapterSelect) {
-                            state.alertMsg = '这个游戏还拿不出手，先玩其他模式吧！';
-                            state.alertColor = 'rgba(255,100,50,0.95)';
-                            if (state.msgTimer) clearTimeout(state.msgTimer);
-                            state.msgTimer = setTimeout(() => { state.alertMsg = ''; }, 2500);
-                            return;
-                        }
-                        state.menuScreen = 'chapter';
-                        state.chapterScrollY = 0;
-                        playSFX('uiSecondary');
-                        return;
-                    }
-                    // 检测"食人鱼竞技场"按钮
-                    let arenaBtnY = ch * 0.68;
-                    let arenaBtnW = 200, arenaBtnH = 50;
-                    let arenaBtnX = cw / 2 - arenaBtnW / 2;
-                    if(tx >= arenaBtnX && tx <= arenaBtnX + arenaBtnW && ty >= arenaBtnY - arenaBtnH / 2 && ty <= arenaBtnY + arenaBtnH / 2) {
-                        if (!CONFIG.menuUnlock.fishArena) {
-                            state.alertMsg = '食人鱼竞技场尚未解锁！';
-                            state.alertColor = 'rgba(255,100,50,0.95)';
-                            if (state.msgTimer) clearTimeout(state.msgTimer);
-                            state.msgTimer = setTimeout(() => { state.alertMsg = ''; }, 2500);
-                            return;
-                        }
-                        if (onArena) onArena();
-                        playSFX('uiPrimary');
-                        return;
-                    }
-                    // 检测"迷宫纯享版"按钮
-                    let mazeBtnY = ch * 0.79;
-                    let mazeBtnW = 200, mazeBtnH = 50;
+                    // "进入游戏"按钮（对应 RenderMenu 中 mazeBtnY = ch * 0.55，btnW=200, btnH=56）
+                    let mazeBtnY = ch * 0.55;
+                    let mazeBtnW = 200, mazeBtnH = 56;
                     let mazeBtnX = cw / 2 - mazeBtnW / 2;
                     if(tx >= mazeBtnX && tx <= mazeBtnX + mazeBtnW && ty >= mazeBtnY - mazeBtnH / 2 && ty <= mazeBtnY + mazeBtnH / 2) {
                         if (!CONFIG.menuUnlock.mazeMode) {
-                            state.alertMsg = '迷宫纯享版尚未解锁！';
+                            state.alertMsg = '尚未解锁！';
                             state.alertColor = 'rgba(255,100,50,0.95)';
                             if (state.msgTimer) clearTimeout(state.msgTimer);
                             state.msgTimer = setTimeout(() => { state.alertMsg = ''; }, 2500);
@@ -1343,46 +1174,6 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                         if (onMaze) onMaze();
                         playSFX('uiPrimary');
                         return;
-                    }                }
-                return;
-            }
-            if(state.menuScreen === 'chapter') {
-                // 如果没有发生明显滑动，则判断为点击
-                if(!chapterTouchMoved) {
-                    // 返回按钮（左上角区域）
-                    if(tx < 90 && ty < 52) {
-                        playSFX('uiSecondary');
-                        state.menuScreen = 'main';
-                        state.chapterScrollY = 0;
-                        return;
-                    }
-                    // 章节卡片点击（需在可滚动区域内）
-                    if(ty >= 58) {
-                        const bounds = getChapterCardBounds(cw, ch, state.chapterScrollY || 0);
-                        for(let i = 0; i < bounds.length; i++) {
-                            const b = bounds[i];
-                            if(tx >= b.cardX && tx <= b.cardX + b.cardW && ty >= b.cardY && ty <= b.cardY + b.cardH) {
-                                // 章节未解锁时置灰，点击提示
-                                if (!CONFIG.menuUnlock.chapterSelect) {
-                                    state.alertMsg = '章节选择尚未解锁！';
-                                    state.alertColor = 'rgba(255,100,50,0.95)';
-                                    if (state.msgTimer) clearTimeout(state.msgTimer);
-                                    state.msgTimer = setTimeout(() => { state.alertMsg = ''; }, 2500);
-                                    return;
-                                }
-                                let startStage = i === 0 ? 1 : (i === 1 ? 3 : (i === 2 ? 7 : 9));
-                                if(!state.transition.active) {
-                                    playSFX('uiPrimary');
-                                    state.transition.active = true;
-                                    state.transition.alpha = 0;
-                                    state.transition.mode = 'out';
-                                    state.transition.callback = () => {
-                                        if (onReset) onReset(startStage);
-                                    };
-                                }
-                                return;
-                            }
-                        }
                     }
                 }
                 return;
@@ -1416,11 +1207,9 @@ function handleTouchEnd(changedTouches) {
         }
         // 左上角 HUD 触点松手（氧气环长按结束、tip 触发等）
         handleHUDTouchEnd(t.identifier, t.clientX, t.clientY);
-        // 放弃按钮松手
+        // 旧主线第三关放弃按钮松手 → 已废弃；abandonTouchId 现已不被任何路径写入
         if(t.identifier === abandonTouchId) {
             abandonTouchId = null;
-            state.story.flags.abandonBtnHolding = false;
-            state.story.flags.abandonBtnHoldStartTime = 0;
         }
         // 攻击按钮触点释放
         if(t.identifier === attackTouchId) {

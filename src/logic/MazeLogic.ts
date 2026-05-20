@@ -68,8 +68,8 @@ export function resetMazeLogic() {
         state.fishEnemies = [];
         state.fishBite = null;
         state.flashlightOn = true;
-        state.story.redOverlay = 0;
-        state.story.shake = 0;
+        state.fx.redOverlay = 0;
+        state.fx.shake = 0;
         state.playerAttack = {
             active: false,
             timer: 0,
@@ -170,8 +170,8 @@ export function resetMazeLogic() {
     state.fishEnemies = [];
     state.fishBite = null;
     state.flashlightOn = true;
-    state.story.redOverlay = 0;
-    state.story.shake = 0;
+    state.fx.redOverlay = 0;
+    state.fx.shake = 0;
     state.playerAttack = {
         active: false,
         timer: 0,
@@ -459,8 +459,8 @@ export function startMazeDive(diveType: string) {
     particles.length = 0;
     state.splashes = [];
     state.fishBite = null;
-    state.story.redOverlay = 0;
-    state.story.shake = 0;
+    state.fx.redOverlay = 0;
+    state.fx.shake = 0;
 
     // 生成迷宫食人鱼（按聚集点分布，每个聚集点 denFishCountMin~denFishCountMax 条）
     state.fishEnemies = [];
@@ -890,7 +890,7 @@ export function updateMaze() {
             player.x += player.vx;
             player.y += player.vy;
             // 轻微预震
-            state.story.shake = Math.max(state.story.shake || 0, 3);
+            state.fx.shake = Math.max(state.fx.shake || 0, 3);
             player.animTime += 0.05;
         } else if (t <= 22) {
             // 爆发：一拍之内给一个大的向上初速度，然后快速自然衰减
@@ -898,13 +898,13 @@ export function updateMaze() {
                 // 弹射启动瞬间：初速度 + 强烈震屏
                 player.vy = -60;
                 player.vx *= 0.3;
-                state.story.shake = 18;
+                state.fx.shake = 18;
             } else {
                 // easeOut 衰减（保持方向向上，数值逐步减小）
                 player.vy *= 0.82;
                 player.vx *= 0.9;
                 // 震屏线性回落
-                state.story.shake = Math.max(0, (state.story.shake || 0) - 1.3);
+                state.fx.shake = Math.max(0, (state.fx.shake || 0) - 1.3);
             }
             player.x += player.vx;
             player.y += player.vy;
@@ -917,16 +917,16 @@ export function updateMaze() {
             player.y += player.vy;
             if (t === 23) {
                 // 破水瞬间再震一下
-                state.story.shake = Math.max(state.story.shake || 0, 10);
+                state.fx.shake = Math.max(state.fx.shake || 0, 10);
             } else {
-                state.story.shake = Math.max(0, (state.story.shake || 0) - 1.8);
+                state.fx.shake = Math.max(0, (state.fx.shake || 0) - 1.8);
             }
             player.animTime += 0.15;
         }
 
         // 上浮完成后进入结算
         if (maze.resultTimer >= CONFIG.maze.surfacingDuration) {
-            state.story.shake = 0;
+            state.fx.shake = 0;
             finishMazeDive(maze.surfacingReason || 'retreat');
         }
         updateParticles();
@@ -965,13 +965,13 @@ export function updateMaze() {
         player.y += player.vy;
 
         // 震屏回落（fishkill 时 FishEnemy 会留有红屏，这里不再叠加震动）
-        state.story.shake = Math.max(0, (state.story.shake || 0) - 0.6);
+        state.fx.shake = Math.max(0, (state.fx.shake || 0) - 0.6);
 
         // 时间到：进入 debrief，结算全损
         if (maze.resultTimer >= CONFIG.maze.failedDuration) {
-            state.story.shake = 0;
+            state.fx.shake = 0;
             // 失败撤离时清掉红屏（如果还没清干净）
-            state.story.redOverlay = 0;
+            state.fx.redOverlay = 0;
             finishMazeDive(maze.surfacingReason || 'o2');
         }
         updateParticles();
@@ -1279,7 +1279,7 @@ export function updateMaze() {
                 maze.resultTimer = 0;
                 // 弹射出水：音效和初始预震一开始就拉起，萤幕竟为蓄力营造节奏
                 playSFX('quickReturn', { volume: 0.5 });
-                state.story.shake = Math.max(state.story.shake || 0, 4);
+                state.fx.shake = Math.max(state.fx.shake || 0, 4);
                 storyManager.showText('安全上浮中...', '#aef', 2000);
             }
         }

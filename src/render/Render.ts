@@ -81,9 +81,9 @@ export function draw() {
     
     // 屏幕震动
     let shakeX = 0, shakeY = 0;
-    if(state.story.shake > 0) {
-        shakeX = (Math.random() - 0.5) * state.story.shake;
-        shakeY = (Math.random() - 0.5) * state.story.shake;
+    if(state.fx.shake > 0) {
+        shakeX = (Math.random() - 0.5) * state.fx.shake;
+        shakeY = (Math.random() - 0.5) * state.fx.shake;
     }
 
     // 1. 绘制基础世界
@@ -425,13 +425,7 @@ export function draw() {
 
     // --- 计算光照参数（体积光和遮罩共用）---
     let vRayDist = CONFIG.lightRange;
-    
-    if(state.story.stage === 4 && state.story.flags.narrowVision) {
-        let factor = Math.max(0, player.o2 / 80);
-        vRayDist = 20 + factor * 80; 
-    } else if(state.story.flags.narrowVision) {
-        vRayDist = 30; 
-    }
+    // 旧主线 narrowVision（濒死视野收窄）已废弃。
 
     let playerFlashlightActive = (state.screen === 'fishArena' || state.screen === 'mazeRescue' ? true : player.y > 600) && flashlightActive;
     let npcActive = !!(state.npc && state.npc.active && state.npc.y > 600 && CONFIG.bShowNpcFlashLight);
@@ -464,7 +458,8 @@ export function draw() {
     }
 
     // 绘制玩家
-    let hasTank = !state.story.flags.tankDamaged;
+    // 旧主线 tankDamaged（氧气瓶损坏 → 不画瓶）已废弃，固定有瓶。
+    let hasTank = true;
     const isAutoSwim = !CONFIG.manualDrive.enabled;
     // 撤离玩法：根据装备的潜水衣 / 脚蹼调色，让外观随装备等级变化
     const playerColors = buildPlayerDiverColors();
@@ -539,31 +534,9 @@ export function draw() {
 
     let rayDist = CONFIG.lightRange;
 
-    // 第三关：手电筒损坏闪烁效果
-    if(state.story.flags.flashlightBroken) {
-        if(state.story.flags.flashlightFixedOff) {
-            flashlightActive = false;
-            playerFlashlightActive = false;
-            rayDist = 0;
-        } else {
-            let t = Date.now() / 1000;
-            let flicker = Math.sin(t * 1.3) * Math.sin(t * 1.7) * Math.sin(t * 2.1);
-            flashlightActive = flicker > -0.3;
-            playerFlashlightActive = (state.screen === 'fishArena' || state.screen === 'mazeRescue' ? true : player.y > 600) && flashlightActive;
-            if(flashlightActive) {
-                rayDist = CONFIG.lightRange * (0.5 + Math.abs(flicker) * 0.5);
-            }
-        }
-    }
+    // 旧主线第三关"手电筒损坏闪烁"效果已废弃。
 
-    if(state.story.stage === 4 && state.story.flags.narrowVision) {
-        let factor = Math.max(0, player.o2 / 80);
-        rayDist = 20 + factor * 80;
-        maskAlpha = 0.95 + (1-factor) * 0.05;
-    } else if(state.story.flags.narrowVision) {
-        rayDist = 30;
-        maskAlpha = 0.95;
-    }
+    // 旧主线 stage===4 / narrowVision 视野收窄已废弃。
 
     if (_useWebGL && isWebGLAvailable()) {
         // WebGL 路径：CPU 端计算射线碰撞和泥沙，上传到 GPU，一个 draw call 完成所有光照
@@ -648,276 +621,6 @@ export function draw() {
 
     profileEnd('draw.lighting');
     profileBegin('draw.overlay');
-    // 绘制灰色物体（氧气罐造型）
-    // 鱼眼出现前：模糊隐约；鱼眼出现后：清晰可见
-    if(state.story.stage === 7 && state.story.flags.flashlightBroken) {
-        let gx = CONFIG.grayThingX;
-        let gy = CONFIG.grayThingY;
-        let distToGrayThing = Math.hypot(player.x - gx, player.y - gy);
-        // 在配置距离内开始显示
-        if(distToGrayThing < CONFIG.grayThingVisibleDist) {
-            let visibility = Math.max(0, 1 - distToGrayThing / CONFIG.grayThingVisibleDist);
-            // 鱼眼出现前：模糊（最高alpha 0.45）；鱼眼出现后：清晰（最高alpha 1.0）
-            let maxAlpha = state.story.flags.fishEyeTriggered ? 1.0 : 0.45;
-            ctx.save();
-            ctx.translate(logicW/2 + shakeX, logicH/2 + shakeY);
-            ctx.scale(zoom, zoom);
-            ctx.translate(-camX, -camY);
-            ctx.globalAlpha = visibility * maxAlpha;
-            
-            // 氧气罐造型：圆柱形罐体
-            let tankW = 18, tankH = 44;
-            // 罐体主体（圆角矩形）
-            let tankGrad = ctx.createLinearGradient(gx - tankW, gy, gx + tankW, gy);
-            tankGrad.addColorStop(0, 'rgba(80,85,90,0.9)');
-            tankGrad.addColorStop(0.3, 'rgba(130,135,140,0.95)');
-            tankGrad.addColorStop(0.5, 'rgba(160,165,170,1)');
-            tankGrad.addColorStop(0.7, 'rgba(110,115,120,0.95)');
-            tankGrad.addColorStop(1, 'rgba(70,75,80,0.9)');
-            ctx.fillStyle = tankGrad;
-            ctx.beginPath();
-            roundRectPath(ctx, gx - tankW/2, gy - tankH/2, tankW, tankH, tankW/2);
-            ctx.fill();
-            // 罐頂阀门（小矩形）
-            ctx.fillStyle = 'rgba(90,95,100,0.9)';
-            ctx.beginPath();
-            roundRectPath(ctx, gx - tankW/2 + 3, gy - tankH/2 - 7, tankW - 6, 8, 2);
-            ctx.fill();
-            // 阀门接口（小圆）
-            ctx.fillStyle = 'rgba(60,65,70,0.95)';
-            ctx.beginPath();
-            ctx.arc(gx, gy - tankH/2 - 10, 4, 0, Math.PI * 2);
-            ctx.fill();
-            // 罐体反光高光
-            ctx.fillStyle = 'rgba(200,210,220,0.25)';
-            ctx.beginPath();
-            ctx.ellipse(gx - tankW/4, gy - tankH/4, tankW/5, tankH/4, -0.3, 0, Math.PI * 2);
-            ctx.fill();
-            // 罐体底部圆弧
-            ctx.strokeStyle = 'rgba(60,65,70,0.8)';
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.arc(gx, gy + tankH/2 - 4, tankW/2 - 2, 0, Math.PI);
-            ctx.stroke();
-            
-            ctx.globalAlpha = 1;
-            ctx.restore();
-        }
-    }
-    // 绘制恐怖鱼眼闪现（手电筒突然亮起的瞬间，鱼眼在灰色物体位置）
-    if(state.story.flags.fishEyeFlashTimer > 0) {
-        let flashProgress = state.story.flags.fishEyeFlashTimer; // 直接是 1.0 -> 0 的进度值
-        ctx.save();
-        // 手电筒亮起的微弱白光闪
-        ctx.fillStyle = `rgba(255,255,240,${flashProgress * 0.12})`;
-        ctx.fillRect(0, 0, logicW, logicH);
-        
-        // 鱼眼在灰色物体（氧气罐）的屏幕坐标位置
-        let screenX = logicW/2 + (CONFIG.grayThingX - camX) * zoom + shakeX;
-        let screenY = logicH/2 + (CONFIG.grayThingY - camY) * zoom + shakeY;
-        
-        // 鱼眼大小（占据视野中央）
-        let eyeR = logicH * 0.38;
-        
-        // 眼白（灰白色，带血丝）
-        let eyeGrad = ctx.createRadialGradient(screenX, screenY, 0, screenX, screenY, eyeR);
-        eyeGrad.addColorStop(0, `rgba(15,15,15,${flashProgress})`);
-        eyeGrad.addColorStop(0.28, `rgba(15,15,15,${flashProgress})`);
-        eyeGrad.addColorStop(0.3, `rgba(155,155,150,${flashProgress * 0.95})`);
-        eyeGrad.addColorStop(0.6, `rgba(170,168,162,${flashProgress * 0.88})`);
-        eyeGrad.addColorStop(0.82, `rgba(185,182,175,${flashProgress * 0.72})`);
-        eyeGrad.addColorStop(1, `rgba(185,182,175,0)`);
-        ctx.fillStyle = eyeGrad;
-        ctx.beginPath();
-        ctx.ellipse(screenX, screenY, eyeR, eyeR * 0.72, 0, 0, Math.PI * 2);
-        ctx.fill();
-        
-        // 虹膜（深灰色，带纹理感）
-        let irisR = eyeR * 0.3;
-        let irisGrad = ctx.createRadialGradient(screenX, screenY, 0, screenX, screenY, irisR);
-        irisGrad.addColorStop(0, `rgba(8,8,8,${flashProgress})`);
-        irisGrad.addColorStop(0.35, `rgba(8,8,8,${flashProgress})`);
-        irisGrad.addColorStop(0.38, `rgba(55,52,48,${flashProgress * 0.9})`);
-        irisGrad.addColorStop(0.7, `rgba(45,42,38,${flashProgress * 0.85})`);
-        irisGrad.addColorStop(1, `rgba(35,32,28,${flashProgress * 0.6})`);
-        ctx.fillStyle = irisGrad;
-        ctx.beginPath();
-        ctx.ellipse(screenX, screenY, irisR, irisR, 0, 0, Math.PI * 2);
-        ctx.fill();
-        
-        // 瞳孔（极度放大，几乎占满虹膜）
-        let pupilR = irisR * 0.88;
-        ctx.fillStyle = `rgba(0,0,0,${flashProgress})`;
-        ctx.beginPath();
-        ctx.ellipse(screenX, screenY, pupilR, pupilR * 1.05, 0, 0, Math.PI * 2);
-        ctx.fill();
-        
-        // 眼睛高光（微弱，灰白色）
-        ctx.fillStyle = `rgba(220,220,215,${flashProgress * 0.5})`;
-        ctx.beginPath();
-        ctx.ellipse(screenX - irisR * 0.3, screenY - irisR * 0.35, irisR * 0.18, irisR * 0.12, -0.5, 0, Math.PI * 2);
-        ctx.fill();
-        
-        // 血丝（放射状红线，是唯一鲜艳的颜色）
-        ctx.save();
-        ctx.globalAlpha = flashProgress * 0.75;
-        ctx.strokeStyle = 'rgba(160,25,25,0.85)';
-        ctx.lineWidth = 1.2;
-        for(let i = 0; i < 22; i++) {
-            let angle = (i / 22) * Math.PI * 2;
-            let startR = eyeR * 0.32;
-            // 血丝长短不一，更真实
-            let endR = eyeR * (0.62 + (i % 3 === 0 ? 0.18 : 0.08));
-            ctx.beginPath();
-            // 血丝稍微弯曲
-            let midAngle = angle + 0.08;
-            let midR = (startR + endR) / 2;
-            ctx.moveTo(screenX + Math.cos(angle) * startR, screenY + Math.sin(angle) * startR * 0.72);
-            ctx.quadraticCurveTo(
-                screenX + Math.cos(midAngle) * midR,
-                screenY + Math.sin(midAngle) * midR * 0.72,
-                screenX + Math.cos(angle) * endR,
-                screenY + Math.sin(angle) * endR * 0.72
-            );
-            ctx.stroke();
-        }
-        ctx.restore();
-        
-        // 眼筜（上下遮挡，让眼睛更像真实的眼睛）
-        ctx.fillStyle = `rgba(5,5,8,${flashProgress})`;
-        ctx.beginPath();
-        ctx.ellipse(screenX, screenY - eyeR * 0.72 * 0.85, eyeR * 1.1, eyeR * 0.35, 0, Math.PI, Math.PI * 2);
-        ctx.fill();
-        ctx.beginPath();
-        ctx.ellipse(screenX, screenY + eyeR * 0.72 * 0.85, eyeR * 1.1, eyeR * 0.35, 0, 0, Math.PI);
-        ctx.fill();
-        
-        ctx.restore();
-    }
-    // 绘制放弃救援按钮（矩形，沿矩形边框转圈动效）
-    if(state.story.flags.abandonBtnVisible && state.story.stage === 7) {
-        let btnW = 200, btnH = 64;
-        let btnX = logicW / 2 - btnW / 2;
-        let btnY = logicH * 0.28 - btnH / 2;
-        let btnCx = btnX + btnW / 2;
-        let btnCy = btnY + btnH / 2;
-        let r = 10; // 圆角半径
-        let holdProgress = state.story.flags.abandonBtnHolding
-            ? Math.min(1, (Date.now() - state.story.flags.abandonBtnHoldStartTime) / (CONFIG.abandonBtnHoldDuration * 1000))
-            : 0;
-        
-        ctx.save();
-        
-        // 外层脉冲光晕（未按下时）
-        if(holdProgress === 0) {
-            let glowAlpha = 0.12 + Math.sin(Date.now()/300)*0.08;
-            ctx.fillStyle = `rgba(180,30,30,${glowAlpha})`;
-            ctx.beginPath();
-            roundRectPath(ctx, btnX - 8, btnY - 8, btnW + 16, btnH + 16, r + 6);
-            ctx.fill();
-        }
-        
-        // 按钮背景矩形
-        ctx.fillStyle = 'rgba(80,0,0,0.85)';
-        ctx.beginPath();
-        roundRectPath(ctx, btnX, btnY, btnW, btnH, r);
-        ctx.fill();
-        
-        // 按钮边框（静态底色）
-        ctx.strokeStyle = 'rgba(120,30,30,0.8)';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        roundRectPath(ctx, btnX, btnY, btnW, btnH, r);
-        ctx.stroke();
-        
-        // 长按进度：沿矩形边框顺时针转圈
-        if(holdProgress > 0) {
-            // 矩形周长
-            let perimeter = 2 * (btnW + btnH);
-            let progressLen = holdProgress * perimeter;
-            
-            // 从顶边中点开始，顺时针：上→右→下→左
-            ctx.strokeStyle = 'rgba(220,50,50,0.95)';
-            ctx.lineWidth = 3;
-            ctx.lineCap = 'round';
-            ctx.beginPath();
-            
-            // 起点：顶边中点
-            let startX = btnCx;
-            let startY = btnY;
-            ctx.moveTo(startX, startY);
-            
-            let remaining = progressLen;
-            
-            // 上边右半段：从中点到右上角
-            let seg = btnW / 2;
-            if(remaining <= 0) { /* skip */ }
-            else if(remaining < seg) {
-                ctx.lineTo(startX + remaining, btnY);
-                remaining = 0;
-            } else {
-                ctx.lineTo(btnX + btnW, btnY);
-                remaining -= seg;
-            }
-            
-            // 右边：从右上角到右下角
-            seg = btnH;
-            if(remaining > 0) {
-                if(remaining < seg) {
-                    ctx.lineTo(btnX + btnW, btnY + remaining);
-                    remaining = 0;
-                } else {
-                    ctx.lineTo(btnX + btnW, btnY + btnH);
-                    remaining -= seg;
-                }
-            }
-            
-            // 下边：从右下角到左下角
-            seg = btnW;
-            if(remaining > 0) {
-                if(remaining < seg) {
-                    ctx.lineTo(btnX + btnW - remaining, btnY + btnH);
-                    remaining = 0;
-                } else {
-                    ctx.lineTo(btnX, btnY + btnH);
-                    remaining -= seg;
-                }
-            }
-            
-            // 左边：从左下角到左上角
-            seg = btnH;
-            if(remaining > 0) {
-                if(remaining < seg) {
-                    ctx.lineTo(btnX, btnY + btnH - remaining);
-                    remaining = 0;
-                } else {
-                    ctx.lineTo(btnX, btnY);
-                    remaining -= seg;
-                }
-            }
-            
-            // 上边左半段：从左上角回到中点
-            seg = btnW / 2;
-            if(remaining > 0) {
-                let draw = Math.min(remaining, seg);
-                ctx.lineTo(btnX + draw, btnY);
-            }
-            
-            ctx.stroke();
-        }
-        
-        // 按钮文字
-        ctx.fillStyle = '#ff8888';
-        ctx.font = 'bold 15px Arial';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('长按放弃救援', btnCx, btnCy - 9);
-        ctx.fillStyle = 'rgba(200,150,150,0.8)';
-        ctx.font = '11px Arial';
-        ctx.fillText('（熊子，对不起了）', btnCx, btnCy + 12);
-        
-        ctx.restore();
-    }
 
     // 绘制亮色悬浮尘埃（光照后，被手电照亮的尘埃散射发光）
     ctx.save();
@@ -959,19 +662,15 @@ export function draw() {
     }
     ctx.restore();
 
-    // 黑屏过渡
-    if(state.story.flags.blackScreen) {
-        ctx.fillStyle = '#000';
-        ctx.fillRect(0, 0, logicW, logicH);
-    }
+    // 旧主线 blackScreen（开场黑屏过渡）已废弃。
 
     // 红色叠加（濒死状态）
-    if(state.story.redOverlay > 0.001) {
-        let t = state.story.redOverlay;
+    if(state.fx.redOverlay > 0.001) {
+        let t = state.fx.redOverlay;
         let r = Math.floor(255 * (1-t) + 61 * t);
         let g = Math.floor(0 * (1-t) + 3 * t);
         let b = Math.floor(0 * (1-t) + 3 * t);
-        let alpha = Number(state.story.redOverlay.toFixed(3));
+        let alpha = Number(state.fx.redOverlay.toFixed(3));
         ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
         ctx.fillRect(0, 0, logicW, logicH);
     }

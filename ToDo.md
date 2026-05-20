@@ -1,5 +1,18 @@
 # ⭐️⭐️⭐️
 
+## 主线改造（《唐老师的救援》）· 进行中
+
+> 详见 `.codebuddy/rules/design/tang/改造方案.md` 与 `阶段1-待删清单.md`。
+> 决策定稿（2026-05-20）：直接删除旧主线（熊子/潘子）+ 旧章节选择，新开"白天潜水 + 晚上家场景对话"循环。
+
+- [x] 阶段 0 · 准备：决策、改造方案文档、阶段 1 待删清单
+- [x] 阶段 1 · 删旧（已完成 2026-05-20）：StoryManager 13 stage / RenderEnding / 章节选择 / state.story 全部清除；提取 state.fx；TypeScript 编译通过
+- [ ] 阶段 2 · 营地按钮统一（2~3 天）：ShoreButtonBar.ts 注册表，营地按钮全收编，"回家"按钮就位
+- [ ] 阶段 3 · 家场景上线（3~5 天 + 美术）：state.home / DialogueRunner / RenderHomeScene；首批 3 晚（Night 1/4/7）
+- [ ] 阶段 4 · 主菜单 + 剧情进度选择（1~2 天）：4 项菜单、progressSelect 沙盒重玩
+
+---
+
 整理一个美术文档，包括UI、动效、场景、角色、动画、音效音乐。
 
 音频按钮不许关闭音频。
