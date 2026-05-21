@@ -2,6 +2,7 @@ import { initTextures, draw } from './src/render/Render';
 import { resetGameLogic, update, resetArenaLogic, updateArena, resetMazeLogic, replayMazeLogic, updateMaze, startMazeDive, returnToShore, abandonCase, acceptNewCase, stayInResolvedCase, markBriefingShown } from './src/logic/Logic';
 import { updateHome } from './src/story/HomeScene';
 import { loadStoryProgress } from './src/story/StoryProgressSave';
+import { ensureHomeAssetsRegistered } from './src/story/HomeRoom';
 import { state } from './src/core/state';
 import { initInput } from './src/core/input';
 import { initAudio, updateAudio, updateSFXLoops, updateAmbience, playAmbience, stopAmbience } from './src/audio/AudioManager';
@@ -32,6 +33,9 @@ loadExtractionProgress();
 
 // 主线（《唐老师的救援》）：加载剧情进度（nightIndex / knownNights / flags）
 loadStoryProgress();
+
+// 主线·家场景：预加载客厅背景等图片（异步，不阻塞启动）
+ensureHomeAssetsRegistered();
 
 // 初始化输入监听，传入重置回调
 initInput(

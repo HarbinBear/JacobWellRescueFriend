@@ -19,3 +19,6 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+
+# 设计阶段的 AI 草图（不进版本库；定稿图会拷到 images/）
+.codebuddy/rules/design/**/art-drafts/

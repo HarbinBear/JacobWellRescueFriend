@@ -1,21 +1,24 @@
 // 家场景演员系统
 //
-// 男主和女孩在客厅画面上的位置插值。坐标是逻辑屏幕像素。
-// 不做物理碰撞——客厅就一张静态背景，演员只是装饰性走两步。
+// 男主和女孩在客厅画面上的位置插值。
+// 坐标系：**屋内坐标系**（x = 0..ROOM_WIDTH，与 HomeRoom.ts 的 ANCHORS 对齐）。
+// y 是屏幕像素 y（地板线）；x 是屋内 x，会在渲染时通过 cameraX 平移到屏幕。
 
 import { state } from '../core/state';
 import { Anchor } from './scripts/types';
+import { ANCHORS, FLOOR_Y_RATIO, ROOM_WIDTH } from './HomeRoom';
 
-// 客厅锚点定义（比例屏幕坐标）
-// cw 是逻辑屏宽，ch 是逻辑屏高，调用方提供。
-export function anchorPos(cw: number, ch: number, anchor: Anchor): { x: number; y: number } {
+// 客厅锚点位置（屋内坐标系）
+// cw 参数保留是为兼容旧 API 签名；本实现不再依赖屏幕宽度。
+export function anchorPos(_cw: number, ch: number, anchor: Anchor): { x: number; y: number } {
+    const floorY = ch * FLOOR_Y_RATIO;
     switch (anchor) {
-        case 'door':   return { x: cw * 0.85, y: ch * 0.62 };  // 玄关，靠右
-        case 'sofa':   return { x: cw * 0.42, y: ch * 0.62 };
-        case 'desk':   return { x: cw * 0.22, y: ch * 0.62 };
-        case 'window': return { x: cw * 0.62, y: ch * 0.50 };
-        case 'exit':   return { x: cw * 1.05, y: ch * 0.62 };  // 出门：屏幕外右侧
-        case 'center': return { x: cw * 0.50, y: ch * 0.62 };
+        case 'door':   return { x: ANCHORS.door,   y: floorY };
+        case 'sofa':   return { x: ANCHORS.photos, y: floorY };   // 旧"沙发"映射到照片墙
+        case 'desk':   return { x: ANCHORS.desk,   y: floorY };
+        case 'window': return { x: ANCHORS.window, y: floorY - 8 };
+        case 'exit':   return { x: ANCHORS.door - 160, y: floorY }; // 出门：door 左侧屋外
+        case 'center': return { x: ROOM_WIDTH * 0.5, y: floorY };
     }
 }
 

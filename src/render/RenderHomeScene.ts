@@ -1,23 +1,26 @@
 // 家场景渲染
 //
-// 当前为占位美术：用纯色块 + 简单几何形状画出"客厅"。
-// 等正式美术资产到位后替换 drawBackground / drawMan / drawGirl 三个函数即可。
-//
 // 渲染层级（从底到顶）：
-//   1. 客厅背景（墙、地面、窗、桌、收音机、墙上挂物）
-//   2. 男主立绘
-//   3. 女孩立绘
-//   4. 对话框（dialogue 阶段）
-//   5. 屋内热点高亮（free 阶段）
-//   6. 睡觉按钮（free 阶段）
+//   1. 背景图（横屏静态图 + cameraX 横向平移）
+//   2. 程序化动效层：台灯呼吸光 / 窗外星星闪烁 / 灰尘粒子浮动
+//   3. 男主立绘（屋内坐标系，按 cameraX 平移到屏幕）
+//   4. 女孩立绘
+//   5. 对话框（dialogue 阶段）
+//   6. 睡觉按钮 + 提示文字（free 阶段）
 //   7. 黑场遮罩（fadeAlpha）
+//
+// 背景图未加载完成时，渲染纯黑兜底（用 fadeIn 黑场覆盖玩家也察觉不到）。
 
 import { ctx, logicW, logicH } from './Canvas';
 import { state } from '../core/state';
 import { getCurrentNode } from '../story/DialogueRunner';
 import { getSleepBtnRect } from '../story/HomeScene';
+import { getImage } from './ImageAssets';
+import { HOME_ASSET_KEYS, ROOM_WIDTH, ANCHORS, FLOOR_Y_RATIO, roomXToScreenX } from '../story/HomeRoom';
 
-// 圆角矩形
+// ===========================================================
+// 工具
+// ===========================================================
 function rrect(c: any, x: number, y: number, w: number, h: number, r: number) {
     r = Math.min(r, w / 2, h / 2);
     c.moveTo(x + r, y);
@@ -32,31 +35,80 @@ function rrect(c: any, x: number, y: number, w: number, h: number, r: number) {
     c.closePath();
 }
 
-// =============================================
+// ===========================================================
+// 灰尘粒子（屋内坐标系，进 home_evening 时懒初始化）
+// ===========================================================
+type Mote = { rx: number; y: number; vx: number; vy: number; alpha: number; r: number };
+let _motes: Mote[] | null = null;
+
+function ensureMotes() {
+    if (_motes) return;
+    _motes = [];
+    for (let i = 0; i < 36; i++) {
+        _motes.push({
+            rx: Math.random() * ROOM_WIDTH,
+            y: 80 + Math.random() * (logicH * 0.55),
+            vx: (Math.random() - 0.5) * 0.15,
+            vy: (Math.random() - 0.5) * 0.08,
+            alpha: 0.08 + Math.random() * 0.12,
+            r: 0.7 + Math.random() * 1.6,
+        });
+    }
+}
+
+function tickMotes() {
+    if (!_motes) return;
+    for (const m of _motes) {
+        m.rx += m.vx;
+        m.y += m.vy;
+        // 缓慢扰动
+        if (Math.random() < 0.01) m.vx = (Math.random() - 0.5) * 0.18;
+        if (Math.random() < 0.01) m.vy = (Math.random() - 0.5) * 0.08;
+        // 屋内 wrap
+        if (m.rx < 0) m.rx += ROOM_WIDTH;
+        if (m.rx > ROOM_WIDTH) m.rx -= ROOM_WIDTH;
+        if (m.y < 60) { m.y = logicH * 0.6; }
+        if (m.y > logicH * 0.78) { m.y = 60; }
+    }
+}
+
+// ===========================================================
 // 主入口
-// =============================================
+// ===========================================================
 export function drawHomeScene() {
     const home: any = state.home;
     if (!home) return;
     const cw = logicW;
     const ch = logicH;
 
-    drawBackground(cw, ch);
-    drawDeskAndWindow(cw, ch);
-    drawWallPhotos(cw, ch);
-    drawWindowSillStones(cw, ch);
-    drawMan(cw, ch);
-    drawGirl(cw, ch);
+    const cameraX = home.cameraX || 0;
 
+    // 1. 背景
+    drawBackground(cw, ch, cameraX);
+
+    // 2. 动效层（在背景之上、人物之下）
+    ensureMotes();
+    tickMotes();
+    drawLampGlow(cw, ch, cameraX);
+    drawTwinklingStars(cw, ch, cameraX);
+    drawMotes(cw, ch, cameraX);
+
+    // 3-4. 男主、女孩
+    drawMan(cw, ch, cameraX);
+    drawGirl(cw, ch, cameraX);
+
+    // 5. 对话框
     if (home.phase === 'dialogue') {
         drawDialogueBox(cw, ch);
     }
+
+    // 6. 睡觉按钮 + 提示
     if (home.phase === 'free' && home.sleepBtnVisible) {
         drawHint(cw, ch, '时候不早了');
         drawSleepBtn(cw, ch);
     }
 
-    // 黑场遮罩
+    // 7. 黑场
     if (home.fadeAlpha > 0.001) {
         ctx.save();
         ctx.fillStyle = `rgba(0, 0, 0, ${home.fadeAlpha})`;
@@ -65,159 +117,134 @@ export function drawHomeScene() {
     }
 }
 
-// =============================================
-// 客厅背景：墙、地面、踢脚线
-// =============================================
-function drawBackground(cw: number, ch: number) {
-    // 上半墙：暖灰
-    const grad = ctx.createLinearGradient(0, 0, 0, ch * 0.7);
-    grad.addColorStop(0, '#3a3128');
-    grad.addColorStop(1, '#5a4a38');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, cw, ch * 0.7);
-
-    // 下半地面：木地板棕
-    const floor = ctx.createLinearGradient(0, ch * 0.7, 0, ch);
-    floor.addColorStop(0, '#3d2c1d');
-    floor.addColorStop(1, '#1f1610');
-    ctx.fillStyle = floor;
-    ctx.fillRect(0, ch * 0.7, cw, ch * 0.3);
-
-    // 踢脚线
-    ctx.fillStyle = '#241914';
-    ctx.fillRect(0, ch * 0.69, cw, 4);
-
-    // 木地板纹理：横纹
-    ctx.strokeStyle = 'rgba(60, 40, 25, 0.4)';
-    ctx.lineWidth = 1;
-    for (let y = ch * 0.74; y < ch; y += 18) {
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(cw, y);
-        ctx.stroke();
+// ===========================================================
+// 1. 背景图渲染（横向平移）
+// ===========================================================
+function drawBackground(cw: number, ch: number, cameraX: number) {
+    const img = getImage(HOME_ASSET_KEYS.bgNight);
+    if (!img) {
+        // 未就绪：用深色木墙兜底
+        ctx.fillStyle = '#1f1610';
+        ctx.fillRect(0, 0, cw, ch);
+        return;
     }
 
-    // 灯光晕：从天花板中央打下来一片暖光
-    const lamp = ctx.createRadialGradient(cw * 0.5, ch * 0.2, 30, cw * 0.5, ch * 0.55, ch * 0.6);
-    lamp.addColorStop(0, 'rgba(255, 220, 160, 0.18)');
-    lamp.addColorStop(1, 'rgba(255, 220, 160, 0)');
-    ctx.fillStyle = lamp;
-    ctx.fillRect(0, 0, cw, ch);
+    // 图片以 ROOM_WIDTH × ch 的逻辑尺寸"贴"在屋内坐标系上。
+    // 屏幕显示：屋内坐标 [cameraX, cameraX + cw] 这段贴到屏幕 [0, cw]。
+    // 用 drawImage 的 9 参数版本：从源图按比例切片。
+
+    const imgW = img.width || ROOM_WIDTH;
+    const imgH = img.height || ch;
+    // 源图按横向 sx 取片，按高度全切
+    const sx = (cameraX / ROOM_WIDTH) * imgW;
+    const sw = (cw / ROOM_WIDTH) * imgW;
+
+    try {
+        ctx.drawImage(img, sx, 0, sw, imgH, 0, 0, cw, ch);
+    } catch {
+        ctx.fillStyle = '#1f1610';
+        ctx.fillRect(0, 0, cw, ch);
+    }
 }
 
-// =============================================
-// 桌子 + 窗户 + 收音机
-// =============================================
-function drawDeskAndWindow(cw: number, ch: number) {
-    // 桌子（左侧 desk 锚点附近）
-    const dx = cw * 0.16, dy = ch * 0.66;
-    ctx.fillStyle = '#2c1f15';
-    ctx.beginPath(); rrect(ctx, dx, dy, 90, 40, 4); ctx.fill();
-    ctx.fillStyle = '#1a1208';
-    ctx.fillRect(dx + 6, dy + 38, 6, 26);
-    ctx.fillRect(dx + 78, dy + 38, 6, 26);
-    // 桌上放一摞纸（救援报告）
-    ctx.fillStyle = '#d4cab0';
-    ctx.fillRect(dx + 14, dy + 8, 24, 18);
+// ===========================================================
+// 2a. 台灯呼吸光晕（叠在桌子位置）
+// ===========================================================
+function drawLampGlow(cw: number, ch: number, cameraX: number) {
+    const sx = roomXToScreenX(ANCHORS.desk + 30, cameraX); // 桌上灯的位置略偏右
+    const sy = ch * 0.50;
+    if (sx < -200 || sx > cw + 200) return;
+    const t = Date.now() / 1000;
+    const breathe = 0.85 + Math.sin(t * 1.6) * 0.08 + Math.sin(t * 0.7) * 0.04;
 
-    // 窗户（中央上方）
-    const wx = cw * 0.55, wy = ch * 0.18;
-    const ww = 110, wh = 130;
-    // 窗框
-    ctx.fillStyle = '#211711';
-    ctx.fillRect(wx - 4, wy - 4, ww + 8, wh + 8);
-    // 玻璃 → 夜晚深蓝
-    const sky = ctx.createLinearGradient(0, wy, 0, wy + wh);
-    sky.addColorStop(0, '#0a1f3a');
-    sky.addColorStop(1, '#1c2d4f');
-    ctx.fillStyle = sky;
-    ctx.fillRect(wx, wy, ww, wh);
-    // 几颗星
-    ctx.fillStyle = 'rgba(255, 240, 200, 0.85)';
-    for (const [px, py] of [[0.2, 0.3], [0.55, 0.18], [0.75, 0.45], [0.4, 0.6]]) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const g = ctx.createRadialGradient(sx, sy, 8, sx, sy, 220);
+    g.addColorStop(0, `rgba(255, 200, 120, ${0.35 * breathe})`);
+    g.addColorStop(0.5, `rgba(255, 180, 100, ${0.12 * breathe})`);
+    g.addColorStop(1, 'rgba(255, 180, 100, 0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(sx - 220, sy - 220, 440, 440);
+    ctx.restore();
+}
+
+// ===========================================================
+// 2b. 窗外星星闪烁
+// ===========================================================
+const STAR_OFFSETS: { dx: number; dy: number; phase: number; baseAlpha: number }[] = [
+    { dx: -32, dy: -68, phase: 0.0, baseAlpha: 0.85 },
+    { dx:  -8, dy: -94, phase: 1.7, baseAlpha: 0.6 },
+    { dx:  24, dy: -52, phase: 3.1, baseAlpha: 0.9 },
+    { dx:  48, dy: -82, phase: 0.8, baseAlpha: 0.7 },
+    { dx:  -56, dy: -36, phase: 2.4, baseAlpha: 0.5 },
+];
+
+function drawTwinklingStars(cw: number, ch: number, cameraX: number) {
+    const centerSx = roomXToScreenX(ANCHORS.window, cameraX);
+    const centerSy = ch * 0.30;
+    if (centerSx < -120 || centerSx > cw + 120) return;
+    const t = Date.now() / 1000;
+    ctx.save();
+    for (const s of STAR_OFFSETS) {
+        const a = s.baseAlpha * (0.5 + 0.5 * Math.sin(t * 2.2 + s.phase));
+        ctx.fillStyle = `rgba(255, 245, 220, ${a.toFixed(3)})`;
         ctx.beginPath();
-        ctx.arc(wx + ww * px, wy + wh * py, 1.2, 0, Math.PI * 2);
+        ctx.arc(centerSx + s.dx, centerSy + s.dy, 1.4, 0, Math.PI * 2);
+        ctx.fill();
+        // 微弱光晕
+        if (a > 0.6) {
+            ctx.fillStyle = `rgba(255, 245, 220, ${(a - 0.6) * 0.5})`;
+            ctx.beginPath();
+            ctx.arc(centerSx + s.dx, centerSy + s.dy, 3, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
+    ctx.restore();
+}
+
+// ===========================================================
+// 2c. 灰尘粒子
+// ===========================================================
+function drawMotes(cw: number, _ch: number, cameraX: number) {
+    if (!_motes) return;
+    ctx.save();
+    for (const m of _motes) {
+        const sx = m.rx - cameraX;
+        if (sx < -4 || sx > cw + 4) continue;
+        ctx.fillStyle = `rgba(255, 230, 190, ${m.alpha.toFixed(3)})`;
+        ctx.beginPath();
+        ctx.arc(sx, m.y, m.r, 0, Math.PI * 2);
         ctx.fill();
     }
-    // 窗框十字
-    ctx.fillStyle = '#1a1208';
-    ctx.fillRect(wx, wy + wh / 2 - 2, ww, 4);
-    ctx.fillRect(wx + ww / 2 - 2, wy, 4, wh);
-
-    // 收音机（窗下方）
-    const rx = wx + 12, ry = wy + wh + 18;
-    ctx.fillStyle = '#3b2a1a';
-    ctx.beginPath(); rrect(ctx, rx, ry, 86, 38, 4); ctx.fill();
-    ctx.fillStyle = '#7d6240';
-    ctx.fillRect(rx + 8, ry + 8, 32, 22);
-    ctx.fillStyle = '#241710';
-    ctx.beginPath();
-    ctx.arc(rx + 60, ry + 12, 5, 0, Math.PI * 2);
-    ctx.arc(rx + 76, ry + 12, 5, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#aa8c5a';
-    ctx.fillRect(rx + 50, ry + 24, 30, 8);
+    ctx.restore();
 }
 
-// =============================================
-// 墙上挂物（占位：3 张方框示意）
-// =============================================
-function drawWallPhotos(cw: number, ch: number) {
-    const baseY = ch * 0.10;
-    // 小学毕业班合影（左）
-    drawPhotoFrame(cw * 0.22, baseY, 84, 52, '#7a6248');
-    // 护林队合影（中偏右）
-    drawPhotoFrame(cw * 0.40, baseY, 84, 52, '#6b573f');
-    // 男主单人照（右上）
-    drawPhotoFrame(cw * 0.78, baseY, 60, 76, '#806548');
-}
-
-function drawPhotoFrame(x: number, y: number, w: number, h: number, frame: string) {
-    ctx.fillStyle = frame;
-    ctx.beginPath(); rrect(ctx, x, y, w, h, 3); ctx.fill();
-    ctx.fillStyle = 'rgba(220, 200, 170, 0.55)';
-    ctx.fillRect(x + 4, y + 4, w - 8, h - 8);
-}
-
-// =============================================
-// 窗台小石头
-// =============================================
-function drawWindowSillStones(cw: number, ch: number) {
-    // 绘制累计石头数量（暂以 story2.flags['stoneCountAdded'] 计数 + nightIndex 估算）
-    // 简单表现：每经历过一个 known night 多一颗
-    const count = Math.min(8, state.story2.knownNights.length);
-    if (count <= 0) return;
-    const baseX = cw * 0.55 - 4;
-    const baseY = ch * 0.18 + 130 + 8;
-    for (let i = 0; i < count; i++) {
-        ctx.fillStyle = '#5b4a3a';
-        ctx.beginPath();
-        ctx.ellipse(baseX + i * 10, baseY, 4, 3, 0, 0, Math.PI * 2);
-        ctx.fill();
-    }
-}
-
-// =============================================
-// 男主：占位为简笔人
-// =============================================
-function drawMan(cw: number, ch: number) {
+// ===========================================================
+// 3. 男主
+// ===========================================================
+function drawMan(cw: number, _ch: number, cameraX: number) {
     const home: any = state.home;
     if (!home) return;
     const m = home.actors.man;
-    if (m.x < -40 || m.x > cw + 40) return;
-    drawSimpleHuman(m.x, m.y, 1.0, '#3b3b46', '#c6a486');
+    const sx = m.x - cameraX;
+    if (sx < -60 || sx > cw + 60) return;
+    drawSimpleHuman(sx, m.y, 1.0, '#3b3b46', '#c6a486');
 }
 
-function drawGirl(cw: number, ch: number) {
+// ===========================================================
+// 4. 女孩
+// ===========================================================
+function drawGirl(cw: number, _ch: number, cameraX: number) {
     const home: any = state.home;
     if (!home || !home.actors.girl.visible) return;
     const g = home.actors.girl;
-    if (g.x < -40 || g.x > cw + 40) return;
-    drawSimpleHuman(g.x, g.y, 0.65, '#a7c4e3', '#f1d7c0');
+    const sx = g.x - cameraX;
+    if (sx < -60 || sx > cw + 60) return;
+    drawSimpleHuman(sx, g.y, 0.65, '#a7c4e3', '#f1d7c0');
 }
 
 function drawSimpleHuman(x: number, y: number, scale: number, bodyColor: string, skinColor: string) {
-    // 人物站立时 y 对应脚底
+    // y 对应脚底
     const headR = 8 * scale;
     const bodyW = 16 * scale;
     const bodyH = 26 * scale;
@@ -228,9 +255,9 @@ function drawSimpleHuman(x: number, y: number, scale: number, bodyColor: string,
     const headCY = bodyTopY - headR - 1 * scale;
 
     // 影子
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.32)';
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
     ctx.beginPath();
-    ctx.ellipse(x, feetY + 2, headR * 1.2, headR * 0.4, 0, 0, Math.PI * 2);
+    ctx.ellipse(x, feetY + 2, headR * 1.3, headR * 0.45, 0, 0, Math.PI * 2);
     ctx.fill();
 
     // 腿
@@ -255,9 +282,9 @@ function drawSimpleHuman(x: number, y: number, scale: number, bodyColor: string,
     ctx.fill();
 }
 
-// =============================================
-// 对话框
-// =============================================
+// ===========================================================
+// 5. 对话框
+// ===========================================================
 function drawDialogueBox(cw: number, ch: number) {
     const node = getCurrentNode();
     if (!node) return;
@@ -269,8 +296,8 @@ function drawDialogueBox(cw: number, ch: number) {
     const boxW = cw * 0.88;
     const boxH = ch * 0.22 - 12;
 
-    // 底色
     ctx.save();
+    // 底色
     ctx.fillStyle = 'rgba(8, 12, 20, 0.85)';
     ctx.beginPath(); rrect(ctx, boxX, boxY, boxW, boxH, 12); ctx.fill();
     // 描边
@@ -312,7 +339,6 @@ function drawDialogueBox(cw: number, ch: number) {
 }
 
 function drawWrappedText(c: any, text: string, x: number, y: number, maxW: number, lineH: number) {
-    // 中文按字符切分
     let line = '';
     let curY = y;
     for (let i = 0; i < text.length; i++) {
@@ -329,9 +355,9 @@ function drawWrappedText(c: any, text: string, x: number, y: number, maxW: numbe
     if (line) c.fillText(line, x, curY);
 }
 
-// =============================================
-// 睡觉按钮
-// =============================================
+// ===========================================================
+// 6. 睡觉按钮 + 提示
+// ===========================================================
 function drawSleepBtn(cw: number, ch: number) {
     const r = getSleepBtnRect(cw, ch);
     ctx.save();
@@ -360,3 +386,11 @@ function drawHint(cw: number, ch: number, text: string) {
     ctx.fillText(text, cw - 18, ch - 24 - 40 - 14);
     ctx.restore();
 }
+
+// 重置粒子（场景退出时调用以省内存，不强制）
+export function resetHomeSceneFx() {
+    _motes = null;
+}
+
+// 让重写的 FLOOR_Y_RATIO 仍可被外部读到
+export { FLOOR_Y_RATIO };

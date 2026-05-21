@@ -54,6 +54,13 @@ export const state = {
         knockPlayed: boolean;             // arriving→waiting_knock 时敲门音是否已播
         fadeAlpha: number;                // 黑场遮罩 0~1
         fadeMode: 'none' | 'in' | 'out';  // none=无；in=由黑入景；out=入睡到黑
+        // 横屏背景图横向平移相关：
+        //   cameraX: 当前镜头横向位置，单位为"屋内逻辑坐标"（与男主/女孩 x 同坐标系）。
+        //   cameraTargetX: 目标位置，每帧朝它插值靠拢。
+        //   cameraInited: 是否已根据 phase 设置过初始位置（避免每次进 phase 都重置）。
+        cameraX: number;
+        cameraTargetX: number;
+        cameraInited: boolean;
     },
     endingTimer: 0, // 结局动画计时器
     currentZone: null, // 当前所在区域
