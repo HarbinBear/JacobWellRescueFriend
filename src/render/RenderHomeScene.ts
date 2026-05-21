@@ -15,7 +15,7 @@ import { ctx, logicW, logicH } from './Canvas';
 import { state } from '../core/state';
 import { getCurrentNode } from '../story/DialogueRunner';
 import { getSleepBtnRect } from '../story/HomeScene';
-import { getImage } from './ImageAssets';
+import { getImage, getProcessedImage } from './ImageAssets';
 import {
     HOME_ASSET_KEYS, ROOM_WIDTH, anchorRoomX, FLOOR_Y_RATIO,
     syncRoomWidthFromImage, roomXToScreenXScaled,
@@ -237,41 +237,64 @@ function drawBackground(cw: number, ch: number, cameraX: number) {
 }
 
 // 上下暗角 + 装饰渐变：横向视野扩大后，画面上下可能有黑/截断，用渐变软盖一层
-// 关键：渐变区延长到屏高的 35%（不再是 18%），并用多段 stop 模拟 smoothstep 节奏
+// 关键：渐变区延长到屏高的 50%（不再是 35%），10 段 stop 模拟连续 smoothstep
 function drawTopBottomGradient(cw: number, ch: number) {
     ctx.save();
 
-    // 上方：从顶部黑色软渐变到透明（35% 屏高，stop 用 smoothstep 节奏）
-    const topH = Math.round(ch * 0.35);
+    // 上方：从顶部黑色软渐变到透明（50% 屏高，10 段 stop 模拟 smoothstep）
+    const topH = Math.round(ch * 0.50);
     const gTop = ctx.createLinearGradient(0, 0, 0, topH);
-    gTop.addColorStop(0.00, 'rgba(6, 4, 3, 0.92)');
-    gTop.addColorStop(0.20, 'rgba(10, 7, 5, 0.70)');
-    gTop.addColorStop(0.45, 'rgba(14, 10, 7, 0.38)');
-    gTop.addColorStop(0.70, 'rgba(16, 12, 9, 0.15)');
-    gTop.addColorStop(0.88, 'rgba(18, 13, 10, 0.05)');
-    gTop.addColorStop(1.00, 'rgba(18, 13, 10, 0)');
+    gTop.addColorStop(0.00, 'rgba(4, 3, 2, 0.95)');
+    gTop.addColorStop(0.08, 'rgba(6, 4, 3, 0.88)');
+    gTop.addColorStop(0.18, 'rgba(8, 5, 4, 0.72)');
+    gTop.addColorStop(0.30, 'rgba(10, 7, 5, 0.52)');
+    gTop.addColorStop(0.42, 'rgba(12, 8, 6, 0.34)');
+    gTop.addColorStop(0.55, 'rgba(14, 10, 7, 0.20)');
+    gTop.addColorStop(0.68, 'rgba(16, 11, 8, 0.10)');
+    gTop.addColorStop(0.80, 'rgba(18, 13, 10, 0.04)');
+    gTop.addColorStop(0.92, 'rgba(20, 14, 10, 0.01)');
+    gTop.addColorStop(1.00, 'rgba(20, 14, 10, 0)');
     ctx.fillStyle = gTop;
     ctx.fillRect(0, 0, cw, topH);
 
-    // 下方：地板阴影长渐变（35% 屏高）
-    const botH = Math.round(ch * 0.35);
+    // 下方：地板阴影长渐变（50% 屏高，10 段 stop）
+    const botH = Math.round(ch * 0.50);
     const gBot = ctx.createLinearGradient(0, ch - botH, 0, ch);
     gBot.addColorStop(0.00, 'rgba(8, 5, 3, 0)');
-    gBot.addColorStop(0.12, 'rgba(8, 5, 3, 0.05)');
-    gBot.addColorStop(0.30, 'rgba(8, 5, 3, 0.15)');
-    gBot.addColorStop(0.55, 'rgba(6, 4, 2, 0.38)');
-    gBot.addColorStop(0.80, 'rgba(4, 3, 2, 0.70)');
-    gBot.addColorStop(1.00, 'rgba(0, 0, 0, 0.92)');
+    gBot.addColorStop(0.08, 'rgba(8, 5, 3, 0.01)');
+    gBot.addColorStop(0.20, 'rgba(8, 5, 3, 0.04)');
+    gBot.addColorStop(0.32, 'rgba(8, 5, 3, 0.10)');
+    gBot.addColorStop(0.45, 'rgba(7, 4, 3, 0.20)');
+    gBot.addColorStop(0.58, 'rgba(6, 4, 2, 0.36)');
+    gBot.addColorStop(0.70, 'rgba(5, 3, 2, 0.54)');
+    gBot.addColorStop(0.82, 'rgba(3, 2, 1, 0.74)');
+    gBot.addColorStop(0.92, 'rgba(2, 1, 1, 0.88)');
+    gBot.addColorStop(1.00, 'rgba(0, 0, 0, 0.95)');
     ctx.fillStyle = gBot;
     ctx.fillRect(0, ch - botH, cw, botH);
 
-    // 整体 vignette（更柔）
-    const vg = ctx.createRadialGradient(cw / 2, ch / 2, Math.min(cw, ch) * 0.45, cw / 2, ch / 2, Math.max(cw, ch) * 0.95);
-    vg.addColorStop(0, 'rgba(0, 0, 0, 0)');
-    vg.addColorStop(0.6, 'rgba(0, 0, 0, 0.10)');
-    vg.addColorStop(1, 'rgba(0, 0, 0, 0.42)');
+    // 整体 vignette（加深，让屏幕边缘明显暗化）
+    const vg = ctx.createRadialGradient(cw / 2, ch / 2, Math.min(cw, ch) * 0.35, cw / 2, ch / 2, Math.max(cw, ch) * 1.05);
+    vg.addColorStop(0.00, 'rgba(0, 0, 0, 0)');
+    vg.addColorStop(0.50, 'rgba(0, 0, 0, 0.10)');
+    vg.addColorStop(0.78, 'rgba(0, 0, 0, 0.32)');
+    vg.addColorStop(1.00, 'rgba(0, 0, 0, 0.60)');
     ctx.fillStyle = vg;
     ctx.fillRect(0, 0, cw, ch);
+
+    // 极左极右两侧再加一道窄暗带（强调画框感）
+    const sideW = Math.round(cw * 0.10);
+    const gL = ctx.createLinearGradient(0, 0, sideW, 0);
+    gL.addColorStop(0, 'rgba(0, 0, 0, 0.45)');
+    gL.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = gL;
+    ctx.fillRect(0, 0, sideW, ch);
+    const gR = ctx.createLinearGradient(cw - sideW, 0, cw, 0);
+    gR.addColorStop(0, 'rgba(0, 0, 0, 0)');
+    gR.addColorStop(1, 'rgba(0, 0, 0, 0.45)');
+    ctx.fillStyle = gR;
+    ctx.fillRect(cw - sideW, 0, sideW, ch);
+
     ctx.restore();
 }
 
@@ -312,18 +335,20 @@ function drawLampGlow(_cw: number, _ch: number, _cameraX: number) {
 // ===========================================================
 // 2b. 窗外星星闪烁
 //
-// 按图坐标系定位：星星只出现在背景图窗户区域内（y ≈ 0.12 ~ 0.30，x ≈ 0.45 ~ 0.62）
-// 这样无论屏幕尺寸、cameraX 怎么变，星星永远长在窗户玻璃上，不会跑到天花板。
+// 按图坐标系定位：星星严格限在窗玻璃区内。
+// 当前占位图（living_room_night.png）的窗玻璃区域：
+//   x: 0.47 ~ 0.59 (窗户中央偏内)
+//   y: 0.18 ~ 0.32 (上半部分天空，远离顶部窗框)
+// 这样无论屏幕尺寸、cameraX 怎么变，星星永远长在窗户玻璃上。
 // ===========================================================
 const STAR_POINTS: { rx: number; ry: number; phase: number; baseAlpha: number; size: number }[] = [
-    { rx: 0.47, ry: 0.16, phase: 0.0, baseAlpha: 1.0, size: 1.6 },
-    { rx: 0.50, ry: 0.13, phase: 1.7, baseAlpha: 0.8, size: 1.2 },
-    { rx: 0.54, ry: 0.18, phase: 3.1, baseAlpha: 1.0, size: 1.8 },
-    { rx: 0.58, ry: 0.14, phase: 0.8, baseAlpha: 0.85, size: 1.4 },
-    { rx: 0.45, ry: 0.22, phase: 2.4, baseAlpha: 0.7, size: 1.1 },
-    { rx: 0.60, ry: 0.20, phase: 4.5, baseAlpha: 0.85, size: 1.3 },
-    { rx: 0.52, ry: 0.25, phase: 5.2, baseAlpha: 0.9, size: 1.5 },
-    { rx: 0.56, ry: 0.28, phase: 1.2, baseAlpha: 0.75, size: 1.2 },
+    { rx: 0.48, ry: 0.20, phase: 0.0, baseAlpha: 1.0, size: 1.6 },
+    { rx: 0.51, ry: 0.18, phase: 1.7, baseAlpha: 0.8, size: 1.2 },
+    { rx: 0.54, ry: 0.22, phase: 3.1, baseAlpha: 1.0, size: 1.8 },
+    { rx: 0.57, ry: 0.19, phase: 0.8, baseAlpha: 0.85, size: 1.4 },
+    { rx: 0.49, ry: 0.27, phase: 2.4, baseAlpha: 0.75, size: 1.1 },
+    { rx: 0.58, ry: 0.25, phase: 4.5, baseAlpha: 0.85, size: 1.3 },
+    { rx: 0.53, ry: 0.30, phase: 1.2, baseAlpha: 0.8, size: 1.2 },
 ];
 
 function drawTwinklingStars(_cw: number, _ch: number, _cameraX: number) {
@@ -406,15 +431,69 @@ function drawMan(cw: number, _ch: number, cameraX: number) {
 }
 
 // ===========================================================
-// 4. 女孩
+// 4. 女孩立绘
+//
+// 3 张姿态图（girl_stand / girl_talk / girl_playful）按对话节点的 emote 切换。
+// 立绘脚底对齐 actor.y；图按"地板线到屏幕顶部的距离"等比缩放高度。
+// 立绘未加载完成时回退到简笔人，避免空场。
 // ===========================================================
-function drawGirl(cw: number, _ch: number, cameraX: number) {
+const GIRL_HEIGHT_RATIO = 0.42;  // 立绘高度 = 屏高 × 此比例（女孩相对屏幕的占比）
+
+function pickGirlAssetKey(): string {
+    const home: any = state.home;
+    if (!home) return HOME_ASSET_KEYS.girlStand;
+    // 走路阶段固定用 stand
+    if (home.actors.girl.pose === 'walk') return HOME_ASSET_KEYS.girlStand;
+    // 根据当前 dialogue 节点的 emote 字段切换
+    const node = getCurrentNode();
+    const emote = (node && (node as any).emote) || '';
+    if (emote === 'playful' || emote === 'mischief' || emote === 'tease') {
+        return HOME_ASSET_KEYS.girlPlayful;
+    }
+    if (emote === 'talk' || emote === 'speak') {
+        return HOME_ASSET_KEYS.girlTalk;
+    }
+    // 说话方为女孩时默认用 talk 立绘
+    if (node && node.speaker === 'girl') {
+        return HOME_ASSET_KEYS.girlTalk;
+    }
+    return HOME_ASSET_KEYS.girlStand;
+}
+
+function drawGirl(cw: number, ch: number, cameraX: number) {
     const home: any = state.home;
     if (!home || !home.actors.girl.visible) return;
     const g = home.actors.girl;
     const sx = roomXToScreenXScaled(g.x, cameraX, cw);
-    if (sx < -60 || sx > cw + 60) return;
-    drawSimpleHuman(sx, g.y, 0.65, '#a7c4e3', '#f1d7c0');
+    if (sx < -100 || sx > cw + 100) return;
+
+    const key = pickGirlAssetKey();
+    // 优先用抠图后的（透明背景），未就绪回退到原图
+    const cut = getProcessedImage(key, 'chromaKeyDarkGray');
+    const img = cut || getImage(key);
+    if (!img) {
+        // 资源未就绪：回退简笔人
+        drawSimpleHuman(sx, g.y, 0.65, '#a7c4e3', '#f1d7c0');
+        return;
+    }
+
+    const targetH = ch * GIRL_HEIGHT_RATIO;
+    const ratio = targetH / img.height;
+    const drawW = img.width * ratio;
+    const dx = sx - drawW / 2;
+    const dy = g.y - targetH; // 脚底对齐 g.y
+
+    // 影子
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.40)';
+    ctx.beginPath();
+    ctx.ellipse(sx, g.y + 2, drawW * 0.30, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    try {
+        ctx.drawImage(img, dx, dy, drawW, targetH);
+    } catch {
+        drawSimpleHuman(sx, g.y, 0.65, '#a7c4e3', '#f1d7c0');
+    }
 }
 
 function drawSimpleHuman(x: number, y: number, scale: number, bodyColor: string, skinColor: string) {

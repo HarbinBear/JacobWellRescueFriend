@@ -63,6 +63,9 @@ export const FLOOR_Y_RATIO = 0.82;
 // ---- 资源 key ----
 export const HOME_ASSET_KEYS = {
     bgNight: 'home_bg_night',
+    girlStand:   'home_girl_stand',
+    girlTalk:    'home_girl_talk',
+    girlPlayful: 'home_girl_playful',
 };
 
 // ---- 启动时调用一次，预加载家场景图片资源 ----
@@ -70,7 +73,10 @@ let _registered = false;
 export function ensureHomeAssetsRegistered() {
     if (_registered) return;
     _registered = true;
-    registerImage(HOME_ASSET_KEYS.bgNight, 'images/home/living_room_night.png');
+    registerImage(HOME_ASSET_KEYS.bgNight,     'images/home/living_room_night.png');
+    registerImage(HOME_ASSET_KEYS.girlStand,   'images/home/characters/girl_stand.png');
+    registerImage(HOME_ASSET_KEYS.girlTalk,    'images/home/characters/girl_talk.png');
+    registerImage(HOME_ASSET_KEYS.girlPlayful, 'images/home/characters/girl_playful.png');
 }
 
 // ---- 渲染时调用：确认 ROOM_WIDTH 与图同步 ----
