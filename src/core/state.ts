@@ -58,9 +58,13 @@ export const state = {
         //   cameraX: 当前镜头横向位置，单位为"屋内逻辑坐标"（与男主/女孩 x 同坐标系）。
         //   cameraTargetX: 目标位置，每帧朝它插值靠拢。
         //   cameraInited: 是否已根据 phase 设置过初始位置（避免每次进 phase 都重置）。
+        //   cameraUserDx: 玩家本帧的拖拽增量（每帧消费后清零）。
+        //   cameraUserIdleFrames: 玩家上次拖拽以来的空闲帧数；到达阈值后镜头回归 phase 默认位置。
         cameraX: number;
         cameraTargetX: number;
         cameraInited: boolean;
+        cameraUserDx: number;
+        cameraUserIdleFrames: number;
     },
     endingTimer: 0, // 结局动画计时器
     currentZone: null, // 当前所在区域

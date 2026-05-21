@@ -29,6 +29,39 @@ function getViewWidthInRoom(): number {
     return ROOM_WIDTH * SCREEN_VIEW_RATIO;
 }
 
+// 当前帧背景图的"图坐标系 → 屏幕坐标系"映射缓存。drawBackground 写入，其他动效读取。
+// imgYRatio：图 y 方向 0~1 比例；imgXRatio：图 x 方向 0~1 比例（含 cameraX 横向偏移）
+type ImgMap = {
+    valid: boolean;
+    imgW: number;
+    imgH: number;
+    drawH: number;
+    dy: number;
+    sx: number;        // 当前 cameraX 对应的源图 sx
+    sw: number;
+    cw: number;
+    ch: number;
+};
+const _imgMap: ImgMap = { valid: false, imgW: 0, imgH: 0, drawH: 0, dy: 0, sx: 0, sw: 0, cw: 0, ch: 0 };
+
+// 把"图坐标系"上的某个点（imgX, imgY 像素）映射到屏幕坐标。
+// imgX 是源图像素 x，imgY 是源图像素 y。
+// 如果该点不在当前 cameraX 截取区间内，返回 null。
+function imgToScreen(imgX: number, imgY: number): { sx: number; sy: number } | null {
+    if (!_imgMap.valid) return null;
+    const localX = imgX - _imgMap.sx;
+    if (localX < -200 || localX > _imgMap.sw + 200) return null;
+    const sx = (localX / _imgMap.sw) * _imgMap.cw;
+    const sy = _imgMap.dy + (imgY / _imgMap.imgH) * _imgMap.drawH;
+    return { sx, sy };
+}
+
+// 按比例（0~1）取图坐标 → 屏幕
+function imgRatioToScreen(rx: number, ry: number): { sx: number; sy: number } | null {
+    if (!_imgMap.valid) return null;
+    return imgToScreen(rx * _imgMap.imgW, ry * _imgMap.imgH);
+}
+
 // ===========================================================
 // 工具
 // ===========================================================
@@ -151,6 +184,7 @@ export function drawHomeScene() {
 // ===========================================================
 function drawBackground(cw: number, ch: number, cameraX: number) {
     const img = getImage(HOME_ASSET_KEYS.bgNight);
+    _imgMap.valid = false;
     if (!img) {
         ctx.fillStyle = '#1f1610';
         ctx.fillRect(0, 0, cw, ch);
@@ -187,50 +221,70 @@ function drawBackground(cw: number, ch: number, cameraX: number) {
     }
     ctx.restore();
 
+    // 写入图坐标系映射，供动效函数（星星等）读取
+    _imgMap.valid = true;
+    _imgMap.imgW = imgW;
+    _imgMap.imgH = imgH;
+    _imgMap.drawH = drawH;
+    _imgMap.dy = dy;
+    _imgMap.sx = sx;
+    _imgMap.sw = sw;
+    _imgMap.cw = cw;
+    _imgMap.ch = ch;
+
     // 上下渐变暗角：把可能的留黑/边缘融入屋内氛围
     drawTopBottomGradient(cw, ch);
 }
 
-// 上下暗角 + 装饰渐变：横向视野扩大后，画面上下可能有黑/截断，用渐变盖一层
+// 上下暗角 + 装饰渐变：横向视野扩大后，画面上下可能有黑/截断，用渐变软盖一层
+// 关键：渐变区延长到屏高的 35%（不再是 18%），并用多段 stop 模拟 smoothstep 节奏
 function drawTopBottomGradient(cw: number, ch: number) {
     ctx.save();
-    // 上方：从天花板梁的暗色渐变到透明
-    const topH = Math.round(ch * 0.18);
+
+    // 上方：从顶部黑色软渐变到透明（35% 屏高，stop 用 smoothstep 节奏）
+    const topH = Math.round(ch * 0.35);
     const gTop = ctx.createLinearGradient(0, 0, 0, topH);
-    gTop.addColorStop(0, 'rgba(8, 5, 3, 0.95)');
-    gTop.addColorStop(0.6, 'rgba(20, 12, 8, 0.4)');
-    gTop.addColorStop(1, 'rgba(20, 12, 8, 0)');
+    gTop.addColorStop(0.00, 'rgba(6, 4, 3, 0.92)');
+    gTop.addColorStop(0.20, 'rgba(10, 7, 5, 0.70)');
+    gTop.addColorStop(0.45, 'rgba(14, 10, 7, 0.38)');
+    gTop.addColorStop(0.70, 'rgba(16, 12, 9, 0.15)');
+    gTop.addColorStop(0.88, 'rgba(18, 13, 10, 0.05)');
+    gTop.addColorStop(1.00, 'rgba(18, 13, 10, 0)');
     ctx.fillStyle = gTop;
     ctx.fillRect(0, 0, cw, topH);
 
-    // 下方：地板阴影渐变到透明
-    const botH = Math.round(ch * 0.20);
+    // 下方：地板阴影长渐变（35% 屏高）
+    const botH = Math.round(ch * 0.35);
     const gBot = ctx.createLinearGradient(0, ch - botH, 0, ch);
-    gBot.addColorStop(0, 'rgba(10, 6, 4, 0)');
-    gBot.addColorStop(0.7, 'rgba(10, 6, 4, 0.55)');
-    gBot.addColorStop(1, 'rgba(0, 0, 0, 0.9)');
+    gBot.addColorStop(0.00, 'rgba(8, 5, 3, 0)');
+    gBot.addColorStop(0.12, 'rgba(8, 5, 3, 0.05)');
+    gBot.addColorStop(0.30, 'rgba(8, 5, 3, 0.15)');
+    gBot.addColorStop(0.55, 'rgba(6, 4, 2, 0.38)');
+    gBot.addColorStop(0.80, 'rgba(4, 3, 2, 0.70)');
+    gBot.addColorStop(1.00, 'rgba(0, 0, 0, 0.92)');
     ctx.fillStyle = gBot;
     ctx.fillRect(0, ch - botH, cw, botH);
 
-    // 左右边缘暗角（vignette）
-    const vg = ctx.createRadialGradient(cw / 2, ch / 2, Math.min(cw, ch) * 0.55, cw / 2, ch / 2, Math.max(cw, ch) * 0.85);
+    // 整体 vignette（更柔）
+    const vg = ctx.createRadialGradient(cw / 2, ch / 2, Math.min(cw, ch) * 0.45, cw / 2, ch / 2, Math.max(cw, ch) * 0.95);
     vg.addColorStop(0, 'rgba(0, 0, 0, 0)');
-    vg.addColorStop(1, 'rgba(0, 0, 0, 0.55)');
+    vg.addColorStop(0.6, 'rgba(0, 0, 0, 0.10)');
+    vg.addColorStop(1, 'rgba(0, 0, 0, 0.42)');
     ctx.fillStyle = vg;
     ctx.fillRect(0, 0, cw, ch);
     ctx.restore();
 }
 
 // ===========================================================
-// 2a. 台灯呼吸光晕（叠在桌子位置）
+// 2a. 台灯呼吸光晕（按图坐标定位）
 // ===========================================================
-function drawLampGlow(cw: number, ch: number, cameraX: number) {
-    const sx = roomXToScreenXScaled(anchorRoomX('desk'), cameraX, cw);
-    const sy = ch * 0.52; // 台灯灯罩高度（地板线之上一点）
-    if (sx < -260 || sx > cw + 260) return;
+function drawLampGlow(_cw: number, _ch: number, _cameraX: number) {
+    const pt = imgRatioToScreen(0.18, 0.40); // 台灯灯罩在图的位置
+    if (!pt) return;
+    const sx = pt.sx, sy = pt.sy;
 
     const t = Date.now() / 1000;
-    // 双频率呼吸 + 极低概率"灯丝抖一下"
+    // 双频率呼吸 + 偶发抖动
     const slow = Math.sin(t * 1.4);
     const fast = Math.sin(t * 5.7);
     const flicker = (Math.random() < 0.02) ? -0.15 : 0;
@@ -245,7 +299,7 @@ function drawLampGlow(cw: number, ch: number, cameraX: number) {
     inner.addColorStop(1, 'rgba(255, 180, 100, 0)');
     ctx.fillStyle = inner;
     ctx.fillRect(sx - 100, sy - 100, 200, 200);
-    // 外圈（柔光辐射到房间）
+    // 外圈（柔光辐射）
     const outer = ctx.createRadialGradient(sx, sy, 20, sx, sy, 260);
     outer.addColorStop(0, `rgba(255, 190, 110, ${(0.22 * breathe).toFixed(3)})`);
     outer.addColorStop(0.5, `rgba(255, 170, 90, ${(0.08 * breathe).toFixed(3)})`);
@@ -256,40 +310,41 @@ function drawLampGlow(cw: number, ch: number, cameraX: number) {
 }
 
 // ===========================================================
-// 2b. 窗外星星闪烁（位置相对窗户中心，更密更亮）
+// 2b. 窗外星星闪烁
+//
+// 按图坐标系定位：星星只出现在背景图窗户区域内（y ≈ 0.12 ~ 0.30，x ≈ 0.45 ~ 0.62）
+// 这样无论屏幕尺寸、cameraX 怎么变，星星永远长在窗户玻璃上，不会跑到天花板。
 // ===========================================================
-const STAR_OFFSETS: { dx: number; dy: number; phase: number; baseAlpha: number; size: number }[] = [
-    { dx: -38, dy: -62, phase: 0.0, baseAlpha: 1.0, size: 1.6 },
-    { dx: -14, dy: -88, phase: 1.7, baseAlpha: 0.8, size: 1.2 },
-    { dx:  16, dy: -50, phase: 3.1, baseAlpha: 1.0, size: 1.8 },
-    { dx:  38, dy: -78, phase: 0.8, baseAlpha: 0.85, size: 1.4 },
-    { dx:  -50, dy: -30, phase: 2.4, baseAlpha: 0.7, size: 1.1 },
-    { dx:  56, dy: -28, phase: 4.5, baseAlpha: 0.85, size: 1.3 },
-    { dx:   0, dy: -106, phase: 5.2, baseAlpha: 0.9, size: 1.5 },
+const STAR_POINTS: { rx: number; ry: number; phase: number; baseAlpha: number; size: number }[] = [
+    { rx: 0.47, ry: 0.16, phase: 0.0, baseAlpha: 1.0, size: 1.6 },
+    { rx: 0.50, ry: 0.13, phase: 1.7, baseAlpha: 0.8, size: 1.2 },
+    { rx: 0.54, ry: 0.18, phase: 3.1, baseAlpha: 1.0, size: 1.8 },
+    { rx: 0.58, ry: 0.14, phase: 0.8, baseAlpha: 0.85, size: 1.4 },
+    { rx: 0.45, ry: 0.22, phase: 2.4, baseAlpha: 0.7, size: 1.1 },
+    { rx: 0.60, ry: 0.20, phase: 4.5, baseAlpha: 0.85, size: 1.3 },
+    { rx: 0.52, ry: 0.25, phase: 5.2, baseAlpha: 0.9, size: 1.5 },
+    { rx: 0.56, ry: 0.28, phase: 1.2, baseAlpha: 0.75, size: 1.2 },
 ];
 
-function drawTwinklingStars(cw: number, ch: number, cameraX: number) {
-    const centerSx = roomXToScreenXScaled(anchorRoomX('window'), cameraX, cw);
-    const centerSy = ch * 0.28;
-    if (centerSx < -160 || centerSx > cw + 160) return;
+function drawTwinklingStars(_cw: number, _ch: number, _cameraX: number) {
+    if (!_imgMap.valid) return;
     const t = Date.now() / 1000;
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
-    for (const s of STAR_OFFSETS) {
+    for (const s of STAR_POINTS) {
+        const pt = imgRatioToScreen(s.rx, s.ry);
+        if (!pt) continue;
         const a = s.baseAlpha * (0.4 + 0.6 * (0.5 + 0.5 * Math.sin(t * 2.2 + s.phase)));
-        const px = centerSx + s.dx;
-        const py = centerSy + s.dy;
-        // 主体
         ctx.fillStyle = `rgba(255, 248, 220, ${a.toFixed(3)})`;
         ctx.beginPath();
-        ctx.arc(px, py, s.size, 0, Math.PI * 2);
+        ctx.arc(pt.sx, pt.sy, s.size, 0, Math.PI * 2);
         ctx.fill();
-        // 十字光晕（更醒目）
+        // 十字光晕
         if (a > 0.5) {
             const glow = (a - 0.5) * 0.7;
             ctx.fillStyle = `rgba(255, 248, 220, ${glow.toFixed(3)})`;
-            ctx.fillRect(px - s.size * 3, py - 0.5, s.size * 6, 1);
-            ctx.fillRect(px - 0.5, py - s.size * 3, 1, s.size * 6);
+            ctx.fillRect(pt.sx - s.size * 3, pt.sy - 0.5, s.size * 6, 1);
+            ctx.fillRect(pt.sx - 0.5, pt.sy - s.size * 3, 1, s.size * 6);
         }
     }
     ctx.restore();
@@ -313,12 +368,12 @@ function drawMotes(cw: number, _ch: number, cameraX: number) {
 }
 
 // ===========================================================
-// 2d. 壁炉火光（暖橙跳动）
+// 2d. 壁炉火光（按图坐标定位）
 // ===========================================================
-function drawFireGlow(cw: number, ch: number, cameraX: number) {
-    const sx = roomXToScreenXScaled(anchorRoomX('fire'), cameraX, cw);
-    const sy = ch * 0.62; // 壁炉嘴位置
-    if (sx < -200 || sx > cw + 200) return;
+function drawFireGlow(_cw: number, _ch: number, _cameraX: number) {
+    const pt = imgRatioToScreen(0.36, 0.58); // 壁炉嘴的位置
+    if (!pt) return;
+    const sx = pt.sx, sy = pt.sy;
 
     const t = Date.now() / 1000;
     // 火光跳动：3 个不同周期的 sin 叠加 + 高频微抖
@@ -329,12 +384,12 @@ function drawFireGlow(cw: number, ch: number, cameraX: number) {
 
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
-    const g = ctx.createRadialGradient(sx, sy, 4, sx, sy, 150);
-    g.addColorStop(0, `rgba(255, 130, 50, ${(0.45 * flicker).toFixed(3)})`);
-    g.addColorStop(0.5, `rgba(255, 90, 30, ${(0.18 * flicker).toFixed(3)})`);
+    const g = ctx.createRadialGradient(sx, sy, 4, sx, sy, 130);
+    g.addColorStop(0, `rgba(255, 130, 50, ${(0.5 * flicker).toFixed(3)})`);
+    g.addColorStop(0.5, `rgba(255, 90, 30, ${(0.2 * flicker).toFixed(3)})`);
     g.addColorStop(1, 'rgba(255, 90, 30, 0)');
     ctx.fillStyle = g;
-    ctx.fillRect(sx - 160, sy - 160, 320, 320);
+    ctx.fillRect(sx - 140, sy - 140, 280, 280);
     ctx.restore();
 }
 

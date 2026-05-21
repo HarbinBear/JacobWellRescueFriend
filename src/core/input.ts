@@ -61,7 +61,7 @@ import {
     getCodexCellRectByIndex,
 } from '../render/RenderMazeUI';
 import { tryShoreButtonBar } from '../render/mazeUI/ShoreButtonBar';
-import { handleHomeTap, replayNight } from '../story/HomeScene';
+import { handleHomeTap, handleHomeDrag, replayNight } from '../story/HomeScene';
 import { getMenuButtonRects, getNewGameConfirmRects, MenuButtonId } from '../render/RenderMenu';
 import { getProgressBackBtnRect, getProgressCardRect, getUnlockedScenes } from '../render/RenderProgressSelect';
 import { clearStoryProgress } from '../story/StoryProgressSave';
@@ -87,6 +87,12 @@ let shoreTouchStartY = 0;
 // 主菜单触摸起始位置（用于 touchEnd 判断点击）
 let menuTouchStartX = 0;
 let menuTouchStartY = 0;
+
+// 家场景：多点 touch 跟踪（按 identifier 索引）
+const _homeTouchPrev: { [id: number]: number } = {};
+const _homeTouchStartX: { [id: number]: number } = {};
+const _homeTouchStartY: { [id: number]: number } = {};
+const _homeTouchMoved: { [id: number]: boolean } = {};
 
 // 主菜单按钮 → 行为
 function handleMenuButton(id: MenuButtonId, onMaze?: () => void) {
@@ -291,8 +297,16 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
         // GM 面板打开时拦截剩余所有游戏输入（HUD 栏已在上面优先处理完）
         if (isGMOpen()) return;
 
-        // 家场景：touchStart 阶段不做任何处理，所有交互在 touchEnd 里走 handleHomeTap
-        if (state.screen === 'home_evening') return;
+        // 家场景：touchStart 阶段记录起点（用于 touchmove 拖拽），不做点击逻辑
+        if (state.screen === 'home_evening') {
+            for (const t of res.touches) {
+                _homeTouchPrev[t.identifier] = t.clientX;
+                _homeTouchStartX[t.identifier] = t.clientX;
+                _homeTouchStartY[t.identifier] = t.clientY;
+                _homeTouchMoved[t.identifier] = false;
+            }
+            return;
+        }
 
         if(state.screen === 'menu') {
             const touch = res.touches[0];
@@ -548,6 +562,29 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
     });
 
     wx.onTouchMove((res) => {
+        // === 家场景：镜头拖拽 ===
+        if (state.screen === 'home_evening') {
+            const t = res.changedTouches[0] || res.touches[res.touches.length - 1];
+            if (t) {
+                const id = t.identifier;
+                const last = _homeTouchPrev[id];
+                const startX = _homeTouchStartX[id];
+                if (typeof last === 'number') {
+                    const dx = t.clientX - last;
+                    if (Math.abs(dx) > 0.5) {
+                        // 手指右滑（dx>0）→ 想看屋内左边 → cameraX 应减小
+                        handleHomeDrag(dx, CONFIG.screenWidth);
+                    }
+                    // 累计位移超过阈值才算"已拖拽"，避免无意小动一下被误判
+                    if (typeof startX === 'number' && Math.abs(t.clientX - startX) > 8) {
+                        _homeTouchMoved[id] = true;
+                    }
+                }
+                _homeTouchPrev[id] = t.clientX;
+            }
+            return;
+        }
+
         // === 撤离玩法：背包全屏页拖拽跟手 ===
         if (isBagFullPageOpen()) {
             const t = res.changedTouches[0] || res.touches[res.touches.length - 1];
@@ -716,7 +753,19 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
         // 家场景（晚上）：完全独立的 UI 派发，不与营地/水下混用
         if (state.screen === 'home_evening') {
             const t = res.changedTouches[0] || res.touches[res.touches.length - 1];
-            if (t) handleHomeTap(t.clientX, t.clientY);
+            if (t) {
+                const id = t.identifier;
+                const moved = !!_homeTouchMoved[id];
+                // 清理本次 touch 跟踪
+                delete _homeTouchPrev[id];
+                delete _homeTouchStartX[id];
+                delete _homeTouchStartY[id];
+                delete _homeTouchMoved[id];
+                // 不是拖拽才算点击
+                if (!moved) {
+                    handleHomeTap(t.clientX, t.clientY);
+                }
+            }
             return;
         }
 
@@ -1272,6 +1321,15 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
     });
 
     wx.onTouchCancel((res) => {
+        if (state.screen === 'home_evening') {
+            for (const t of res.changedTouches) {
+                delete _homeTouchPrev[t.identifier];
+                delete _homeTouchStartX[t.identifier];
+                delete _homeTouchStartY[t.identifier];
+                delete _homeTouchMoved[t.identifier];
+            }
+            return;
+        }
         handleTouchEnd(res.changedTouches);
     });
 }

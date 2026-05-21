@@ -112,6 +112,8 @@ export function enterHomeScene(overrideSceneId?: string) {
         cameraX: initialCameraX,
         cameraTargetX: initialCameraX,
         cameraInited: false,
+        cameraUserDx: 0,
+        cameraUserIdleFrames: 99999, // 初始视为已"空闲"，由 phase 自动控制镜头
     } as any;
     (state.home as any)._fadeDurationFrames = FADE_IN_FRAMES;
     (state.home as any)._fadeFrameTimer = 0;
@@ -166,12 +168,19 @@ export function updateHome() {
     // 演员位置插值
     tickActors();
 
-    // 镜头插值（统一收口）
-    home.cameraTargetX = clampCameraX(home.cameraTargetX, cw);
-    home.cameraX += (home.cameraTargetX - home.cameraX) * CAMERA_LERP;
-    if (Math.abs(home.cameraTargetX - home.cameraX) < 0.5) {
-        home.cameraX = home.cameraTargetX;
+    // 镜头处理流程（玩家拖拽 vs phase 自动接管）：
+    //   1. 累加空闲帧数
+    //   2. 若有玩家本帧拖拽 dx → 直接修改 cameraX，重置空闲计数
+    //   3. 否则按 phase 默认意图设置 cameraTargetX（在下面 switch 里）
+    //   4. 空闲足够久时让 cameraX 朝 cameraTargetX 插值
+    home.cameraUserIdleFrames = (home.cameraUserIdleFrames || 0) + 1;
+    if (home.cameraUserDx && cameraAllowsUserDrag(home.phase)) {
+        home.cameraX = clampCameraX(home.cameraX - home.cameraUserDx, cw);
+        // 拖动后 cameraTargetX 暂时跟着走，避免下一帧瞬间拉回
+        home.cameraTargetX = home.cameraX;
+        home.cameraUserIdleFrames = 0;
     }
+    home.cameraUserDx = 0;
 
     switch (home.phase) {
         case 'arriving':
@@ -192,6 +201,31 @@ export function updateHome() {
             updateSleeping();
             break;
     }
+
+    // 空闲一段时间后，让镜头朝 phase 默认意图回归
+    // RECENTER_DELAY_FRAMES 之前完全尊重玩家拖拽，之后才插值
+    const RECENTER_DELAY_FRAMES = 120; // 2s 空闲后开始回归
+    if (home.cameraUserIdleFrames >= RECENTER_DELAY_FRAMES) {
+        home.cameraTargetX = clampCameraX(home.cameraTargetX, cw);
+        const lerp = home.phase === 'dialogue' ? CAMERA_LERP * 1.6 : CAMERA_LERP;
+        home.cameraX += (home.cameraTargetX - home.cameraX) * lerp;
+        if (Math.abs(home.cameraTargetX - home.cameraX) < 0.5) {
+            home.cameraX = home.cameraTargetX;
+        }
+    } else {
+        // 玩家刚操作不久：让 cameraTargetX 保持为 cameraX，
+        // 这样 phase 在 switch 里设的 target 会被记下来，但本帧不生效（避免画面被瞬移拉回）。
+        // 注意：phase 已经设了 cameraTargetX，我们不修改它——只是这一帧不做插值。
+    }
+}
+
+// 当前 phase 是否允许玩家拖拽镜头
+function cameraAllowsUserDrag(phase: string): boolean {
+    // 入场/敲门/睡眠等纯演出阶段不让玩家干扰
+    if (phase === 'arriving') return false;
+    if (phase === 'sleeping') return false;
+    // dialogue / waiting_knock / free 都允许拖拽
+    return true;
 }
 
 function updateArriving(cw: number, ch: number) {
@@ -305,6 +339,24 @@ function gotoPhase(p: string) {
     home.phase = p;
     home.timeInPhase = 0;
     (home as any)._fadeFrameTimer = 0;
+}
+
+// =============================================
+// 玩家拖拽镜头：由 input.ts touchmove 调用
+// dx：手指本次移动的 x 增量（手指右滑 dx > 0）
+//
+// 屏幕 dx → 屋内 dx 的换算：屏幕宽度 screenWidth 对应屋内 ROOM_WIDTH * 0.5
+// 所以 roomDx = dx * (ROOM_WIDTH * 0.5 / screenWidth)
+// =============================================
+const SCREEN_VIEW_RATIO_FOR_INPUT = 0.5; // 与 RenderHomeScene 保持一致
+
+export function handleHomeDrag(dx: number, screenWidth: number) {
+    const home: any = state.home;
+    if (!home) return;
+    if (home.fadeMode !== 'none') return;
+    const viewW = ROOM_WIDTH * SCREEN_VIEW_RATIO_FOR_INPUT;
+    const roomDx = dx * (viewW / screenWidth);
+    home.cameraUserDx = (home.cameraUserDx || 0) + roomDx;
 }
 
 // =============================================
