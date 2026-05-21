@@ -153,8 +153,7 @@ export function getProcessedImage(key: string, processor: 'chromaKeyDarkGray'): 
 
     const data = imgData.data;
     if (processor === 'chromaKeyDarkGray') {
-        // 基准色：深灰背景（约 38,42,48 ~ 44,48,55，多张图略有差异）
-        // 用动态采样：取四个角的颜色平均作为背景色
+        // 基准色：动态采样四角（小游戏/AI 出图常见底色：深灰、白）
         const samples: [number, number, number][] = [];
         for (const [px, py] of [[2, 2], [w - 3, 2], [2, h - 3], [w - 3, h - 3]]) {
             const idx = (py * w + px) * 4;
@@ -164,8 +163,11 @@ export function getProcessedImage(key: string, processor: 'chromaKeyDarkGray'): 
         for (const s of samples) { br += s[0]; bg += s[1]; bb += s[2]; }
         br /= samples.length; bg /= samples.length; bb /= samples.length;
 
-        const HARD = 22;   // 完全透明阈值
-        const SOFT = 38;   // 完全保留阈值（之间线性渐变）
+        // 自适应阈值：白色背景用更小阈值（避免抠掉皮肤/牙齿等浅色），深色背景可以更大
+        const isLight = (br + bg + bb) / 3 > 200;
+        const HARD = isLight ? 12 : 22;
+        const SOFT = isLight ? 24 : 38;
+
         for (let i = 0; i < data.length; i += 4) {
             const dr = data[i] - br;
             const dg = data[i + 1] - bg;
