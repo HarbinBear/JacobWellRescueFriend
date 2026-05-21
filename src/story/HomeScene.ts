@@ -216,20 +216,20 @@ function updateWaitingKnock(cw: number, ch: number) {
     if (!home.knockPlayed && home.timeInPhase >= KNOCK_AT_FRAME && home.girlWillCome) {
         home.knockPlayed = true;
         try { playSFX('uiSecondary'); } catch { /* 无音效兜底 */ }
-        // 男主朝门口走
-        home.actors.man.targetX = ANCHORS.door + 60;
+        // 男主朝门口走（站在门口屋内一侧）
+        home.actors.man.targetX = ANCHORS.door - 80;
         home.actors.man.targetY = floorY;
         home.actors.man.pose = 'walk';
-        // 镜头慢慢挪向门口（取门口和男主中间位置，避免镜头瞬切）
-        home.cameraTargetX = cameraXForFocus(ANCHORS.door + 80, cw);
+        // 镜头挪向门口
+        home.cameraTargetX = cameraXForFocus(ANCHORS.door - 40, cw);
     }
 
     if (home.timeInPhase >= KNOCK_TO_DOOR_FRAMES) {
         if (home.girlWillCome) {
-            // 进入对话：让女孩从门外出现
-            home.actors.girl.x = ANCHORS.door - 80;
+            // 进入对话：让女孩从门外（屋内右侧）走入屋内
+            home.actors.girl.x = ANCHORS.door + 60;            // 起点：门外（右屏外）
             home.actors.girl.y = floorY;
-            home.actors.girl.targetX = ANCHORS.door + 100;
+            home.actors.girl.targetX = ANCHORS.door - 30;      // 目标：屋内门旁
             home.actors.girl.targetY = floorY;
             home.actors.girl.visible = true;
             home.actors.girl.pose = 'walk';
@@ -245,19 +245,18 @@ function updateDialogue(cw: number, _ch: number) {
     const home: any = state.home;
     tickDialogue();
 
-    // 对话期间，镜头取"男主和女孩中点"，确保两人都在画面里
-    const mx = home.actors.man.x;
-    const gx = home.actors.girl.visible ? home.actors.girl.x : mx;
-    home.cameraTargetX = cameraXForFocus((mx + gx) / 2, cw);
+    // 对话期间，镜头聚焦门口（男主已走到 door-80，女孩在 door-30）
+    // 两人都靠在门口附近——镜头取门口位置即可保证两人都在画面里
+    home.cameraTargetX = cameraXForFocus(ANCHORS.door - 50, cw);
 
     if (isDialogueEnded()) {
         const girl = home.actors.girl;
-        // 女孩还在屋内 → 让她朝 door 外面走
-        if (girl.visible && girl.targetX > ANCHORS.door - 80) {
-            girl.targetX = ANCHORS.door - 120;
+        // 女孩还在屋内 → 让她朝 door 外面（右屏外）走
+        if (girl.visible && girl.targetX < ANCHORS.door + 60) {
+            girl.targetX = ANCHORS.door + 100;
             girl.pose = 'walk';
         }
-        if (girl.x <= ANCHORS.door - 60) {
+        if (girl.x >= ANCHORS.door + 40) {
             girl.visible = false;
             enterFree();
         }
