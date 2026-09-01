@@ -30,6 +30,15 @@ import {
     consumeDecoPenaltyDive,
     isDecoLockActive,
 } from './DecompressionSystem';
+// BCD 浮力背心：玩家主动控制的"粗调"浮力层（呼吸浮力是微调层）
+import {
+    updateBCDSystem,
+    resetBCDSystem,
+    computeBCDBuoyancyAccel,
+    consumeBCDO2,
+    consumeBCDTutorialRequest,
+    releaseBCDControls,
+} from './BCDSystem';
 
 // 迷宫模式使用独立的 StoryManager 实例
 const storyManager = new StoryManager();
@@ -486,6 +495,11 @@ export function startMazeDive(diveType: string) {
 
     // 相机归位到下潜出生点
     snapCameraToPlayer();
+
+    // 重置 BCD 浮力背心运行态。
+    // 必须放在 player.y 被写成出生深度之后：initialFillMode='neutral' 要按入水深度
+    // 反算出中性所需气量，位置没定好会预充错气。
+    resetBCDSystem();
 
     // 重置撤离状态
     maze.retreatHolding = false;
@@ -1029,6 +1043,8 @@ export function updateMaze() {
         player.vx = 0;
         player.vy = 0;
         if (state.manualDrive) state.manualDrive.activeTouches = {};
+        // 被咬住时手一定是松开的：强制释放充/排气钮，避免按住状态卡死后一直漏气
+        releaseBCDControls();
     }
 
     // --- 玩家移动 ---
@@ -1058,6 +1074,18 @@ export function updateMaze() {
 
     // 呼吸浮力：吐气阶段轻微下沉、吸气阶段轻微上浮，给玩家直观的呼吸押频感
     player.vy += computeBuoyancyOffset();
+
+    // BCD 浮力背心（粗调层，叠加在呼吸微调之上）
+    // 先 tick 出本帧的体积/净浮力（玻意耳按当前深度换算），再把加速度叠加到 vy，
+    // 保证"充/排气 → 浮力变化"在同一帧内成立，不产生一帧延迟的粘手感。
+    updateBCDSystem(1 / 60);
+    player.vy += computeBCDBuoyancyAccel();
+    if (consumeBCDTutorialRequest()) {
+        storyManager.showText(
+            '⚠ 深度增加，浮力背心里的气被压缩了\n右侧 [＋] 补气维持中性，[－] 排气下沉\n上浮时务必持续排气，否则会失控飞升',
+            '#7fdcff', 5200
+        );
+    }
 
     // 碰撞检测（使用迷宫专属地图）
     const nextX = player.x + player.vx;
@@ -1341,6 +1369,11 @@ export function updateMaze() {
     // --- 氧气消耗（阶梯式：只在吐气瞬间扣一大口；未激活时走 o2IdleDrain 兜底） ---
     // 阶梯扣氧后，用 triggerO2LossFlash 让氧气环红条闪一下，直观展示“这一口扣了多少”
     let o2Consumption = consumeBreathO2();
+
+    // BCD 充气从气瓶取气：本帧充进背心的标准升数换算成氧气值一并扣掉。
+    // 深处充气自动更贵（同样体积需要更多标准升），玩家会自然学会"该配平的时候配平，
+    // 别在 30m 反复大口充排"——这正是真实潜水的耗气纪律。
+    o2Consumption += consumeBCDO2();
 
     // === 潜水衣超深惩罚：当玩家深度 > 装备的 maxDepthAllowed 时，氧气消耗 ×3 ===
     // 不硬卡墙（保留游泳手感），靠快速失氧 + 红警逼玩家上浮

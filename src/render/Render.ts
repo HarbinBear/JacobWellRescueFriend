@@ -14,6 +14,8 @@ import { drawMazeWallShape, getMazeParticleColorByWorld, getMazeThemeColorByCell
 import { drawOxygenTanksWorld, drawOxygenFeedbackWorld } from './RenderOxygenTank';
 import { drawBreathBubblesWorld } from './RenderBreath';
 import { drawRelicsWorld, drawRelicHintsWorld } from './RenderRelic';
+// BCD 浮力背心：气囊鼓胀度 / 排气状态（驱动潜水员身上的背心视觉）
+import { getBCDInflationRatio, isBCDVenting } from '../logic/BCDSystem';
 import { getLifeDetectorRuntime } from '../logic/LifeDetector';
 // 撤离玩法：拾取调试可视化（GM 开关控制）
 import { drawPickupDebugOverlay } from '../extraction/render/PickupDebugOverlay';
@@ -505,6 +507,9 @@ export function draw() {
         regulatorAnim: player.regulatorAnim,
         carryItemAnim: player.carryItemAnim,
         welcomeArmsAnim: player.welcomeArmsAnim,
+        // BCD 浮力背心：气囊鼓胀度 + 肩阀是否正在排气（仅迷宫模式有值，其他模式为 0/false）
+        bcdInflation: getBCDInflationRatio(),
+        bcdVenting: isBCDVenting(),
     });
 
     // 生命探知仪：玩家身上的 LED 灯（与节拍同步闪烁）

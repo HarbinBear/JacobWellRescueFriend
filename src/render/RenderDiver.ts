@@ -79,6 +79,15 @@ type DiverMotion = {
         timer: number;
         duration: number;
     };
+    /**
+     * BCD 浮力背心充气度（0~1）。
+     * >0 时在躯干外侧画一层"气囊"：气越多囊越鼓、越亮、外缘越圆。
+     * 玩家能在世界层直接看到自己背心的胖瘦，与右侧量表互为印证；
+     * 下潜时气被压缩，背心会自己瘪下去——这条视觉反馈比数字更直观。
+     */
+    bcdInflation?: number;
+    /** BCD 正在排气（肩阀开启）：在左肩阀位置画一个小小的开阀高光 */
+    bcdVenting?: boolean;
 };
 
 // 模块级腿部相位时钟：每个角色独立追踪，由 drawDiver 每帧按速度+boost 推进
@@ -578,6 +587,102 @@ function drawSwimFin(
     renderCtx.stroke();
 }
 
+// =============================================
+// BCD 浮力背心气囊（画在躯干之下，像 back-inflate wing 从身体两侧鼓出来）
+// ---------------------------------------------
+// inflation ∈ [0,1]：气越多，囊的侧向半宽与前后长度都增大，边缘更圆、高光更强。
+// 视觉上刻意做成"包在躯干外面的一层软壳"，与硬质气瓶的金属质感区分开：
+//   - 填充用低饱和蓝灰渐变（尼龙布 + 内胆）
+//   - 两道横向织带（真实 BCD 的束紧带），随充气被撑开
+//   - 左肩一个排气阀凸起；排气时阀口亮起并向外扩一圈淡光
+// =============================================
+function drawBCDBladder(
+    renderCtx: CanvasRenderingContext2D,
+    inflation: number,
+    venting: boolean,
+    bodyYaw: number,
+) {
+    const t = clamp(inflation, 0, 1);
+    if (t <= 0.005 && !venting) return;
+
+    // 关键尺寸：空囊时略比躯干宽一点（贴身），满囊时明显鼓出
+    const halfY = 8.6 + 6.4 * t;
+    const frontX = 6.2 + 1.4 * t;
+    const backX = -16.8 - 2.4 * t;
+    const yc = bodyYaw * 0.35;
+
+    renderCtx.save();
+    renderCtx.translate(0, yc);
+
+    // ---- 囊体 ----
+    const grad = renderCtx.createLinearGradient(0, -halfY, 0, halfY);
+    grad.addColorStop(0, `rgba(126, 150, 166, ${0.62 + 0.28 * t})`);
+    grad.addColorStop(0.5, `rgba(74, 96, 112, ${0.7 + 0.24 * t})`);
+    grad.addColorStop(1, `rgba(38, 54, 66, ${0.72 + 0.22 * t})`);
+    renderCtx.fillStyle = grad;
+    renderCtx.beginPath();
+    renderCtx.moveTo(frontX, 0);
+    renderCtx.bezierCurveTo(frontX - 1.2, -halfY * 0.74, -4, -halfY, -11, -halfY * 0.9);
+    renderCtx.quadraticCurveTo(backX, -halfY * 0.46, backX, 0);
+    renderCtx.quadraticCurveTo(backX, halfY * 0.46, -11, halfY * 0.9);
+    renderCtx.bezierCurveTo(-4, halfY, frontX - 1.2, halfY * 0.74, frontX, 0);
+    renderCtx.closePath();
+    renderCtx.fill();
+
+    // 外缘描边：气越足边缘越亮（内压把布绷紧的反光）
+    renderCtx.strokeStyle = `rgba(180, 208, 224, ${0.2 + 0.4 * t})`;
+    renderCtx.lineWidth = 0.9 + 0.5 * t;
+    renderCtx.stroke();
+
+    // ---- 两道横向织带（被充气撑开，位置随 t 外移）----
+    renderCtx.strokeStyle = `rgba(28, 38, 46, ${0.5 + 0.2 * t})`;
+    renderCtx.lineWidth = 1.6;
+    renderCtx.beginPath();
+    for (const sx of [-2.5, -9.5]) {
+        renderCtx.moveTo(sx, -halfY * 0.92);
+        renderCtx.lineTo(sx, halfY * 0.92);
+    }
+    renderCtx.stroke();
+
+    // ---- 鼓胀高光：满气时囊面被绷成两条亮弧 ----
+    if (t > 0.15) {
+        renderCtx.strokeStyle = `rgba(225, 245, 255, ${0.14 + 0.26 * t})`;
+        renderCtx.lineWidth = 1.4;
+        for (const sign of [-1, 1]) {
+            renderCtx.beginPath();
+            renderCtx.moveTo(frontX - 3, sign * halfY * 0.55);
+            renderCtx.quadraticCurveTo(-6, sign * halfY * 0.82, -13.5, sign * halfY * 0.6);
+            renderCtx.stroke();
+        }
+    }
+
+    // ---- 左肩排气阀（真实 BCD 的 shoulder dump valve）----
+    const vx = -7.5;
+    const vy = -halfY * 0.86;
+    if (venting) {
+        // 阀口开启：亮起 + 一圈向外散的淡光（气正在往水里跑）
+        renderCtx.fillStyle = 'rgba(215, 245, 255, 0.55)';
+        renderCtx.beginPath();
+        renderCtx.arc(vx, vy, 4.6, 0, Math.PI * 2);
+        renderCtx.fill();
+        renderCtx.fillStyle = 'rgba(245, 255, 255, 0.95)';
+        renderCtx.beginPath();
+        renderCtx.arc(vx, vy, 2.0, 0, Math.PI * 2);
+        renderCtx.fill();
+    } else {
+        renderCtx.fillStyle = 'rgba(52, 66, 76, 0.9)';
+        renderCtx.beginPath();
+        renderCtx.arc(vx, vy, 2.2, 0, Math.PI * 2);
+        renderCtx.fill();
+        renderCtx.fillStyle = 'rgba(150, 175, 190, 0.7)';
+        renderCtx.beginPath();
+        renderCtx.arc(vx, vy, 1.0, 0, Math.PI * 2);
+        renderCtx.fill();
+    }
+
+    renderCtx.restore();
+}
+
 export function drawDiver(
     renderCtx: CanvasRenderingContext2D,
     x: number,
@@ -840,6 +945,9 @@ export function drawDiver(
 
     renderCtx.save();
     renderCtx.scale(torsoCompress, 1);
+
+    // BCD 浮力背心气囊：画在躯干之下，让躯干"坐"在气囊上，形成外包一层软壳的层次
+    drawBCDBladder(renderCtx, motion.bcdInflation ?? 0, motion.bcdVenting === true, bodyYaw);
 
     const bodyGradient = renderCtx.createLinearGradient(10, 0, -16, 0);
     bodyGradient.addColorStop(0, c.body);

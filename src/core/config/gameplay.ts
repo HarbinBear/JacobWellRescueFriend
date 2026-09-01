@@ -108,8 +108,8 @@ export const gameplayConfig = {
         spawnJitter: 2,                 // 生成位置随机抖动半径（像素）
 
         // 气泡物理
-        buoyancyMin: 0.9,               // 向上速度下限（像素/帧）
-        buoyancyMax: 1.6,               // 向上速度上限
+        buoyancyMin: 0.45,               // 向上速度下限（像素/帧）
+        buoyancyMax: 0.8,               // 向上速度上限
         sideInitSpeed: 0.4,             // 侧向初速度幅度
         wobbleFreqMin: 0.06,            // 侧向摆动频率（弧度/帧）
         wobbleFreqMax: 0.12,
@@ -309,7 +309,7 @@ export const gameplayConfig = {
     //   短按：弹 tip 显示氮负荷 %、下一个停留档深度、剩余时间
     //   长按：在正确深度停留时，时间流速 ×speedUpMul，但氧气消耗 ×speedUpO2Mul
     deco: {
-        enabled: true,                   // 系统总开关
+        enabled: false,                   // 系统总开关
 
         // ---- 氮气吸排速率 ----
         // 每秒吸氮量 = ingestRatePerSec × max(0, depth - ingestDepth)
@@ -374,5 +374,82 @@ export const gameplayConfig = {
 
         // ---- UI ----
         hudVisible: true,                // 减压灯在 HUD 左上角显示
+    },
+
+    // ===== BCD 浮力背心（Buoyancy Control Device） =====
+    //
+    // 定位：BCD 是"粗调"，呼吸（breath.buoyancy*）是"微调"，两层叠加到 player.vy。
+    //
+    // 物理链（详见 src/logic/BCDSystem.ts 头注释）：
+    //   P    = 1 + depth / depthPerAtmMeters                     绝对压力（atm）
+    //   volL = gasNL / P                                        玻意耳定律
+    //   a_y  = baseSinkAccel - (volL + suitLiftSurfaceL / P) × liftAccelPerLiter
+    //
+    // 数值标定（waterDrag = 0.98 → 终端速度 = 加速度 / 0.02 = 50×a；
+    //           mazeTileSize = 120px = 1 米，所以 1 px/frame = 0.5 m/s）：
+    //   完全排空、水面     a=+0.0139 → 下沉 0.70 px/frame ≈ 0.35 m/s（正常快速下潜）
+    //   完全排空、30m      a=+0.0185 → 下沉 0.93 px/frame ≈ 0.46 m/s（湿衣被压扁，更沉）
+    //   充到显示满格、30m  a=-0.0120 → 上浮 0.60 px/frame ≈ 18 m/min（危险阈值）
+    //   充到容量上限、30m  a=-0.0303 → 上浮 1.50 px/frame ≈ 45 m/min（严重失控）
+    //
+    // 中性所需体积随深度上升（湿衣越深越不给力），UI 上的中性刻度线因此会动：
+    //   水面 1.14 L  →  30m 1.51 L
+    //
+    // 惩罚闭环：失控上浮时每秒往减压系统的 nitrogenLoad 追加 ascentNitrogenPerSec，
+    //           复用已有的 deco 锁定 / DCS 失败分支，不再新增失败类型。
+    bcd: {
+        enabled: true,                   // 系统总开关（关闭后 UI 隐藏、不产生任何浮力）
+
+        // ---- 物理 ----
+        depthPerAtmMeters: 10,           // 每多少米增加 1 atm（真实海水约 10m）
+        capacityL: 4.0,                  // 气囊最大实际体积（升）；超过即触发溢流阀
+        displayMaxL: 2.5,                // 气量表满格对应体积（大于此值条顶格 + 溢流警示）
+        baseSinkAccel: 0.050,            // 配重+装备的恒定负浮力加速度（像素/帧²，>0 向下）
+        liftAccelPerLiter: 0.0322,       // 每升气囊体积抵消多少下沉加速度
+        suitLiftSurfaceL: 0.5,           // 湿衣在水面提供的等效浮力升数（随深度 /P 压缩）
+
+        // ---- 充排气速率（按实际体积流量，保证"按住 1 秒"手感与深度无关）----
+        inflateRateLPerSec: 0.5,         // 充气：每秒 +0.5 L 实际体积
+        deflateRateLPerSec: 0.7,         // 排气：比充气快（真实排气阀流量大于 LPI）
+        minBurstSec: 0.18,               // 点按最小生效时长（short burst，轻点也给一小口气）
+        o2PerNL: 0.30,                   // 每标准升充气消耗的氧气值（深处充气自动更贵）
+
+        // ---- 失控告警 ----
+        ascentWarnSpeed: 0.55,           // |vy| 超过此值且 BCD 正浮力 → 判失控上浮（px/帧）
+        descentWarnSpeed: 0.85,          // 失控下沉阈值（px/帧）
+        warnAccelDeadzone: 0.002,        // 净浮力绝对值小于此值视为"配平良好"，不判失控
+        warnRisePerSec: 1.6,             // 告警强度上升速率（0→1 约 0.6 秒）
+        warnFallPerSec: 2.5,             // 告警强度回落速率
+        ascentNitrogenPerSec: 0.05,      // 失控上浮期间每秒额外累积的氮负荷
+
+        // ---- 入水初始气量 ----
+        // 'neutral' = 入水深度恰好中性（默认，友好且能立刻看到"下潜被压缩"）
+        // 'empty'   = 完全排空（硬核，入水就往下掉）
+        // 'full'    = 充满（最真实的水面姿态，必须先排气才下得去）
+        initialFillMode: 'neutral',
+        tutorialDepth: 12,               // 首次下潜超过此深度弹一次教学文案（米）
+
+        // ---- 交互控件布局（屏幕右侧竖直 inflator）----
+        uiVisible: true,                 // 控件显隐（关掉后仍可由 GM/键盘驱动）
+        uiXFromRight: 44,                // 控件竖轴距屏幕右边缘（像素）
+        uiCenterYRatio: 0.52,            // 控件竖向中心占屏高比例
+        uiBtnRadius: 21,                 // 充/排气按钮半径
+        uiBtnGap: 120,                    // 按钮中心到量表中心的距离
+        uiGaugeW: 26,                    // 气量表宽度
+        uiGaugeH: 180,                    // 气量表高度
+
+        // ---- 排气气泡 ----
+        ventBubbleRate: 26,              // 排气时每秒生成的气泡数
+        ventBubbleSizeMul: 0.85,         // 相对呼吸气泡的尺寸倍数
+        ventOffsetBack: 8,               // 排气阀位置：沿身体朝向往后偏移（像素）
+        ventOffsetSide: 7,               // 排气阀位置：往身体侧向偏移（肩阀在左肩）
+
+        // ---- 音效（复用 collisionBreath = BreathBubble.mp3 作一次性嘶气声）----
+        sfxEnabled: true,
+        sfxIntervalMs: 260,              // 持续按住时的嘶气声重复间隔
+        sfxInflateRate: 1.7,             // 充气：更尖锐（高压小口径进气）
+        sfxInflateVolume: 0.32,
+        sfxDeflateRate: 1.25,            // 排气：更闷更粗（肩阀大口径排水）
+        sfxDeflateVolume: 0.5,
     },
 };

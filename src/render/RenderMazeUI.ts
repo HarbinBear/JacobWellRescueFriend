@@ -3,6 +3,8 @@ import { state, player } from '../core/state';
 import { ctx, logicW, logicH } from './Canvas';
 import { drawOxygenScreenGlow } from './RenderOxygenTank';
 import { drawHUDTopLeft, initMazeHUDTopLeft } from './HUDTopLeft';
+// BCD 浮力背心：水下 inflator 控件 + 失控告警层
+import { drawBCDController, drawBCDWarnOverlay } from './RenderBCD';
 // 撤离玩法 UI 模块（独立于现有 mazeUI 子目录，与撤离系统所有代码同处一个独立树下）
 import { drawCoinHUD } from '../extraction/render/CoinHUD';
 import { drawInventoryHUD } from '../extraction/render/InventoryHUD';
@@ -420,6 +422,11 @@ export function drawMazeHUD() {
 
     // --- 顶部居中深度标牌 + 超深红警（场景内可视化"本次最大深度极限"） ---
     drawDepthBanner(maze, cw, ch);
+
+    // --- BCD 浮力背心：失控上浮/下沉的屏幕边缘告警（压在控件下面，不挡控件）---
+    drawBCDWarnOverlay(time);
+    // --- BCD 浮力背心：右侧竖直 inflator 控件（充气钮 / 气囊量表 / 排气钮）---
+    drawBCDController(time);
 
     // --- 撤离玩法：右下角背包胶囊 HUD（仅 play 阶段显示） ---
     drawInventoryHUD();

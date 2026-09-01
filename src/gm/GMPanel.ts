@@ -30,6 +30,8 @@ import {
 import { ALL_RELIC_KINDS } from '../logic/Relic';
 // 减压系统：GM 调试 action
 import { getDecoRuntime, triggerDecoPenaltyOnSurface, resetDecompressionSystem } from '../logic/DecompressionSystem';
+// BCD 浮力背心：GM 调试 action（一键充满 / 排空 / 配平）
+import { getBCDRuntime, getBCDGaugeInfo, getNeutralVolumeL as getBCDNeutralVolumeL } from '../logic/BCDSystem';
 import { ensureExtractionState as exEnsureState } from '../extraction/core/ExtractionState';
 
 // 重新导出绘制函数，保持外部引用不变
@@ -574,6 +576,28 @@ function _executeAction(actionId: string): void {
                 const ex = exGetState() as any;
                 console.log('[GM][Deco] runtime=', rt);
                 console.log('[GM][Deco] decoPenalty=', ex ? ex.decoPenalty : '(no extraction state)');
+                break;
+            }
+            // ---- BCD 浮力背心 action ----
+            // 直接改运行时 gasNL（唯一状态真相），volumeL / netAccel 会在下一帧由玻意耳重算
+            if (actionId === 'bcdFill' || actionId === 'bcdEmpty' || actionId === 'bcdTrim') {
+                const rt = getBCDRuntime() as any;
+                const bcfg: any = (CONFIG as any).bcd || {};
+                const p = Math.max(0.01, rt.pressureAtm || 1);
+                let volL = 0;
+                if (actionId === 'bcdFill') volL = bcfg.capacityL || 4;
+                else if (actionId === 'bcdTrim') volL = getBCDNeutralVolumeL();
+                rt.volumeL = volL;
+                rt.gasNL = volL * p;
+                console.log('[GM][BCD] volumeL=' + volL.toFixed(3) + 'L gasNL=' + rt.gasNL.toFixed(3) +
+                            ' @ ' + p.toFixed(2) + ' ATA');
+                break;
+            }
+            if (actionId === 'bcdDump') {
+                const rt = getBCDRuntime();
+                console.log('[GM][BCD] runtime=', rt);
+                console.log('[GM][BCD] gauge=', getBCDGaugeInfo());
+                console.log('[GM][BCD] 当前深度中性所需体积=' + getBCDNeutralVolumeL().toFixed(3) + ' L');
                 break;
             }
             console.log(`[GM] 未知操作: ${actionId}`);

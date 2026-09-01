@@ -157,6 +157,28 @@ export function getDecoO2Mul(): number {
 }
 
 // =============================================
+// 外部惩罚注入
+// =============================================
+
+/**
+ * 往氮负荷里额外追加负载（不受深度吸排规则限制）。
+ *
+ * 现有调用方：BCDSystem —— 失控上浮（浮力背心忘记排气导致越升越快）时每秒灌入。
+ * 真实潜水里"上浮过快"正是减压病最直接的诱因，所以这条通路不额外造一套惩罚，
+ * 而是直接喂给已有的减压系统，让"失控上浮 → 氮负荷飙升 → 减压任务锁定 →
+ * 不做完减压出水 = 重度减压病"这条因果链自然成立。
+ *
+ * 注意：只加不减，且仍受 nitrogenLoad 上限 2 约束；
+ *       是否因此跨过黄线并生成减压任务，交给 updateDecompressionSystem 下一帧判定。
+ */
+export function addNitrogenLoad(amount: number): void {
+    const cfg: any = (CONFIG as any).deco;
+    if (!cfg || !cfg.enabled) return;
+    if (!(amount > 0)) return;
+    runtime.nitrogenLoad = Math.min(2, runtime.nitrogenLoad + amount);
+}
+
+// =============================================
 // 生命周期
 // =============================================
 

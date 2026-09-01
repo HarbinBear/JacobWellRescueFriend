@@ -440,6 +440,49 @@ export function spawnImpactBurst(cx: number, cy: number, strength: number): void
 }
 
 // =============================================
+// BCD 排气气泡（浮力背心肩部排气阀）
+// ---------------------------------------------
+// 与呼吸气泡的差别：
+//   - 出口不在嘴部，而在肩部排气阀（由调用方传入世界坐标）
+//   - 上浮更快、尺寸略小、更密集成"一串"（真实排气就是一大串连续气泡）
+//   - 侧向散射比呼吸气泡大一点，表现气体从阀口挤出后立刻散开
+//   - CCR 潜水衣不影响这里：BCD 排的是背心里的气，与循环呼吸器无关
+//
+// count 为本帧要生成的粒数（由 BCDSystem 按 ventBubbleRate 累积后传入）。
+// =============================================
+export function spawnBCDVentBubbles(cx: number, cy: number, count: number, sizeMul: number = 0.85): void {
+    const cfg = CONFIG.breath;
+    const n = Math.max(0, Math.floor(count));
+    for (let i = 0; i < n; i++) {
+        const px = cx + (Math.random() - 0.5) * 5;
+        const py = cy + (Math.random() - 0.5) * 5;
+        // 排气阀气泡上浮更急（阀口有压差推出），侧向散射也更明显
+        const buoyancy = (cfg.buoyancyMin + Math.random() * (cfg.buoyancyMax - cfg.buoyancyMin)) * 1.35;
+        const vx = (Math.random() - 0.5) * 0.9;
+        const vy = -buoyancy;
+        const baseR = cfg.bubbleSizeStatic * sizeMul;
+        const radius = baseR * (0.55 + Math.random() * 0.7);
+        const maxRadius = radius * (1.5 + Math.random() * 0.6);
+        const lifeSec = (cfg.lifeMinSec + Math.random() * (cfg.lifeMaxSec - cfg.lifeMinSec)) * 0.8;
+        const fadeRate = 1 / (lifeSec * 60);
+        runtime.bubbles.push({
+            x: px, y: py, vx, vy,
+            wobblePhase: Math.random() * Math.PI * 2,
+            wobbleFreq: cfg.wobbleFreqMin + Math.random() * (cfg.wobbleFreqMax - cfg.wobbleFreqMin),
+            wobbleAmp: (cfg.wobbleAmpMin + Math.random() * (cfg.wobbleAmpMax - cfg.wobbleAmpMin)) * 1.4,
+            radius,
+            growRate: (maxRadius - radius) / (lifeSec * 60),
+            life: 1,
+            fadeRate,
+            maxRadius,
+        });
+    }
+    if (runtime.bubbles.length > cfg.maxBubbles) {
+        runtime.bubbles.splice(0, runtime.bubbles.length - cfg.maxBubbles);
+    }
+}
+
+// =============================================
 // 对外获取气泡列表（供 Render 绘制）
 // =============================================
 export function getBreathBubbles(): BreathBubble[] {

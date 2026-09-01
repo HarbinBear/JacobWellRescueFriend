@@ -4,6 +4,9 @@ import { createFishEnemy, triggerPlayerAttack, findSafeSpawnPosition } from '../
 import { DEBUG_FISH_BTN, ATTACK_BTN, FLASHLIGHT_BTN } from '../render/RenderUI';
 import { isGMOpen, handleGMTouchStart, handleGMTouchMove, handleGMTouchEnd } from '../gm/GMPanel';
 import { handleHUDTouchStart, handleHUDTouchMove, handleHUDTouchEnd } from '../render/HUDTopLeft';
+// BCD 浮力背心：右侧竖直 inflator 控件（充气钮 / 排气钮）
+import { getBCDInflateBtn, getBCDDeflateBtn, isBCDUIVisible } from '../render/RenderBCD';
+import { setBCDInflate, setBCDDeflate, releaseBCDControls } from '../logic/BCDSystem';
 import { buildWheelSectors, executeWheelAction } from '../logic/Marker';
 import { ALL_RELIC_KINDS } from '../logic/Relic';
 import { getWheelBtnPos } from '../render/RenderWheel';
@@ -120,6 +123,78 @@ function consumeNextManualStrokeSide() {
     return side;
 }
 
+// =============================================
+// BCD 浮力背心：inflator 双钮触摸
+// ---------------------------------------------
+// 交互契约（对齐真实装备的手感）：
+// - 按住不放 = 持续充/排气；轻点一下 = 一个 short burst（BCDSystem 内部用
+//   minBurstSec 把过短的按压补足，所以"点一下给一小口气"也能生效）
+// - 手指从按钮上滑开 = 立刻视为松手（真实拇指离钮就断气）
+// - 每颗钮各自独立跟踪 touchId，允许两只手同时按；同时按时由 BCDSystem 判排气优先
+// - 触点一旦被 BCD 消费就 continue，绝不落到手动挡搓屏 / 摇杆上，避免"想排气结果人游走了"
+// =============================================
+
+const bcdTouches: { [id: number]: 'inflate' | 'deflate' } = {};
+
+function bcdHitTest(x: number, y: number): 'inflate' | 'deflate' | null {
+    if (!isBCDUIVisible()) return null;
+    const inf = getBCDInflateBtn();
+    if (Math.hypot(x - inf.cx, y - inf.cy) <= inf.r) return 'inflate';
+    const def = getBCDDeflateBtn();
+    if (Math.hypot(x - def.cx, y - def.cy) <= def.r) return 'deflate';
+    return null;
+}
+
+/** 把当前所有 BCD 触点归纳成两个布尔按下态，推给逻辑层 */
+function bcdSyncHeldState(): void {
+    let inflate = false;
+    let deflate = false;
+    for (const k in bcdTouches) {
+        if (bcdTouches[k] === 'inflate') inflate = true;
+        else if (bcdTouches[k] === 'deflate') deflate = true;
+    }
+    setBCDInflate(inflate);
+    setBCDDeflate(deflate);
+}
+
+/** 全部松开（打开全屏页 / 详情卡 / 场景切换时调用，防止按住态卡死一直漏气） */
+function bcdReleaseAll(): void {
+    let had = false;
+    for (const k in bcdTouches) { delete bcdTouches[k]; had = true; }
+    if (had) releaseBCDControls();
+}
+
+function bcdOnTouchStart(id: number, x: number, y: number): boolean {
+    const hit = bcdHitTest(x, y);
+    if (!hit) return false;
+    bcdTouches[id] = hit;
+    bcdSyncHeldState();
+    return true;
+}
+
+function bcdOnTouchMove(id: number, x: number, y: number): boolean {
+    if (!bcdTouches[id]) return false;
+    const hit = bcdHitTest(x, y);
+    if (hit === bcdTouches[id]) return true;   // 还在同一颗钮上
+    if (hit) {
+        // 直接滑到另一颗钮上：允许切换（拇指上下滑动微调是真实动作）
+        bcdTouches[id] = hit;
+        bcdSyncHeldState();
+        return true;
+    }
+    // 滑出控件 → 松手
+    delete bcdTouches[id];
+    bcdSyncHeldState();
+    return true;
+}
+
+function bcdOnTouchEnd(id: number): boolean {
+    if (!bcdTouches[id]) return false;
+    delete bcdTouches[id];
+    bcdSyncHeldState();
+    return true;
+}
+
 export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?, onReturnToShore?, onAbandonCase?, onAcceptNewCase?, onStayInResolvedCase?, onMarkBriefingShown?, onEnterResolved?) {
     // PC 调试键盘支持 
     if (typeof window !== 'undefined' && window.addEventListener) {
@@ -222,12 +297,15 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
         // GM 面板优先消费触摸事件（面板本身或 HUD 栏的 GM 齿轮按钮）
         const gmTouch = res.touches[res.touches.length - 1];
         if (gmTouch && handleGMTouchStart(gmTouch.clientX, gmTouch.clientY)) {
+            // GM 面板吃掉触摸后不会再回调 touchEnd 给我们，顺手松开 BCD 双钮
+            bcdReleaseAll();
             return;
         }
 
         // === 撤离玩法：物品详情卡（最高优先级，遮罩拦截全屏） ===
         // 详情卡打开时，所有点击都进入这个分支，不会下传给迷宫/HUD/轮盘
         if (isDetailCardOpen()) {
+            bcdReleaseAll();
             const t = res.changedTouches[0] || res.touches[res.touches.length - 1];
             if (!t) return;
             const tx = t.clientX, ty = t.clientY;
@@ -259,6 +337,9 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
 
         // === 撤离玩法：背包全屏页（仅 play 阶段；最高优先级，独占触摸）===
         if (isBagFullPageOpen()) {
+            // 全屏页独占触摸后，原本按在 BCD 钮上的手指不会再有 touchEnd 打到我们身上，
+            // 必须主动全部松开，否则会留下"一直在充气/排气"的幽灵按住态
+            bcdReleaseAll();
             const t = res.changedTouches[0] || res.touches[res.touches.length - 1];
             if (t) {
                 onBagPageTouchStart(t.clientX, t.clientY);
@@ -279,6 +360,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                     input.move = 0;
                     input.speedUp = false;
                     touches.joystickId = null;
+                    bcdReleaseAll();
                     return;
                 }
             }
@@ -523,6 +605,11 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                     }
                 }
 
+                // BCD 浮力背心 inflator（右侧竖直双钮）：必须在手动挡搓屏之前消费触点
+                if (bcdOnTouchStart(t.identifier, t.clientX, t.clientY)) {
+                    continue;
+                }
+
                 // 左上角 HUD 按住检测：由 HUDTopLeft 管理器统一接管（四项按钮全部采用短按=主操作+弹 tip）
                 if (handleHUDTouchStart(t.identifier, t.clientX, t.clientY)) {
                     continue;
@@ -597,6 +684,12 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
         if (state.screen === 'mazeRescue' && state.mazeRescue && state.mazeRescue.phase === 'play') {
             for (const t of res.touches) {
                 handleHUDTouchMove(t.identifier, t.clientX, t.clientY);
+            }
+            // BCD inflator：手指在钮上滑动时维持按住 / 滑出钮外立刻松手
+            // 注意这里刻意不 early-return：BCD 触点从未登记进 manualDrive / joystick，
+            // 后面那两个循环只认自己的 identifier，所以"左手推摇杆 + 右手按排气"能同时成立。
+            for (const t of res.touches) {
+                bcdOnTouchMove(t.identifier, t.clientX, t.clientY);
             }
         }
 
@@ -1354,6 +1447,8 @@ function handleTouchEnd(changedTouches) {
         }
         // 左上角 HUD 触点松手（氧气环长按结束、tip 触发等）
         handleHUDTouchEnd(t.identifier, t.clientX, t.clientY);
+        // BCD inflator 松手（充气/排气立即停止；过短的按压由 minBurstSec 补足成一口）
+        bcdOnTouchEnd(t.identifier);
         // 旧主线第三关放弃按钮松手 → 已废弃；abandonTouchId 现已不被任何路径写入
         if(t.identifier === abandonTouchId) {
             abandonTouchId = null;

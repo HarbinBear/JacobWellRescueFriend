@@ -540,6 +540,65 @@ export const TABS: GMTab[] = [
             { type: 'action', label: '打印减压运行时（控制台）', actionId: 'decoDump' },
         ]
     },
+    {
+        // BCD 浮力背心：玻意耳压缩 + 充排气 + 失控告警
+        // 调参要点：
+        //   - 想让"失控上浮"更凶：抬 liftAccelPerLiter 或 capacityL
+        //   - 想让"排空就沉底"更快：抬 baseSinkAccel
+        //   - 想让深度耦合更刺激（越深越难配平）：抬 suitLiftSurfaceL
+        //   - waterDrag=0.98 → 终端速度 = 加速度 × 50；tileSize=120px=1m，1px/帧 = 0.5m/s
+        name: 'BCD',
+        items: [
+            { type: 'bool', label: '启用 BCD 系统', path: 'bcd.enabled' },
+            { type: 'bool', label: '显示 inflator 控件', path: 'bcd.uiVisible' },
+            // ---- 物理 ----
+            { type: 'number', label: '每大气压深度(m)', path: 'bcd.depthPerAtmMeters', min: 5, max: 20, step: 1 },
+            { type: 'number', label: '气囊容量(L)', path: 'bcd.capacityL', min: 1, max: 12, step: 0.25, precision: 2 },
+            { type: 'number', label: '量表满格体积(L)', path: 'bcd.displayMaxL', min: 0.5, max: 8, step: 0.25, precision: 2 },
+            { type: 'number', label: '基础下沉加速度', path: 'bcd.baseSinkAccel', min: 0, max: 0.1, step: 0.002, precision: 4 },
+            { type: 'number', label: '每升浮力加速度', path: 'bcd.liftAccelPerLiter', min: 0.001, max: 0.06, step: 0.001, precision: 4 },
+            { type: 'number', label: '湿衣水面浮力(L)', path: 'bcd.suitLiftSurfaceL', min: 0, max: 2, step: 0.05, precision: 2 },
+            // ---- 充排气 ----
+            { type: 'number', label: '充气速率(L/秒)', path: 'bcd.inflateRateLPerSec', min: 0.1, max: 2, step: 0.05, precision: 2 },
+            { type: 'number', label: '排气速率(L/秒)', path: 'bcd.deflateRateLPerSec', min: 0.1, max: 3, step: 0.05, precision: 2 },
+            { type: 'number', label: '点按最小时长(秒)', path: 'bcd.minBurstSec', min: 0, max: 0.6, step: 0.02, precision: 2 },
+            { type: 'number', label: '每标准升耗氧', path: 'bcd.o2PerNL', min: 0, max: 1.5, step: 0.05, precision: 2 },
+            // ---- 失控告警 ----
+            { type: 'number', label: '失控上浮阈值|vy|', path: 'bcd.ascentWarnSpeed', min: 0.1, max: 3, step: 0.05, precision: 2 },
+            { type: 'number', label: '失控下沉阈值|vy|', path: 'bcd.descentWarnSpeed', min: 0.1, max: 3, step: 0.05, precision: 2 },
+            { type: 'number', label: '配平死区(加速度)', path: 'bcd.warnAccelDeadzone', min: 0, max: 0.02, step: 0.001, precision: 4 },
+            { type: 'number', label: '告警上升/秒', path: 'bcd.warnRisePerSec', min: 0.2, max: 6, step: 0.2, precision: 1 },
+            { type: 'number', label: '告警回落/秒', path: 'bcd.warnFallPerSec', min: 0.2, max: 8, step: 0.2, precision: 1 },
+            { type: 'number', label: '失控上浮加氮/秒', path: 'bcd.ascentNitrogenPerSec', min: 0, max: 0.4, step: 0.01, precision: 3 },
+            // ---- 入水初始状态 ----
+            { type: 'select', label: '入水初始气量', path: 'bcd.initialFillMode', options: ['neutral', 'empty', 'full'] },
+            { type: 'number', label: '教学提示深度(m)', path: 'bcd.tutorialDepth', min: 2, max: 40, step: 1 },
+            // ---- 控件布局 ----
+            { type: 'number', label: 'UI 距右边距', path: 'bcd.uiXFromRight', min: 20, max: 120, step: 2 },
+            { type: 'number', label: 'UI 竖向中心比', path: 'bcd.uiCenterYRatio', min: 0.2, max: 0.85, step: 0.02, precision: 2 },
+            { type: 'number', label: 'UI 按钮半径', path: 'bcd.uiBtnRadius', min: 14, max: 44, step: 1 },
+            { type: 'number', label: 'UI 按钮间距', path: 'bcd.uiBtnGap', min: 30, max: 200, step: 2 },
+            { type: 'number', label: 'UI 量表宽', path: 'bcd.uiGaugeW', min: 14, max: 48, step: 1 },
+            { type: 'number', label: 'UI 量表高', path: 'bcd.uiGaugeH', min: 50, max: 180, step: 4 },
+            // ---- 排气气泡 ----
+            { type: 'number', label: '排气气泡/秒', path: 'bcd.ventBubbleRate', min: 0, max: 80, step: 2 },
+            { type: 'number', label: '排气气泡尺寸倍数', path: 'bcd.ventBubbleSizeMul', min: 0.2, max: 2, step: 0.05, precision: 2 },
+            { type: 'number', label: '排气阀后偏移', path: 'bcd.ventOffsetBack', min: 0, max: 24, step: 1 },
+            { type: 'number', label: '排气阀侧偏移', path: 'bcd.ventOffsetSide', min: 0, max: 20, step: 1 },
+            // ---- 音效 ----
+            { type: 'bool', label: '启用嘶气音效', path: 'bcd.sfxEnabled' },
+            { type: 'number', label: '嘶气间隔(ms)', path: 'bcd.sfxIntervalMs', min: 80, max: 900, step: 20 },
+            { type: 'number', label: '充气播放速率', path: 'bcd.sfxInflateRate', min: 0.5, max: 2, step: 0.05, precision: 2 },
+            { type: 'number', label: '充气音量', path: 'bcd.sfxInflateVolume', min: 0, max: 1, step: 0.02, precision: 2 },
+            { type: 'number', label: '排气播放速率', path: 'bcd.sfxDeflateRate', min: 0.5, max: 2, step: 0.05, precision: 2 },
+            { type: 'number', label: '排气音量', path: 'bcd.sfxDeflateVolume', min: 0, max: 1, step: 0.02, precision: 2 },
+            // ---- 测试动作 ----
+            { type: 'action', label: '🎈 立刻充满气囊（模拟失控上浮）', actionId: 'bcdFill' },
+            { type: 'action', label: '🫗 立刻完全排空（模拟掉底）', actionId: 'bcdEmpty' },
+            { type: 'action', label: '⚖ 立刻配平到当前深度中性', actionId: 'bcdTrim' },
+            { type: 'action', label: '打印 BCD 运行时（控制台）', actionId: 'bcdDump' },
+        ]
+    },
 ];
 
 // 把 Debug / 性能 两个 Tab 置顶（用户偏好：调试和画质入口放最前面，避免每次都要左滑一堆 Tab）
