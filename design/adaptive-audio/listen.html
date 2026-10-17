@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Signal Below III · 第五轨前景对比</title>
+<title>Signal Below VI · 过渡与事件音试听</title>
 <style>
 *{box-sizing:border-box}body{margin:0;background:#09131d;color:#dfebef;font:16px/1.7 system-ui,sans-serif}
 main{max-width:950px;margin:50px auto;padding:0 26px 60px}small{color:#9bc9d9;letter-spacing:.15em}h1{font-size:48px;letter-spacing:-.04em;margin:12px 0}
@@ -13,15 +13,19 @@ input[type=range]{width:100%;accent-color:#dcb888}label{display:block;margin:12p
 audio{width:100%;height:34px;margin:6px 0 12px}.note{font-size:14px}
 @media(max-width:750px){main{margin-top:28px}h1{font-size:36px}.tracks,.comparisons{grid-template-columns:1fr}.comparison p{min-height:0}}
 </style>
-<main><small>JACOB WELL / AUDIO STUDY 03</small><h1>Signal Below III</h1>
+<main><small>JACOB WELL / AUDIO STUDY 06</small><h1>Signal Below VI</h1>
 <p>电子弦乐主题，从深处的微光到发现目标时的激动。<br>五层主要音型密度：30 → 60 → 120 → 240 → <strong>1200 次/分钟</strong>。第五层为有音高的十连音疾奏。</p>
-<section><h2>第五轨前景对比</h2><p>同一段乐句：前 8 秒四级，中间 8 秒旧五级，最后 8 秒强化后的五级。新版抬高音区、突出起音，并让底轨和第四轨退后。</p>
-<audio controls preload="none" src="reference-study/four-old-five-new-five.wav"></audio>
-<p class="note">每段从相同乐句起点开始，便于比较；没有统一段落响度，保留加层的动态差异。参考录音只做客观信号分析，没有将其分离或采样进新音乐。</p></section>
-<section><h2>先比较三个方向</h2><p>每版都有 12 秒最高档、16 秒纯底轨和 56 秒递进试听。四级在 0:32 进入，五级在 0:40 进入。</p><div id="comparisons" class="comparisons"></div></section>
-<section><h2>实时切档与距离试听</h2><label>选择版本 <select id="variant"></select></label><p id="description"></p>
+<section><h2>先听：发现后的和声重写</h2>
+<p>旧版与新版发现主题：0:00旧版小调、0:16新版大调。保持相同主音量，比较和声与旋律落点。</p>
+<audio controls preload="none" src="color-v5-v6.wav"></audio>
+<p>三状态底轨：0:00 寻找 → 0:16 发现 → 0:32 返程。寻找保留小调悬念，发现改写为大调和声、同步伴奏与更舒展的长句，返程保留落定感；开头动机仍相互呼应。</p>
+<audio controls preload="none" src="undertow/theme-colors.wav"></audio>
+<p>完整救援过程：0:00 寻找 → 0:08 四级推进 → 0:14 过门 → 0:16 乐句开头、温暖主题与第五层展开 → 0:24 绑好、确认音与返程。</p>
+<audio controls preload="none" src="undertow/rescue-journey.wav"></audio><p>死亡反馈：清楚的duang起音，再沉入低频与远处共鸣。</p><audio controls preload="none" src="undertow/death.wav"></audio></section>
+<section><h2>比较音乐 A / B / C 与事件音</h2><p>A/B/C都采用同主题三态。可以先听48秒色彩对比、40秒完整救援，再分别比较旋律和死亡落音。</p><div id="comparisons" class="comparisons"></div></section>
+<section><h2>实时切档与事件试听</h2><p>人物入镜后申请高潮，等待下一组两小节乐句的开头（最多约4秒），前一小节有滚奏过门。发现后的和声、低音与琶音共同转暖。</p><label>选择版本 <select id="variant"></select></label><p id="description"></p><label>主题色彩 <select id="mood"><option value="search">寻找 · 低沉克制</option><option value="found">发现 · 打开主题</option><option value="return">返程 · 安定前行</option></select></label>
 <button id="play" class="primary">开始试听</button><button id="stop">停止</button><button id="tour">自动接近</button>
-<p id="status" role="status">首次播放会生成该版本的六条独立音轨。</p><div id="levels"></div>
+<p id="status" role="status">首次播放会生成寻找与发现的完整配器、返程主题和过门。</p><div id="levels"></div><label><input id="visible" type="checkbox"> 被困者进入画面（勾选后进入第五层，不检查照明或朝向）</label><div id="cues"></div>
 <label>距离强度 <output id="intensity">0%</output><input id="distance" type="range" min="0" max="100" value="0"></label>
 <label>音量 <input id="volume" type="range" min="0" max="100" value="78"></label>
 <p>当前 <output id="clock">底轨</output></p></section>
@@ -38,23 +42,25 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.SCORE = exports.DEFAULT_VARIANT = exports.VARIANTS = void 0;
+exports.RETURN_CROSSFADE = exports.DISCOVERY_CROSSFADE = exports.PHRASE_BEATS = exports.WARM_LAYER_TRACKS = exports.THEME_TRACKS = exports.SCORE = exports.DEFAULT_VARIANT = exports.VARIANTS = void 0;
 exports.notesFor = notesFor;
 exports.renderStem = renderStem;
 exports.renderStemAsync = renderStemAsync;
 exports.selectMusicLevel = selectMusicLevel;
-// Signal Below v3：第五层上移八度、突出中高频起音，并通过 levelMixes 站到前景。
+exports.musicTransition = musicTransition;
+exports.selectRescueMusicLevel = selectRescueMusicLevel;
+// Signal Below VI：发现后重配为相对大调，主题保留开头动机、重写句尾落点；高潮按两小节乐句进入。
 exports.VARIANTS = {
-    undertow: { title: 'A · 深流', description: '幽暗弦乐与压迫脉冲，靠近后转为强推进的电子弦乐。',
+    undertow: { title: 'A · 深流', description: '寻找时保留悬念，发现后转向温暖的大调与宽阔长句。',
         transpose: 0, leadGain: 0.17, driveGain: 0.14, rushGain: 0.34, bassGain: 0.25, style: 0 },
-    flare: { title: 'B · 微光奔涌', description: '更长、更向上舒展的弦乐旋律，发现目标时突出激动和希望。',
+    flare: { title: 'B · 微光奔涌', description: '上行主题与柔和的六/九和弦，发现后更舒展、明亮。',
         transpose: 2, leadGain: 0.19, driveGain: 0.15, rushGain: 0.34, bassGain: 0.23, style: 1 },
-    pursuit: { title: 'C · 最后航线', description: '低弦短句、切分低音与碎拍，四五级突出争分夺秒的救援冲刺。',
+    pursuit: { title: 'C · 最后航线', description: '切分推进保留行动感，发现后用明确的大调落点回应。',
         transpose: -2, leadGain: 0.18, driveGain: 0.16, rushGain: 0.36, bassGain: 0.27, style: 2 },
 };
 exports.DEFAULT_VARIANT = 'undertow';
 exports.SCORE = {
-    title: 'Signal Below III', bpm: 120, beatsPerBar: 4, bars: 8,
+    title: 'Signal Below VI', bpm: 120, beatsPerBar: 4, bars: 8,
     sampleRate: 24000, duration: 16, masterGain: 0.78,
     pulseDivisions: [0, 0.25, 0.5, 1, 2, 10],
     // 五级重新编排前景：底轨/第四轨让位，保留低频驱动，不只是整体加音量。
@@ -66,9 +72,25 @@ exports.SCORE = {
     labels: ['电子弦乐主题', '深处信标 · 30/min', '低弦与低音 · 60/min',
         '重鼓推进 · 120/min', '弦乐疾行 · 240/min', '前景疾奏 · 1200/min'],
 };
+exports.THEME_TRACKS = ['bed', 'bedFound', 'bedReturn'];
+exports.WARM_LAYER_TRACKS = ['beaconFound', 'bassFound', 'arpFound', 'sparkFound'];
+exports.PHRASE_BEATS = 8; // 每两小节一组：主题问句/答句与和声换位，共0/8/16/24拍四个入口。
+exports.DISCOVERY_CROSSFADE = 0.30;
+exports.RETURN_CROSSFADE = 0.65;
 const TAU = Math.PI * 2;
 const roots = [38, 34, 43, 33]; // Dm(add9) / Bbmaj7 / Gm / A7；属和弦保留渴望与张力。
 const chords = [[50, 53, 57, 64], [46, 50, 53, 57], [43, 50, 53, 58], [45, 52, 55, 61]];
+// 发现后的完整配器共同换和声，不能只换底轨、让小调低音继续压在下面。
+const warmHarmonies = [
+    { roots: [41, 40, 34, 36], chords: [[53, 57, 60, 67], [52, 55, 60, 64], [50, 53, 57, 60], [53, 57, 60, 65]] }, // Fmaj9/C6-E/Bbmaj9/F-C
+    { roots: [41, 33, 34, 36], chords: [[53, 57, 60, 67], [48, 52, 55, 60], [50, 53, 57, 60], [48, 52, 55, 57]] }, // Fmaj9/Am7/Bbmaj9/C6
+    { roots: [41, 34, 43, 41], chords: [[53, 57, 60, 65], [50, 53, 55, 60], [50, 53, 57, 62], [53, 57, 60, 67]] }, // F/Bb6/Gm9/Fmaj9
+];
+// D小调的级数映射到F大调；保留开头节奏/轮廓，三音、六音、七音有实际改变。
+function warmPitch(pitch) {
+    const map = [0, 0, 2, 4, 4, 5, 5, 7, 9, 9, 11, 11];
+    return 65 + Math.floor(pitch / 12) * 12 + map[((pitch % 12) + 12) % 12];
+}
 // 相对 D4 的主题旋律；三版的节奏、旋律轮廓与鼓型各不相同。
 const melodies = [
     [[0, 12, 1.5], [1.5, 7, 0.5], [2, 10, 1], [3, 12, 1]], [[0, 15, 2], [2, 14, 1], [3, 12, 1]],
@@ -90,34 +112,62 @@ const urgentMelody = [
 ];
 function notesFor(stem, variant = exports.DEFAULT_VARIANT) {
     const notes = [], cfg = exports.VARIANTS[variant];
+    const warm = stem === 'bedFound' || stem === 'bedReturn' || exports.WARM_LAYER_TRACKS.indexOf(stem) >= 0;
+    const part = stem.replace('Found', '');
     const add = (beat, midi, length, amp, voice) => notes.push({ beat, midi: midi + cfg.transpose, length, amp, voice });
     for (let bar = 0; bar < exports.SCORE.bars; bar++) {
-        const b = bar * 4, c = Math.floor(bar / 2), chord = chords[c], root = roots[c];
-        if (stem === 'bed') {
+        const b = bar * 4, c = Math.floor(bar / 2);
+        const chord = warm ? warmHarmonies[cfg.style].chords[c] : chords[c];
+        const root = warm ? warmHarmonies[cfg.style].roots[c] : roots[c];
+        if (stem === 'bed' || stem === 'bedFound' || stem === 'bedReturn') {
+            const searching = stem === 'bed', returning = stem === 'bedReturn';
             if (bar % 2 === 0) {
-                chord.forEach((n, i) => add(b, n, 8, i === 0 ? 0.048 : 0.034, 'strings'));
-                add(b, root + 12, 8, 0.055, 'cello');
+                // 寻找保留小调悬念；发现/返程真正换成F大调和声（B/C随版本移调）。
+                if (searching) {
+                    [root + 12, root + 19, chord[3]].forEach((n, i) => add(b, n, 8, i ? 0.025 : 0.055, 'strings'));
+                    add(b, root, 8, 0.045, 'cello');
+                }
+                else {
+                    const voicing = [chord[0], chord[1], chord[2] + 12, chord[3]];
+                    voicing.forEach((n, i) => add(b, n, 8, (returning ? 0.036 : 0.045) * (i ? 0.8 : 1), 'strings'));
+                    add(b, root + 12, 8, returning ? 0.065 : 0.05, 'cello');
+                }
             }
             const melody = cfg.style === 1 ? risingMelody : cfg.style === 2 ? urgentMelody : melodies;
-            melody[bar].forEach(([at, pitch, length]) => add(b + at, 62 + pitch, length, cfg.leadGain * (at === 0 ? 1 : 0.88), 'lead'));
+            // 保留开头动机，句尾改成和弦音并延长；返程末句落回主音，形成释放。
+            // 问句保留原动机；答句删去末尾碎音，让第二个音落定并延伸到句末。
+            const line = !searching && bar % 2 === 1 ? melody[bar].slice(0, 2) : melody[bar];
+            line.forEach(([at, pitch, length], index) => {
+                let midi = searching ? 50 + pitch : warmPitch(pitch);
+                let held = length;
+                if (!searching && index === line.length - 1) {
+                    const pitchClass = returning && bar === 7 ? 5 : chord[bar % 2 === 0 ? 1 : 0] % 12;
+                    midi += ((pitchClass - midi % 12 + 18) % 12) - 6;
+                    held = 4 - at;
+                }
+                add(b + at, midi, held, cfg.leadGain * (searching ? 0.86 : returning ? 0.95 : 1.08) * (at === 0 ? 1 : 0.88), searching ? 'veil' : returning ? 'home' : 'horizon');
+            });
+            if (!searching && !returning && bar % 2 === 1) {
+                add(b + 2.5, chord[1] + 12, 1.5, cfg.leadGain * 0.14, 'strings');
+            }
         }
-        else if (stem === 'beacon') {
+        else if (part === 'beacon') {
             add(b, chord[0] + 12, 1.6, 0.17, 'sonar');
             add(b + 0.22, root + 12, 0.65, 0.07, 'sonar');
         }
-        else if (stem === 'bass') {
+        else if (part === 'bass') {
             for (let i = 0; i < 2; i++) {
                 add(b + i * 2, root, 1.5, cfg.bassGain * (i ? 0.9 : 1), 'bass');
                 add(b + i * 2, root + 12, 1.2, 0.09, 'cello');
             }
         }
-        else if (stem === 'drums') {
+        else if (part === 'drums') {
             const kicks = cfg.style === 2 ? [0, 1.5, 2, 2.75] : [0, 1, 2, 3];
             kicks.forEach(i => add(b + i, 0, 0.65, 0.39, 'kick'));
             [1, 3].forEach(i => add(b + i, 0, 0.4, cfg.style === 2 ? 0.25 : 0.2, 'snare'));
             [0.5, 1.5, 2.5, 3.5].forEach(i => add(b + i, 0, 0.13, 0.065, 'hat'));
         }
-        else if (stem === 'arp') {
+        else if (part === 'arp') {
             const order = cfg.style === 1 ? [0, 1, 2, 3, 2, 3, 2, 1] : [0, 2, 1, 2, 0, 3, 2, 1];
             order.forEach((n, i) => {
                 add(b + i / 2, chord[n] + 12, 0.36, cfg.driveGain * (i % 2 ? 0.82 : 1), 'drive');
@@ -146,6 +196,7 @@ function notesFor(stem, variant = exports.DEFAULT_VARIANT) {
     }
     return notes;
 }
+function partName(stem) { return stem.replace('Found', ''); }
 function stringWave(phase, t, freq, lead, rate) {
     const vibrato = lead ? Math.sin(TAU * 5.3 * t) * Math.min(1, t / 0.22) * freq * 0.00065 : 0;
     let sum = 0;
@@ -164,8 +215,9 @@ function* renderChunks(stem, rate, out, variant) {
     for (let n = 0; n < notes.length; n++) {
         const note = notes[n], start = Math.round(note.beat * beatSeconds * rate);
         const freq = 440 * Math.pow(2, (note.midi - 69) / 12), duration = note.length * beatSeconds;
-        const sustained = note.voice === 'strings' || note.voice === 'lead' || note.voice === 'cello';
-        const tail = note.voice === 'strings' ? 0.7 : note.voice === 'lead' ? 0.24 : note.voice === 'rush' ? 0.012 : sustained ? 0.18 : 0.07;
+        const melodic = ['lead', 'veil', 'horizon', 'home'].indexOf(note.voice) >= 0;
+        const sustained = note.voice === 'strings' || melodic || note.voice === 'cello';
+        const tail = note.voice === 'strings' ? 0.7 : melodic ? 0.24 : note.voice === 'rush' ? 0.012 : sustained ? 0.18 : 0.07;
         const total = duration + tail;
         let seed = (n + 1) * 7187, prevNoise = 0;
         for (let i = 0; i < Math.ceil(total * rate); i++) {
@@ -173,12 +225,19 @@ function* renderChunks(stem, rate, out, variant) {
             seed = (Math.imul(seed, 1664525) + 1013904223) | 0;
             const noise = (seed >>> 0) / 2147483648 - 1;
             let v = 0;
-            if (note.voice === 'strings' || note.voice === 'lead') {
-                const lead = note.voice === 'lead';
-                const attack = Math.min(1, t / (lead ? 0.045 : 0.32));
+            if (note.voice === 'strings' || melodic) {
+                const lead = melodic;
+                const attack = Math.min(1, t / (note.voice === 'veil' ? 0.10 : note.voice === 'home' ? 0.065 : lead ? 0.035 : 0.32));
                 const end = t > duration ? Math.max(0, 1 - (t - duration) / tail) : 1;
                 const swell = lead ? 0.92 + 0.08 * Math.sin(t * 3) : 0.8 + 0.2 * Math.min(1, t / 1.6);
-                v = stringWave(phase, t, freq, lead, rate) * attack * end * swell;
+                let tone = stringWave(phase, t, freq, lead, rate);
+                if (note.voice === 'veil')
+                    tone = tone * 0.4 + Math.sin(phase) * 0.38 + Math.sin(phase * 2) * 0.05;
+                if (note.voice === 'horizon')
+                    tone = tone * 0.95 + Math.sin(phase * 2.001) * 0.09;
+                if (note.voice === 'home')
+                    tone = tone * 0.45 + Math.sin(phase) * 0.35 + Math.sin(phase * 2) * 0.07;
+                v = tone * attack * end * swell;
             }
             else if (note.voice === 'cello') {
                 const env = Math.min(1, t / 0.035) * Math.min(1, Math.max(0, (total - t) / 0.2));
@@ -230,11 +289,11 @@ function* renderChunks(stem, rate, out, variant) {
             }
             prevNoise = noise;
             const beatPhase = ((start + i) / rate / beatSeconds) % 1;
-            const duck = stem === 'arp' ? 0.65 + 0.35 * Math.min(1, beatPhase * 7) : 1;
+            const duck = partName(stem) === 'arp' ? 0.65 + 0.35 * Math.min(1, beatPhase * 7) : 1;
             const release = Math.min(1, Math.max(0, (total - t) / (note.voice === 'rush' ? 0.006 : 0.01)));
             const value = v * note.amp * duck * release;
             out[(start + i) % out.length] += value;
-            if (note.voice === 'lead' || note.voice === 'strings' || note.voice === 'drive' || note.voice === 'rush') {
+            if (melodic || note.voice === 'strings' || note.voice === 'drive' || note.voice === 'rush') {
                 const wet = sustained ? 0.13 : note.voice === 'rush' ? 0.025 : 0.12;
                 out[(start + i + Math.round(rate * 0.125)) % out.length] += value * wet;
                 out[(start + i + Math.round(rate * 0.375)) % out.length] += value * wet * 0.7;
@@ -245,11 +304,23 @@ function* renderChunks(stem, rate, out, variant) {
         }
     }
 }
+// 新主题含高音声部，循环边缘仅做2ms消点击，不承担层进入的渐强。
+function finishThemeLoop(out, stem, rate) {
+    if (stem === 'bedFound' || stem === 'bedReturn') {
+        const edge = Math.round(rate * 0.002);
+        for (let i = 0; i < edge; i++) {
+            const gain = Math.sin(i / edge * Math.PI / 2) ** 2;
+            out[i] *= gain;
+            out[out.length - 1 - i] *= gain;
+        }
+    }
+    return out;
+}
 function renderStem(stem, rate = exports.SCORE.sampleRate, variant = exports.DEFAULT_VARIANT) {
     const out = new Float32Array(Math.round(rate * exports.SCORE.duration));
     const chunks = renderChunks(stem, rate, out, variant);
     while (!chunks.next().done) { /* 离线导出 */ }
-    return out;
+    return finishThemeLoop(out, stem, rate);
 }
 function renderStemAsync(stem_1) {
     return __awaiter(this, arguments, void 0, function* (stem, variant = exports.DEFAULT_VARIANT) {
@@ -264,7 +335,7 @@ function renderStemAsync(stem_1) {
             if (!done)
                 yield new Promise(resolve => setTimeout(resolve, 0));
         }
-        return out;
+        return finishThemeLoop(out, stem, exports.SCORE.sampleRate);
     });
 }
 function selectMusicLevel(intensity, previous, hysteresis = 0.03) {
@@ -278,25 +349,45 @@ function selectMusicLevel(intensity, previous, hysteresis = 0.03) {
         level--;
     return level;
 }
+// 第五层只在谱面两小节乐句的起点进入；前面由过门准备，不在任意拍中途闯入。
+function musicTransition(from, to, settle = false) {
+    if (settle)
+        return { gridBeats: 1, fadeSeconds: 1.5 };
+    if (to < from)
+        return { gridBeats: to < 5 && from === 5 ? 0 : 1, fadeSeconds: 0.5 };
+    return { gridBeats: [1, 4, 2, 1, 4, exports.PHRASE_BEATS][to], fadeSeconds: 0.006 };
+}
+// 距离只申请前四层；人物入镜授权第五层，历史 npcFound 不授权。
+function selectRescueMusicLevel(intensity, previous, targetVisible, hysteresis = 0.03) {
+    const distanceLevel = selectMusicLevel(intensity, Math.min(4, previous), hysteresis);
+    return targetVisible ? 5 : Math.min(4, distanceLevel);
+}
 },"AdaptiveMusicEngine":function(exports,require){"use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AdaptiveMusicEngine = void 0;
 const AdaptiveScore_1 = require("./AdaptiveScore");
 // 所有 BufferSource 同一音频时间启动、始终循环。切档只操作 Gain，不重启文件。
 class AdaptiveMusicEngine {
-    constructor(ctx, buffers) {
+    constructor(ctx, buffers, themes = [], warmLayers = [], pickupBuffer) {
         this.ctx = ctx;
         this.buffers = buffers;
+        this.themes = themes;
+        this.warmLayers = warmLayers;
+        this.pickupBuffer = pickupBuffer;
         this.sources = [];
         this.gains = [];
         this.epoch = 0;
         this.level = 0;
         this.requested = 0;
+        this.mood = 'search';
+        this.requestedMood = 'search';
         this.pending = null;
+        this.envelopes = [];
+        this.pickup = null;
         this.masterTarget = -1;
         this.stoppedAt = 0;
-        if (buffers.length !== AdaptiveScore_1.SCORE.stems.length || buffers.some(b => Math.abs(b.duration - AdaptiveScore_1.SCORE.duration) > 1 / AdaptiveScore_1.SCORE.sampleRate)) {
-            throw new Error('音乐必须为六条相同长度的 16 秒循环');
+        if (buffers.length !== AdaptiveScore_1.SCORE.stems.length || (themes.length !== 0 && themes.length !== 2) || (warmLayers.length !== 0 && (warmLayers.length !== 4 || themes.length !== 2)) || [...buffers, ...themes, ...warmLayers].some(b => Math.abs(b.duration - AdaptiveScore_1.SCORE.duration) > 1 / AdaptiveScore_1.SCORE.sampleRate)) {
+            throw new Error('音乐必须有六轨，可选两条主题变体；均为16秒循环');
         }
         this.master = ctx.createGain();
         this.master.gain.value = 0;
@@ -310,9 +401,11 @@ class AdaptiveMusicEngine {
             return;
         this.epoch = this.ctx.currentTime + 0.06;
         this.level = this.requested = 0;
+        this.mood = this.requestedMood = 'search';
         this.pending = null;
         this.stoppedAt = 0;
-        this.buffers.forEach(buffer => {
+        this.envelopes = [];
+        [...this.buffers, ...this.themes, ...this.warmLayers].forEach((buffer, i) => {
             const source = this.ctx.createBufferSource(), gain = this.ctx.createGain();
             source.buffer = buffer;
             source.loop = true;
@@ -323,6 +416,7 @@ class AdaptiveMusicEngine {
             gain.connect(this.master);
             this.sources.push(source);
             this.gains.push(gain);
+            this.envelopes.push([{ from: 0, to: i === 0 ? 1 : 0, start: this.epoch, end: this.epoch + 0.5 }]);
         });
         this.gains[0].gain.setValueAtTime(0, this.epoch);
         this.gains[0].gain.linearRampToValueAtTime(1, this.epoch + 0.5);
@@ -330,7 +424,7 @@ class AdaptiveMusicEngine {
     }
     setVolume(value) {
         const target = Math.max(0, Math.min(1, value));
-        if (target === this.masterTarget)
+        if (target === this.masterTarget || (this.stoppedAt && target > 0))
             return;
         const now = this.ctx.currentTime;
         const p = this.master.gain;
@@ -339,45 +433,107 @@ class AdaptiveMusicEngine {
         p.linearRampToValueAtTime(target, now + 0.04);
         this.masterTarget = target;
     }
-    setLevel(value) {
+    setLevel(value, settle = false, mood) {
         this.flush();
-        const target = Math.max(0, Math.min(5, Math.round(value)));
-        // 已排入下拍的切换先完成；新的请求合并，避免边界抖动重复重写自动化。
-        this.requested = target;
-        if (!this.sources.length || this.pending || target === this.level || this.stoppedAt)
+        const target = Number.isFinite(value) ? Math.max(0, Math.min(5, Math.round(value))) : 0;
+        const nextMood = mood || (settle ? 'return' : target === 5 ? 'found' : this.requestedMood);
+        if (!this.sources.length || this.stoppedAt || (target === this.requested && nextMood === this.requestedMood))
             return;
-        const beat = 60 / AdaptiveScore_1.SCORE.bpm, now = this.ctx.currentTime;
-        const at = this.epoch + Math.max(0, Math.ceil((now + 0.025 - this.epoch) / beat)) * beat;
-        const previousMix = AdaptiveScore_1.SCORE.levelMixes[this.level], nextMix = AdaptiveScore_1.SCORE.levelMixes[target];
+        this.cancelPickup();
+        this.requested = target;
+        this.requestedMood = nextMood;
+        const now = this.ctx.currentTime;
+        const plan = (0, AdaptiveScore_1.musicTransition)(this.level, target, settle);
+        const themeChanged = this.mood !== nextMood;
+        const gridBeats = themeChanged ? (nextMood === 'found' ? AdaptiveScore_1.PHRASE_BEATS : 1) : plan.gridBeats;
+        const grid = gridBeats * 60 / AdaptiveScore_1.SCORE.bpm;
+        const at = gridBeats === 0 ? now + 0.025
+            : this.epoch + Math.max(0, Math.ceil((now + 0.025 - this.epoch) / grid)) * grid;
+        const mix = AdaptiveScore_1.SCORE.levelMixes[target];
+        const activeTheme = this.themes.length ? { search: 0, found: 6, return: 7 }[nextMood] : 0;
+        const warm = nextMood !== 'search' && this.warmLayers.length > 0;
+        const layerSlots = warm ? [activeTheme, 8, 9, 3, 10, 11] : [activeTheme, 1, 2, 3, 4, 5];
+        const nextMix = this.gains.map((_, i) => {
+            const slot = layerSlots.indexOf(i);
+            return slot < 0 ? 0 : mix[slot];
+        });
         for (let i = 0; i < this.gains.length; i++) {
-            if (previousMix[i] === nextMix[i])
-                continue;
             const p = this.gains[i].gain;
-            p.cancelScheduledValues(at);
-            if (i === 0 && at <= this.epoch + 0.000001) {
-                // 用户直接从五级起播时仍保留底轨淡入，避免覆盖 start() 的起音包络。
-                p.setValueAtTime(0, at);
-                p.linearRampToValueAtTime(nextMix[i], at + 0.5);
-                continue;
+            let current = this.envelopes[i][0].from;
+            for (const e of this.envelopes[i]) {
+                if (now < e.start)
+                    break;
+                const fraction = Math.max(0, Math.min(1, (now - e.start) / (e.end - e.start)));
+                current = e.from + (e.to - e.from) * fraction;
             }
-            p.setValueAtTime(previousMix[i], at);
-            p.linearRampToValueAtTime(nextMix[i], at + 0.09);
+            // 自己求当前包络，兼容没有 cancelAndHoldAtTime 的微信实现。
+            p.cancelScheduledValues(now);
+            p.setValueAtTime(current, now);
+            let from = current;
+            const envelopes = [];
+            if (i === 0 && now < this.epoch + 0.5 && at >= this.epoch + 0.5) {
+                // 等小节期间照常完成底轨首次淡入，不把它拉长到下一个小节。
+                p.linearRampToValueAtTime(1, this.epoch + 0.5);
+                envelopes.push({ from: current, to: 1, start: now, end: this.epoch + 0.5 });
+                from = 1;
+            }
+            p.setValueAtTime(from, at);
+            const recoloring = themeChanged && (i === 0 || i === 6 || i === 7 || ((nextMood === 'found' || this.mood === 'search') && i !== 3));
+            const fade = recoloring ? (nextMood === 'return' ? AdaptiveScore_1.RETURN_CROSSFADE : AdaptiveScore_1.DISCOVERY_CROSSFADE) : plan.fadeSeconds;
+            p.linearRampToValueAtTime(nextMix[i], at + fade);
+            envelopes.push({ from, to: nextMix[i], start: at, end: at + fade });
+            this.envelopes[i] = envelopes;
         }
-        this.pending = { level: target, at };
+        if (target === 5 && this.level < 5 && this.pickupBuffer && at - now >= 0.12) {
+            const source = this.ctx.createBufferSource(), gain = this.ctx.createGain();
+            source.buffer = this.pickupBuffer;
+            gain.gain.value = 0.24;
+            source.connect(gain);
+            gain.connect(this.master);
+            const start = Math.max(now + 0.025, at - this.pickupBuffer.duration);
+            source.start(start, Math.max(0, start - (at - this.pickupBuffer.duration)));
+            source.stop(at);
+            const pickup = { source, gain };
+            this.pickup = pickup;
+            source.onended = () => {
+                source.disconnect();
+                gain.disconnect();
+                if (this.pickup === pickup)
+                    this.pickup = null;
+            };
+        }
+        this.pending = { level: target, mood: nextMood, at };
+    }
+    cancelPickup() {
+        if (!this.pickup)
+            return;
+        try {
+            this.pickup.source.stop();
+            this.pickup.source.disconnect();
+            this.pickup.gain.disconnect();
+        }
+        catch (_) { /* 已结束 */ }
+        this.pickup = null;
     }
     flush() {
         if (this.pending && this.ctx.currentTime >= this.pending.at) {
             this.level = this.pending.level;
+            this.mood = this.pending.mood;
             this.pending = null;
         }
         if (this.stoppedAt && this.ctx.currentTime >= this.stoppedAt)
             this.releaseSources();
     }
-    stop(immediate = false) {
+    stop(immediate = false, fadeSeconds = 0.35) {
         if (!this.sources.length || (this.stoppedAt && !immediate))
             return;
-        this.setVolume(0);
-        this.stoppedAt = this.ctx.currentTime + (immediate ? 0 : 0.06);
+        this.cancelPickup();
+        const now = this.ctx.currentTime;
+        this.master.gain.cancelScheduledValues(now);
+        this.master.gain.setValueAtTime(this.master.gain.value, now);
+        this.master.gain.linearRampToValueAtTime(0, now + (immediate ? 0 : fadeSeconds));
+        this.masterTarget = 0;
+        this.stoppedAt = now + (immediate ? 0 : fadeSeconds + 0.02);
         // 即使游戏下一帧不再执行，也由音频时钟停止。
         this.sources.forEach(source => { try {
             source.stop(this.stoppedAt);
@@ -387,6 +543,7 @@ class AdaptiveMusicEngine {
             this.releaseSources();
     }
     releaseSources() {
+        this.cancelPickup();
         this.sources.forEach(s => { try {
             s.disconnect();
         }
@@ -398,6 +555,17 @@ class AdaptiveMusicEngine {
         this.level = this.requested = 0;
         this.stoppedAt = 0;
     }
+    secondsToNextBeat() {
+        const beat = 60 / AdaptiveScore_1.SCORE.bpm;
+        const at = this.epoch + Math.max(0, Math.ceil((this.ctx.currentTime + 0.025 - this.epoch) / beat)) * beat;
+        return Math.max(0, at - this.ctx.currentTime);
+    }
+    secondsToNextPhrase() {
+        const seconds = AdaptiveScore_1.PHRASE_BEATS * 60 / AdaptiveScore_1.SCORE.bpm;
+        const at = this.epoch + Math.max(0, Math.ceil((this.ctx.currentTime + 0.025 - this.epoch) / seconds)) * seconds;
+        return Math.max(0, at - this.ctx.currentTime);
+    }
+    hasSources() { this.flush(); return this.sources.length > 0; }
     getClock() {
         this.flush();
         const playing = this.sources.length > 0 && !this.stoppedAt && this.ctx.currentTime >= this.epoch;
@@ -407,17 +575,136 @@ class AdaptiveMusicEngine {
         return { playing, level: this.level, requestedLevel: this.requested,
             beat: Math.floor(beats), bar: Math.floor(beats / 4) % AdaptiveScore_1.SCORE.bars,
             beatPhase: beats % 1, subdivisionPhase: phase,
-            pulse: playing && this.level > 0 ? Math.exp(-phase * 9) : 0, bpm: AdaptiveScore_1.SCORE.bpm };
+            pulse: playing && this.level > 0 ? Math.exp(-phase * 9) : 0, bpm: AdaptiveScore_1.SCORE.bpm, entryWaitSeconds: this.pending ? Math.max(0, this.pending.at - this.ctx.currentTime) : 0, mood: this.mood, requestedMood: this.requestedMood };
     }
     dispose() { this.stop(true); this.master.disconnect(); }
 }
 exports.AdaptiveMusicEngine = AdaptiveMusicEngine;
+},"AdaptiveCues":function(exports,require){"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.AdaptiveCuePlayer = exports.CUE_SECONDS = void 0;
+exports.renderMusicCue = renderMusicCue;
+exports.renderPhrasePickup = renderPhrasePickup;
+const AdaptiveScore_1 = require("./AdaptiveScore");
+exports.CUE_SECONDS = { found: 0.7, secured: 2.2, death: 6.4 };
+// 原创合成。死亡先清楚duang一下，再下沉为遥远共鸣；乐句过门为无音高滚奏。
+function renderMusicCue(cue, variant = AdaptiveScore_1.DEFAULT_VARIANT) {
+    const rate = AdaptiveScore_1.SCORE.sampleRate, seconds = exports.CUE_SECONDS[cue];
+    const out = new Float32Array(Math.round(rate * seconds));
+    const tonic = 146.832 * Math.pow(2, AdaptiveScore_1.VARIANTS[variant].transpose / 12);
+    for (let i = 0; i < out.length; i++) {
+        const t = i / rate;
+        let value = 0;
+        if (cue === 'death') {
+            // 手机也能辨认的中低频撞击主体；尾音仍可沉得很低，但起音不能消失。
+            const strikePhase = 2 * Math.PI * tonic * (0.76 * t + 0.36 * (1 - Math.exp(-t * 18)) / 18);
+            const strike = Math.min(1, t / 0.003) * Math.exp(-t * 2.9)
+                * (Math.sin(strikePhase) * 0.43 + Math.sin(strikePhase * 2.71) * 0.24 * Math.exp(-t * 4.5)
+                    + Math.sin(strikePhase * 4.03) * 0.12 * Math.exp(-t * 11));
+            const base = tonic * 0.50;
+            const fall = (u, ratio) => 2 * Math.PI * base * ratio
+                * (0.73 * u + 0.27 * (1 - Math.exp(-u * 0.85)) / 0.85);
+            const bloom = (u) => (1 - Math.exp(-u * 9)) ** 2 * Math.exp(-u * 0.52);
+            // 明确撞击之后才是下坠的低频与远处共鸣。
+            value = strike + bloom(t) * (Math.sin(fall(t, 1)) * 0.31
+                + Math.sin(fall(t, 1.498) + Math.sin(t * 1.7) * 0.2) * 0.105
+                + Math.sin(fall(t, 2.006)) * 0.055);
+            [0.19, 0.43, 0.79].forEach((delay, n) => {
+                const u = t - delay;
+                if (u < 0)
+                    return;
+                const distant = (1 - Math.exp(-u * 4)) ** 2 * Math.exp(-u * 0.68);
+                value += distant * (Math.sin(fall(u, 2.99 + n * 0.007))
+                    + Math.sin(fall(u, 4.004 + n * 0.009)) * 0.32) * 0.043 / (n + 1);
+            });
+        }
+        else {
+            const notes = cue === 'secured' ? [[0, 1, 0.25], [0.15, 1.5, 0.18], [0.3, 2, 0.10]]
+                : [[0, 2, 0.14], [0.17, 3, 0.12]];
+            notes.forEach(([at, ratio, gain]) => {
+                const u = t - at;
+                if (u < 0)
+                    return;
+                const phase = 2 * Math.PI * tonic * ratio * u;
+                value += (Math.sin(phase) + 0.16 * Math.sin(phase * 2.003)) * gain
+                    * Math.min(1, u / 0.006) * Math.exp(-u * (cue === 'secured' ? 2.8 : 8));
+            });
+            if (cue === 'secured') {
+                // 两下扣合声，用确定性高频瞬态，不依赖外部音效下载。
+                [0, 0.065].forEach(at => {
+                    const u = t - at;
+                    if (u >= 0)
+                        value += Math.sin(2 * Math.PI * 1700 * u) * 0.11
+                            * Math.min(1, u / 0.001) * Math.exp(-u * 160);
+                });
+            }
+        }
+        out[i] = value * Math.min(1, (seconds - t) / 0.18);
+    }
+    return out;
+}
+// 一小节的过门，最后一拍加密。无固定音高，避免与转调前和声相撞。
+// 音源可从中途起播，排队时间不足一小节时只使用结尾一段。
+function renderPhrasePickup() {
+    const rate = AdaptiveScore_1.SCORE.sampleRate, duration = 4 * 60 / AdaptiveScore_1.SCORE.bpm;
+    const out = new Float32Array(Math.round(rate * duration));
+    const beat = 60 / AdaptiveScore_1.SCORE.bpm;
+    const hits = [0, 1, 2, 2.5, 3, 3.25, 3.5, 3.75];
+    let seed = 73491, smooth = 0;
+    for (let i = 0; i < out.length; i++) {
+        seed = (Math.imul(seed, 1664525) + 1013904223) | 0;
+        const noise = (seed >>> 0) / 2147483648 - 1;
+        smooth += (noise - smooth) * 0.22;
+        const t = i / rate;
+        let roll = 0;
+        for (const hit of hits) {
+            const u = t - hit * beat;
+            if (u >= 0 && u < 0.16)
+                roll += (smooth * 0.7 + Math.sin(2 * Math.PI * (180 * u + 18 * (1 - Math.exp(-u * 35)) / 35)) * 0.12)
+                    * Math.min(1, u / 0.002) * Math.exp(-u * 28) * (0.25 + 0.75 * t / duration);
+        }
+        const breath = (noise - smooth) * 0.035 * (t / duration) ** 2;
+        out[i] = (roll + breath) * Math.min(1, t / 0.02, (duration - t) / 0.01);
+    }
+    return out;
+}
+// 独立于搜索音乐的总线；音乐停播后钟声仍可自然结束，静音/后台会停止所有尾音。
+class AdaptiveCuePlayer {
+    constructor(ctx) {
+        this.ctx = ctx;
+        this.voices = [];
+        this.gain = ctx.createGain();
+        this.gain.gain.value = 0;
+        this.gain.connect(ctx.destination);
+    }
+    setVolume(value) { this.gain.gain.value = Math.max(0, Math.min(1, value)); }
+    play(cue, variant) {
+        const pcm = renderMusicCue(cue, variant);
+        const buffer = this.ctx.createBuffer(1, pcm.length, AdaptiveScore_1.SCORE.sampleRate);
+        buffer.getChannelData(0).set(pcm);
+        const source = this.ctx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(this.gain);
+        this.voices.push(source);
+        source.onended = () => { source.disconnect(); this.voices = this.voices.filter(s => s !== source); };
+        source.start(this.ctx.currentTime + 0.01);
+    }
+    stop() {
+        this.voices.forEach(source => { try {
+            source.stop();
+            source.disconnect();
+        }
+        catch (_) { /* 已结束 */ } });
+        this.voices = [];
+    }
+}
+exports.AdaptiveCuePlayer = AdaptiveCuePlayer;
 }};const cache={};
         function load(name){name=name.replace('./','');if(!cache[name]){const e={};cache[name]=e;factories[name](e,load);}return cache[name];}
-        window.SignalBelow={...load('AdaptiveScore'),...load('AdaptiveMusicEngine')};})();</script><script>
-const {SCORE,VARIANTS,DEFAULT_VARIANT,renderStemAsync,AdaptiveMusicEngine,selectMusicLevel}=SignalBelow;
+        window.SignalBelow={...load('AdaptiveScore'),...load('AdaptiveMusicEngine'),...load('AdaptiveCues')};})();</script><script>
+const {SCORE,VARIANTS,DEFAULT_VARIANT,WARM_LAYER_TRACKS,renderPhrasePickup,renderStemAsync,AdaptiveMusicEngine,selectRescueMusicLevel,AdaptiveCuePlayer,CUE_SECONDS}=SignalBelow;
 const $=id=>document.getElementById(id),cache={};
-let ctx,engine,engineVariant,level=0,tourTimer=null,tourStep=0,loading=false,wantPlay=false;
+let ctx,cuePlayer,engine,engineVariant,level=0,mood='search',tourTimer=null,tourStep=0,loading=false,wantPlay=false,cueDuckUntil=0;
 const buttons=[],trackAudios=[];
 function makeAudio(src,parent){const audio=document.createElement('audio');audio.controls=true;audio.preload='none';audio.src=src;parent.append(audio);return audio}
 for(const [id,cfg] of Object.entries(VARIANTS)){
@@ -425,7 +712,7 @@ for(const [id,cfg] of Object.entries(VARIANTS)){
  const card=document.createElement('div');card.className='comparison';
  const name=document.createElement('h2');name.textContent=cfg.title;card.append(name);
  const desc=document.createElement('p');desc.textContent=cfg.description;card.append(desc);
- for(const [file,label] of [['four-to-five','四级 → 新五级 · 16 秒'],['fifth-solo','第五轨单独试听 · 8 秒'],['climax','最高档 · 12 秒'],['theme','弦乐底轨 · 16 秒'],['demo','逐层递进 · 56 秒']]){
+ for(const [file,label] of [['theme-colors','同一主题三种色彩 · 48 秒'],['rescue-journey','寻找 → 发现 → 绑好返程 · 40 秒'],['four-to-five','四级 → 过门 → 乐句开头进入第五级 · 16 秒'],['theme','寻找主题 · 16 秒'],['theme-found','发现主题 · 16 秒'],['theme-return','返程主题 · 16 秒'],['death','死亡落音 · 6.4 秒']]){
   const caption=document.createElement('label');caption.textContent=label;card.append(caption);makeAudio(`${id}/${file}.wav`,card);
  }$('comparisons').append(card);
 }
@@ -435,39 +722,44 @@ for(let i=0;i<6;i++){
  const name=document.createElement('div');name.textContent=SCORE.labels[i];track.append(name);
  trackAudios.push(makeAudio('',track));$('tracks').append(track);
 }
-function choose(n){level=n;buttons.forEach((b,i)=>b.classList.toggle('active',i===n));if(engine)engine.setLevel(n)}
+function choose(n,settle=false){level=n;if(settle)mood='return';else if(n===5)mood='found';$('mood').value=mood;buttons.forEach((b,i)=>b.classList.toggle('active',i===n));if(engine)engine.setLevel(n,settle,mood)}
 function clearTour(){if(tourTimer)clearInterval(tourTimer);tourTimer=null;$('tour').textContent='自动接近'}
 function stop(){clearTour();wantPlay=false;if(engine)engine.stop();$('status').textContent='已停止。'}
 function updateVariant(){stop();const id=$('variant').value;$('description').textContent=VARIANTS[id].description;
  trackAudios.forEach((audio,i)=>{audio.pause();audio.src=`${id}/stems/${SCORE.stems[i]}.wav`});
- if(engine){engine.dispose();engine=null;engineVariant=null}choose(0);
+ if(engine){engine.dispose();engine=null;engineVariant=null}if(cuePlayer)cuePlayer.stop();mood='search';choose(0);
 }
 $('variant').value=DEFAULT_VARIANT;$('variant').onchange=updateVariant;
 $('play').onclick=async()=>{
  if(loading)return;loading=true;wantPlay=true;$('play').disabled=$('variant').disabled=true;
  try{
  document.querySelectorAll('audio').forEach(audio=>audio.pause());
- ctx=ctx||new(window.AudioContext||window.webkitAudioContext)();await ctx.resume();
+ ctx=ctx||new(window.AudioContext||window.webkitAudioContext)();await ctx.resume();cuePlayer=cuePlayer||new AdaptiveCuePlayer(ctx);cuePlayer.setVolume(.6);
  const id=$('variant').value;
- if(!cache[id]){const buffers=[];for(let i=0;i<6;i++){
-  $('status').textContent=`正在合成 ${VARIANTS[id].title} · 音轨 ${i+1}/6…`;
-  const pcm=await renderStemAsync(SCORE.stems[i],id),buffer=ctx.createBuffer(1,pcm.length,SCORE.sampleRate);buffer.getChannelData(0).set(pcm);buffers.push(buffer);
- }cache[id]=buffers;}
- if(!engine||engineVariant!==id){if(engine)engine.dispose();engine=new AdaptiveMusicEngine(ctx,cache[id]);engineVariant=id;}
- if(wantPlay){engine.start();engine.setVolume(Number($('volume').value)/100);engine.setLevel(level);$('status').textContent='播放中。下一拍切档；五级每秒 20 次有音高疾奏。'}
+ if(!cache[id]){const buffers=[],tracks=[...SCORE.stems,'bedFound','bedReturn',...WARM_LAYER_TRACKS];for(let i=0;i<tracks.length;i++){
+  $('status').textContent=`正在合成 ${VARIANTS[id].title} · 音轨 ${i+1}/12…`;
+  const pcm=await renderStemAsync(tracks[i],id),buffer=ctx.createBuffer(1,pcm.length,SCORE.sampleRate);buffer.getChannelData(0).set(pcm);buffers.push(buffer);
+ }const pickupPCM=renderPhrasePickup(),pickup=ctx.createBuffer(1,pickupPCM.length,SCORE.sampleRate);pickup.getChannelData(0).set(pickupPCM);cache[id]={buffers,pickup};}
+ if(!engine||engineVariant!==id){if(engine)engine.dispose();engine=new AdaptiveMusicEngine(ctx,cache[id].buffers.slice(0,6),cache[id].buffers.slice(6,8),cache[id].buffers.slice(8),cache[id].pickup);engineVariant=id;}
+ if(wantPlay){engine.start();engine.setVolume(Number($('volume').value)/100);engine.setLevel(level,false,mood);$('status').textContent='播放中。第五层等两小节乐句开头，先有过门；发现后的整套和声与伴奏转暖。'}
  else $('status').textContent='音轨已就绪，已停止。';
  }catch(err){$('status').textContent='播放失败：'+err.message}finally{loading=false;$('play').disabled=$('variant').disabled=false}
 };
-$('stop').onclick=()=>{stop();document.querySelectorAll('audio').forEach(audio=>audio.pause())};
-$('distance').oninput=()=>{clearTour();const x=Number($('distance').value)/100;$('intensity').textContent=Math.round(x*100)+'%';choose(selectMusicLevel(x,level))};
+$('stop').onclick=()=>{stop();if(cuePlayer)cuePlayer.stop();document.querySelectorAll('audio').forEach(audio=>audio.pause())};
+$('distance').oninput=()=>{clearTour();const x=Number($('distance').value)/100;$('intensity').textContent=Math.round(x*100)+'%';choose(selectRescueMusicLevel(x,level,$('visible').checked))};
+$('visible').onchange=()=>$('distance').oninput();
+$('mood').onchange=()=>{mood=$('mood').value;if(engine)engine.setLevel(level,false,mood)};
+for(const [cue,label] of [['found','模拟人物入镜'],['secured','绑绳确认'],['death','死亡落音']]){
+ const b=document.createElement('button');b.textContent=label;b.onclick=()=>{if(!cuePlayer){$('status').textContent='请先开始试听。';return}if(cue==='found'){choose(5);return}cuePlayer.play(cue,$('variant').value);cueDuckUntil=ctx.currentTime+CUE_SECONDS[cue];if(cue==='secured')choose(0,true);if(cue==='death')stop()};$('cues').append(b);
+}
 $('volume').oninput=()=>{if(engine)engine.setVolume(Number($('volume').value)/100)};
 $('tour').onclick=()=>{if(tourTimer){clearTour();return}if(!engine||!engine.getClock().playing){$('status').textContent='请先开始试听。';return}
- const stages=[0,1,2,3,4,5,5];tourStep=0;choose(0);$('tour').textContent='结束自动演示';
- tourTimer=setInterval(()=>{tourStep++;if(tourStep>=stages.length){clearTour();return}choose(stages[tourStep])},8000);
+ const stages=[0,1,2,3,4,5,0];mood='search';tourStep=0;choose(0);$('tour').textContent='结束自动演示';
+ tourTimer=setInterval(()=>{tourStep++;if(tourStep>=stages.length){clearTour();return}choose(stages[tourStep],tourStep===6)},8000);
 };
 document.querySelectorAll('audio').forEach(audio=>audio.addEventListener('play',()=>{
  stop();document.querySelectorAll('audio').forEach(other=>{if(other!==audio)other.pause()});
 }));
-function frame(){if(engine){engine.setLevel(level);const c=engine.getClock();$('clock').textContent=c.playing?`${c.level} 级 · 第 ${c.bar+1} 小节 · ${SCORE.pulseDivisions[c.level]*SCORE.bpm} 次/分钟`:'已停止'}requestAnimationFrame(frame)}
+function frame(){if(engine){engine.setVolume(Number($('volume').value)/100*(ctx.currentTime<cueDuckUntil?.55:1));engine.setLevel(level,false,mood);const c=engine.getClock();$('clock').textContent=c.playing?`${c.level} 级${c.requestedLevel===5&&c.level!==5?` · 等待乐句入口 ${c.entryWaitSeconds.toFixed(1)}s`:""} · ${{search:"寻找",found:"发现",return:"返程"}[c.mood]} · 第 ${c.bar+1} 小节 · ${SCORE.pulseDivisions[c.level]*SCORE.bpm} 次/分钟`:'已停止'}requestAnimationFrame(frame)}
 updateVariant();frame();
 </script></html>

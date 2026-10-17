@@ -16,6 +16,7 @@ import { buildOxygenTanksForMaze, updateOxygenTanks, createOxygenFeedback, trigg
 import { buildRelicsForMaze, updateRelicDiscovery, resetRelicDiscoveryForDive, getThisDiveNewRelicIds, getThisDiveNewCodexCount } from './Relic';
 import { updateLifeDetector, resetLifeDetector } from './LifeDetector';
 import { playSFX } from '../audio/AudioManager';
+import { isRescueTargetVisible } from './NPCPerception';
 import { triggerCollisionImpact, resetCollisionImpact, updateRegulatorAnim } from './CollisionImpact';
 import { loadMazeProgress, saveMazeProgress, clearMazeSave } from './MazeSave';
 import { setActiveSeededRandom, clearActiveSeededRandom } from '../core/SeededRandom';
@@ -1284,10 +1285,9 @@ export function updateMaze() {
             }
         }
 
-        // 检测是否发现NPC（靠近一定距离就标记为已发现）
+        // 人物身体进入当前画面即标记发现，与音乐共用入镜条件
         if (!maze.npcFound) {
-            const distToNpc = Math.hypot(player.x - state.npc.x, player.y - state.npc.y);
-            if (distToNpc < CONFIG.maze.npcRescueRange * 2) {
+            if (isRescueTargetVisible()) {
                 maze.npcFound = true;
                 storyManager.showText('发现被困者！', '#ff0', 2500);
             }

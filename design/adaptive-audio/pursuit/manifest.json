@@ -105,7 +105,7 @@
     "前景疾奏 · 1200/min"
   ],
   "variant": "pursuit",
-  "description": "低弦短句、切分低音与碎拍，四五级突出争分夺秒的救援冲刺。",
+  "description": "切分推进保留行动感，发现后用明确的大调落点回应。",
   "transpose": -2,
   "leadGain": 0.18,
   "driveGain": 0.16,
@@ -125,5 +125,22 @@
     5,
     5
   ],
-  "demoStageSeconds": 8
+  "demoStageSeconds": 8,
+  "themeStates": [
+    "search",
+    "found",
+    "return"
+  ],
+  "extraThemeFiles": [
+    "stems/bedFound.wav",
+    "stems/bedReturn.wav"
+  ],
+  "warmLayerFiles": [
+    "stems/beaconFound.wav",
+    "stems/bassFound.wav",
+    "stems/arpFound.wav",
+    "stems/sparkFound.wav"
+  ],
+  "discoveryKeys": "E-flat major",
+  "phraseBeats": 8
 }

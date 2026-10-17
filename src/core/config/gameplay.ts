@@ -212,6 +212,9 @@ export const gameplayConfig = {
         enabled: true,              // 总开关
         music: {
             enabled: true,          // 原创「Signal Below」：底轨 + 五层累加节奏
+            variant: 'undertow',     // GM 探知仪中切换 A/B/C，按需生成，避免常驻三套缓冲
+            eventCues: true,         // 绑绳确认与死亡落音；入镜由主题展开反馈
+            cueVolume: 0.8,
             volume: 0.78,           // v2 固定总增益，保留满层混音余量
             hysteresis: 0.03,       // 每档边界两侧各 3% 缓冲，防止来回跳档
         },

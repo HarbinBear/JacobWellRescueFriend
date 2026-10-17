@@ -25,3 +25,5 @@ pnpm-debug.log*
 
 # 用户提供的参考录音只用于本地分析
 /design/adaptive-audio/reference-study/reference-analysis.wav
+
+/design/adaptive-audio/reference-study/reference-full.wav

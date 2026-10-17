@@ -3,156 +3,178 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const { load } = require('./adaptiveAudioModules');
-const { SCORE, VARIANTS, renderStem, renderStemAsync, notesFor, selectMusicLevel } = load('AdaptiveScore');
+const { SCORE, VARIANTS, THEME_TRACKS, WARM_LAYER_TRACKS, renderStem, renderStemAsync, notesFor, selectMusicLevel, selectRescueMusicLevel, PHRASE_BEATS, DISCOVERY_CROSSFADE } = load('AdaptiveScore');
+const { renderMusicCue, renderPhrasePickup } = load('AdaptiveCues');
 const { AdaptiveMusicEngine } = load('AdaptiveMusicEngine');
-
+const close = (a, b, why) => assert(Math.abs(a - b) < 1e-8, why);
+function validateExport(samples, file) {
+    assert(samples.every(Number.isFinite));
+    assert(samples.some(v => Math.abs(v) > 0.01));
+    assert(Math.abs(samples[0] - samples[samples.length - 1]) < 0.03, '循环接缝');
+    const wav = fs.readFileSync(file);
+    assert.equal(wav.length, 44 + samples.length * 2);
+    assert.equal(wav.readUInt32LE(24), SCORE.sampleRate);
+    for (let i = 0; i < samples.length; i += 997)
+        assert(Math.abs(wav.readInt16LE(44 + i * 2) / 32767 - samples[i]) <= 1 / 32767, 'PCM与导出一致');
+}
+function mix(tracks, ratios, i) { return tracks.reduce((v, track, n) => v + track[i] * ratios[n], 0); }
 async function check() {
-    const pcm = SCORE.stems.map(s => renderStem(s));
-    let peak = 0, seam = 0;
-    pcm.forEach((samples, index) => {
-        assert.equal(samples.length, 384000);
-        assert(samples.some(v => Math.abs(v) > 0.01), '音轨不能静默');
-        assert(samples.every(Number.isFinite));
-        const wav = fs.readFileSync(path.join(__dirname, '../design/adaptive-audio/stems', SCORE.stems[index] + '.wav'));
-        assert.equal(wav.readUInt32LE(24), SCORE.sampleRate);
-        assert.equal(wav.length, 44 + samples.length * 2);
-        for (let i = 0; i < samples.length; i += 997) {
-            assert(Math.abs(wav.readInt16LE(44 + i * 2) / 32767 - samples[i]) <= 1 / 32767,
-                '导出音轨必须与游戏乐谱一致');
-        }
-        seam = Math.max(seam, Math.abs(samples[0] - samples[samples.length - 1]));
-    });
-    for (let i = 0; i < pcm[0].length; i++) {
-        for (const mix of SCORE.levelMixes) {
-            let sum = 0;
-            for (let s = 0; s < pcm.length; s++) sum += pcm[s][i] * mix[s];
-            peak = Math.max(peak, Math.abs(sum * SCORE.masterGain));
-        }
-    }
-    assert(peak < 0.9, '全部混音必须保留至少约 1dB 余量');
-    assert(seam < 0.03, '循环边缘不能出现明显阶跃');
-    assert.deepEqual(await renderStemAsync('bed'), pcm[0], '分块合成必须与离线合成逐样本一致');
-
     for (const variant of Object.keys(VARIANTS)) {
         const folder = path.join(__dirname, '../design/adaptive-audio', variant);
-        const tracks = SCORE.stems.map(stem => renderStem(stem, SCORE.sampleRate, variant));
-        let variantPeak = 0, squares = 0;
-        tracks.forEach((track, s) => {
-            assert(track.every(Number.isFinite));
-            assert(Math.abs(track[0] - track[track.length - 1]) < 0.03);
-            const wav = fs.readFileSync(path.join(folder, 'stems', SCORE.stems[s] + '.wav'));
-            assert.equal(wav.length, 44 + track.length * 2);
-            for (let i = 0; i < track.length; i += 997) {
-                assert(Math.abs(wav.readInt16LE(44 + i * 2) / 32767 - track[i]) <= 1 / 32767);
+        const names = [...SCORE.stems, 'bedFound', 'bedReturn', ...WARM_LAYER_TRACKS];
+        const pcm = Object.fromEntries(names.map(stem => [stem, renderStem(stem, SCORE.sampleRate, variant)]));
+        names.forEach(stem => validateExport(pcm[stem], path.join(folder, 'stems', stem + '.wav')));
+        const search = SCORE.stems.map(stem => pcm[stem]);
+        const found = [pcm.bedFound, pcm.beaconFound, pcm.bassFound, pcm.drums, pcm.arpFound, pcm.sparkFound];
+        const home = [...found];
+        home[0] = pcm.bedReturn;
+        let peak = 0;
+        for (const tracks of [search, found, home]) {
+            for (let i = 0; i < tracks[0].length; i++)
+                for (const ratios of SCORE.levelMixes)
+                    peak = Math.max(peak, Math.abs(mix(tracks, ratios, i) * SCORE.masterGain));
+            for (const cue of ['secured', 'death']) {
+                const samples = renderMusicCue(cue, variant);
+                for (let offset = 0; offset < tracks[0].length; offset += SCORE.sampleRate / 2) {
+                    for (let i = 0; i < samples.length; i += 23) {
+                        const t = i / SCORE.sampleRate + 0.01, at = (offset + Math.round(t * SCORE.sampleRate)) % tracks[0].length;
+                        const duck = 1 - 0.45 * Math.min(1, t / 0.04);
+                        assert(Math.abs(mix(tracks, SCORE.levelMixes[5], at) * SCORE.masterGain * duck + samples[i] * 0.64) < 1, '事件与任一主题叠加不得削波');
+                    }
+                }
             }
-        });
-        for (let i = 0; i < tracks[0].length; i++) {
-            let sum = 0;
-            for (const mix of SCORE.levelMixes) {
-                sum = tracks.reduce((v, track, s) => v + track[i] * mix[s], 0);
-                variantPeak = Math.max(variantPeak, Math.abs(sum * SCORE.masterGain));
+        }
+        assert(peak < 0.9, '全部配器/档位保留余量');
+        const pickup = renderPhrasePickup();
+        for (let phrase = 0; phrase < 4; phrase++) {
+            const entry = phrase * PHRASE_BEATS * 60 / SCORE.bpm * SCORE.sampleRate;
+            for (let i = 0; i < pickup.length; i += 7) {
+                const at = (entry - pickup.length + i + search[0].length) % search[0].length;
+                assert(Math.abs(mix(search, SCORE.levelMixes[4], at) * SCORE.masterGain + pickup[i] * 0.24 * SCORE.masterGain) < 1, '过门叠加不得削波');
             }
-            squares += Math.pow(sum * SCORE.masterGain, 2);
+            for (let i = 0; i < SCORE.sampleRate * DISCOVERY_CROSSFADE; i += 7) {
+                const t = i / (SCORE.sampleRate * DISCOVERY_CROSSFADE), at = (entry + i) % search[0].length;
+                const value = mix(search, SCORE.levelMixes[4], at) * (1 - t) + mix(found, SCORE.levelMixes[5], at) * t;
+                assert(Math.abs(value * SCORE.masterGain) < 1, '整套和声交接不得削波');
+            }
         }
-        assert(variantPeak < 0.9, '三版的全部档位都必须保留余量');
-        const rush = notesFor('spark', variant).filter(n => n.voice === 'rush');
-        const drive = notesFor('arp', variant).filter(n => n.voice === 'drive');
-        assert.equal(rush.length, 320, '16 秒中必须有 320 次有音高疾奏 = 1200 次/min');
-        assert.equal(drive.length, 64, '四级 240 次/min');
-        for (let i = 1; i < rush.length; i++) {
-            assert(Math.abs((rush[i].beat - rush[i - 1].beat) * 60 / SCORE.bpm - 0.05) < 1e-9);
+        const oldMotif = notesFor('bed', variant).filter(n => n.voice === 'veil');
+        const newMotif = notesFor('bedFound', variant).filter(n => n.voice === 'horizon');
+        assert(newMotif.length < oldMotif.length, '答句删去碎音，留出较长的落定');
+        assert.deepEqual(newMotif.filter(n => n.beat < 4).map(n => n.beat), oldMotif.filter(n => n.beat < 4).map(n => n.beat), '开头动机节奏仍可辨认');
+        const original = new Map(oldMotif.map(n => [n.beat, n]));
+        assert(newMotif.some(n => n.length > original.get(n.beat).length), '答句确实延长，不只改音色');
+        assert(new Set(newMotif.map(n => n.midi - original.get(n.beat).midi)).size > 2, '旋律必须改变调式与句尾，不能仅统一移调/换乐器');
+        const majorPCs = new Set([5, 7, 9, 10, 0, 2, 4]); // F大调，减去各版移调量后检查。
+        for (const stem of ['bedFound', 'bedReturn', ...WARM_LAYER_TRACKS]) {
+            for (const note of notesFor(stem, variant))
+                if (!['kick', 'snare', 'hat'].includes(note.voice)) {
+                    assert(majorPCs.has(((note.midi - VARIANTS[variant].transpose) % 12 + 12) % 12), '发现后的所有有音高声部共用大调配器');
+                }
         }
-        assert(notesFor('bed', variant).filter(n => n.voice === 'lead').length >= 20,
-            '底轨须有完整弦乐旋律，不能退回零散铃音');
-        for (const [name, seconds] of [['demo', 56], ['climax', 12], ['theme', 16], ['four-to-five', 16], ['fifth-solo', 8]]) {
+        assert.notDeepEqual(pcm.bass, pcm.bassFound, '低音同步改变和声');
+        assert.notDeepEqual(pcm.arp, pcm.arpFound);
+        assert.notDeepEqual(pcm.spark, pcm.sparkFound);
+        const returning = notesFor('bedReturn', variant).filter(n => n.voice === 'home');
+        assert.equal((returning[returning.length - 1].midi - VARIANTS[variant].transpose) % 12, 5, '返程句尾落到大调主音');
+        for (const stem of ['spark', 'sparkFound']) {
+            const rush = notesFor(stem, variant).filter(n => n.voice === 'rush');
+            assert.equal(rush.length, 320);
+            for (let i = 1; i < rush.length; i++)
+                close((rush[i].beat - rush[i - 1].beat) * 60 / SCORE.bpm, 0.05);
+        }
+        for (const [name, seconds] of [['demo', 56], ['climax', 12], ['theme', 16], ['theme-found', 16], ['theme-return', 16], ['theme-colors', 48], ['rescue-journey', 40], ['four-to-five', 16], ['fifth-solo', 8], ['death', 6.4]]) {
             const wav = fs.readFileSync(path.join(folder, name + '.wav'));
             assert.equal(wav.length, 44 + seconds * SCORE.sampleRate * 2);
             assert.equal(wav.readInt16LE(44), 0);
-            assert.equal(wav.readInt16LE(wav.length - 2), 0);
+            assert(Math.abs(wav.readInt16LE(wav.length - 2)) <= 1);
         }
-        console.log(`${VARIANTS[variant].title}：峰值 ${(20 * Math.log10(variantPeak)).toFixed(2)} dBFS，满层 RMS ${(20 * Math.log10(Math.sqrt(squares / tracks[0].length))).toFixed(2)} dBFS；实际疾奏 1200/min。`);
+        console.log(`${VARIANTS[variant].title}：寻找/发现/返程全部档位峰值 ${(20 * Math.log10(peak)).toFixed(2)} dBFS；大调伴奏、动机变奏、过门与事件叠加通过。`);
     }
-    assert.deepEqual(await renderStemAsync('spark', 'pursuit'), renderStem('spark', SCORE.sampleRate, 'pursuit'));
-
+    assert.deepEqual(await renderStemAsync('bedFound', 'pursuit'), renderStem('bedFound', SCORE.sampleRate, 'pursuit'));
+    assert.deepEqual(await renderStemAsync('sparkFound'), renderStem('sparkFound'));
     assert.equal(selectMusicLevel(-1, 5), 0);
-    assert.equal(selectMusicLevel(0, 0), 1);
-    assert.equal(selectMusicLevel(0.21, 1), 1); // 没跨过上行缓冲
-    assert.equal(selectMusicLevel(0.24, 1), 2);
-    assert.equal(selectMusicLevel(0.18, 2), 2); // 没跨过下行缓冲
-    assert.equal(selectMusicLevel(0.16, 2), 1);
-    assert.equal(selectMusicLevel(1, 1), 5); // 远距离瞬移可一次跨多级
-    assert.equal(selectMusicLevel(NaN, 3), 0);
-
+    assert.equal(selectMusicLevel(.21, 1), 1);
+    assert.equal(selectMusicLevel(.24, 1), 2);
+    assert.equal(selectMusicLevel(.18, 2), 2);
+    assert.equal(selectMusicLevel(.16, 2), 1);
+    assert.equal(selectRescueMusicLevel(1, 4, false), 4);
+    assert.equal(selectRescueMusicLevel(-1, 4, true), 5);
+    const death = renderMusicCue('death');
+    let earlyEnergy = 0, earlyPeak = 0;
+    for (let i = 0; i < SCORE.sampleRate * .08; i++) {
+        earlyEnergy += death[i] ** 2;
+        earlyPeak = Math.max(earlyPeak, Math.abs(death[i]));
+    }
+    assert(earlyPeak > .4 && Math.sqrt(earlyEnergy / (SCORE.sampleRate * .08)) > .15, '死亡必须有清楚的duang起音');
+    assert(death.slice(SCORE.sampleRate * 2, SCORE.sampleRate * 4).some(v => Math.abs(v) > .02), '保留低沉尾音');
+    assert(death.every(Number.isFinite));
     const gains = [], sources = [];
-    const ctx = {
-        currentTime: 10, destination: {},
-        createGain() {
-            const gain = { gain: { value: 0, events: [],
-                cancelScheduledValues(t) { this.events.push(['cancel', t]); },
-                setValueAtTime(v, t) { this.events.push(['set', v, t]); },
-                linearRampToValueAtTime(v, t) { this.events.push(['ramp', v, t]); } },
-                connect() {}, disconnect() { this.disconnected = true; } };
-            gains.push(gain); return gain;
-        },
-        createBufferSource() {
-            const source = { connect() {}, start(at) { this.started = at; },
-                stop(at) { this.stopped = at; }, disconnect() { this.disconnected = true; } };
-            sources.push(source); return source;
-        },
-    };
-    const buffers = Array.from({ length: 6 }, () => ({ duration: 16 }));
+    const ctx = { currentTime: 10, destination: {}, createGain() { const node = { gain: { value: 0, events: [], cancelScheduledValues(t) { this.events.push(['cancel', t]); }, setValueAtTime(v, t) { this.events.push(['set', v, t]); }, linearRampToValueAtTime(v, t) { this.events.push(['ramp', v, t]); } }, connect() { }, disconnect() { this.disconnected = true; } }; gains.push(node); return node; },
+        createBufferSource() { const node = { connect() { }, start(at, offset) { this.started = at; this.offset = offset; }, stop(at) { this.stopped = at === undefined ? ctx.currentTime : at; }, disconnect() { this.disconnected = true; } }; sources.push(node); return node; } };
+    const last = (parameter, type) => parameter.events.filter(e => e[0] === type).slice(-1)[0];
+    const buffers = Array.from({ length: 6 }, () => ({ duration: 16 })), themes = [{ duration: 16 }, { duration: 16 }], warm = Array.from({ length: 4 }, () => ({ duration: 16 }));
     assert.throws(() => new AdaptiveMusicEngine(ctx, [{ duration: 15 }]));
-    const engine = new AdaptiveMusicEngine(ctx, buffers);
-    engine.start(); engine.setVolume(0.68);
-    assert.equal(sources.length, 6);
-    assert(sources.every(s => s.started === 10.06 && s.loop && s.loopEnd === 16), '六轨必须同一时刻起播');
+    const engine = new AdaptiveMusicEngine(ctx, buffers, themes, warm, { duration: 2 });
+    engine.start();
+    engine.setVolume(.68);
+    assert.equal(sources.length, 12);
+    assert(sources.every(s => s.started === 10.06));
     ctx.currentTime = 10.2;
     engine.setLevel(3);
-    const events = gains[2].gain.events;
-    assert(Math.abs(events[1][2] - 10.56) < 1e-8, '在下一拍开始切档');
-    const eventCount = events.length;
-    engine.setLevel(5); engine.setLevel(4); // 下一拍前连续变更，只保留最新请求
-    assert.equal(events.length, eventCount);
-    ctx.currentTime = 10.58;
+    close(last(gains[4].gain, 'set')[2], 10.56);
+    ctx.currentTime = 10.8;
     engine.setLevel(4);
-    assert.equal(engine.getClock().level, 3);
-    ctx.currentTime = 11.08;
-    engine.setLevel(4);
-    assert.equal(engine.getClock().level, 4);
-    assert.equal(sources.length, 6, '切层不得重启音轨');
-    engine.setVolume(0);
-    assert.equal(sources.length, 6, '静音保持时间轴');
-    engine.stop();
-    assert(sources.every(s => s.stopped === 11.14));
-    ctx.currentTime = 11.15;
-    assert.equal(engine.getClock().playing, false);
-    assert(sources.every(s => s.disconnected));
-    engine.start(); engine.setLevel(5); engine.stop(true); engine.start();
-    assert.equal(sources.length, 18, '快速停播/重启能够重新创建完整六轨');
-    assert.equal(engine.getClock().level, 0);
+    close(last(gains[5].gain, 'set')[2], 12.06);
+    ctx.currentTime = 12.08;
     engine.setLevel(5);
-    ctx.currentTime = 11.22;
-    const denseClock = engine.getClock();
-    assert.equal(denseClock.level, 5);
-    assert(Math.abs(denseClock.subdivisionPhase - 0.2) < 1e-8, '视觉接口同步十连音时钟');
-    assert.equal(gains[gains.length - 6].gain.events.slice(-1)[0][1], 0.72,
-        '进入五级时底轨必须退后，给前景音型让位');
-    engine.setLevel(4);
-    ctx.currentTime = 11.72;
-    assert.equal(engine.getClock().level, 4);
-    assert.equal(gains[gains.length - 6].gain.events.slice(-1)[0][1], 1,
-        '退出五级后底轨恢复原电平');
+    close(last(gains[12].gain, 'set')[2], 14.06, '第五层等两小节乐句起点，不是下一拍12.56');
+    close(last(gains[9].gain, 'set')[2], 14.06, '有音高伴奏同一入口转调');
+    close(last(gains[2].gain, 'ramp')[1], 0, '旧小调信标退出');
+    close(last(gains[12].gain, 'ramp')[2], 14.36, '短交接覆盖全部新配器');
+    const firstPickup = sources[sources.length - 1];
+    assert.equal(firstPickup.buffer.duration, 2);
+    close(firstPickup.started, 12.105);
+    close(firstPickup.offset, .045);
+    const queued = gains[12].gain.events.length;
+    engine.setLevel(5);
+    assert.equal(gains[12].gain.events.length, queued, '不重复排队');
+    ctx.currentTime = 12.2;
+    engine.setLevel(4, false, 'search');
+    assert(firstPickup.disconnected, '预判失效撤销过门');
+    assert.equal(last(gains[12].gain, 'ramp')[1], 0);
+    ctx.currentTime = 14.08;
+    engine.setLevel(5);
+    const secondPickup = sources[sources.length - 1];
+    close(secondPickup.started, 16.06, '提前一小节过门');
+    close(secondPickup.stopped, 18.06);
+    ctx.currentTime = 18.21;
+    engine.setLevel(4, false, 'found');
+    const held = gains[12].gain.events.filter(e => e[0] === 'set' && Math.abs(e[2] - 18.21) < 1e-8);
+    close(held[0][1], .5, '中途撤回保持当前包络连续');
+    assert.equal(engine.getClock().requestedMood, 'found');
+    ctx.currentTime = 19.2;
+    engine.setLevel(0, true);
+    close(last(gains[10].gain, 'ramp')[2], 21.06, '暖色低音在返程时1.5s收束');
+    close(last(gains[8].gain, 'ramp')[2], 20.21, '返程主题650ms接尾音');
+    ctx.currentTime = 20.22;
+    assert.equal(engine.getClock().mood, 'return');
+    engine.stop();
+    const stopEvents = gains[0].gain.events.length;
+    engine.setVolume(.78);
+    assert.equal(gains[0].gain.events.length, stopEvents);
+    ctx.currentTime = 20.6;
+    assert.equal(engine.hasSources(), false);
+    engine.start();
+    assert.equal(engine.getClock().requestedMood, 'search');
     engine.dispose();
-
     const html = fs.readFileSync(path.join(__dirname, '../design/adaptive-audio/listen.html'), 'utf8');
     const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]);
     assert.equal(scripts.length, 2);
-    scripts.forEach((source, i) => new vm.Script(source, { filename: `listen-inline-${i}.js` }));
-    const bundleContext = { window: {} };
-    vm.runInNewContext(scripts[0], bundleContext);
-    assert.equal(bundleContext.window.SignalBelow.SCORE.bpm, 120);
-    assert.equal(typeof bundleContext.window.SignalBelow.AdaptiveMusicEngine, 'function');
-    console.log(`通过：PCM/WAV 一致、循环接缝、所有档位余量、距离滞回、音频时钟切换、静音与生命周期。`);
-    console.log(`最大混音峰值 ${(20 * Math.log10(peak)).toFixed(2)} dBFS；最大单轨循环阶跃 ${seam.toFixed(6)}。`);
+    scripts.forEach(code => new vm.Script(code));
+    const scope = { window: {} };
+    vm.runInNewContext(scripts[0], scope);
+    assert.equal(scope.window.SignalBelow.PHRASE_BEATS, 8);
+    console.log('通过：两小节入口、过门排队/撤销、伴奏共同转调、当前包络接续、返程、死亡起音与尾音、静音停播及试听脚本。');
 }
 check().catch(err => { console.error(err); process.exitCode = 1; });

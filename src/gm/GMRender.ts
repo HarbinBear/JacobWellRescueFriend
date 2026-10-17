@@ -210,7 +210,8 @@ export function drawGMPanel(ctx: CanvasRenderingContext2D): void {
         } else if (item.type === 'select') {
             // select 类型：左右箭头切换
             const selItem = item as GMSelectItem;
-            const currentVal = String(getConfigValue(selItem.path) ?? '');
+            const rawValue = String(getConfigValue(selItem.path) ?? '');
+            const currentVal = selItem.optionLabels?.[selItem.options.indexOf(rawValue)] || rawValue;
 
             const leftBtnX = valueX;
             const leftBtnW = 24;

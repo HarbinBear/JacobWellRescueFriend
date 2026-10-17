@@ -10,7 +10,7 @@
     "shaders": "node scripts/buildShaders.js",
     "maze:inspect": "node scripts/inspectMaze.js",
     "audio:build": "node scripts/buildAdaptiveAudio.js",
-    "audio:check": "node scripts/checkAdaptiveAudio.js",
+    "audio:check": "node scripts/checkAdaptiveAudio.js && node scripts/checkAdaptiveGameplay.js",
     "platform:check": "node scripts/checkWindowMetrics.js"
   },
   "devDependencies": {

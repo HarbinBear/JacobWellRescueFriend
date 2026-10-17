@@ -1,12 +1,32 @@
 import { CONFIG } from '../core/config';
 import { state } from '../core/state';
-import { SCORE, renderStemAsync, selectMusicLevel } from './AdaptiveScore';
+import { SCORE, DEFAULT_VARIANT, VARIANTS, VariantName, WARM_LAYER_TRACKS, renderStemAsync, selectRescueMusicLevel } from './AdaptiveScore';
+import { AdaptiveCuePlayer, CUE_SECONDS, renderPhrasePickup, MusicCue } from './AdaptiveCues';
+import { isRescueTargetVisible } from '../logic/NPCPerception';
 import { AdaptiveMusicEngine, MusicClock } from './AdaptiveMusicEngine';
 
 let ctx: any = null;
 let engine: AdaptiveMusicEngine | null = null;
 let preparing = false, failed = false, hidden = false, lifecycleBound = false;
 let selected = 0;
+let loadedVariant: VariantName | null = null;
+let cues: AdaptiveCuePlayer | null = null;
+let observedMaze: any = null, previousPhase = '', previousRescued = false;
+let retiring: AdaptiveMusicEngine[] = [];
+let cueDuckUntil = 0;
+let encountered = false;
+
+function desiredVariant(): VariantName {
+    const id = CONFIG.lifeDetector.music.variant;
+    return Object.prototype.hasOwnProperty.call(VARIANTS, id) ? id as VariantName : DEFAULT_VARIANT;
+}
+
+function playCue(cue: MusicCue): void {
+    if (!cues || hidden || state.audio.muted || !CONFIG.lifeDetector.music.eventCues) return;
+    if (cue === 'death') cues.stop();
+    cues.play(cue, loadedVariant || desiredVariant());
+    cueDuckUntil = ctx.currentTime + CUE_SECONDS[cue];
+}
 
 export function isAdaptiveMusicReady(): boolean { return !!engine && !failed; }
 export function getAdaptiveMusicClock(): MusicClock | null { return engine ? engine.getClock() : null; }
@@ -21,6 +41,7 @@ export function warmUpAdaptiveMusic(): void {
             const Ctor = (globalThis as any).AudioContext || (globalThis as any).webkitAudioContext;
             ctx = wxAny && wxAny.createWebAudioContext ? wxAny.createWebAudioContext() : (Ctor ? new Ctor() : null);
             if (!ctx) throw new Error('平台没有 Web Audio，继续使用原探测音');
+            cues = new AdaptiveCuePlayer(ctx);
         }
         if (ctx.resume && ctx.state !== 'running') {
             const result = ctx.resume();
@@ -28,10 +49,10 @@ export function warmUpAdaptiveMusic(): void {
         }
         if (!lifecycleBound && wxAny && wxAny.onHide) {
             lifecycleBound = true;
-            wxAny.onHide(() => { hidden = true; if (engine) engine.stop(true); });
+            wxAny.onHide(() => { hidden = true; if (engine) engine.stop(true); if (cues) cues.stop(); retiring.forEach(e => e.dispose()); retiring = []; });
             wxAny.onShow(() => { hidden = false; warmUpAdaptiveMusic(); });
         }
-        if (!engine && !preparing) {
+        if ((!engine || loadedVariant !== desiredVariant()) && !preparing) {
             preparing = true;
             prepare().catch(err => {
                 failed = true;
@@ -51,38 +72,68 @@ export function warmUpAdaptiveMusic(): void {
 }
 
 async function prepare(): Promise<void> {
+    const variant = desiredVariant();
     const buffers: any[] = [];
-    for (const stem of SCORE.stems) {
-        const pcm = await renderStemAsync(stem);
+    for (const stem of [...SCORE.stems, 'bedFound', 'bedReturn', ...WARM_LAYER_TRACKS] as const) {
+        const pcm = await renderStemAsync(stem, variant);
         const buffer = ctx.createBuffer(1, pcm.length, SCORE.sampleRate);
         buffer.getChannelData(0).set(pcm);
         buffers.push(buffer);
     }
-    engine = new AdaptiveMusicEngine(ctx, buffers);
+    // 合成期间可以继续切换；只提交最新选择，旧音乐保持播放直到替代版本就绪。
+    if (variant !== desiredVariant()) return;
+    if (engine) { engine.stop(false, 0.5); retiring.push(engine); }
+    const pcm = renderPhrasePickup();
+    const pickup = ctx.createBuffer(1, pcm.length, SCORE.sampleRate);
+    pickup.getChannelData(0).set(pcm);
+    engine = new AdaptiveMusicEngine(ctx, buffers.slice(0, 6), buffers.slice(6, 8), buffers.slice(8), pickup);
+    loadedVariant = variant;
+    selected = 0;
 }
 
 // 主循环每帧调用，独立检查 phase，防止 updateMaze 提前 return 后音乐残留。
 export function updateAdaptiveMusic(detector: { active: boolean; currentIntensity: number }): void {
-    if (!engine) return;
     try {
         const cfg = CONFIG.lifeDetector, maze = state.mazeRescue;
+        if (ctx && !preparing && loadedVariant !== desiredVariant()) warmUpAdaptiveMusic();
+        retiring = retiring.filter(e => { if (e.hasSources() && !hidden && !state.audio.muted) return true; e.dispose(); return false; });
+        const visible = state.screen === 'mazeRescue' && maze && maze.phase === 'play' && isRescueTargetVisible();
+        if (cues) {
+            cues.setVolume(state.audio.muted || hidden || !cfg.music.eventCues ? 0 : cfg.music.cueVolume * CONFIG.audio.sfxVolume);
+            if (state.audio.muted || hidden || !cfg.music.eventCues || state.screen !== 'mazeRescue') cues.stop();
+        }
+        if (maze !== observedMaze) {
+            observedMaze = maze; encountered = false; previousPhase = ''; previousRescued = !!(maze && maze.npcRescued);
+        }
+        if (visible) encountered = true;
+        if (state.screen === 'mazeRescue' && maze) {
+            if (maze.phase === 'failed' && previousPhase !== 'failed') playCue('death');
+            else if (maze.npcRescued && !previousRescued) playCue('secured');
+            previousPhase = maze.phase; previousRescued = maze.npcRescued;
+        }
+        if (!engine) return;
         const playing = !hidden && cfg.enabled && cfg.music.enabled && state.screen === 'mazeRescue'
             && maze && maze.phase === 'play';
         if (!playing) { engine.stop(); engine.getClock(); selected = 0; return; }
         engine.start();
         // 救起后/范围外回到底轨，底轨整个下潜持续存在。
         const detecting = detector.active && state.npc && state.npc.active && !maze.npcRescued;
-        selected = selectMusicLevel(detecting ? detector.currentIntensity : -1, selected, cfg.music.hysteresis);
-        engine.setLevel(selected);
-        engine.setVolume(state.audio.muted ? 0 : cfg.music.volume * CONFIG.audio.bgmVolume);
+        const enteringFrame = !hidden && !maze.npcRescued && isRescueTargetVisible(Math.min(0.5, engine.secondsToNextPhrase()));
+        selected = selectRescueMusicLevel(detecting ? detector.currentIntensity : -1, selected, !!visible || enteringFrame, cfg.music.hysteresis);
+        const mood = maze.npcRescued ? 'return' : encountered || enteringFrame ? 'found' : 'search';
+        engine.setLevel(selected, !!maze.npcRescued, mood);
+        engine.setVolume(state.audio.muted ? 0 : cfg.music.volume * CONFIG.audio.bgmVolume * (ctx.currentTime < cueDuckUntil ? 0.55 : 1));
     } catch (err) {
         failed = true;
-        engine.dispose(); engine = null;
+        if (engine) engine.dispose(); engine = null;
         console.warn('[AdaptiveMusic] 播放失败，回退原探测音:', err);
     }
 }
 
 export function resetAdaptiveMusic(): void {
-    selected = 0;
+    selected = 0; cueDuckUntil = 0; encountered = false;
     if (engine) engine.stop(true);
+    if (cues) cues.stop();
+    retiring.forEach(e => e.dispose()); retiring = [];
+    previousPhase = ''; previousRescued = false;
 }

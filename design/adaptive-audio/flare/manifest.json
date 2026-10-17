@@ -105,7 +105,7 @@
     "前景疾奏 · 1200/min"
   ],
   "variant": "flare",
-  "description": "更长、更向上舒展的弦乐旋律，发现目标时突出激动和希望。",
+  "description": "上行主题与柔和的六/九和弦，发现后更舒展、明亮。",
   "transpose": 2,
   "leadGain": 0.19,
   "driveGain": 0.15,
@@ -125,5 +125,22 @@
     5,
     5
   ],
-  "demoStageSeconds": 8
+  "demoStageSeconds": 8,
+  "themeStates": [
+    "search",
+    "found",
+    "return"
+  ],
+  "extraThemeFiles": [
+    "stems/bedFound.wav",
+    "stems/bedReturn.wav"
+  ],
+  "warmLayerFiles": [
+    "stems/beaconFound.wav",
+    "stems/bassFound.wav",
+    "stems/arpFound.wav",
+    "stems/sparkFound.wav"
+  ],
+  "discoveryKeys": "G major",
+  "phraseBeats": 8
 }

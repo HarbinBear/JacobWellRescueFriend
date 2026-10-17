@@ -105,7 +105,7 @@
     "前景疾奏 · 1200/min"
   ],
   "variant": "undertow",
-  "description": "幽暗弦乐与压迫脉冲，靠近后转为强推进的电子弦乐。",
+  "description": "寻找时保留悬念，发现后转向温暖的大调与宽阔长句。",
   "transpose": 0,
   "leadGain": 0.17,
   "driveGain": 0.14,
@@ -125,5 +125,22 @@
     5,
     5
   ],
-  "demoStageSeconds": 8
+  "demoStageSeconds": 8,
+  "themeStates": [
+    "search",
+    "found",
+    "return"
+  ],
+  "extraThemeFiles": [
+    "stems/bedFound.wav",
+    "stems/bedReturn.wav"
+  ],
+  "warmLayerFiles": [
+    "stems/beaconFound.wav",
+    "stems/bassFound.wav",
+    "stems/arpFound.wav",
+    "stems/sparkFound.wav"
+  ],
+  "discoveryKeys": "F major",
+  "phraseBeats": 8
 }

@@ -1,62 +1,55 @@
 # 分层音乐后续优化交接
 
-更新：2026-10-18。当前阶段是可运行的原创程序化音乐试听与游戏接入，用户已确认手机可以运行。本文件供同一项目的新对话继续工作。
+更新：2026-10-18，当前Signal Below VI，仅音频；游戏可视化仍暂缓。旧版用户曾确认可手机运行，用户已试听并反馈“这次进步很大”，授权提交。手机性能/输出延迟仍未系统实测。
 
-## 已确认的方向
+## 最新反馈（优先于V版方案）
 
-- 微信小游戏中的生命信号探测器，用离散的五档音乐层替代连续变频探测声。基础旋律持续循环，接近目标时叠加节奏层。
-- 用户需要电子音乐与类似弦乐的旋律：幽暗、有张力，可带微光；接近被营救者时必须激昂、带劲，避免轻松欢快的色彩。
-- 当前第三版已获用户反馈“感觉对很多了”。第五轨已强化为明显的前景疾奏，后续保留这一兴奋感。
-- 下一轮用户会提供参考视频的完整录音。目前只有约 13.7 秒的最终五层混音参考，没有独立轨，不能据此声称听出了每一条音轨。
+- V版只是换音色/音区，所有方案仍压抑；发现后需要实际温暖的情绪变化。
+- 死亡必须有清楚duang，低沉余音不能取代起音。
+- 第五层仍太突兀，音乐时机应看小节/乐句段落，不能只等任意正拍。
 
-## 当前实现
+## VI版实现
 
-游戏默认 A「深流」D 小调；试听还有 B「微光奔涌」E 小调、C「最后航线」C 小调。统一时钟 120 BPM、4/4、8 小节，循环 16 秒。主要音型密度依次为 30、60、120、240、1200 次/分钟；最高档每拍十个起音、每秒二十次，并不是整体速度改成 1200 BPM。
+1. 发现/返程从原D/E/C小调改写为相对F/G/E-flat大调。和弦进行不同：A F(add9)/C-E/Bbmaj9/F-C；B F(add9)/Am7/Bbmaj9/C6；C F/Bb6-9/Gm9(no3)/F(add9)（B/C整体移调）。低音、信标、琶音、第五层一起采用对应和声；鼓组共用。
+2. 开头保留动机节奏/轮廓，按大调重写音级；两小节答句删碎音，第二音延伸至句末/落和弦音；返程末句落大调主音。不是统一移高或仅换乐器，温暖感仍待用户试听。
+3. 第五层进入第0/8/16/24拍的新两小节乐句，120BPM最多约4.025s等待。前一小节滚奏过门（无固定音高，避免转调前冲突），最后一拍加密；等待不足一小节只播结尾。整套有音高配器在同一入口300ms交接。第四层仍小节进入。
+4. 入镜条件不变：角色身体进入实际视口即可，不看160px/照明/朝向/遮挡；入镜只是音乐请求，乐句时机决定实际第五层。最多半秒预测、逐帧撤销失效预判；已实际入镜后保持发现情绪，出镜撤第五层不退回寻找。新下潜重置，历史npcFound不授权高潮。
+5. 绑好确认音，下一拍返程主题650ms交接、暖色节奏层1.5s收束。死亡停止成功尾音，3ms撞击起音+中低频主体提供duang，再接6.4s下坠暗尾；结算保留，静音/后台停止。
+6. GM「探知仪 → 音乐方案」切A/B/C；按需生成，准备期间旧版继续，替代版就绪后旧版500ms淡出释放。连续选择只提交最新。
 
-六轨为 bed / beacon / bass / drums / arp / spark。六个循环音源同时开始，按下一拍切换增益，预留 25ms、渐变 90ms。五级混音为 `[0.72, 0.78, 0.9, 1, 0.55, 1]`，让第五轨突出，退出五级恢复原混音。
+## 试听与对比
 
-运行时是 TypeScript 编译的 JavaScript，通过 `wx.createWebAudioContext()` 在内存合成 PCM，首次用户交互后分块计算，写入音频缓冲；每批约 5ms 预算，六轨 Float32 缓冲约 9.2MB，另有临时和原生内存开销。游戏不运行 Python/Node，不读取导出的 WAV，也不需要上传这些 WAV。浏览器兼容标准 AudioContext。尚未实测手机首次合成耗时和峰值内存。
+listen.html顶部：
+- color-v5-v6.wav 32s：0:00旧V版A发现主题，0:16新版A。相同主音量、未强制匹配响度。
+- undertow/theme-colors.wav 48s：0s寻找/16s发现/32s返程。
+- undertow/rescue-journey.wav 40s：0s寻找二级/8s四级/14s过门/16s新乐句的发现与五级/24s绑好返程。
+- undertow/death.wav 6.4s。
 
-`design/adaptive-audio/` 的 WAV 是开发试听和复现资产，已在微信打包配置中排除；原有云端 BGM/音效系统仍按项目既有方式运行。Python 仅用于本地参考录音的信号分析。
+A/B/C各有同名试听。archive-v5保留用户实际反馈过的A版theme-found/death/four-to-five快照，archive-v1/v2不改。旧reference-study/four-old-five-new-five.wav不再自动重建，避免失去历史对照。
 
 ## 代码入口
 
-- `src/audio/AdaptiveScore.ts`：三版乐谱、合成器、离线/分块渲染、各级混音。
-- `src/audio/AdaptiveMusicEngine.ts`：同步循环、按拍切层、静音、音频时钟。
-- `src/audio/AdaptiveMusic.ts`：微信上下文、预热、游戏状态及距离接入。
-- `src/logic/LifeDetector.ts`：距离分档、旧探测音回退、现有指示灯脉冲。
-- `src/core/config/gameplay.ts`、`src/gm/GMConfig.ts`：开关、音量、滞回；默认启用 A 版。
-- `game.ts`、`src/core/input.ts`：逐帧更新与首次交互预热。
-- `src/core/WindowMetrics.ts`：共享窗口尺寸缓存、现代/旧微信接口和兜底；`src/core/config/base.ts`、`src/render/Canvas.ts` 使用它。
-- `scripts/buildAdaptiveAudio.js`、`scripts/adaptiveAudioModules.js`：从同一份 TS 合成导出 WAV 与试听页。
-- `scripts/checkAdaptiveAudio.js`、`scripts/checkWindowMetrics.js`：音乐与窗口兼容校验。
+- AdaptiveScore.ts：ScoreTrack新增beaconFound/bassFound/arpFound/sparkFound；WARM_LAYER_TRACKS顺序固定，PHRASE_BEATS=8；和声/动机答句/跨配器渲染。
+- AdaptiveMusicEngine.ts：构造(ctx,六轨,两个底轨,四个暖色伴奏,过门Buffer)。12源同步；found层映射[6,8,9,3,10,11]，return底轨为7。setLevel(level,settle,mood)一起切配器；过门独立一次性源，等待可撤销。MusicClock含entryWaitSeconds/mood/requestedMood。
+- AdaptiveMusic.ts：准备12源+过门，预测入镜、情绪保持、绑绳与死亡。
+- AdaptiveCues.ts：renderPhrasePickup()两秒滚奏；death明确duang+暗尾，secured确认。
+- NPCPerception.ts、MazeLogic：共同的入镜发现语义。
+- buildAdaptiveAudio.js、adaptiveAudioPreview.html：同内核导出/试听，32s新旧对照。
+- checkAdaptiveAudio.js：配器和声/动机、完整混音/事件/过门峰值、PCM、乐句排程与撤销、死亡起音等。
+- checkAdaptiveGameplay.js：入镜/缩放/预判、情绪保持、死亡停成功尾音、后台/换版。
 
-## 试听与验证
+## 边界
 
-打开 `design/adaptive-audio/listen.html`。每版提供纯底轨、最高档、逐级叠加、第四到第五档以及第五轨独奏。逐级示例每 8 秒升一档，40 秒进入第五档。`reference-study/four-old-five-new-five.wav` 依次播放四级、旧五级、新五级，每段 8 秒；是原创合成稿对比，没有采样用户录音。
+12循环PCM约18.4MB，过门0.2MB，换版暂留两套约37.2MB另加临时/原生/事件；未测真机生成耗时/峰值/输出延迟。WebAudio替身校验不是主观听感验收。
 
-`archive-v1/` 和 `archive-v2/` 保存历史试听与源代码，供回听比较。`reference-study/reference-analysis.wav` 是用户录音的本地解码副本，已忽略，不入 Git；信号分析数据保留。当前环境未直接主观听取录音，已有判断来自用户反馈、信号分析及乐谱；不要把频谱测量当成听感结论。
+参考「建安一路627号 3.m4a」52.351s、48kHz mono AAC；本地reference-full.wav忽略不入Git，未外传。原VoiceMemos临时路径可能过期。analyzeAdaptiveReference.py/full-analysis.json是客观谱测量，不能识别独立轨或音色。当前无直接听取参考工具；VI改写依据用户反馈，不声称听感已达到参考。
 
 ```sh
+npm run audio:build
 npm run audio:check
 npm run platform:check
 npm run typecheck
 npm run build
 ```
 
-需要重新导出试听时运行 `npm run audio:build`。检查覆盖 PCM/WAV 一致性、峰值/接缝、最高层起音密度、音乐控制与窗口兜底；Web Audio 使用替身测试，不代表真机播放验收。
-
-此前手机远程调试的 `getSystemNanoTime` 异常出在微信基础库远程性能记录链路。建议普通预览扫码后，用户确认手机可运行；不能据此说远程调试自身已修复。未修改微信安装目录或基础库。
-
-## 下一阶段用户意图（尚未实施）
-
-1. 收到完整参考录音后，分析各层进入方式、音色与情绪递进，继续优化原创音乐。
-2. 改善四到五级的过渡，同时保留第五级明显的激动感。目前主要音型密度突然增加五倍、音区上移且混音让位，只有 90ms 渐变；尚未决定是加强第四轨、加入过门还是调整切换编排。
-3. 探索类似鲸鱼钟声的声音，用于入水、死亡等事件。用户提出的是创意，具体声音与触发方案待结合完整参考确定；目前仍是原有事件音效。
-4. 设计配套节拍可视化。已有 `getAdaptiveMusicClock()`，可读 `playing / level / requestedLevel / beat / bar / beatPhase / subdivisionPhase / pulse / bpm`。`beat` 是累计拍号，`bar` 循环 0–7；未校准设备输出延迟，主网格脉冲不等于所有乐谱事件。尚未新增可视化样式。
-
-注意情绪触发的游戏语义：当前第五档由距离决定，默认最大范围 4000px、滞回 0.03，接近到约 746px 时可以进入；实际 `npcFound` 在 160px 内触发。因此第五档目前代表“接近”，未必等于“发现被营救者”。下一轮应结合用户希望的高潮时机讨论。
-
-建议新对话起始请求：
-
-> 先读 design/adaptive-audio/HANDOFF.md 和 README.md，继续优化分层音乐、钟声事件、第四到第五档过渡及节拍可视化。我会提供完整参考录音；保留当前第五轨的兴奋感。
+用户认可VI版并要求提交，接下来希望学习相关音乐概念与作曲设计（有钢琴/小提琴基础）。游戏可视化仍未授权推进；教学交互与游戏视觉分开。

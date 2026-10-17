@@ -1,9 +1,9 @@
-import { SCORE } from './AdaptiveScore';
+import { SCORE, MusicMood, PHRASE_BEATS, DISCOVERY_CROSSFADE, RETURN_CROSSFADE, musicTransition } from './AdaptiveScore';
 
 export interface MusicClock {
     playing: boolean; level: number; requestedLevel: number;
     beat: number; bar: number; beatPhase: number; subdivisionPhase: number;
-    pulse: number; bpm: number;
+    pulse: number; bpm: number; entryWaitSeconds: number; mood: MusicMood; requestedMood: MusicMood;
 }
 
 // 所有 BufferSource 同一音频时间启动、始终循环。切档只操作 Gain，不重启文件。
@@ -14,12 +14,16 @@ export class AdaptiveMusicEngine {
     private epoch = 0;
     private level = 0;
     private requested = 0;
-    private pending: { level: number; at: number } | null = null;
+    private mood: MusicMood = 'search';
+    private requestedMood: MusicMood = 'search';
+    private pending: { level: number; mood: MusicMood; at: number } | null = null;
+    private envelopes: { from: number; to: number; start: number; end: number }[][] = [];
+    private pickup: { source: any; gain: any } | null = null;
     private masterTarget = -1;
     private stoppedAt = 0;
-    constructor(private ctx: any, private buffers: any[]) {
-        if (buffers.length !== SCORE.stems.length || buffers.some(b => Math.abs(b.duration - SCORE.duration) > 1 / SCORE.sampleRate)) {
-            throw new Error('音乐必须为六条相同长度的 16 秒循环');
+    constructor(private ctx: any, private buffers: any[], private themes: any[] = [], private warmLayers: any[] = [], private pickupBuffer?: any) {
+        if (buffers.length !== SCORE.stems.length || (themes.length !== 0 && themes.length !== 2) || (warmLayers.length !== 0 && (warmLayers.length !== 4 || themes.length !== 2)) || [...buffers, ...themes, ...warmLayers].some(b => Math.abs(b.duration - SCORE.duration) > 1 / SCORE.sampleRate)) {
+            throw new Error('音乐必须有六轨，可选两条主题变体；均为16秒循环');
         }
         this.master = ctx.createGain();
         this.master.gain.value = 0;
@@ -32,9 +36,11 @@ export class AdaptiveMusicEngine {
         if (this.sources.length) return;
         this.epoch = this.ctx.currentTime + 0.06;
         this.level = this.requested = 0;
+        this.mood = this.requestedMood = 'search';
         this.pending = null;
         this.stoppedAt = 0;
-        this.buffers.forEach(buffer => {
+        this.envelopes = [];
+        [...this.buffers, ...this.themes, ...this.warmLayers].forEach((buffer, i) => {
             const source = this.ctx.createBufferSource(), gain = this.ctx.createGain();
             source.buffer = buffer;
             source.loop = true;
@@ -45,6 +51,7 @@ export class AdaptiveMusicEngine {
             gain.connect(this.master);
             this.sources.push(source);
             this.gains.push(gain);
+            this.envelopes.push([{ from: 0, to: i === 0 ? 1 : 0, start: this.epoch, end: this.epoch + 0.5 }]);
         });
         this.gains[0].gain.setValueAtTime(0, this.epoch);
         this.gains[0].gain.linearRampToValueAtTime(1, this.epoch + 0.5);
@@ -53,7 +60,7 @@ export class AdaptiveMusicEngine {
 
     setVolume(value: number): void {
         const target = Math.max(0, Math.min(1, value));
-        if (target === this.masterTarget) return;
+        if (target === this.masterTarget || (this.stoppedAt && target > 0)) return;
         const now = this.ctx.currentTime;
         const p = this.master.gain;
         p.cancelScheduledValues(now);
@@ -62,55 +69,124 @@ export class AdaptiveMusicEngine {
         this.masterTarget = target;
     }
 
-    setLevel(value: number): void {
+    setLevel(value: number, settle = false, mood?: MusicMood): void {
         this.flush();
-        const target = Math.max(0, Math.min(5, Math.round(value)));
-        // 已排入下拍的切换先完成；新的请求合并，避免边界抖动重复重写自动化。
+        const target = Number.isFinite(value) ? Math.max(0, Math.min(5, Math.round(value))) : 0;
+        const nextMood = mood || (settle ? 'return' : target === 5 ? 'found' : this.requestedMood);
+        if (!this.sources.length || this.stoppedAt || (target === this.requested && nextMood === this.requestedMood)) return;
+        this.cancelPickup();
         this.requested = target;
-        if (!this.sources.length || this.pending || target === this.level || this.stoppedAt) return;
-        const beat = 60 / SCORE.bpm, now = this.ctx.currentTime;
-        const at = this.epoch + Math.max(0, Math.ceil((now + 0.025 - this.epoch) / beat)) * beat;
-        const previousMix = SCORE.levelMixes[this.level], nextMix = SCORE.levelMixes[target];
+        this.requestedMood = nextMood;
+        const now = this.ctx.currentTime;
+        const plan = musicTransition(this.level, target, settle);
+        const themeChanged = this.mood !== nextMood;
+        const gridBeats = themeChanged ? (nextMood === 'found' ? PHRASE_BEATS : 1) : plan.gridBeats;
+        const grid = gridBeats * 60 / SCORE.bpm;
+        const at = gridBeats === 0 ? now + 0.025
+            : this.epoch + Math.max(0, Math.ceil((now + 0.025 - this.epoch) / grid)) * grid;
+        const mix = SCORE.levelMixes[target];
+        const activeTheme = this.themes.length ? { search: 0, found: 6, return: 7 }[nextMood] : 0;
+        const warm = nextMood !== 'search' && this.warmLayers.length > 0;
+        const layerSlots = warm ? [activeTheme, 8, 9, 3, 10, 11] : [activeTheme, 1, 2, 3, 4, 5];
+        const nextMix = this.gains.map((_, i) => {
+            const slot = layerSlots.indexOf(i);
+            return slot < 0 ? 0 : mix[slot];
+        });
         for (let i = 0; i < this.gains.length; i++) {
-            if (previousMix[i] === nextMix[i]) continue;
             const p = this.gains[i].gain;
-            p.cancelScheduledValues(at);
-            if (i === 0 && at <= this.epoch + 0.000001) {
-                // 用户直接从五级起播时仍保留底轨淡入，避免覆盖 start() 的起音包络。
-                p.setValueAtTime(0, at);
-                p.linearRampToValueAtTime(nextMix[i], at + 0.5);
-                continue;
+            let current = this.envelopes[i][0].from;
+            for (const e of this.envelopes[i]) {
+                if (now < e.start) break;
+                const fraction = Math.max(0, Math.min(1, (now - e.start) / (e.end - e.start)));
+                current = e.from + (e.to - e.from) * fraction;
             }
-            p.setValueAtTime(previousMix[i], at);
-            p.linearRampToValueAtTime(nextMix[i], at + 0.09);
+            // 自己求当前包络，兼容没有 cancelAndHoldAtTime 的微信实现。
+            p.cancelScheduledValues(now);
+            p.setValueAtTime(current, now);
+            let from = current;
+            const envelopes = [];
+            if (i === 0 && now < this.epoch + 0.5 && at >= this.epoch + 0.5) {
+                // 等小节期间照常完成底轨首次淡入，不把它拉长到下一个小节。
+                p.linearRampToValueAtTime(1, this.epoch + 0.5);
+                envelopes.push({ from: current, to: 1, start: now, end: this.epoch + 0.5 });
+                from = 1;
+            }
+            p.setValueAtTime(from, at);
+            const recoloring = themeChanged && (i === 0 || i === 6 || i === 7 || ((nextMood === 'found' || this.mood === 'search') && i !== 3));
+            const fade = recoloring ? (nextMood === 'return' ? RETURN_CROSSFADE : DISCOVERY_CROSSFADE) : plan.fadeSeconds;
+            p.linearRampToValueAtTime(nextMix[i], at + fade);
+            envelopes.push({ from, to: nextMix[i], start: at, end: at + fade });
+            this.envelopes[i] = envelopes;
         }
-        this.pending = { level: target, at };
+        if (target === 5 && this.level < 5 && this.pickupBuffer && at - now >= 0.12) {
+            const source = this.ctx.createBufferSource(), gain = this.ctx.createGain();
+            source.buffer = this.pickupBuffer;
+            gain.gain.value = 0.24;
+            source.connect(gain); gain.connect(this.master);
+            const start = Math.max(now + 0.025, at - this.pickupBuffer.duration);
+            source.start(start, Math.max(0, start - (at - this.pickupBuffer.duration)));
+            source.stop(at);
+            const pickup = { source, gain };
+            this.pickup = pickup;
+            source.onended = () => {
+                source.disconnect(); gain.disconnect();
+                if (this.pickup === pickup) this.pickup = null;
+            };
+        }
+        this.pending = { level: target, mood: nextMood, at };
+    }
+
+    private cancelPickup(): void {
+        if (!this.pickup) return;
+        try { this.pickup.source.stop(); this.pickup.source.disconnect(); this.pickup.gain.disconnect(); } catch (_) { /* 已结束 */ }
+        this.pickup = null;
     }
 
     private flush(): void {
         if (this.pending && this.ctx.currentTime >= this.pending.at) {
             this.level = this.pending.level;
+            this.mood = this.pending.mood;
             this.pending = null;
         }
         if (this.stoppedAt && this.ctx.currentTime >= this.stoppedAt) this.releaseSources();
     }
 
-    stop(immediate = false): void {
+    stop(immediate = false, fadeSeconds = 0.35): void {
         if (!this.sources.length || (this.stoppedAt && !immediate)) return;
-        this.setVolume(0);
-        this.stoppedAt = this.ctx.currentTime + (immediate ? 0 : 0.06);
+        this.cancelPickup();
+        const now = this.ctx.currentTime;
+        this.master.gain.cancelScheduledValues(now);
+        this.master.gain.setValueAtTime(this.master.gain.value, now);
+        this.master.gain.linearRampToValueAtTime(0, now + (immediate ? 0 : fadeSeconds));
+        this.masterTarget = 0;
+        this.stoppedAt = now + (immediate ? 0 : fadeSeconds + 0.02);
         // 即使游戏下一帧不再执行，也由音频时钟停止。
         this.sources.forEach(source => { try { source.stop(this.stoppedAt); } catch (_) { /* 已停止 */ } });
         if (immediate) this.releaseSources();
     }
 
     private releaseSources(): void {
+        this.cancelPickup();
         this.sources.forEach(s => { try { s.disconnect(); } catch (_) { /* 已释放 */ } });
         this.gains.forEach(g => g.disconnect());
         this.sources = []; this.gains = []; this.pending = null;
         this.level = this.requested = 0;
         this.stoppedAt = 0;
     }
+
+    secondsToNextBeat(): number {
+        const beat = 60 / SCORE.bpm;
+        const at = this.epoch + Math.max(0, Math.ceil((this.ctx.currentTime + 0.025 - this.epoch) / beat)) * beat;
+        return Math.max(0, at - this.ctx.currentTime);
+    }
+
+    secondsToNextPhrase(): number {
+        const seconds = PHRASE_BEATS * 60 / SCORE.bpm;
+        const at = this.epoch + Math.max(0, Math.ceil((this.ctx.currentTime + 0.025 - this.epoch) / seconds)) * seconds;
+        return Math.max(0, at - this.ctx.currentTime);
+    }
+
+    hasSources(): boolean { this.flush(); return this.sources.length > 0; }
 
     getClock(): MusicClock {
         this.flush();
@@ -121,7 +197,7 @@ export class AdaptiveMusicEngine {
         return { playing, level: this.level, requestedLevel: this.requested,
             beat: Math.floor(beats), bar: Math.floor(beats / 4) % SCORE.bars,
             beatPhase: beats % 1, subdivisionPhase: phase,
-            pulse: playing && this.level > 0 ? Math.exp(-phase * 9) : 0, bpm: SCORE.bpm };
+            pulse: playing && this.level > 0 ? Math.exp(-phase * 9) : 0, bpm: SCORE.bpm, entryWaitSeconds: this.pending ? Math.max(0, this.pending.at - this.ctx.currentTime) : 0, mood: this.mood, requestedMood: this.requestedMood };
     }
 
     dispose(): void { this.stop(true); this.master.disconnect(); }

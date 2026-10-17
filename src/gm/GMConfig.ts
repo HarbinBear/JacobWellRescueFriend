@@ -23,6 +23,7 @@ export interface GMSelectItem {
     type: 'select';
     label: string;
     path: string;
+    optionLabels?: string[];
     options: string[];       // 可选值列表（左右箭头切换）
 }
 
@@ -338,6 +339,9 @@ export const TABS: GMTab[] = [
         items: [
             { type: 'bool', label: '启用', path: 'lifeDetector.enabled' },
             { type: 'bool', label: '分层音乐', path: 'lifeDetector.music.enabled' },
+            { type: 'select', label: '音乐方案', path: 'lifeDetector.music.variant', options: ['undertow', 'flare', 'pursuit'], optionLabels: ['A 深流', 'B 微光奔涌', 'C 最后航线'] },
+            { type: 'bool', label: '事件反馈音', path: 'lifeDetector.music.eventCues' },
+            { type: 'number', label: '反馈音量', path: 'lifeDetector.music.cueVolume', min: 0, max: 1, step: 0.05, precision: 2 },
             { type: 'number', label: '音乐音量', path: 'lifeDetector.music.volume', min: 0, max: 1, step: 0.02, precision: 2 },
             { type: 'number', label: '分档缓冲', path: 'lifeDetector.music.hysteresis', min: 0, max: 0.09, step: 0.01, precision: 2 },
             { type: 'number', label: '范围倍数', path: 'lifeDetector.rangeMultiplier', min: 1, max: 8, step: 0.5, precision: 1 },

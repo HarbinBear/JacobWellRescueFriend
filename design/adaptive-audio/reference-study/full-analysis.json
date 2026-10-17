@@ -1,0 +1,208 @@
+{
+  "duration_seconds": 52.351,
+  "sample_rate": 48000,
+  "limitations": [
+    "手机录音完整混音；能量变化可能来自配器、旋律、音量或录音操作，不能确认独立音轨的进入。",
+    "以下时间是谱变化候选点，不是人工听觉标注；不据此声称识别了钟声、每层音色或 BPM。"
+  ],
+  "change_candidates": [
+    {
+      "seconds": 2.0,
+      "spectral_share_change": 1.014
+    },
+    {
+      "seconds": 6.5,
+      "spectral_share_change": 0.589
+    },
+    {
+      "seconds": 10.5,
+      "spectral_share_change": 0.32
+    },
+    {
+      "seconds": 14.5,
+      "spectral_share_change": 0.472
+    },
+    {
+      "seconds": 19.0,
+      "spectral_share_change": 0.45
+    },
+    {
+      "seconds": 22.0,
+      "spectral_share_change": 0.703
+    },
+    {
+      "seconds": 29.5,
+      "spectral_share_change": 0.614
+    },
+    {
+      "seconds": 32.5,
+      "spectral_share_change": 0.394
+    },
+    {
+      "seconds": 39.0,
+      "spectral_share_change": 0.244
+    },
+    {
+      "seconds": 49.5,
+      "spectral_share_change": 0.679
+    }
+  ],
+  "four_second_windows": [
+    {
+      "start_seconds": 0,
+      "end_seconds": 4,
+      "rms_dbfs": -49.91,
+      "band_share_percent": {
+        "30-150": 19.83,
+        "150-500": 42.32,
+        "500-1800": 36.34,
+        "1800-6000": 1.3,
+        "6000-10000": 0.22
+      }
+    },
+    {
+      "start_seconds": 4,
+      "end_seconds": 8,
+      "rms_dbfs": -38.07,
+      "band_share_percent": {
+        "30-150": 0.79,
+        "150-500": 39.43,
+        "500-1800": 57.58,
+        "1800-6000": 2.07,
+        "6000-10000": 0.13
+      }
+    },
+    {
+      "start_seconds": 8,
+      "end_seconds": 12,
+      "rms_dbfs": -39.68,
+      "band_share_percent": {
+        "30-150": 1.45,
+        "150-500": 57.45,
+        "500-1800": 38.57,
+        "1800-6000": 2.39,
+        "6000-10000": 0.14
+      }
+    },
+    {
+      "start_seconds": 12,
+      "end_seconds": 16,
+      "rms_dbfs": -36.48,
+      "band_share_percent": {
+        "30-150": 0.79,
+        "150-500": 35.06,
+        "500-1800": 36.66,
+        "1800-6000": 26.77,
+        "6000-10000": 0.72
+      }
+    },
+    {
+      "start_seconds": 16,
+      "end_seconds": 20,
+      "rms_dbfs": -37.24,
+      "band_share_percent": {
+        "30-150": 1.01,
+        "150-500": 39.72,
+        "500-1800": 33.47,
+        "1800-6000": 25.2,
+        "6000-10000": 0.59
+      }
+    },
+    {
+      "start_seconds": 20,
+      "end_seconds": 24,
+      "rms_dbfs": -35.47,
+      "band_share_percent": {
+        "30-150": 0.65,
+        "150-500": 28.88,
+        "500-1800": 39.12,
+        "1800-6000": 30.93,
+        "6000-10000": 0.42
+      }
+    },
+    {
+      "start_seconds": 24,
+      "end_seconds": 28,
+      "rms_dbfs": -33.62,
+      "band_share_percent": {
+        "30-150": 0.27,
+        "150-500": 16.7,
+        "500-1800": 28.63,
+        "1800-6000": 54.22,
+        "6000-10000": 0.18
+      }
+    },
+    {
+      "start_seconds": 28,
+      "end_seconds": 32,
+      "rms_dbfs": -35.16,
+      "band_share_percent": {
+        "30-150": 0.24,
+        "150-500": 22.06,
+        "500-1800": 37.75,
+        "1800-6000": 39.63,
+        "6000-10000": 0.33
+      }
+    },
+    {
+      "start_seconds": 32,
+      "end_seconds": 36,
+      "rms_dbfs": -32.51,
+      "band_share_percent": {
+        "30-150": 0.16,
+        "150-500": 15.41,
+        "500-1800": 65.83,
+        "1800-6000": 18.43,
+        "6000-10000": 0.17
+      }
+    },
+    {
+      "start_seconds": 36,
+      "end_seconds": 40,
+      "rms_dbfs": -31.57,
+      "band_share_percent": {
+        "30-150": 0.44,
+        "150-500": 13.6,
+        "500-1800": 55.95,
+        "1800-6000": 29.89,
+        "6000-10000": 0.11
+      }
+    },
+    {
+      "start_seconds": 40,
+      "end_seconds": 44,
+      "rms_dbfs": -31.3,
+      "band_share_percent": {
+        "30-150": 0.11,
+        "150-500": 8.63,
+        "500-1800": 65.69,
+        "1800-6000": 25.42,
+        "6000-10000": 0.15
+      }
+    },
+    {
+      "start_seconds": 44,
+      "end_seconds": 48,
+      "rms_dbfs": -32.66,
+      "band_share_percent": {
+        "30-150": 0.15,
+        "150-500": 19.41,
+        "500-1800": 61.33,
+        "1800-6000": 18.97,
+        "6000-10000": 0.15
+      }
+    },
+    {
+      "start_seconds": 48,
+      "end_seconds": 52,
+      "rms_dbfs": -46.87,
+      "band_share_percent": {
+        "30-150": 18.74,
+        "150-500": 41.7,
+        "500-1800": 31.21,
+        "1800-6000": 8.22,
+        "6000-10000": 0.12
+      }
+    }
+  ]
+}
