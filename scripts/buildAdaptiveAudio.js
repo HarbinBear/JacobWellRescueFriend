@@ -1,8 +1,8 @@
 const fs = require('fs');
 const path = require('path');
 const { load, browserBundle } = require('./adaptiveAudioModules');
-const { SCORE, VARIANTS, DEFAULT_VARIANT, renderStem, musicTransition, WARM_LAYER_TRACKS, DISCOVERY_CROSSFADE, RETURN_CROSSFADE } = load('AdaptiveScore');
-const { renderMusicCue, renderPhrasePickup } = load('AdaptiveCues');
+const { SCORE, VARIANTS, DEFAULT_VARIANT, renderStem, musicTransition, WARM_LAYER_TRACKS, DISCOVERY_CROSSFADE, RETURN_CROSSFADE, PICKUP_GAIN } = load('AdaptiveScore');
+const { renderMusicCue, renderPhrasePickup, musicCueDuck } = load('AdaptiveCues');
 const output = path.resolve(__dirname, '../design/adaptive-audio');
 const stages = [0, 1, 2, 3, 4, 5, 5];
 const stageSeconds = 8;
@@ -45,8 +45,9 @@ function demo(stems, levels, seconds, themes, moods = levels.map(level => level 
                 const oldTrack = s === 0 ? themes[oldMood] : oldMood === 'search' ? source : themes.warm[s];
                 const nextTrack = s === 0 ? themes[mood] : mood === 'search' ? source : themes.warm[s];
                 const old = oldTrack[i % source.length], next = nextTrack[i % source.length];
+                const colorFade = s === 5 && level === 5 ? t : themeFade;
                 value += mood === oldMood || s === 3 || (s > 0 && mood !== 'search' && oldMood !== 'search') ? next * (a + (b - a) * t)
-                    : old * a * (1 - themeFade) + next * b * themeFade;
+                    : old * a * (1 - colorFade) + next * b * colorFade;
             } else value += source[i % source.length] * (a + (b - a) * t);
         }
         const edge = Math.min(1, i / (SCORE.sampleRate * 0.12), (out.length - 1 - i) / (SCORE.sampleRate * 0.2));
@@ -56,7 +57,7 @@ function demo(stems, levels, seconds, themes, moods = levels.map(level => level 
     if (themes) levels.forEach((level, stage) => {
         if (stage === 0 || level !== 5 || levels[stage - 1] === 5) return;
         const begin = stage * stageSamples - pickup.length;
-        for (let i = 0; i < pickup.length; i++) if (begin + i >= 0) out[begin + i] += pickup[i] * 0.24 * SCORE.masterGain;
+        for (let i = 0; i < pickup.length; i++) if (begin + i >= 0) out[begin + i] += pickup[i] * PICKUP_GAIN * SCORE.masterGain;
     });
     return out;
 }
@@ -87,29 +88,26 @@ for (const [id, config] of Object.entries(VARIANTS)) {
     const secureCue = renderMusicCue('secured', id);
     for (let i = 0; i < secureCue.length; i++) {
         const at = 24 * SCORE.sampleRate + i;
-        const duck = 1 - 0.45 * Math.min(1, i / (SCORE.sampleRate * 0.04));
-        journey[at] = journey[at] * duck + secureCue[i] * 0.64;
+        journey[at] = journey[at] * musicCueDuck(i / SCORE.sampleRate) + secureCue[i] * 0.64;
     }
-    // 确认音结束后平滑恢复背景电平。
-    for (let i = 0; i < SCORE.sampleRate * 0.08; i++) journey[24 * SCORE.sampleRate + secureCue.length + i] *= 0.55 + 0.45 * i / (SCORE.sampleRate * 0.08);
     fs.writeFileSync(path.join(folder, 'rescue-journey.wav'), wav(journey));
-    const solo = stems.map((track, s) => s === 5 ? track : new Float32Array(track.length));
-    fs.writeFileSync(path.join(folder, 'fifth-solo.wav'), wav(demo(solo, [5], 8)));
-    if (id === DEFAULT_VARIANT) {
-        const archived = path.join(output, 'archive-v5/theme-found.wav');
-        if (fs.existsSync(archived)) {
-            const before = readOurWav(archived), after = demo(stems, [0], 16, themes, ['found']);
-            const comparison = new Float32Array(before.length + after.length);
-            comparison.set(before); comparison.set(after, before.length);
-            fs.writeFileSync(path.join(output, 'color-v5-v6.wav'), wav(comparison));
+    // 使用实际底轨的声部与同一增益拆分，拆分相加即游戏底轨，方便核对和声可听性。
+    for (const [mood, stem] of [['search', 'bed'], ['found', 'bedFound'], ['return', 'bedReturn']]) {
+        for (const part of ['harmony', 'melody']) {
+            const pcm = renderStem(stem, SCORE.sampleRate, id, part);
+            const out = Float32Array.from(pcm, (v, i) => v * SCORE.masterGain * Math.min(1, i / (SCORE.sampleRate * 0.12), (pcm.length - 1 - i) / (SCORE.sampleRate * 0.2)));
+            fs.writeFileSync(path.join(folder, `theme-${mood}-${part}.wav`), wav(out));
         }
     }
+    fs.writeFileSync(path.join(folder, 'pickup.wav'), wav(Float32Array.from(renderPhrasePickup(), v => v * PICKUP_GAIN * SCORE.masterGain)));
+    const solo = stems.map((track, s) => s === 5 ? track : new Float32Array(track.length));
+    fs.writeFileSync(path.join(folder, 'fifth-solo.wav'), wav(demo(solo, [5], 8)));
     for (const cue of ['found', 'secured', 'death']) fs.writeFileSync(path.join(folder, cue + '.wav'), wav(renderMusicCue(cue, id)));
     const manifest = { ...SCORE, variant: id, ...config, key: { undertow: 'D minor', flare: 'E minor', pursuit: 'C minor' }[id],
         channels: 1, bitDepth: 16, loopSamples: stems[0].length,
         demoStages: stages, demoStageSeconds: stageSeconds, themeStates: ['search', 'found', 'return'],
         extraThemeFiles: ['stems/bedFound.wav', 'stems/bedReturn.wav'], warmLayerFiles: WARM_LAYER_TRACKS.map(s => 'stems/' + s + '.wav'),
-        discoveryKeys: { undertow: 'F major', flare: 'G major', pursuit: 'E-flat major' }[id], phraseBeats: 8,
+        discoveryKeys: { undertow: 'F major', flare: 'G major', pursuit: 'E-flat major' }[id], phraseBeats: 8, discoveryEntry: { preferredGridBeats: 2, fallbackGridBeats: 1, predictionSeconds: 1.1, maxEarlySeconds: 0.12, pickupSeconds: 0.5 },
         stems: SCORE.stems.map((stem, i) => ({ id: stem, label: SCORE.labels[i], file: `stems/${stem}.wav` })),
     };
     fs.writeFileSync(path.join(folder, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
@@ -119,7 +117,7 @@ for (const [id, config] of Object.entries(VARIANTS)) {
         fs.copyFileSync(path.join(folder, 'demo.wav'), path.join(output, 'Signal-Below-demo.wav'));
         fs.copyFileSync(path.join(folder, 'manifest.json'), path.join(output, 'manifest.json'));
     }
-    console.log(`${config.title}：小调寻找→大调发现、完整伴奏转调、两小节乐句入口+过门、duang起音与暗尾`);
+    console.log(`${config.title}：清楚和弦伴奏、独立返程答句、预测入镜+半小节/一拍短过门、duang起音与暗尾`);
 }
 const template = fs.readFileSync(path.join(__dirname, 'adaptiveAudioPreview.html'), 'utf8');
 fs.writeFileSync(path.join(output, 'listen.html'), template.replace('/* AUDIO_BUNDLE */', () => browserBundle()));

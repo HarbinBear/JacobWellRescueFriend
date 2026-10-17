@@ -1,48 +1,44 @@
 # 分层音乐后续优化交接
 
-更新：2026-10-18，当前Signal Below VI，仅音频；游戏可视化仍暂缓。旧版用户曾确认可手机运行，用户已试听并反馈“这次进步很大”，授权提交。手机性能/输出延迟仍未系统实测。
+更新：2026-10-18，当前 Signal Below VII。只改音频与试听工具，游戏视觉仍暂缓。上次 VI 版提交为 99d26b4；本轮 VII 已获用户认可（“太棒了，提交！”）并授权提交。
 
-## 最新反馈（优先于V版方案）
+## 最新用户反馈
 
-- V版只是换音色/音区，所有方案仍压抑；发现后需要实际温暖的情绪变化。
-- 死亡必须有清楚duang，低沉余音不能取代起音。
-- 第五层仍太突兀，音乐时机应看小节/乐句段落，不能只等任意正拍。
+- 实际返程像只有旋律，所有底轨和声不明显。
+- 发现/返程差异不清楚；用户误以为发现仅是寻找升八度。
+- 听不出过门，第五级仍太晚。授权综合音乐短过门与玩法入镜预判，允许略微提前，优先视听一致。
 
-## VI版实现
+## 问题核对与 VII 修改
 
-1. 发现/返程从原D/E/C小调改写为相对F/G/E-flat大调。和弦进行不同：A F(add9)/C-E/Bbmaj9/F-C；B F(add9)/Am7/Bbmaj9/C6；C F/Bb6-9/Gm9(no3)/F(add9)（B/C整体移调）。低音、信标、琶音、第五层一起采用对应和声；鼓组共用。
-2. 开头保留动机节奏/轮廓，按大调重写音级；两小节答句删碎音，第二音延伸至句末/落和弦音；返程末句落大调主音。不是统一移高或仅换乐器，温暖感仍待用户试听。
-3. 第五层进入第0/8/16/24拍的新两小节乐句，120BPM最多约4.025s等待。前一小节滚奏过门（无固定音高，避免转调前冲突），最后一拍加密；等待不足一小节只播结尾。整套有音高配器在同一入口300ms交接。第四层仍小节进入。
-4. 入镜条件不变：角色身体进入实际视口即可，不看160px/照明/朝向/遮挡；入镜只是音乐请求，乐句时机决定实际第五层。最多半秒预测、逐帧撤销失效预判；已实际入镜后保持发现情绪，出镜撤第五层不退回寻找。新下潜重置，历史npcFound不授权高潮。
-5. 绑好确认音，下一拍返程主题650ms交接、暖色节奏层1.5s收束。死亡停止成功尾音，3ms撞击起音+中低频主体提供duang，再接6.4s下坠暗尾；结算保留，静音/后台停止。
-6. GM「探知仪 → 音乐方案」切A/B/C；按需生成，准备期间旧版继续，替代版就绪后旧版500ms淡出释放。连续选择只提交最新。
+1. VI 的发现/返程已是不同 PCM，但共享大部分旋律和和声，和弦弦乐增益仅 .036–.045、起音又慢；返程撤掉全部层后主旋律盖住和声。VII 在三态底轨内加入每小节第1/3拍的中音区和弦与低音，12ms柔软起音；降低旋律相对电平。中低音和弦不再依赖探测器第二层存在。
+2. 发现保留 VI 大调改写，并非简单升八度。返程仍与发现同主题，但偶数小节只保留两音动机、奇数小节一音长答句，旋律降低一八度，末两小节和声/低音回到主和弦根音。原各版发现和声保持：A F(add9)/C-E/Bbmaj9/F-C；B F(add9)/Am7/Bbmaj9/C6；C F/Bb6-9/Gm9(no3)/F(add9)，B/C随版本移调。
+3. 全部主题和声/旋律 RMS 比约1.2–2.1，非主观可听性保证。四级/五级混音为增强后的和声腾出峰值空间，不逐文件归一化。新增真实声部拆分：theme-{search,found,return}-{harmony,melody}.wav，拆分相加即完整底轨。
+4. 不再为五级等两小节（旧上限4.025s）。planDiscoveryEntry 预测到达附近的入口：优先半小节；半小节距离预计入镜超过350ms时用一拍入口。比预计入镜最多提前120ms；已入镜时排程等待最多525ms。第五层140ms展开，整套其他有音高配器300ms交接；第四层仍小节进入。这里是音频时钟排程界限，不含真机输出延迟。
+5. 过门重写成完整一拍500ms手势：两下短击→加密滚奏→末端收束，无固定音高，增益.65；提前排程、最多使用最后一拍，不再播2秒弱滚奏。等待不足一拍从末段起播，加12ms消点击；等待不足120ms直接短展开，避免临时硬塞鼓花。
+6. rescueTargetEntrySeconds 做角色身体与实际视口的扫掠相交时间，考虑当前缩放/摇曳与角色-相机相对速度，最多1.1s；两轴相交区间避免斜向错过/高速穿屏漏判。每帧复核，预判失效立即撤销；到达估计明显偏移时修正排程，最后80ms锁定入口以免无限推迟。已实际入镜后保持发现情绪，屏幕边缘120ms保持消抖；历史 npcFound 不授权新下潜高潮。游戏发现提示仍只看实际入镜。
+7. 绑好确认音保留，音乐短暂降到72%，550ms内恢复，不再压低整段2.2s确认尾音。返程主题650ms交接，暖色伴奏1.5s收束。死亡已认可的duang与6.4s余音不改，死亡时背景60ms收束为强撞击让出余量；静音/后台、死亡停止成功尾音等保持。
+8. A/B/C仍在GM探知仪切换，按需合成；准备期间旧版继续，新版就绪旧版500ms淡出，快速选择只提交最新。
 
-## 试听与对比
+## 试听
 
-listen.html顶部：
-- color-v5-v6.wav 32s：0:00旧V版A发现主题，0:16新版A。相同主音量、未强制匹配响度。
-- undertow/theme-colors.wav 48s：0s寻找/16s发现/32s返程。
-- undertow/rescue-journey.wav 40s：0s寻找二级/8s四级/14s过门/16s新乐句的发现与五级/24s绑好返程。
-- undertow/death.wav 6.4s。
+打开 listen.html（localhost:8765）：
+- 顶部 undertow/theme-colors.wav：48s，0s寻找/16s发现/32s返程。
+- archive-v6/theme-colors.wav：上次实际版本，供同音量对照。archive-v6/four-to-five.wav 也保留。
+- undertow/rescue-journey.wav：40s，0s寻找二级/8s四级/15.5s短过门/16s发现五级/24s绑好返程。
+- pickup.wav：单独500ms短过门，实际电平。
+- 「拆开听」选择A/B/C与三态，和声/旋律/完整底轨同电平播放。
+- 实时「模拟预计0.8秒后入镜」：同一引擎预排、入镜倒计时与音乐等待显示。手动五级代表已入镜请求，自动演示每8s切档。
 
-A/B/C各有同名试听。archive-v5保留用户实际反馈过的A版theme-found/death/four-to-five快照，archive-v1/v2不改。旧reference-study/four-old-five-new-five.wav不再自动重建，避免失去历史对照。
+color-v5-v6.wav 历史对比不再重建，避免把VII错标为VI。archive-v1/v2/v5与旧 reference-study 对照不动。
 
-## 代码入口
+## 代码与检查
 
-- AdaptiveScore.ts：ScoreTrack新增beaconFound/bassFound/arpFound/sparkFound；WARM_LAYER_TRACKS顺序固定，PHRASE_BEATS=8；和声/动机答句/跨配器渲染。
-- AdaptiveMusicEngine.ts：构造(ctx,六轨,两个底轨,四个暖色伴奏,过门Buffer)。12源同步；found层映射[6,8,9,3,10,11]，return底轨为7。setLevel(level,settle,mood)一起切配器；过门独立一次性源，等待可撤销。MusicClock含entryWaitSeconds/mood/requestedMood。
-- AdaptiveMusic.ts：准备12源+过门，预测入镜、情绪保持、绑绳与死亡。
-- AdaptiveCues.ts：renderPhrasePickup()两秒滚奏；death明确duang+暗尾，secured确认。
-- NPCPerception.ts、MazeLogic：共同的入镜发现语义。
-- buildAdaptiveAudio.js、adaptiveAudioPreview.html：同内核导出/试听，32s新旧对照。
-- checkAdaptiveAudio.js：配器和声/动机、完整混音/事件/过门峰值、PCM、乐句排程与撤销、死亡起音等。
-- checkAdaptiveGameplay.js：入镜/缩放/预判、情绪保持、死亡停成功尾音、后台/换版。
-
-## 边界
-
-12循环PCM约18.4MB，过门0.2MB，换版暂留两套约37.2MB另加临时/原生/事件；未测真机生成耗时/峰值/输出延迟。WebAudio替身校验不是主观听感验收。
-
-参考「建安一路627号 3.m4a」52.351s、48kHz mono AAC；本地reference-full.wav忽略不入Git，未外传。原VoiceMemos临时路径可能过期。analyzeAdaptiveReference.py/full-analysis.json是客观谱测量，不能识别独立轨或音色。当前无直接听取参考工具；VI改写依据用户反馈，不声称听感已达到参考。
+- AdaptiveScore.ts：和弦声部、返程旋律、renderStem可选ThemePart、planDiscoveryEntry、PICKUP_GAIN。
+- AdaptiveMusicEngine.ts：12同步循环；setLevel(level,settle,mood,secondsUntilEntry?)，可撤销/修正的短过门。
+- AdaptiveMusic.ts / NPCPerception.ts：入镜ETA、实际发现保持、音量让位；MazeLogic继续只看实际入镜。
+- AdaptiveCues.ts：500ms过门、musicCueDuck，死亡不改。
+- buildAdaptiveAudio.js / adaptiveAudioPreview.html：真实声部导出与试听。
+- audio:check：三版PCM/混音/事件/每拍过门峰值、和声旋律能量比与拆分一致、全相位ETA延迟界限、排程/取消/连续帧不饿死、发现/返程/死亡、几何扫掠与快速换版等。
 
 ```sh
 npm run audio:build
@@ -52,4 +48,6 @@ npm run typecheck
 npm run build
 ```
 
-用户认可VI版并要求提交，接下来希望学习相关音乐概念与作曲设计（有钢琴/小提琴基础）。游戏可视化仍未授权推进；教学交互与游戏视觉分开。
+12循环PCM约18.4MB，过门约48KB；换版暂留两套约37MB，另加临时/原生/事件。恒速模型不能精确预测弹簧镜头加速、突发转向或未来缩放；逐帧修正但不是逐像素/输出延迟同步。未测本版手机生成耗时、峰值内存与设备输出延迟；WebAudio替身与浏览器操作验证不替代用户主观听感验收。
+
+参考「建安一路627号 3.m4a」52.351s、48kHz mono AAC，本地 reference-study/reference-full.wav 忽略不入Git、未外传；原VoiceMemos路径可能失效。full-analysis.json 是信号测量，不标定独立轨或听感。VII为原创合成调整，不声称已达到参考录音。

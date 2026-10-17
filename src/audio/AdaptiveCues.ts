@@ -56,29 +56,36 @@ export function renderMusicCue(cue: MusicCue, variant: VariantName = DEFAULT_VAR
     return out;
 }
 
-// 一小节的过门，最后一拍加密。无固定音高，避免与转调前和声相撞。
-// 音源可从中途起播，排队时间不足一小节时只使用结尾一段。
+// 一拍（500ms）小过门：两个短击→加密滚奏→末端收束，为快速入口写成完整手势。
+// 不含固定音高，换和声时不会留下旧调旋律；不足一拍时播放末段，起播由引擎消点击。
 export function renderPhrasePickup(): Float32Array {
-    const rate = SCORE.sampleRate, duration = 4 * 60 / SCORE.bpm;
+    const rate = SCORE.sampleRate, duration = 60 / SCORE.bpm;
     const out = new Float32Array(Math.round(rate * duration));
-    const beat = 60 / SCORE.bpm;
-    const hits = [0, 1, 2, 2.5, 3, 3.25, 3.5, 3.75];
+    const hits = [0, 0.25, 0.5, 0.625, 0.75, 0.875];
     let seed = 73491, smooth = 0;
     for (let i = 0; i < out.length; i++) {
         seed = (Math.imul(seed, 1664525) + 1013904223) | 0;
         const noise = (seed >>> 0) / 2147483648 - 1;
-        smooth += (noise - smooth) * 0.22;
+        smooth += (noise - smooth) * 0.3;
         const t = i / rate;
         let roll = 0;
         for (const hit of hits) {
-            const u = t - hit * beat;
-            if (u >= 0 && u < 0.16) roll += (smooth * 0.7 + Math.sin(2 * Math.PI * (180 * u + 18 * (1 - Math.exp(-u * 35)) / 35)) * 0.12)
-                * Math.min(1, u / 0.002) * Math.exp(-u * 28) * (0.25 + 0.75 * t / duration);
+            const u = t - hit * duration;
+            if (u >= 0 && u < 0.12) roll += (smooth * 0.7 + Math.sin(2 * Math.PI * 210 * u) * 0.32)
+                * Math.min(1, u / 0.002) * Math.exp(-u * 32) * (0.65 + 0.35 * t / duration);
         }
-        const breath = (noise - smooth) * 0.035 * (t / duration) ** 2;
-        out[i] = (roll + breath) * Math.min(1, t / 0.02, (duration - t) / 0.01);
+        const breath = (noise - smooth) * 0.065 * (t / duration) ** 2;
+        out[i] = (roll + breath) * Math.min(1, t / 0.008, (duration - t) / 0.025);
     }
     return out;
+}
+
+// 确认音只让出起音空间，随即恢复返程和声；不再压低整个2.2秒尾音。
+export function musicCueDuck(elapsed: number): number {
+    if (elapsed < 0 || elapsed >= 0.55) return 1;
+    if (elapsed < 0.04) return 1 - 0.28 * elapsed / 0.04;
+    if (elapsed < 0.16) return 0.72;
+    return 0.72 + 0.28 * (elapsed - 0.16) / 0.39;
 }
 
 // 独立于搜索音乐的总线；音乐停播后钟声仍可自然结束，静音/后台会停止所有尾音。

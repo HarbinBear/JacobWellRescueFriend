@@ -1,4 +1,4 @@
-// Signal Below VI：发现后重配为相对大调，主题保留开头动机、重写句尾落点；高潮按两小节乐句进入。
+// Signal Below VII：发现后重配为相对大调，主题保留开头动机、重写句尾落点；清晰和弦伴奏、返程答句与短过门入口。
 export const VARIANTS = {
     undertow: { title: 'A · 深流', description: '寻找时保留悬念，发现后转向温暖的大调与宽阔长句。',
         transpose: 0, leadGain: 0.17, driveGain: 0.14, rushGain: 0.34, bassGain: 0.25, style: 0 },
@@ -10,13 +10,13 @@ export const VARIANTS = {
 export type VariantName = keyof typeof VARIANTS;
 export const DEFAULT_VARIANT: VariantName = 'undertow';
 export const SCORE = {
-    title: 'Signal Below VI', bpm: 120, beatsPerBar: 4, bars: 8,
+    title: 'Signal Below VII', bpm: 120, beatsPerBar: 4, bars: 8,
     sampleRate: 24000, duration: 16, masterGain: 0.78,
     pulseDivisions: [0, 0.25, 0.5, 1, 2, 10],
     // 五级重新编排前景：底轨/第四轨让位，保留低频驱动，不只是整体加音量。
     levelMixes: [
         [1, 0, 0, 0, 0, 0], [1, 1, 0, 0, 0, 0], [1, 1, 1, 0, 0, 0],
-        [1, 1, 1, 1, 0, 0], [1, 1, 1, 1, 1, 0], [0.72, 0.78, 0.9, 1, 0.55, 1],
+        [1, 1, 1, 1, 0, 0], [0.82, 0.9, 0.9, 1, 0.9, 0], [0.68, 0.78, 0.85, 1, 0.55, 0.94],
     ],
     stems: ['bed', 'beacon', 'bass', 'drums', 'arp', 'spark'] as const,
     labels: ['电子弦乐主题', '深处信标 · 30/min', '低弦与低音 · 60/min',
@@ -28,9 +28,10 @@ export const THEME_TRACKS = ['bed', 'bedFound', 'bedReturn'] as const;
 export const WARM_LAYER_TRACKS = ['beaconFound', 'bassFound', 'arpFound', 'sparkFound'] as const;
 export type ScoreTrack = StemName | 'bedFound' | 'bedReturn' | typeof WARM_LAYER_TRACKS[number];
 export const PHRASE_BEATS = 8; // 每两小节一组：主题问句/答句与和声换位，共0/8/16/24拍四个入口。
+export const PICKUP_GAIN = 0.65;
 export const DISCOVERY_CROSSFADE = 0.30;
 export const RETURN_CROSSFADE = 0.65;
-type Voice = 'strings' | 'lead' | 'sonar' | 'cello' | 'bass' | 'kick' | 'snare' | 'hat' | 'drive' | 'rush' | 'veil' | 'horizon' | 'home';
+type Voice = 'strings' | 'lead' | 'sonar' | 'cello' | 'bass' | 'kick' | 'snare' | 'hat' | 'drive' | 'rush' | 'veil' | 'horizon' | 'home' | 'chord';
 interface Note { beat: number; midi: number; length: number; amp: number; voice: Voice; }
 const TAU = Math.PI * 2;
 const roots = [38, 34, 43, 33]; // Dm(add9) / Bbmaj7 / Gm / A7；属和弦保留渴望与张力。
@@ -76,27 +77,30 @@ export function notesFor(stem: ScoreTrack, variant: VariantName = DEFAULT_VARIAN
         notes.push({ beat, midi: midi + cfg.transpose, length, amp, voice });
     for (let bar = 0; bar < SCORE.bars; bar++) {
         const b = bar * 4, c = Math.floor(bar / 2);
-        const chord = warm ? warmHarmonies[cfg.style].chords[c] : chords[c];
-        const root = warm ? warmHarmonies[cfg.style].roots[c] : roots[c];
+        let chord = warm ? warmHarmonies[cfg.style].chords[c] : chords[c];
+        let root = warm ? warmHarmonies[cfg.style].roots[c] : roots[c];
         if (stem === 'bed' || stem === 'bedFound' || stem === 'bedReturn') {
             const searching = stem === 'bed', returning = stem === 'bedReturn';
+            // 返程末段从转位属低音回到主和弦根音；其余保持同主题的和声亲缘。
+            if (returning && c === 3) { chord = [53, 57, 60, 65]; root = 41; }
             if (bar % 2 === 0) {
-                // 寻找保留小调悬念；发现/返程真正换成F大调和声（B/C随版本移调）。
-                if (searching) {
-                    [root + 12, root + 19, chord[3]].forEach((n, i) => add(b, n, 8, i ? 0.025 : 0.055, 'strings'));
-                    add(b, root, 8, 0.045, 'cello');
-                } else {
-                    const voicing = [chord[0], chord[1], chord[2] + 12, chord[3]];
-                    voicing.forEach((n, i) => add(b, n, 8, (returning ? 0.036 : 0.045) * (i ? 0.8 : 1), 'strings'));
-                    add(b, root + 12, 8, returning ? 0.065 : 0.05, 'cello');
-                }
+                const voicing = searching ? [chord[0], chord[1], chord[2], chord[3]] : chord;
+                voicing.forEach(n => add(b, n, 8, searching ? 0.025 : 0.028, 'strings'));
+                add(b, root + 12, 8, returning ? 0.09 : 0.065, 'cello');
             }
+            // 和声有清楚、柔软的起音，放在中音区；不再只靠弱而慢的弦乐垫底。
+            [0, 2].forEach(at => {
+                chord.forEach((n, i) => add(b + at, n, returning ? 1.9 : 1.7,
+                    (searching ? 0.065 : returning ? 0.10 : 0.085) * (at ? 0.78 : 1) * (i === 3 ? 0.75 : 1), 'chord'));
+                add(b + at, root + 12, 1.8, searching ? 0.055 : 0.07, 'bass');
+            });
             const melody = cfg.style === 1 ? risingMelody : cfg.style === 2 ? urgentMelody : melodies;
             // 保留开头动机，句尾改成和弦音并延长；返程末句落回主音，形成释放。
             // 问句保留原动机；答句删去末尾碎音，让第二个音落定并延伸到句末。
-            const line = !searching && bar % 2 === 1 ? melody[bar].slice(0, 2) : melody[bar];
+            const line = returning ? (bar % 2 === 0 ? melody[bar].slice(0, 2) : [[0, melody[bar][0][1], 4]])
+                : !searching && bar % 2 === 1 ? melody[bar].slice(0, 2) : melody[bar];
             line.forEach(([at, pitch, length], index) => {
-                let midi = searching ? 50 + pitch : warmPitch(pitch);
+                let midi = searching ? 50 + pitch : warmPitch(pitch) - (returning ? 12 : 0);
                 let held = length;
                 if (!searching && index === line.length - 1) {
                     const pitchClass = returning && bar === 7 ? 5 : chord[bar % 2 === 0 ? 1 : 0] % 12;
@@ -104,7 +108,7 @@ export function notesFor(stem: ScoreTrack, variant: VariantName = DEFAULT_VARIAN
                     held = 4 - at;
                 }
                 add(b + at, midi, held,
-                    cfg.leadGain * (searching ? 0.86 : returning ? 0.95 : 1.08) * (at === 0 ? 1 : 0.88),
+                    cfg.leadGain * (searching ? 0.72 : returning ? 0.68 : 0.82) * (at === 0 ? 1 : 0.88),
                     searching ? 'veil' : returning ? 'home' : 'horizon');
             });
             if (!searching && !returning && bar % 2 === 1) {
@@ -163,8 +167,10 @@ function stringWave(phase: number, t: number, freq: number, lead: boolean, rate:
     return sum;
 }
 
-function* renderChunks(stem: ScoreTrack, rate: number, out: Float32Array, variant: VariantName): IterableIterator<void> {
-    const notes = notesFor(stem, variant), beatSeconds = 60 / SCORE.bpm;
+export type ThemePart = 'melody' | 'harmony';
+function* renderChunks(stem: ScoreTrack, rate: number, out: Float32Array, variant: VariantName, part?: ThemePart): IterableIterator<void> {
+    const isMelody = (n: Note) => ['lead', 'veil', 'horizon', 'home'].indexOf(n.voice) >= 0;
+    const notes = notesFor(stem, variant).filter(n => !part || isMelody(n) === (part === 'melody')), beatSeconds = 60 / SCORE.bpm;
     for (let n = 0; n < notes.length; n++) {
         const note = notes[n], start = Math.round(note.beat * beatSeconds * rate);
         const freq = 440 * Math.pow(2, (note.midi - 69) / 12), duration = note.length * beatSeconds;
@@ -188,6 +194,11 @@ function* renderChunks(stem: ScoreTrack, rate: number, out: Float32Array, varian
                 if (note.voice === 'horizon') tone = tone * 0.95 + Math.sin(phase * 2.001) * 0.09;
                 if (note.voice === 'home') tone = tone * 0.45 + Math.sin(phase) * 0.35 + Math.sin(phase * 2) * 0.07;
                 v = tone * attack * end * swell;
+            } else if (note.voice === 'chord') {
+                const attack = Math.min(1, t / 0.012);
+                const release = Math.min(1, Math.max(0, (duration - t) / 0.16));
+                v = (Math.sin(phase) * 0.75 + Math.sin(phase * 2) * 0.19 + Math.sin(phase * 3) * 0.06)
+                    * attack * release * (0.55 + 0.45 * Math.exp(-t * 3));
             } else if (note.voice === 'cello') {
                 const env = Math.min(1, t / 0.035) * Math.min(1, Math.max(0, (total - t) / 0.2));
                 v = env * (Math.sin(phase) * 0.65 + Math.sin(phase * 2.002) * 0.24
@@ -258,9 +269,9 @@ function finishThemeLoop(out: Float32Array, stem: ScoreTrack, rate: number): Flo
     return out;
 }
 
-export function renderStem(stem: ScoreTrack, rate = SCORE.sampleRate, variant: VariantName = DEFAULT_VARIANT): Float32Array {
+export function renderStem(stem: ScoreTrack, rate = SCORE.sampleRate, variant: VariantName = DEFAULT_VARIANT, part?: ThemePart): Float32Array {
     const out = new Float32Array(Math.round(rate * SCORE.duration));
-    const chunks = renderChunks(stem, rate, out, variant);
+    const chunks = renderChunks(stem, rate, out, variant, part);
     while (!chunks.next().done) { /* 离线导出 */ }
     return finishThemeLoop(out, stem, rate);
 }
@@ -286,11 +297,22 @@ export function selectMusicLevel(intensity: number, previous: number, hysteresis
     return level;
 }
 
-// 第五层只在谱面两小节乐句的起点进入；前面由过门准备，不在任意拍中途闯入。
+// 五级用独立短过门收束：优先半小节，必要时一拍入口，避免等整段乐句。
 export function musicTransition(from: number, to: number, settle = false): { gridBeats: number; fadeSeconds: number } {
     if (settle) return { gridBeats: 1, fadeSeconds: 1.5 };
     if (to < from) return { gridBeats: to < 5 && from === 5 ? 0 : 1, fadeSeconds: 0.5 };
-    return { gridBeats: [1, 4, 2, 1, 4, PHRASE_BEATS][to], fadeSeconds: 0.006 };
+    return { gridBeats: [1, 4, 2, 1, 4, 2][to], fadeSeconds: to === 5 ? 0.14 : 0.006 };
+}
+
+// 预测到达附近的入口：最多提前120ms，最迟约半秒；半小节在350ms内时优先。
+// 一拍入口也有专门的滚奏/收束，不只是把原来大段乐句硬切开。
+export function planDiscoveryEntry(now: number, epoch: number, secondsUntilEntry = 0): number {
+    const eta = now + Math.max(0, Math.min(1.1, Number.isFinite(secondsUntilEntry) ? secondsUntilEntry : 0));
+    const earliest = Math.max(now + 0.025, eta - 0.12);
+    const beat = 60 / SCORE.bpm;
+    const next = (beats: number) => epoch + Math.max(0, Math.ceil((earliest - epoch) / (beat * beats))) * beat * beats;
+    const halfBar = next(2);
+    return halfBar - eta <= 0.35 ? halfBar : next(1);
 }
 
 // 距离只申请前四层；人物入镜授权第五层，历史 npcFound 不授权。

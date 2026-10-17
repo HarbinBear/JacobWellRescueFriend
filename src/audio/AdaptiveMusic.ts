@@ -1,8 +1,8 @@
 import { CONFIG } from '../core/config';
 import { state } from '../core/state';
 import { SCORE, DEFAULT_VARIANT, VARIANTS, VariantName, WARM_LAYER_TRACKS, renderStemAsync, selectRescueMusicLevel } from './AdaptiveScore';
-import { AdaptiveCuePlayer, CUE_SECONDS, renderPhrasePickup, MusicCue } from './AdaptiveCues';
-import { isRescueTargetVisible } from '../logic/NPCPerception';
+import { AdaptiveCuePlayer, musicCueDuck, renderPhrasePickup, MusicCue } from './AdaptiveCues';
+import { isRescueTargetVisible, rescueTargetEntrySeconds } from '../logic/NPCPerception';
 import { AdaptiveMusicEngine, MusicClock } from './AdaptiveMusicEngine';
 
 let ctx: any = null;
@@ -13,7 +13,8 @@ let loadedVariant: VariantName | null = null;
 let cues: AdaptiveCuePlayer | null = null;
 let observedMaze: any = null, previousPhase = '', previousRescued = false;
 let retiring: AdaptiveMusicEngine[] = [];
-let cueDuckUntil = 0;
+let cueStartedAt = -Infinity;
+let lastVisibleAt = -Infinity;
 let encountered = false;
 
 function desiredVariant(): VariantName {
@@ -25,7 +26,7 @@ function playCue(cue: MusicCue): void {
     if (!cues || hidden || state.audio.muted || !CONFIG.lifeDetector.music.eventCues) return;
     if (cue === 'death') cues.stop();
     cues.play(cue, loadedVariant || desiredVariant());
-    cueDuckUntil = ctx.currentTime + CUE_SECONDS[cue];
+    cueStartedAt = ctx.currentTime;
 }
 
 export function isAdaptiveMusicReady(): boolean { return !!engine && !failed; }
@@ -103,9 +104,9 @@ export function updateAdaptiveMusic(detector: { active: boolean; currentIntensit
             if (state.audio.muted || hidden || !cfg.music.eventCues || state.screen !== 'mazeRescue') cues.stop();
         }
         if (maze !== observedMaze) {
-            observedMaze = maze; encountered = false; previousPhase = ''; previousRescued = !!(maze && maze.npcRescued);
+            observedMaze = maze; encountered = false; lastVisibleAt = -Infinity; previousPhase = ''; previousRescued = !!(maze && maze.npcRescued);
         }
-        if (visible) encountered = true;
+        if (visible) { encountered = true; lastVisibleAt = ctx ? ctx.currentTime : -Infinity; }
         if (state.screen === 'mazeRescue' && maze) {
             if (maze.phase === 'failed' && previousPhase !== 'failed') playCue('death');
             else if (maze.npcRescued && !previousRescued) playCue('secured');
@@ -114,15 +115,18 @@ export function updateAdaptiveMusic(detector: { active: boolean; currentIntensit
         if (!engine) return;
         const playing = !hidden && cfg.enabled && cfg.music.enabled && state.screen === 'mazeRescue'
             && maze && maze.phase === 'play';
-        if (!playing) { engine.stop(); engine.getClock(); selected = 0; return; }
+        if (!playing) { engine.stop(false, maze && maze.phase === 'failed' ? 0.06 : 0.35); engine.getClock(); selected = 0; return; }
         engine.start();
         // 救起后/范围外回到底轨，底轨整个下潜持续存在。
         const detecting = detector.active && state.npc && state.npc.active && !maze.npcRescued;
-        const enteringFrame = !hidden && !maze.npcRescued && isRescueTargetVisible(Math.min(0.5, engine.secondsToNextPhrase()));
-        selected = selectRescueMusicLevel(detecting ? detector.currentIntensity : -1, selected, !!visible || enteringFrame, cfg.music.hysteresis);
+        const entrySeconds = rescueTargetEntrySeconds();
+        const enteringFrame = !hidden && !maze.npcRescued && Number.isFinite(entrySeconds);
+        // 实际入镜后的120ms短保持消除屏幕边缘抖动；预判失效则立即撤销，避免画外误高潮。
+        const frameHeld = !maze.npcRescued && ctx.currentTime - lastVisibleAt < 0.12;
+        selected = selectRescueMusicLevel(detecting ? detector.currentIntensity : -1, selected, !!visible || enteringFrame || frameHeld, cfg.music.hysteresis);
         const mood = maze.npcRescued ? 'return' : encountered || enteringFrame ? 'found' : 'search';
-        engine.setLevel(selected, !!maze.npcRescued, mood);
-        engine.setVolume(state.audio.muted ? 0 : cfg.music.volume * CONFIG.audio.bgmVolume * (ctx.currentTime < cueDuckUntil ? 0.55 : 1));
+        engine.setLevel(selected, !!maze.npcRescued, mood, enteringFrame ? entrySeconds : undefined);
+        engine.setVolume(state.audio.muted ? 0 : cfg.music.volume * CONFIG.audio.bgmVolume * musicCueDuck(ctx.currentTime - cueStartedAt));
     } catch (err) {
         failed = true;
         if (engine) engine.dispose(); engine = null;
@@ -131,7 +135,7 @@ export function updateAdaptiveMusic(detector: { active: boolean; currentIntensit
 }
 
 export function resetAdaptiveMusic(): void {
-    selected = 0; cueDuckUntil = 0; encountered = false;
+    selected = 0; cueStartedAt = lastVisibleAt = -Infinity; encountered = false;
     if (engine) engine.stop(true);
     if (cues) cues.stop();
     retiring.forEach(e => e.dispose()); retiring = [];

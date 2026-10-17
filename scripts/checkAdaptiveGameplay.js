@@ -2,6 +2,7 @@ const assert = require('assert/strict');
 const fs = require('fs');
 const path = require('path');
 const ts = require('typescript');
+const close = (a, b) => assert(Math.abs(a - b) < 1e-8);
 const { load } = require('./adaptiveAudioModules');
 
 function compile(file, dependencies) {
@@ -39,6 +40,14 @@ async function check() {
     assert(!perception.isRescueTargetVisible());
     state.camera.vx = 1;
     assert(perception.isRescueTargetVisible(0.4), '在下一拍前预判身体入镜');
+    close(perception.rescueTargetEntrySeconds(), (270 - 50 - 203.5) / 60);
+    state.camera.vx = 20;
+    assert(!perception.isRescueTargetVisible(1.1));
+    assert(Number.isFinite(perception.rescueTargetEntrySeconds()), '高速穿过视口，不能只查终点');
+    state.camera.vx = 1;
+    state.npc.y = 1400; state.camera.vy = -1;
+    assert.equal(perception.rescueTargetEntrySeconds(), Infinity, '斜向运动另一轴背离视口不误判');
+    state.npc.y = 1000; state.camera.vy = 0;
     state.camera.vx = -1;
     assert(!perception.isRescueTargetVisible(0.4), '镜头反向运动撤销预判');
     state.camera.vx = 0;
@@ -69,7 +78,7 @@ async function check() {
             pcm[0] = Object.keys(score.VARIANTS).indexOf(variant) + 1;
             return pcm;
         } }, './AdaptiveMusicEngine': load('AdaptiveMusicEngine'), './AdaptiveCues': load('AdaptiveCues'),
-        '../logic/NPCPerception': { isRescueTargetVisible: (ahead = 0) => visible || (ahead > 0 && predicted) } });
+        '../logic/NPCPerception': { isRescueTargetVisible: () => visible, rescueTargetEntrySeconds: () => visible ? 0 : predicted ? .8 : Infinity } });
     const tick = () => music.updateAdaptiveMusic({ active: true, currentIntensity: 1 });
     const settle = () => new Promise(resolve => setImmediate(resolve));
     music.warmUpAdaptiveMusic(); await settle();
@@ -79,6 +88,7 @@ async function check() {
     predicted = true; tick();
     assert.equal(music.getAdaptiveMusicClock().requestedLevel, 5);
     assert.equal(music.getAdaptiveMusicClock().requestedMood, 'found');
+    assert(music.getAdaptiveMusicClock().entryWaitSeconds <= 1.325);
     predicted = false; tick();
     assert.equal(music.getAdaptiveMusicClock().requestedLevel, 4);
     assert.equal(music.getAdaptiveMusicClock().requestedMood, 'search', '未实际入镜，预判失败回到寻找');
@@ -86,7 +96,11 @@ async function check() {
     assert.equal(music.getAdaptiveMusicClock().requestedLevel, 5);
     const cues = name => sources.filter(s => Math.abs(s.buffer.duration - load('AdaptiveCues').CUE_SECONDS[name]) < 1e-8);
     assert.equal(cues('found').length, 0, '主题展开本身作为发现反馈，不压低高潮另放提示音');
-    visible = false; tick(); visible = true; tick();
+    visible = false; tick();
+    assert.equal(music.getAdaptiveMusicClock().requestedLevel, 5, '短暂出镜保持，避免边缘抖动');
+    ctx.currentTime += .13; tick();
+    assert.equal(music.getAdaptiveMusicClock().requestedLevel, 4, '持续出镜撤掉五级');
+    visible = true; tick();
     assert.equal(music.getAdaptiveMusicClock().requestedMood, 'found', '入镜后主题状态保持');
     state.mazeRescue.npcRescued = true; visible = false; tick(); tick();
     assert.equal(cues('secured').length, 1);
@@ -95,6 +109,7 @@ async function check() {
     state.mazeRescue.phase = 'failed'; tick(); tick();
     assert.equal(cues('secured')[0].stopped, ctx.currentTime, '死亡不能继续播放绑绳成功的尾音');
     assert.equal(cues('death').length, 1, '失败钟声只触发一次');
+    assert(sources.filter(s => s.buffer.duration === 16).every(s => s.stopped <= ctx.currentTime + .081), '死亡60ms让出音乐空间，避免强撞击叠加削波');
     state.mazeRescue.phase = 'debrief'; tick();
     assert.equal(cues('death')[0].stopped, undefined, '结算画面不切断钟声尾音');
     state.audio.muted = true; tick();

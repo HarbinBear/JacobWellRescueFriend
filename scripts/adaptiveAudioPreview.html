@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Signal Below VI · 过渡与事件音试听</title>
+<title>Signal Below VII · 过渡与事件音试听</title>
 <style>
 *{box-sizing:border-box}body{margin:0;background:#09131d;color:#dfebef;font:16px/1.7 system-ui,sans-serif}
 main{max-width:950px;margin:50px auto;padding:0 26px 60px}small{color:#9bc9d9;letter-spacing:.15em}h1{font-size:48px;letter-spacing:-.04em;margin:12px 0}
@@ -13,36 +13,43 @@ input[type=range]{width:100%;accent-color:#dcb888}label{display:block;margin:12p
 audio{width:100%;height:34px;margin:6px 0 12px}.note{font-size:14px}
 @media(max-width:750px){main{margin-top:28px}h1{font-size:36px}.tracks,.comparisons{grid-template-columns:1fr}.comparison p{min-height:0}}
 </style>
-<main><small>JACOB WELL / AUDIO STUDY 06</small><h1>Signal Below VI</h1>
+<main><small>JACOB WELL / AUDIO STUDY 07</small><h1>Signal Below VII</h1>
 <p>电子弦乐主题，从深处的微光到发现目标时的激动。<br>五层主要音型密度：30 → 60 → 120 → 240 → <strong>1200 次/分钟</strong>。第五层为有音高的十连音疾奏。</p>
-<section><h2>先听：发现后的和声重写</h2>
-<p>旧版与新版发现主题：0:00旧版小调、0:16新版大调。保持相同主音量，比较和声与旋律落点。</p>
-<audio controls preload="none" src="color-v5-v6.wav"></audio>
-<p>三状态底轨：0:00 寻找 → 0:16 发现 → 0:32 返程。寻找保留小调悬念，发现改写为大调和声、同步伴奏与更舒展的长句，返程保留落定感；开头动机仍相互呼应。</p>
+<section><h2>先听：和声、旋律与返程</h2>
+<p>三状态底轨：0:00 寻找 → 0:16 发现 → 0:32 返程。VII版增加有清楚起音的中音区和弦；返程减少碎音、降低旋律音区，末段落回主和弦。发现并非寻找的简单升八度。</p>
 <audio controls preload="none" src="undertow/theme-colors.wav"></audio>
-<p>完整救援过程：0:00 寻找 → 0:08 四级推进 → 0:14 过门 → 0:16 乐句开头、温暖主题与第五层展开 → 0:24 绑好、确认音与返程。</p>
-<audio controls preload="none" src="undertow/rescue-journey.wav"></audio><p>死亡反馈：清楚的duang起音，再沉入低频与远处共鸣。</p><audio controls preload="none" src="undertow/death.wav"></audio></section>
+<p>上次VI版三状态，便于同音量来回比较：</p><audio controls preload="none" src="archive-v6/theme-colors.wav"></audio>
+<p>完整救援过程：0:00 寻找 → 0:08 四级 → 0:15.5 一拍短过门 → 0:16 发现与第五层 → 0:24 绑好、确认音与返程。</p>
+<audio controls preload="none" src="undertow/rescue-journey.wav"></audio>
+<p>只听短过门（500ms，实际相对电平）：</p><audio controls preload="none" src="undertow/pickup.wav"></audio>
+<p>死亡反馈保持已认可的duang起音与低沉余音。</p><audio controls preload="none" src="undertow/death.wav"></audio></section>
+<section><h2>拆开听：底轨的和声在哪里</h2><p>下面使用与游戏完全相同的声部与增益。先听和声，再听完整底轨；没有把独奏额外放大。</p>
+<label>版本 <select id="partsVariant"></select> · 状态 <select id="partsMood"><option value="search">寻找</option><option value="found">发现</option><option value="return" selected>返程</option></select></label><div id="parts" class="comparisons"></div></section>
 <section><h2>比较音乐 A / B / C 与事件音</h2><p>A/B/C都采用同主题三态。可以先听48秒色彩对比、40秒完整救援，再分别比较旋律和死亡落音。</p><div id="comparisons" class="comparisons"></div></section>
-<section><h2>实时切档与事件试听</h2><p>人物入镜后申请高潮，等待下一组两小节乐句的开头（最多约4秒），前一小节有滚奏过门。发现后的和声、低音与琶音共同转暖。</p><label>选择版本 <select id="variant"></select></label><p id="description"></p><label>主题色彩 <select id="mood"><option value="search">寻找 · 低沉克制</option><option value="found">发现 · 打开主题</option><option value="return">返程 · 安定前行</option></select></label>
+<section><h2>实时切档与事件试听</h2><p>优先半小节入口，来不及时用一拍短过门收束。实际入镜后排程等待最多约0.525秒；游戏还会根据镜头与角色的相对速度提前预排，最多提前约0.12秒展开。这里可模拟匀速接近。</p><label>选择版本 <select id="variant"></select></label><p id="description"></p><label>主题色彩 <select id="mood"><option value="search">寻找 · 低沉克制</option><option value="found">发现 · 打开主题</option><option value="return">返程 · 安定前行</option></select></label>
 <button id="play" class="primary">开始试听</button><button id="stop">停止</button><button id="tour">自动接近</button>
-<p id="status" role="status">首次播放会生成寻找与发现的完整配器、返程主题和过门。</p><div id="levels"></div><label><input id="visible" type="checkbox"> 被困者进入画面（勾选后进入第五层，不检查照明或朝向）</label><div id="cues"></div>
+<p id="status" role="status">首次播放会生成寻找与发现的完整配器、返程主题和过门。</p><div id="levels"></div><label><input id="visible" type="checkbox"> 被困者进入画面（勾选后进入第五层，不检查照明或朝向）</label><div id="cues"></div><button id="predict">模拟：预计0.8秒后入镜</button><output id="arrival"></output>
 <label>距离强度 <output id="intensity">0%</output><input id="distance" type="range" min="0" max="100" value="0"></label>
 <label>音量 <input id="volume" type="range" min="0" max="100" value="78"></label>
 <p>当前 <output id="clock">底轨</output></p></section>
 <section><h2>当前版本的独立音轨</h2><p class="note">原始相对电平。同步叠加请使用上方实时播放器。</p><div class="tracks" id="tracks"></div></section>
 <p class="note">120 BPM 为共同音乐时钟；1200 次/分钟指最高层音型的起音密度。旧版保留在 archive-v1 文件夹。</p>
 </main><script>/* AUDIO_BUNDLE */</script><script>
-const {SCORE,VARIANTS,DEFAULT_VARIANT,WARM_LAYER_TRACKS,renderPhrasePickup,renderStemAsync,AdaptiveMusicEngine,selectRescueMusicLevel,AdaptiveCuePlayer,CUE_SECONDS}=SignalBelow;
+const {SCORE,VARIANTS,DEFAULT_VARIANT,WARM_LAYER_TRACKS,renderPhrasePickup,renderStemAsync,AdaptiveMusicEngine,selectRescueMusicLevel,AdaptiveCuePlayer,musicCueDuck}=SignalBelow;
 const $=id=>document.getElementById(id),cache={};
-let ctx,cuePlayer,engine,engineVariant,level=0,mood='search',tourTimer=null,tourStep=0,loading=false,wantPlay=false,cueDuckUntil=0;
+let ctx,cuePlayer,engine,engineVariant,level=0,mood='search',tourTimer=null,tourStep=0,loading=false,wantPlay=false,cueStartedAt=-Infinity,arrivalAt=0;
 const buttons=[],trackAudios=[];
+for(const [id,cfg] of Object.entries(VARIANTS)){const option=document.createElement('option');option.value=id;option.textContent=cfg.title;$('partsVariant').append(option)}
+function updateParts(){const id=$('partsVariant').value,m=$('partsMood').value;$('parts').replaceChildren();
+ for(const [part,label] of [['harmony','只听和声与低音'],['melody','只听旋律'],['full','完整底轨']]){const card=document.createElement('div');card.className='comparison';const caption=document.createElement('label');caption.textContent=label;card.append(caption);const file=part==='full'?{search:'theme',found:'theme-found',return:'theme-return'}[m]:`theme-${m}-${part}`;const a=makeAudio(`${id}/${file}.wav`,card);a.addEventListener('play',()=>{stop();document.querySelectorAll('audio').forEach(other=>{if(other!==a)other.pause()})});$('parts').append(card)}}
+$('partsVariant').onchange=$('partsMood').onchange=updateParts;updateParts();
 function makeAudio(src,parent){const audio=document.createElement('audio');audio.controls=true;audio.preload='none';audio.src=src;parent.append(audio);return audio}
 for(const [id,cfg] of Object.entries(VARIANTS)){
  const option=document.createElement('option');option.value=id;option.textContent=cfg.title;$('variant').append(option);
  const card=document.createElement('div');card.className='comparison';
  const name=document.createElement('h2');name.textContent=cfg.title;card.append(name);
  const desc=document.createElement('p');desc.textContent=cfg.description;card.append(desc);
- for(const [file,label] of [['theme-colors','同一主题三种色彩 · 48 秒'],['rescue-journey','寻找 → 发现 → 绑好返程 · 40 秒'],['four-to-five','四级 → 过门 → 乐句开头进入第五级 · 16 秒'],['theme','寻找主题 · 16 秒'],['theme-found','发现主题 · 16 秒'],['theme-return','返程主题 · 16 秒'],['death','死亡落音 · 6.4 秒']]){
+ for(const [file,label] of [['theme-colors','同一主题三种色彩 · 48 秒'],['rescue-journey','寻找 → 发现 → 绑好返程 · 40 秒'],['four-to-five','四级 → 短过门 → 第五级 · 16 秒'],['theme','寻找主题 · 16 秒'],['theme-found','发现主题 · 16 秒'],['theme-return','返程主题 · 16 秒'],['death','死亡落音 · 6.4 秒']]){
   const caption=document.createElement('label');caption.textContent=label;card.append(caption);makeAudio(`${id}/${file}.wav`,card);
  }$('comparisons').append(card);
 }
@@ -52,9 +59,9 @@ for(let i=0;i<6;i++){
  const name=document.createElement('div');name.textContent=SCORE.labels[i];track.append(name);
  trackAudios.push(makeAudio('',track));$('tracks').append(track);
 }
-function choose(n,settle=false){level=n;if(settle)mood='return';else if(n===5)mood='found';$('mood').value=mood;buttons.forEach((b,i)=>b.classList.toggle('active',i===n));if(engine)engine.setLevel(n,settle,mood)}
+function choose(n,settle=false){arrivalAt=0;level=n;if(settle)mood='return';else if(n===5)mood='found';$('mood').value=mood;buttons.forEach((b,i)=>b.classList.toggle('active',i===n));if(engine)engine.setLevel(n,settle,mood)}
 function clearTour(){if(tourTimer)clearInterval(tourTimer);tourTimer=null;$('tour').textContent='自动接近'}
-function stop(){clearTour();wantPlay=false;if(engine)engine.stop();$('status').textContent='已停止。'}
+function stop(){clearTour();arrivalAt=0;wantPlay=false;if(engine)engine.stop();$('status').textContent='已停止。'}
 function updateVariant(){stop();const id=$('variant').value;$('description').textContent=VARIANTS[id].description;
  trackAudios.forEach((audio,i)=>{audio.pause();audio.src=`${id}/stems/${SCORE.stems[i]}.wav`});
  if(engine){engine.dispose();engine=null;engineVariant=null}if(cuePlayer)cuePlayer.stop();mood='search';choose(0);
@@ -71,7 +78,7 @@ $('play').onclick=async()=>{
   const pcm=await renderStemAsync(tracks[i],id),buffer=ctx.createBuffer(1,pcm.length,SCORE.sampleRate);buffer.getChannelData(0).set(pcm);buffers.push(buffer);
  }const pickupPCM=renderPhrasePickup(),pickup=ctx.createBuffer(1,pickupPCM.length,SCORE.sampleRate);pickup.getChannelData(0).set(pickupPCM);cache[id]={buffers,pickup};}
  if(!engine||engineVariant!==id){if(engine)engine.dispose();engine=new AdaptiveMusicEngine(ctx,cache[id].buffers.slice(0,6),cache[id].buffers.slice(6,8),cache[id].buffers.slice(8),cache[id].pickup);engineVariant=id;}
- if(wantPlay){engine.start();engine.setVolume(Number($('volume').value)/100);engine.setLevel(level,false,mood);$('status').textContent='播放中。第五层等两小节乐句开头，先有过门；发现后的整套和声与伴奏转暖。'}
+ if(wantPlay){engine.start();engine.setVolume(Number($('volume').value)/100);engine.setLevel(level,false,mood);$('status').textContent='播放中。第五层等附近半小节或一拍入口，先有短过门；发现后的整套和声与伴奏转暖。'}
  else $('status').textContent='音轨已就绪，已停止。';
  }catch(err){$('status').textContent='播放失败：'+err.message}finally{loading=false;$('play').disabled=$('variant').disabled=false}
 };
@@ -80,8 +87,9 @@ $('distance').oninput=()=>{clearTour();const x=Number($('distance').value)/100;$
 $('visible').onchange=()=>$('distance').oninput();
 $('mood').onchange=()=>{mood=$('mood').value;if(engine)engine.setLevel(level,false,mood)};
 for(const [cue,label] of [['found','模拟人物入镜'],['secured','绑绳确认'],['death','死亡落音']]){
- const b=document.createElement('button');b.textContent=label;b.onclick=()=>{if(!cuePlayer){$('status').textContent='请先开始试听。';return}if(cue==='found'){choose(5);return}cuePlayer.play(cue,$('variant').value);cueDuckUntil=ctx.currentTime+CUE_SECONDS[cue];if(cue==='secured')choose(0,true);if(cue==='death')stop()};$('cues').append(b);
+ const b=document.createElement('button');b.textContent=label;b.onclick=()=>{if(!cuePlayer){$('status').textContent='请先开始试听。';return}if(cue==='found'){choose(5);return}cuePlayer.play(cue,$('variant').value);cueStartedAt=ctx.currentTime;if(cue==='secured')choose(0,true);if(cue==='death'){engine.stop(false,.06);stop()}};$('cues').append(b);
 }
+$('predict').onclick=()=>{if(!engine||!engine.getClock().playing){$('status').textContent='请先开始试听。';return}clearTour();level=5;mood='found';$('mood').value=mood;arrivalAt=ctx.currentTime+.8;engine.setLevel(5,false,'found',.8);$('status').textContent='已预排短过门；下面对照模拟入镜与音乐入口。';buttons.forEach((b,i)=>b.classList.toggle('active',i===5))};
 $('volume').oninput=()=>{if(engine)engine.setVolume(Number($('volume').value)/100)};
 $('tour').onclick=()=>{if(tourTimer){clearTour();return}if(!engine||!engine.getClock().playing){$('status').textContent='请先开始试听。';return}
  const stages=[0,1,2,3,4,5,0];mood='search';tourStep=0;choose(0);$('tour').textContent='结束自动演示';
@@ -90,6 +98,6 @@ $('tour').onclick=()=>{if(tourTimer){clearTour();return}if(!engine||!engine.getC
 document.querySelectorAll('audio').forEach(audio=>audio.addEventListener('play',()=>{
  stop();document.querySelectorAll('audio').forEach(other=>{if(other!==audio)other.pause()});
 }));
-function frame(){if(engine){engine.setVolume(Number($('volume').value)/100*(ctx.currentTime<cueDuckUntil?.55:1));engine.setLevel(level,false,mood);const c=engine.getClock();$('clock').textContent=c.playing?`${c.level} 级${c.requestedLevel===5&&c.level!==5?` · 等待乐句入口 ${c.entryWaitSeconds.toFixed(1)}s`:""} · ${{search:"寻找",found:"发现",return:"返程"}[c.mood]} · 第 ${c.bar+1} 小节 · ${SCORE.pulseDivisions[c.level]*SCORE.bpm} 次/分钟`:'已停止'}requestAnimationFrame(frame)}
+function frame(){if(engine){engine.setVolume(Number($('volume').value)/100*musicCueDuck(ctx.currentTime-cueStartedAt));engine.setLevel(level,false,mood,arrivalAt?Math.max(0,arrivalAt-ctx.currentTime):undefined);$('arrival').textContent=arrivalAt?(ctx.currentTime<arrivalAt?`模拟入镜还有 ${(arrivalAt-ctx.currentTime).toFixed(2)}s`:'模拟目标已入镜'):'';const c=engine.getClock();$('clock').textContent=c.playing?`${c.level} 级${c.requestedLevel===5&&c.level!==5?` · 等待短过门入口 ${c.entryWaitSeconds.toFixed(1)}s`:""} · ${{search:"寻找",found:"发现",return:"返程"}[c.mood]} · 第 ${c.bar+1} 小节 · ${SCORE.pulseDivisions[c.level]*SCORE.bpm} 次/分钟`:'已停止'}requestAnimationFrame(frame)}
 updateVariant();frame();
 </script></html>

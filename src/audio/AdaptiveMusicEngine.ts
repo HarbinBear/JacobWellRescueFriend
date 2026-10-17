@@ -1,4 +1,4 @@
-import { SCORE, MusicMood, PHRASE_BEATS, DISCOVERY_CROSSFADE, RETURN_CROSSFADE, musicTransition } from './AdaptiveScore';
+import { SCORE, MusicMood, PHRASE_BEATS, DISCOVERY_CROSSFADE, RETURN_CROSSFADE, musicTransition, planDiscoveryEntry, PICKUP_GAIN } from './AdaptiveScore';
 
 export interface MusicClock {
     playing: boolean; level: number; requestedLevel: number;
@@ -69,20 +69,27 @@ export class AdaptiveMusicEngine {
         this.masterTarget = target;
     }
 
-    setLevel(value: number, settle = false, mood?: MusicMood): void {
+    setLevel(value: number, settle = false, mood?: MusicMood, secondsUntilEntry?: number): void {
         this.flush();
         const target = Number.isFinite(value) ? Math.max(0, Math.min(5, Math.round(value))) : 0;
         const nextMood = mood || (settle ? 'return' : target === 5 ? 'found' : this.requestedMood);
-        if (!this.sources.length || this.stoppedAt || (target === this.requested && nextMood === this.requestedMood)) return;
+        if (!this.sources.length || this.stoppedAt) return;
+        if (target === this.requested && nextMood === this.requestedMood) {
+            // 恒速预判不会反复排队；只有到达估计明显偏移才修正尚未播放的入口。
+            if (target !== 5 || !this.pending || secondsUntilEntry === undefined
+                || this.pending.at - this.ctx.currentTime < 0.08) return;
+            const revised = planDiscoveryEntry(this.ctx.currentTime, this.epoch, secondsUntilEntry);
+            if (!(secondsUntilEntry > this.pending.at - this.ctx.currentTime + 0.25 || revised < this.pending.at - 0.3)) return;
+        }
         this.cancelPickup();
         this.requested = target;
         this.requestedMood = nextMood;
         const now = this.ctx.currentTime;
         const plan = musicTransition(this.level, target, settle);
         const themeChanged = this.mood !== nextMood;
-        const gridBeats = themeChanged ? (nextMood === 'found' ? PHRASE_BEATS : 1) : plan.gridBeats;
+        const gridBeats = themeChanged ? (nextMood === 'found' ? 2 : 1) : plan.gridBeats;
         const grid = gridBeats * 60 / SCORE.bpm;
-        const at = gridBeats === 0 ? now + 0.025
+        const at = target === 5 || (themeChanged && nextMood === 'found') ? planDiscoveryEntry(now, this.epoch, secondsUntilEntry) : gridBeats === 0 ? now + 0.025
             : this.epoch + Math.max(0, Math.ceil((now + 0.025 - this.epoch) / grid)) * grid;
         const mix = SCORE.levelMixes[target];
         const activeTheme = this.themes.length ? { search: 0, found: 6, return: 7 }[nextMood] : 0;
@@ -113,7 +120,7 @@ export class AdaptiveMusicEngine {
             }
             p.setValueAtTime(from, at);
             const recoloring = themeChanged && (i === 0 || i === 6 || i === 7 || ((nextMood === 'found' || this.mood === 'search') && i !== 3));
-            const fade = recoloring ? (nextMood === 'return' ? RETURN_CROSSFADE : DISCOVERY_CROSSFADE) : plan.fadeSeconds;
+            const fade = target === 5 && (i === 5 || i === 11) ? plan.fadeSeconds : recoloring ? (nextMood === 'return' ? RETURN_CROSSFADE : DISCOVERY_CROSSFADE) : plan.fadeSeconds;
             p.linearRampToValueAtTime(nextMix[i], at + fade);
             envelopes.push({ from, to: nextMix[i], start: at, end: at + fade });
             this.envelopes[i] = envelopes;
@@ -121,9 +128,11 @@ export class AdaptiveMusicEngine {
         if (target === 5 && this.level < 5 && this.pickupBuffer && at - now >= 0.12) {
             const source = this.ctx.createBufferSource(), gain = this.ctx.createGain();
             source.buffer = this.pickupBuffer;
-            gain.gain.value = 0.24;
+            gain.gain.value = PICKUP_GAIN;
             source.connect(gain); gain.connect(this.master);
             const start = Math.max(now + 0.025, at - this.pickupBuffer.duration);
+            gain.gain.setValueAtTime(0, start);
+            gain.gain.linearRampToValueAtTime(PICKUP_GAIN, Math.min(at, start + 0.012));
             source.start(start, Math.max(0, start - (at - this.pickupBuffer.duration)));
             source.stop(at);
             const pickup = { source, gain };

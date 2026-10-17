@@ -1,18 +1,37 @@
 import { state } from '../core/state';
 import { getWindowMetrics } from '../core/WindowMetrics';
 
-// 用户定义的发现：角色身体进入画面即可，不依赖距离、照明、朝向或遮挡。
-// lookAheadSeconds 仅供音乐为下个拍点预排；游戏发现文字只查询当前帧。
-export function isRescueTargetVisible(lookAheadSeconds = 0): boolean {
+function framing(): { x: number; y: number; vx: number; vy: number; halfX: number; halfY: number } | null {
     const npc = state.npc, maze = state.mazeRescue;
-    if (!maze || !npc || !npc.active || maze.npcRescued) return false;
-    const camera = state.camera, zoom = Math.max(0.01, camera.zoom);
-    const window = getWindowMetrics();
-    const seconds = Math.max(0, Math.min(0.5, lookAheadSeconds));
-    // 游戏运动/弹簧相机本身按60帧推进；只预测最多半秒，下一帧重新核验。
-    const dx = npc.x - camera.x - camera.swayX + ((npc.vx || 0) - (camera.vx || 0)) * seconds * 60;
-    const dy = npc.y - camera.y - camera.swayY + ((npc.vy || 0) - (camera.vy || 0)) * seconds * 60;
-    const bodyRadius = 16 * zoom;
-    return Math.abs(dx) * zoom <= window.windowWidth / 2 + bodyRadius
-        && Math.abs(dy) * zoom <= window.windowHeight / 2 + bodyRadius;
+    if (!maze || !npc || !npc.active || maze.npcRescued) return null;
+    const camera = state.camera, zoom = Math.max(0.01, camera.zoom), window = getWindowMetrics();
+    return { x: npc.x - camera.x - camera.swayX, y: npc.y - camera.y - camera.swayY,
+        vx: ((npc.vx || 0) - (camera.vx || 0)) * 60, vy: ((npc.vy || 0) - (camera.vy || 0)) * 60,
+        halfX: window.windowWidth / (2 * zoom) + 16, halfY: window.windowHeight / (2 * zoom) + 16 };
+}
+
+// 游戏发现仍以实际视口为准；保留未来单帧查询供其他调用方使用。
+export function isRescueTargetVisible(lookAheadSeconds = 0): boolean {
+    const f = framing();
+    if (!f) return false;
+    const t = Math.max(0, Math.min(1.1, lookAheadSeconds));
+    return Math.abs(f.x + f.vx * t) <= f.halfX && Math.abs(f.y + f.vy * t) <= f.halfY;
+}
+
+// 扫掠角色身体与视口的相交时间，考虑相机/角色相对速度和缩放。
+// 同时求两轴在屏幕内的时间区间；高速穿过或斜向错过也能正确判断。
+export function rescueTargetEntrySeconds(maxSeconds = 1.1): number {
+    const f = framing();
+    if (!f) return Infinity;
+    let enter = 0, leave = Math.max(0, Math.min(1.1, maxSeconds));
+    for (const [position, velocity, extent] of [[f.x, f.vx, f.halfX], [f.y, f.vy, f.halfY]]) {
+        if (Math.abs(velocity) < 0.001) {
+            if (Math.abs(position) > extent) return Infinity;
+        } else {
+            const a = (-extent - position) / velocity, b = (extent - position) / velocity;
+            enter = Math.max(enter, Math.min(a, b));
+            leave = Math.min(leave, Math.max(a, b));
+        }
+    }
+    return enter <= leave ? enter : Infinity;
 }

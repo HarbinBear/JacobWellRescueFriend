@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Signal Below VI · 过渡与事件音试听</title>
+<title>Signal Below VII · 过渡与事件音试听</title>
 <style>
 *{box-sizing:border-box}body{margin:0;background:#09131d;color:#dfebef;font:16px/1.7 system-ui,sans-serif}
 main{max-width:950px;margin:50px auto;padding:0 26px 60px}small{color:#9bc9d9;letter-spacing:.15em}h1{font-size:48px;letter-spacing:-.04em;margin:12px 0}
@@ -13,19 +13,22 @@ input[type=range]{width:100%;accent-color:#dcb888}label{display:block;margin:12p
 audio{width:100%;height:34px;margin:6px 0 12px}.note{font-size:14px}
 @media(max-width:750px){main{margin-top:28px}h1{font-size:36px}.tracks,.comparisons{grid-template-columns:1fr}.comparison p{min-height:0}}
 </style>
-<main><small>JACOB WELL / AUDIO STUDY 06</small><h1>Signal Below VI</h1>
+<main><small>JACOB WELL / AUDIO STUDY 07</small><h1>Signal Below VII</h1>
 <p>电子弦乐主题，从深处的微光到发现目标时的激动。<br>五层主要音型密度：30 → 60 → 120 → 240 → <strong>1200 次/分钟</strong>。第五层为有音高的十连音疾奏。</p>
-<section><h2>先听：发现后的和声重写</h2>
-<p>旧版与新版发现主题：0:00旧版小调、0:16新版大调。保持相同主音量，比较和声与旋律落点。</p>
-<audio controls preload="none" src="color-v5-v6.wav"></audio>
-<p>三状态底轨：0:00 寻找 → 0:16 发现 → 0:32 返程。寻找保留小调悬念，发现改写为大调和声、同步伴奏与更舒展的长句，返程保留落定感；开头动机仍相互呼应。</p>
+<section><h2>先听：和声、旋律与返程</h2>
+<p>三状态底轨：0:00 寻找 → 0:16 发现 → 0:32 返程。VII版增加有清楚起音的中音区和弦；返程减少碎音、降低旋律音区，末段落回主和弦。发现并非寻找的简单升八度。</p>
 <audio controls preload="none" src="undertow/theme-colors.wav"></audio>
-<p>完整救援过程：0:00 寻找 → 0:08 四级推进 → 0:14 过门 → 0:16 乐句开头、温暖主题与第五层展开 → 0:24 绑好、确认音与返程。</p>
-<audio controls preload="none" src="undertow/rescue-journey.wav"></audio><p>死亡反馈：清楚的duang起音，再沉入低频与远处共鸣。</p><audio controls preload="none" src="undertow/death.wav"></audio></section>
+<p>上次VI版三状态，便于同音量来回比较：</p><audio controls preload="none" src="archive-v6/theme-colors.wav"></audio>
+<p>完整救援过程：0:00 寻找 → 0:08 四级 → 0:15.5 一拍短过门 → 0:16 发现与第五层 → 0:24 绑好、确认音与返程。</p>
+<audio controls preload="none" src="undertow/rescue-journey.wav"></audio>
+<p>只听短过门（500ms，实际相对电平）：</p><audio controls preload="none" src="undertow/pickup.wav"></audio>
+<p>死亡反馈保持已认可的duang起音与低沉余音。</p><audio controls preload="none" src="undertow/death.wav"></audio></section>
+<section><h2>拆开听：底轨的和声在哪里</h2><p>下面使用与游戏完全相同的声部与增益。先听和声，再听完整底轨；没有把独奏额外放大。</p>
+<label>版本 <select id="partsVariant"></select> · 状态 <select id="partsMood"><option value="search">寻找</option><option value="found">发现</option><option value="return" selected>返程</option></select></label><div id="parts" class="comparisons"></div></section>
 <section><h2>比较音乐 A / B / C 与事件音</h2><p>A/B/C都采用同主题三态。可以先听48秒色彩对比、40秒完整救援，再分别比较旋律和死亡落音。</p><div id="comparisons" class="comparisons"></div></section>
-<section><h2>实时切档与事件试听</h2><p>人物入镜后申请高潮，等待下一组两小节乐句的开头（最多约4秒），前一小节有滚奏过门。发现后的和声、低音与琶音共同转暖。</p><label>选择版本 <select id="variant"></select></label><p id="description"></p><label>主题色彩 <select id="mood"><option value="search">寻找 · 低沉克制</option><option value="found">发现 · 打开主题</option><option value="return">返程 · 安定前行</option></select></label>
+<section><h2>实时切档与事件试听</h2><p>优先半小节入口，来不及时用一拍短过门收束。实际入镜后排程等待最多约0.525秒；游戏还会根据镜头与角色的相对速度提前预排，最多提前约0.12秒展开。这里可模拟匀速接近。</p><label>选择版本 <select id="variant"></select></label><p id="description"></p><label>主题色彩 <select id="mood"><option value="search">寻找 · 低沉克制</option><option value="found">发现 · 打开主题</option><option value="return">返程 · 安定前行</option></select></label>
 <button id="play" class="primary">开始试听</button><button id="stop">停止</button><button id="tour">自动接近</button>
-<p id="status" role="status">首次播放会生成寻找与发现的完整配器、返程主题和过门。</p><div id="levels"></div><label><input id="visible" type="checkbox"> 被困者进入画面（勾选后进入第五层，不检查照明或朝向）</label><div id="cues"></div>
+<p id="status" role="status">首次播放会生成寻找与发现的完整配器、返程主题和过门。</p><div id="levels"></div><label><input id="visible" type="checkbox"> 被困者进入画面（勾选后进入第五层，不检查照明或朝向）</label><div id="cues"></div><button id="predict">模拟：预计0.8秒后入镜</button><output id="arrival"></output>
 <label>距离强度 <output id="intensity">0%</output><input id="distance" type="range" min="0" max="100" value="0"></label>
 <label>音量 <input id="volume" type="range" min="0" max="100" value="78"></label>
 <p>当前 <output id="clock">底轨</output></p></section>
@@ -42,14 +45,15 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.RETURN_CROSSFADE = exports.DISCOVERY_CROSSFADE = exports.PHRASE_BEATS = exports.WARM_LAYER_TRACKS = exports.THEME_TRACKS = exports.SCORE = exports.DEFAULT_VARIANT = exports.VARIANTS = void 0;
+exports.RETURN_CROSSFADE = exports.DISCOVERY_CROSSFADE = exports.PICKUP_GAIN = exports.PHRASE_BEATS = exports.WARM_LAYER_TRACKS = exports.THEME_TRACKS = exports.SCORE = exports.DEFAULT_VARIANT = exports.VARIANTS = void 0;
 exports.notesFor = notesFor;
 exports.renderStem = renderStem;
 exports.renderStemAsync = renderStemAsync;
 exports.selectMusicLevel = selectMusicLevel;
 exports.musicTransition = musicTransition;
+exports.planDiscoveryEntry = planDiscoveryEntry;
 exports.selectRescueMusicLevel = selectRescueMusicLevel;
-// Signal Below VI：发现后重配为相对大调，主题保留开头动机、重写句尾落点；高潮按两小节乐句进入。
+// Signal Below VII：发现后重配为相对大调，主题保留开头动机、重写句尾落点；清晰和弦伴奏、返程答句与短过门入口。
 exports.VARIANTS = {
     undertow: { title: 'A · 深流', description: '寻找时保留悬念，发现后转向温暖的大调与宽阔长句。',
         transpose: 0, leadGain: 0.17, driveGain: 0.14, rushGain: 0.34, bassGain: 0.25, style: 0 },
@@ -60,13 +64,13 @@ exports.VARIANTS = {
 };
 exports.DEFAULT_VARIANT = 'undertow';
 exports.SCORE = {
-    title: 'Signal Below VI', bpm: 120, beatsPerBar: 4, bars: 8,
+    title: 'Signal Below VII', bpm: 120, beatsPerBar: 4, bars: 8,
     sampleRate: 24000, duration: 16, masterGain: 0.78,
     pulseDivisions: [0, 0.25, 0.5, 1, 2, 10],
     // 五级重新编排前景：底轨/第四轨让位，保留低频驱动，不只是整体加音量。
     levelMixes: [
         [1, 0, 0, 0, 0, 0], [1, 1, 0, 0, 0, 0], [1, 1, 1, 0, 0, 0],
-        [1, 1, 1, 1, 0, 0], [1, 1, 1, 1, 1, 0], [0.72, 0.78, 0.9, 1, 0.55, 1],
+        [1, 1, 1, 1, 0, 0], [0.82, 0.9, 0.9, 1, 0.9, 0], [0.68, 0.78, 0.85, 1, 0.55, 0.94],
     ],
     stems: ['bed', 'beacon', 'bass', 'drums', 'arp', 'spark'],
     labels: ['电子弦乐主题', '深处信标 · 30/min', '低弦与低音 · 60/min',
@@ -75,6 +79,7 @@ exports.SCORE = {
 exports.THEME_TRACKS = ['bed', 'bedFound', 'bedReturn'];
 exports.WARM_LAYER_TRACKS = ['beaconFound', 'bassFound', 'arpFound', 'sparkFound'];
 exports.PHRASE_BEATS = 8; // 每两小节一组：主题问句/答句与和声换位，共0/8/16/24拍四个入口。
+exports.PICKUP_GAIN = 0.65;
 exports.DISCOVERY_CROSSFADE = 0.30;
 exports.RETURN_CROSSFADE = 0.65;
 const TAU = Math.PI * 2;
@@ -82,9 +87,9 @@ const roots = [38, 34, 43, 33]; // Dm(add9) / Bbmaj7 / Gm / A7；属和弦保留
 const chords = [[50, 53, 57, 64], [46, 50, 53, 57], [43, 50, 53, 58], [45, 52, 55, 61]];
 // 发现后的完整配器共同换和声，不能只换底轨、让小调低音继续压在下面。
 const warmHarmonies = [
-    { roots: [41, 40, 34, 36], chords: [[53, 57, 60, 67], [52, 55, 60, 64], [50, 53, 57, 60], [53, 57, 60, 65]] }, // Fmaj9/C6-E/Bbmaj9/F-C
-    { roots: [41, 33, 34, 36], chords: [[53, 57, 60, 67], [48, 52, 55, 60], [50, 53, 57, 60], [48, 52, 55, 57]] }, // Fmaj9/Am7/Bbmaj9/C6
-    { roots: [41, 34, 43, 41], chords: [[53, 57, 60, 65], [50, 53, 55, 60], [50, 53, 57, 62], [53, 57, 60, 67]] }, // F/Bb6/Gm9/Fmaj9
+    { roots: [41, 40, 34, 36], chords: [[53, 57, 60, 67], [52, 55, 60, 64], [50, 53, 57, 60], [53, 57, 60, 65]] }, // F(add9)/C-E/Bbmaj9/F-C
+    { roots: [41, 33, 34, 36], chords: [[53, 57, 60, 67], [48, 52, 55, 60], [50, 53, 57, 60], [48, 52, 55, 57]] }, // F(add9)/Am7/Bbmaj9/C6
+    { roots: [41, 34, 43, 41], chords: [[53, 57, 60, 65], [50, 53, 55, 60], [50, 53, 57, 62], [53, 57, 60, 67]] }, // F/Bb6-9/Gm9(no3)/F(add9)
 ];
 // D小调的级数映射到F大调；保留开头节奏/轮廓，三音、六音、七音有实际改变。
 function warmPitch(pitch) {
@@ -117,35 +122,39 @@ function notesFor(stem, variant = exports.DEFAULT_VARIANT) {
     const add = (beat, midi, length, amp, voice) => notes.push({ beat, midi: midi + cfg.transpose, length, amp, voice });
     for (let bar = 0; bar < exports.SCORE.bars; bar++) {
         const b = bar * 4, c = Math.floor(bar / 2);
-        const chord = warm ? warmHarmonies[cfg.style].chords[c] : chords[c];
-        const root = warm ? warmHarmonies[cfg.style].roots[c] : roots[c];
+        let chord = warm ? warmHarmonies[cfg.style].chords[c] : chords[c];
+        let root = warm ? warmHarmonies[cfg.style].roots[c] : roots[c];
         if (stem === 'bed' || stem === 'bedFound' || stem === 'bedReturn') {
             const searching = stem === 'bed', returning = stem === 'bedReturn';
-            if (bar % 2 === 0) {
-                // 寻找保留小调悬念；发现/返程真正换成F大调和声（B/C随版本移调）。
-                if (searching) {
-                    [root + 12, root + 19, chord[3]].forEach((n, i) => add(b, n, 8, i ? 0.025 : 0.055, 'strings'));
-                    add(b, root, 8, 0.045, 'cello');
-                }
-                else {
-                    const voicing = [chord[0], chord[1], chord[2] + 12, chord[3]];
-                    voicing.forEach((n, i) => add(b, n, 8, (returning ? 0.036 : 0.045) * (i ? 0.8 : 1), 'strings'));
-                    add(b, root + 12, 8, returning ? 0.065 : 0.05, 'cello');
-                }
+            // 返程末段从转位属低音回到主和弦根音；其余保持同主题的和声亲缘。
+            if (returning && c === 3) {
+                chord = [53, 57, 60, 65];
+                root = 41;
             }
+            if (bar % 2 === 0) {
+                const voicing = searching ? [chord[0], chord[1], chord[2], chord[3]] : chord;
+                voicing.forEach(n => add(b, n, 8, searching ? 0.025 : 0.028, 'strings'));
+                add(b, root + 12, 8, returning ? 0.09 : 0.065, 'cello');
+            }
+            // 和声有清楚、柔软的起音，放在中音区；不再只靠弱而慢的弦乐垫底。
+            [0, 2].forEach(at => {
+                chord.forEach((n, i) => add(b + at, n, returning ? 1.9 : 1.7, (searching ? 0.065 : returning ? 0.10 : 0.085) * (at ? 0.78 : 1) * (i === 3 ? 0.75 : 1), 'chord'));
+                add(b + at, root + 12, 1.8, searching ? 0.055 : 0.07, 'bass');
+            });
             const melody = cfg.style === 1 ? risingMelody : cfg.style === 2 ? urgentMelody : melodies;
             // 保留开头动机，句尾改成和弦音并延长；返程末句落回主音，形成释放。
             // 问句保留原动机；答句删去末尾碎音，让第二个音落定并延伸到句末。
-            const line = !searching && bar % 2 === 1 ? melody[bar].slice(0, 2) : melody[bar];
+            const line = returning ? (bar % 2 === 0 ? melody[bar].slice(0, 2) : [[0, melody[bar][0][1], 4]])
+                : !searching && bar % 2 === 1 ? melody[bar].slice(0, 2) : melody[bar];
             line.forEach(([at, pitch, length], index) => {
-                let midi = searching ? 50 + pitch : warmPitch(pitch);
+                let midi = searching ? 50 + pitch : warmPitch(pitch) - (returning ? 12 : 0);
                 let held = length;
                 if (!searching && index === line.length - 1) {
                     const pitchClass = returning && bar === 7 ? 5 : chord[bar % 2 === 0 ? 1 : 0] % 12;
                     midi += ((pitchClass - midi % 12 + 18) % 12) - 6;
                     held = 4 - at;
                 }
-                add(b + at, midi, held, cfg.leadGain * (searching ? 0.86 : returning ? 0.95 : 1.08) * (at === 0 ? 1 : 0.88), searching ? 'veil' : returning ? 'home' : 'horizon');
+                add(b + at, midi, held, cfg.leadGain * (searching ? 0.72 : returning ? 0.68 : 0.82) * (at === 0 ? 1 : 0.88), searching ? 'veil' : returning ? 'home' : 'horizon');
             });
             if (!searching && !returning && bar % 2 === 1) {
                 add(b + 2.5, chord[1] + 12, 1.5, cfg.leadGain * 0.14, 'strings');
@@ -210,8 +219,9 @@ function stringWave(phase, t, freq, lead, rate) {
     }
     return sum;
 }
-function* renderChunks(stem, rate, out, variant) {
-    const notes = notesFor(stem, variant), beatSeconds = 60 / exports.SCORE.bpm;
+function* renderChunks(stem, rate, out, variant, part) {
+    const isMelody = (n) => ['lead', 'veil', 'horizon', 'home'].indexOf(n.voice) >= 0;
+    const notes = notesFor(stem, variant).filter(n => !part || isMelody(n) === (part === 'melody')), beatSeconds = 60 / exports.SCORE.bpm;
     for (let n = 0; n < notes.length; n++) {
         const note = notes[n], start = Math.round(note.beat * beatSeconds * rate);
         const freq = 440 * Math.pow(2, (note.midi - 69) / 12), duration = note.length * beatSeconds;
@@ -238,6 +248,12 @@ function* renderChunks(stem, rate, out, variant) {
                 if (note.voice === 'home')
                     tone = tone * 0.45 + Math.sin(phase) * 0.35 + Math.sin(phase * 2) * 0.07;
                 v = tone * attack * end * swell;
+            }
+            else if (note.voice === 'chord') {
+                const attack = Math.min(1, t / 0.012);
+                const release = Math.min(1, Math.max(0, (duration - t) / 0.16));
+                v = (Math.sin(phase) * 0.75 + Math.sin(phase * 2) * 0.19 + Math.sin(phase * 3) * 0.06)
+                    * attack * release * (0.55 + 0.45 * Math.exp(-t * 3));
             }
             else if (note.voice === 'cello') {
                 const env = Math.min(1, t / 0.035) * Math.min(1, Math.max(0, (total - t) / 0.2));
@@ -316,9 +332,9 @@ function finishThemeLoop(out, stem, rate) {
     }
     return out;
 }
-function renderStem(stem, rate = exports.SCORE.sampleRate, variant = exports.DEFAULT_VARIANT) {
+function renderStem(stem, rate = exports.SCORE.sampleRate, variant = exports.DEFAULT_VARIANT, part) {
     const out = new Float32Array(Math.round(rate * exports.SCORE.duration));
-    const chunks = renderChunks(stem, rate, out, variant);
+    const chunks = renderChunks(stem, rate, out, variant, part);
     while (!chunks.next().done) { /* 离线导出 */ }
     return finishThemeLoop(out, stem, rate);
 }
@@ -349,13 +365,23 @@ function selectMusicLevel(intensity, previous, hysteresis = 0.03) {
         level--;
     return level;
 }
-// 第五层只在谱面两小节乐句的起点进入；前面由过门准备，不在任意拍中途闯入。
+// 五级用独立短过门收束：优先半小节，必要时一拍入口，避免等整段乐句。
 function musicTransition(from, to, settle = false) {
     if (settle)
         return { gridBeats: 1, fadeSeconds: 1.5 };
     if (to < from)
         return { gridBeats: to < 5 && from === 5 ? 0 : 1, fadeSeconds: 0.5 };
-    return { gridBeats: [1, 4, 2, 1, 4, exports.PHRASE_BEATS][to], fadeSeconds: 0.006 };
+    return { gridBeats: [1, 4, 2, 1, 4, 2][to], fadeSeconds: to === 5 ? 0.14 : 0.006 };
+}
+// 预测到达附近的入口：最多提前120ms，最迟约半秒；半小节在350ms内时优先。
+// 一拍入口也有专门的滚奏/收束，不只是把原来大段乐句硬切开。
+function planDiscoveryEntry(now, epoch, secondsUntilEntry = 0) {
+    const eta = now + Math.max(0, Math.min(1.1, Number.isFinite(secondsUntilEntry) ? secondsUntilEntry : 0));
+    const earliest = Math.max(now + 0.025, eta - 0.12);
+    const beat = 60 / exports.SCORE.bpm;
+    const next = (beats) => epoch + Math.max(0, Math.ceil((earliest - epoch) / (beat * beats))) * beat * beats;
+    const halfBar = next(2);
+    return halfBar - eta <= 0.35 ? halfBar : next(1);
 }
 // 距离只申请前四层；人物入镜授权第五层，历史 npcFound 不授权。
 function selectRescueMusicLevel(intensity, previous, targetVisible, hysteresis = 0.03) {
@@ -433,21 +459,30 @@ class AdaptiveMusicEngine {
         p.linearRampToValueAtTime(target, now + 0.04);
         this.masterTarget = target;
     }
-    setLevel(value, settle = false, mood) {
+    setLevel(value, settle = false, mood, secondsUntilEntry) {
         this.flush();
         const target = Number.isFinite(value) ? Math.max(0, Math.min(5, Math.round(value))) : 0;
         const nextMood = mood || (settle ? 'return' : target === 5 ? 'found' : this.requestedMood);
-        if (!this.sources.length || this.stoppedAt || (target === this.requested && nextMood === this.requestedMood))
+        if (!this.sources.length || this.stoppedAt)
             return;
+        if (target === this.requested && nextMood === this.requestedMood) {
+            // 恒速预判不会反复排队；只有到达估计明显偏移才修正尚未播放的入口。
+            if (target !== 5 || !this.pending || secondsUntilEntry === undefined
+                || this.pending.at - this.ctx.currentTime < 0.08)
+                return;
+            const revised = (0, AdaptiveScore_1.planDiscoveryEntry)(this.ctx.currentTime, this.epoch, secondsUntilEntry);
+            if (!(secondsUntilEntry > this.pending.at - this.ctx.currentTime + 0.25 || revised < this.pending.at - 0.3))
+                return;
+        }
         this.cancelPickup();
         this.requested = target;
         this.requestedMood = nextMood;
         const now = this.ctx.currentTime;
         const plan = (0, AdaptiveScore_1.musicTransition)(this.level, target, settle);
         const themeChanged = this.mood !== nextMood;
-        const gridBeats = themeChanged ? (nextMood === 'found' ? AdaptiveScore_1.PHRASE_BEATS : 1) : plan.gridBeats;
+        const gridBeats = themeChanged ? (nextMood === 'found' ? 2 : 1) : plan.gridBeats;
         const grid = gridBeats * 60 / AdaptiveScore_1.SCORE.bpm;
-        const at = gridBeats === 0 ? now + 0.025
+        const at = target === 5 || (themeChanged && nextMood === 'found') ? (0, AdaptiveScore_1.planDiscoveryEntry)(now, this.epoch, secondsUntilEntry) : gridBeats === 0 ? now + 0.025
             : this.epoch + Math.max(0, Math.ceil((now + 0.025 - this.epoch) / grid)) * grid;
         const mix = AdaptiveScore_1.SCORE.levelMixes[target];
         const activeTheme = this.themes.length ? { search: 0, found: 6, return: 7 }[nextMood] : 0;
@@ -479,7 +514,7 @@ class AdaptiveMusicEngine {
             }
             p.setValueAtTime(from, at);
             const recoloring = themeChanged && (i === 0 || i === 6 || i === 7 || ((nextMood === 'found' || this.mood === 'search') && i !== 3));
-            const fade = recoloring ? (nextMood === 'return' ? AdaptiveScore_1.RETURN_CROSSFADE : AdaptiveScore_1.DISCOVERY_CROSSFADE) : plan.fadeSeconds;
+            const fade = target === 5 && (i === 5 || i === 11) ? plan.fadeSeconds : recoloring ? (nextMood === 'return' ? AdaptiveScore_1.RETURN_CROSSFADE : AdaptiveScore_1.DISCOVERY_CROSSFADE) : plan.fadeSeconds;
             p.linearRampToValueAtTime(nextMix[i], at + fade);
             envelopes.push({ from, to: nextMix[i], start: at, end: at + fade });
             this.envelopes[i] = envelopes;
@@ -487,10 +522,12 @@ class AdaptiveMusicEngine {
         if (target === 5 && this.level < 5 && this.pickupBuffer && at - now >= 0.12) {
             const source = this.ctx.createBufferSource(), gain = this.ctx.createGain();
             source.buffer = this.pickupBuffer;
-            gain.gain.value = 0.24;
+            gain.gain.value = AdaptiveScore_1.PICKUP_GAIN;
             source.connect(gain);
             gain.connect(this.master);
             const start = Math.max(now + 0.025, at - this.pickupBuffer.duration);
+            gain.gain.setValueAtTime(0, start);
+            gain.gain.linearRampToValueAtTime(AdaptiveScore_1.PICKUP_GAIN, Math.min(at, start + 0.012));
             source.start(start, Math.max(0, start - (at - this.pickupBuffer.duration)));
             source.stop(at);
             const pickup = { source, gain };
@@ -585,6 +622,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.AdaptiveCuePlayer = exports.CUE_SECONDS = void 0;
 exports.renderMusicCue = renderMusicCue;
 exports.renderPhrasePickup = renderPhrasePickup;
+exports.musicCueDuck = musicCueDuck;
 const AdaptiveScore_1 = require("./AdaptiveScore");
 exports.CUE_SECONDS = { found: 0.7, secured: 2.2, death: 6.4 };
 // 原创合成。死亡先清楚duang一下，再下沉为遥远共鸣；乐句过门为无音高滚奏。
@@ -643,30 +681,39 @@ function renderMusicCue(cue, variant = AdaptiveScore_1.DEFAULT_VARIANT) {
     }
     return out;
 }
-// 一小节的过门，最后一拍加密。无固定音高，避免与转调前和声相撞。
-// 音源可从中途起播，排队时间不足一小节时只使用结尾一段。
+// 一拍（500ms）小过门：两个短击→加密滚奏→末端收束，为快速入口写成完整手势。
+// 不含固定音高，换和声时不会留下旧调旋律；不足一拍时播放末段，起播由引擎消点击。
 function renderPhrasePickup() {
-    const rate = AdaptiveScore_1.SCORE.sampleRate, duration = 4 * 60 / AdaptiveScore_1.SCORE.bpm;
+    const rate = AdaptiveScore_1.SCORE.sampleRate, duration = 60 / AdaptiveScore_1.SCORE.bpm;
     const out = new Float32Array(Math.round(rate * duration));
-    const beat = 60 / AdaptiveScore_1.SCORE.bpm;
-    const hits = [0, 1, 2, 2.5, 3, 3.25, 3.5, 3.75];
+    const hits = [0, 0.25, 0.5, 0.625, 0.75, 0.875];
     let seed = 73491, smooth = 0;
     for (let i = 0; i < out.length; i++) {
         seed = (Math.imul(seed, 1664525) + 1013904223) | 0;
         const noise = (seed >>> 0) / 2147483648 - 1;
-        smooth += (noise - smooth) * 0.22;
+        smooth += (noise - smooth) * 0.3;
         const t = i / rate;
         let roll = 0;
         for (const hit of hits) {
-            const u = t - hit * beat;
-            if (u >= 0 && u < 0.16)
-                roll += (smooth * 0.7 + Math.sin(2 * Math.PI * (180 * u + 18 * (1 - Math.exp(-u * 35)) / 35)) * 0.12)
-                    * Math.min(1, u / 0.002) * Math.exp(-u * 28) * (0.25 + 0.75 * t / duration);
+            const u = t - hit * duration;
+            if (u >= 0 && u < 0.12)
+                roll += (smooth * 0.7 + Math.sin(2 * Math.PI * 210 * u) * 0.32)
+                    * Math.min(1, u / 0.002) * Math.exp(-u * 32) * (0.65 + 0.35 * t / duration);
         }
-        const breath = (noise - smooth) * 0.035 * (t / duration) ** 2;
-        out[i] = (roll + breath) * Math.min(1, t / 0.02, (duration - t) / 0.01);
+        const breath = (noise - smooth) * 0.065 * (t / duration) ** 2;
+        out[i] = (roll + breath) * Math.min(1, t / 0.008, (duration - t) / 0.025);
     }
     return out;
+}
+// 确认音只让出起音空间，随即恢复返程和声；不再压低整个2.2秒尾音。
+function musicCueDuck(elapsed) {
+    if (elapsed < 0 || elapsed >= 0.55)
+        return 1;
+    if (elapsed < 0.04)
+        return 1 - 0.28 * elapsed / 0.04;
+    if (elapsed < 0.16)
+        return 0.72;
+    return 0.72 + 0.28 * (elapsed - 0.16) / 0.39;
 }
 // 独立于搜索音乐的总线；音乐停播后钟声仍可自然结束，静音/后台会停止所有尾音。
 class AdaptiveCuePlayer {
@@ -702,17 +749,21 @@ exports.AdaptiveCuePlayer = AdaptiveCuePlayer;
 }};const cache={};
         function load(name){name=name.replace('./','');if(!cache[name]){const e={};cache[name]=e;factories[name](e,load);}return cache[name];}
         window.SignalBelow={...load('AdaptiveScore'),...load('AdaptiveMusicEngine'),...load('AdaptiveCues')};})();</script><script>
-const {SCORE,VARIANTS,DEFAULT_VARIANT,WARM_LAYER_TRACKS,renderPhrasePickup,renderStemAsync,AdaptiveMusicEngine,selectRescueMusicLevel,AdaptiveCuePlayer,CUE_SECONDS}=SignalBelow;
+const {SCORE,VARIANTS,DEFAULT_VARIANT,WARM_LAYER_TRACKS,renderPhrasePickup,renderStemAsync,AdaptiveMusicEngine,selectRescueMusicLevel,AdaptiveCuePlayer,musicCueDuck}=SignalBelow;
 const $=id=>document.getElementById(id),cache={};
-let ctx,cuePlayer,engine,engineVariant,level=0,mood='search',tourTimer=null,tourStep=0,loading=false,wantPlay=false,cueDuckUntil=0;
+let ctx,cuePlayer,engine,engineVariant,level=0,mood='search',tourTimer=null,tourStep=0,loading=false,wantPlay=false,cueStartedAt=-Infinity,arrivalAt=0;
 const buttons=[],trackAudios=[];
+for(const [id,cfg] of Object.entries(VARIANTS)){const option=document.createElement('option');option.value=id;option.textContent=cfg.title;$('partsVariant').append(option)}
+function updateParts(){const id=$('partsVariant').value,m=$('partsMood').value;$('parts').replaceChildren();
+ for(const [part,label] of [['harmony','只听和声与低音'],['melody','只听旋律'],['full','完整底轨']]){const card=document.createElement('div');card.className='comparison';const caption=document.createElement('label');caption.textContent=label;card.append(caption);const file=part==='full'?{search:'theme',found:'theme-found',return:'theme-return'}[m]:`theme-${m}-${part}`;const a=makeAudio(`${id}/${file}.wav`,card);a.addEventListener('play',()=>{stop();document.querySelectorAll('audio').forEach(other=>{if(other!==a)other.pause()})});$('parts').append(card)}}
+$('partsVariant').onchange=$('partsMood').onchange=updateParts;updateParts();
 function makeAudio(src,parent){const audio=document.createElement('audio');audio.controls=true;audio.preload='none';audio.src=src;parent.append(audio);return audio}
 for(const [id,cfg] of Object.entries(VARIANTS)){
  const option=document.createElement('option');option.value=id;option.textContent=cfg.title;$('variant').append(option);
  const card=document.createElement('div');card.className='comparison';
  const name=document.createElement('h2');name.textContent=cfg.title;card.append(name);
  const desc=document.createElement('p');desc.textContent=cfg.description;card.append(desc);
- for(const [file,label] of [['theme-colors','同一主题三种色彩 · 48 秒'],['rescue-journey','寻找 → 发现 → 绑好返程 · 40 秒'],['four-to-five','四级 → 过门 → 乐句开头进入第五级 · 16 秒'],['theme','寻找主题 · 16 秒'],['theme-found','发现主题 · 16 秒'],['theme-return','返程主题 · 16 秒'],['death','死亡落音 · 6.4 秒']]){
+ for(const [file,label] of [['theme-colors','同一主题三种色彩 · 48 秒'],['rescue-journey','寻找 → 发现 → 绑好返程 · 40 秒'],['four-to-five','四级 → 短过门 → 第五级 · 16 秒'],['theme','寻找主题 · 16 秒'],['theme-found','发现主题 · 16 秒'],['theme-return','返程主题 · 16 秒'],['death','死亡落音 · 6.4 秒']]){
   const caption=document.createElement('label');caption.textContent=label;card.append(caption);makeAudio(`${id}/${file}.wav`,card);
  }$('comparisons').append(card);
 }
@@ -722,9 +773,9 @@ for(let i=0;i<6;i++){
  const name=document.createElement('div');name.textContent=SCORE.labels[i];track.append(name);
  trackAudios.push(makeAudio('',track));$('tracks').append(track);
 }
-function choose(n,settle=false){level=n;if(settle)mood='return';else if(n===5)mood='found';$('mood').value=mood;buttons.forEach((b,i)=>b.classList.toggle('active',i===n));if(engine)engine.setLevel(n,settle,mood)}
+function choose(n,settle=false){arrivalAt=0;level=n;if(settle)mood='return';else if(n===5)mood='found';$('mood').value=mood;buttons.forEach((b,i)=>b.classList.toggle('active',i===n));if(engine)engine.setLevel(n,settle,mood)}
 function clearTour(){if(tourTimer)clearInterval(tourTimer);tourTimer=null;$('tour').textContent='自动接近'}
-function stop(){clearTour();wantPlay=false;if(engine)engine.stop();$('status').textContent='已停止。'}
+function stop(){clearTour();arrivalAt=0;wantPlay=false;if(engine)engine.stop();$('status').textContent='已停止。'}
 function updateVariant(){stop();const id=$('variant').value;$('description').textContent=VARIANTS[id].description;
  trackAudios.forEach((audio,i)=>{audio.pause();audio.src=`${id}/stems/${SCORE.stems[i]}.wav`});
  if(engine){engine.dispose();engine=null;engineVariant=null}if(cuePlayer)cuePlayer.stop();mood='search';choose(0);
@@ -741,7 +792,7 @@ $('play').onclick=async()=>{
   const pcm=await renderStemAsync(tracks[i],id),buffer=ctx.createBuffer(1,pcm.length,SCORE.sampleRate);buffer.getChannelData(0).set(pcm);buffers.push(buffer);
  }const pickupPCM=renderPhrasePickup(),pickup=ctx.createBuffer(1,pickupPCM.length,SCORE.sampleRate);pickup.getChannelData(0).set(pickupPCM);cache[id]={buffers,pickup};}
  if(!engine||engineVariant!==id){if(engine)engine.dispose();engine=new AdaptiveMusicEngine(ctx,cache[id].buffers.slice(0,6),cache[id].buffers.slice(6,8),cache[id].buffers.slice(8),cache[id].pickup);engineVariant=id;}
- if(wantPlay){engine.start();engine.setVolume(Number($('volume').value)/100);engine.setLevel(level,false,mood);$('status').textContent='播放中。第五层等两小节乐句开头，先有过门；发现后的整套和声与伴奏转暖。'}
+ if(wantPlay){engine.start();engine.setVolume(Number($('volume').value)/100);engine.setLevel(level,false,mood);$('status').textContent='播放中。第五层等附近半小节或一拍入口，先有短过门；发现后的整套和声与伴奏转暖。'}
  else $('status').textContent='音轨已就绪，已停止。';
  }catch(err){$('status').textContent='播放失败：'+err.message}finally{loading=false;$('play').disabled=$('variant').disabled=false}
 };
@@ -750,8 +801,9 @@ $('distance').oninput=()=>{clearTour();const x=Number($('distance').value)/100;$
 $('visible').onchange=()=>$('distance').oninput();
 $('mood').onchange=()=>{mood=$('mood').value;if(engine)engine.setLevel(level,false,mood)};
 for(const [cue,label] of [['found','模拟人物入镜'],['secured','绑绳确认'],['death','死亡落音']]){
- const b=document.createElement('button');b.textContent=label;b.onclick=()=>{if(!cuePlayer){$('status').textContent='请先开始试听。';return}if(cue==='found'){choose(5);return}cuePlayer.play(cue,$('variant').value);cueDuckUntil=ctx.currentTime+CUE_SECONDS[cue];if(cue==='secured')choose(0,true);if(cue==='death')stop()};$('cues').append(b);
+ const b=document.createElement('button');b.textContent=label;b.onclick=()=>{if(!cuePlayer){$('status').textContent='请先开始试听。';return}if(cue==='found'){choose(5);return}cuePlayer.play(cue,$('variant').value);cueStartedAt=ctx.currentTime;if(cue==='secured')choose(0,true);if(cue==='death'){engine.stop(false,.06);stop()}};$('cues').append(b);
 }
+$('predict').onclick=()=>{if(!engine||!engine.getClock().playing){$('status').textContent='请先开始试听。';return}clearTour();level=5;mood='found';$('mood').value=mood;arrivalAt=ctx.currentTime+.8;engine.setLevel(5,false,'found',.8);$('status').textContent='已预排短过门；下面对照模拟入镜与音乐入口。';buttons.forEach((b,i)=>b.classList.toggle('active',i===5))};
 $('volume').oninput=()=>{if(engine)engine.setVolume(Number($('volume').value)/100)};
 $('tour').onclick=()=>{if(tourTimer){clearTour();return}if(!engine||!engine.getClock().playing){$('status').textContent='请先开始试听。';return}
  const stages=[0,1,2,3,4,5,0];mood='search';tourStep=0;choose(0);$('tour').textContent='结束自动演示';
@@ -760,6 +812,6 @@ $('tour').onclick=()=>{if(tourTimer){clearTour();return}if(!engine||!engine.getC
 document.querySelectorAll('audio').forEach(audio=>audio.addEventListener('play',()=>{
  stop();document.querySelectorAll('audio').forEach(other=>{if(other!==audio)other.pause()});
 }));
-function frame(){if(engine){engine.setVolume(Number($('volume').value)/100*(ctx.currentTime<cueDuckUntil?.55:1));engine.setLevel(level,false,mood);const c=engine.getClock();$('clock').textContent=c.playing?`${c.level} 级${c.requestedLevel===5&&c.level!==5?` · 等待乐句入口 ${c.entryWaitSeconds.toFixed(1)}s`:""} · ${{search:"寻找",found:"发现",return:"返程"}[c.mood]} · 第 ${c.bar+1} 小节 · ${SCORE.pulseDivisions[c.level]*SCORE.bpm} 次/分钟`:'已停止'}requestAnimationFrame(frame)}
+function frame(){if(engine){engine.setVolume(Number($('volume').value)/100*musicCueDuck(ctx.currentTime-cueStartedAt));engine.setLevel(level,false,mood,arrivalAt?Math.max(0,arrivalAt-ctx.currentTime):undefined);$('arrival').textContent=arrivalAt?(ctx.currentTime<arrivalAt?`模拟入镜还有 ${(arrivalAt-ctx.currentTime).toFixed(2)}s`:'模拟目标已入镜'):'';const c=engine.getClock();$('clock').textContent=c.playing?`${c.level} 级${c.requestedLevel===5&&c.level!==5?` · 等待短过门入口 ${c.entryWaitSeconds.toFixed(1)}s`:""} · ${{search:"寻找",found:"发现",return:"返程"}[c.mood]} · 第 ${c.bar+1} 小节 · ${SCORE.pulseDivisions[c.level]*SCORE.bpm} 次/分钟`:'已停止'}requestAnimationFrame(frame)}
 updateVariant();frame();
 </script></html>
