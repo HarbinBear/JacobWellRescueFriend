@@ -5,7 +5,7 @@ export interface MusicClock {
     beat: number; bar: number; beatPhase: number; subdivisionPhase: number;
     pulse: number; bpm: number; entryWaitSeconds: number; mood: MusicMood; requestedMood: MusicMood;
     /** Audible transport, never integrated by the render loop. */
-    beats: number; seconds: number; outputTime: number; trackGains: number[]; variant: VariantName;
+    beats: number; seconds: number; outputTime: number; trackGains: number[]; variant: VariantName; levelAgeSeconds: number;
 }
 
 // 所有 BufferSource 同一音频时间启动、始终循环。切档只操作 Gain，不重启文件。
@@ -230,8 +230,11 @@ export class AdaptiveMusicEngine {
         const playing = this.sources.length > 0 && !this.stoppedAt && outputTime >= this.epoch && this.ctx.state !== 'suspended' && this.ctx.state !== 'closed';
         const seconds = playing ? outputTime - this.epoch : 0;
         const beats = seconds * SCORE.bpm / 60;
-        let level = 0, mood: MusicMood = 'search';
-        for (const event of this.visualTimeline) if (event.at <= outputTime) { level = event.level; mood = event.mood; }
+        let level = 0, mood: MusicMood = 'search', levelAt = this.epoch;
+        for (const event of this.visualTimeline) if (event.at <= outputTime) {
+            if (event.level !== level) levelAt = event.at;
+            level = event.level; mood = event.mood;
+        }
         const trackGains = this.envelopes.map(events => {
             let value = events.length ? events[0].from : 0;
             for (const e of events) {
@@ -243,7 +246,7 @@ export class AdaptiveMusicEngine {
         });
         const divisions = SCORE.pulseDivisions[level];
         const phase = (beats * divisions) % 1;
-        return { playing, level, requestedLevel: this.requested, beats, seconds, outputTime, trackGains, variant: this.variant,
+        return { playing, level, requestedLevel: this.requested, beats, seconds, outputTime, trackGains, variant: this.variant, levelAgeSeconds: playing ? Math.max(0, outputTime - levelAt) : 0,
             beat: Math.floor(beats), bar: Math.floor(beats / 4) % SCORE.bars,
             beatPhase: beats % 1, subdivisionPhase: phase,
             pulse: playing && level > 0 ? Math.exp(-phase * 9) : 0, bpm: SCORE.bpm, entryWaitSeconds: this.pending ? Math.max(0, this.pending.at - outputTime) : 0, mood, requestedMood: this.requestedMood };

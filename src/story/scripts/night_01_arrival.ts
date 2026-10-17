@@ -1,7 +1,7 @@
 // 第 1 晚 · 走丢的小孩
 //
 // 主线主角第一次完成救援后回到住所，门外来了个找玩具的小女孩。
-// 基调：正常的"哪儿来的走丢小孩"，无金句、无玄学、无脚印疑团。
+// 基调：正常的"哪儿来的走丢小孩"。最后仅留音乐与磁带对不上的小细节，不点破来源。
 //
 // 来源：剧本-01-前期·初遇与日常.md · Day 1
 
@@ -40,6 +40,9 @@ export const night_01_arrival: DialogueScene = {
         { speaker: 'man',  text: '那哪行，我跟你一起——' },
         { speaker: 'narration', text: '*她已经一溜烟跑出去了。山道弯过去一截，再追就什么也看不见了。*', duration: 3000 },
         { speaker: 'man',  text: '……这小破孩。', duration: 2000 },
+        // First quiet discrepancy: the player still has no explanation/source.
+        { speaker: 'narration', text: '*他把带子倒回去，想再听一次水下那几小节。找了好一会儿，却怎么也找不到。*', duration: 4200,
+          action: { type: 'move', who: 'man', to: 'desk' } },
     ],
     post: [
         { type: 'flag', key: 'metGirl' },

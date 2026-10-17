@@ -26,7 +26,7 @@
 import { CONFIG } from '../core/config';
 import { state, player } from '../core/state';
 import { ctx, logicW, logicH } from './Canvas';
-import { drawTapeDeck, drawTapeSleeve, drawTapeMixStrip, cutPanel, TAPE } from './TapeDeckVisual';
+import { drawTapeDeck, drawTapeSleeve, cutPanel, TAPE } from './TapeDeckVisual';
 import { getRescueTapeVisual } from './RescueTape';
 import { drawAudioIcon, toggleMuted as audioToggleMuted } from './RenderAudioToggle';
 import { toggleGMOpen, isGMOpen } from '../gm/GMPanel';
@@ -517,7 +517,7 @@ export function initMazeHUDTopLeft(): void {
         longHoldDraw: (c, cx, cy, _size, progress) => {
             c.save(); c.globalAlpha *= progress;
             const w = Math.min(248, logicW - 24);
-            drawTapeSleeve(c, Math.min(cx + 38, logicW - w - 12), Math.max(64, Math.min(cy - 98, logicH - 208)), w, getRescueTapeVisual());
+            drawTapeSleeve(c, Math.min(cx + 38, logicW - w - 12), Math.max(64, Math.min(cy - 112, logicH - 236)), w, getRescueTapeVisual());
             c.restore();
         },
         onShortTap: () => { /* 只弹tip */ },
@@ -1114,11 +1114,6 @@ function drawAudioIconWrapper(c: CanvasRenderingContext2D, cx: number, cy: numbe
 function drawLifeDetectorIcon(c: CanvasRenderingContext2D, cx: number, cy: number, size: number, _time: number): void {
     const v = getRescueTapeVisual();
     drawTapeDeck(c, cx, cy, size, v);
-    const stripWidth = Math.min(144, logicW - cx - size / 2 - 68);
-    if (stripWidth >= 90) drawTapeMixStrip(c, cx + size / 2 + 7, cy - 26, stripWidth, v, state.audio.muted);
-    c.save(); c.fillStyle = TAPE.paper; c.font = 'bold 7px Arial'; c.textAlign = 'center';
-    c.fillText(state.audio.muted ? 'MUTE' : v.fallback ? '双音' : `${v.level}/5 · MIX`, cx, cy + size * .46);
-    c.restore();
 }
 
 // GM 面板切换图标：橙色齿轮样式，打开时变亮并有轻微旋转

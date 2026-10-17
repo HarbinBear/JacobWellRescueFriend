@@ -12,18 +12,18 @@ main{max-width:1180px;margin:auto;padding:32px 36px 60px}nav{display:flex;justif
 @media(max-width:800px){main{padding:22px 18px 40px}.hero{grid-template-columns:1fr;gap:20px;margin-top:26px}h1{font-size:78px}.intro{max-width:100%}.transport,.study{grid-template-columns:1fr}.study{gap:26px}.scene{margin:auto;width:100%}.device{max-width:560px}.rules{gap:15px}nav{font-size:9px}.tag{margin-top:0}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
 </style></head><body><main>
-<nav><span>JACOB WELL / FIELD MIX 01</span><a href="../adaptive-audio/listen.html">音乐拆轨试听 ↗</a></nav>
-<div class="hero"><div><span class="eyebrow">把深处，听成一首歌。</span><h1>DEEP<br><em>TAPE.</em></h1><h2>深流随身听</h2><p class="intro">一台挂在胸前的防水磁带机。<br>越靠近，音乐越丰盛。找到你，再一起回去。</p><span class="tag">WATERPROOF / SIDE A → SIDE B</span></div>
+<nav><span>JACOB WELL / FIELD MIX 02</span><a href="../adaptive-audio/listen.html">音乐拆轨试听 ↗</a></nav>
+<div class="hero"><div><span class="eyebrow">把深处，听成一首歌。</span><h1>DEEP<br><em>TAPE.</em></h1><h2>深流随身听</h2><p class="intro">一台挂在胸前的防水磁带机。<br>旧贴纸上写着：听不清，就再近一点。</p><span class="tag">WATERPROOF / SIDE A → SIDE B</span></div>
 <div class="device"><canvas id="deck" width="1000" height="600" aria-label="防水磁带机实时节拍动画"></canvas><footer><span>ORIGINAL GAME ART / LIVE SCORE</span><b id="deckState">静态试装 · 05 / 05</b></footer></div></div>
 <div class="transport"><div><span class="label">01 / PRESS PLAY</span><div class="row"><button class="primary" id="play">▶ 播放音乐</button><button id="stop">■ 停止</button><button id="tour" aria-pressed="false">完整旅程</button></div><div class="volume"><label for="variant">MIX</label><select id="variant" aria-label="音乐版本"></select><label for="volume">VOL</label><input id="volume" type="range" min="0" max="100" value="65" aria-label="音量"></div></div>
 <div><span class="label">02 / FIVE LAYERS, ONE TAPE</span><div class="row levels" id="levels" role="group" aria-label="音乐层数"></div><div class="row" id="moods" role="group" aria-label="旅程状态"><button data-mood="search" aria-pressed="false">向深处去</button><button data-mood="found" aria-pressed="true">就在这里</button><button data-mood="return" aria-pressed="false">一起回去</button></div></div></div>
 <p id="status" role="status" aria-live="polite">静态试装。点击播放，听看同一套游戏音乐与节拍动画；完整旅程约 32 秒。</p>
-<div class="study"><div><div class="section-title">03 / IN THE FIELD</div><div class="scene"><canvas id="scene" width="750" height="1320" aria-label="真实游戏HUD与潜水员绘制，洞穴和数值为预览场景"></canvas><div class="caption">游戏原 HUD / 原角色绘制 · 洞穴与数值为模拟场景<br>点按控件可交互，按住磁带展开节奏封套。</div></div></div>
-<div><div class="section-title">04 / THE RHYTHM SLEEVE</div><canvas id="sleeve" width="1000" height="800" aria-label="五层节奏与胸前随身听细节"></canvas><div class="rules"><div class="rule"><b>鼓点有重量</b><p>低频让机壳短促抬起。切分、重鼓和军鼓使用原乐谱起音。</p><span class="density">30 → 60 → 120 → 240 / MIN</span></div><div class="rule"><b>疾奏有去向</b><p>每个快速音符前进一格，留下短尾迹；整块界面保持稳定。</p><span class="density">1200 / MIN · 50 MS / NOTE</span></div><div class="rule"><b>一盘磁带，两段旅程</b><p>寻找是珊瑚橙，发现是酸橙黄，返程是薄荷绿。</p></div><div class="rule"><b>角色带着音乐</b><p>胸前挂扣、固定绑带与防水线缆；小磁带和 HUD 同步运转。</p></div></div></div></div>
+<div class="study"><div><div class="section-title">03 / IN THE FIELD</div><div class="row" style="margin-bottom:12px"><button id="field4">对比第4级</button><button id="field5">对比第5级</button><button id="fieldPlay">▶ 播放这一段</button></div><div class="scene"><canvas id="scene" width="750" height="1320" aria-label="真实游戏HUD与潜水员绘制，洞穴和数值为预览场景"></canvas><div class="caption">游戏原 HUD / 原角色绘制 · 洞穴与数值为模拟场景<br>默认只有磁带；按住再展开封套。</div></div></div>
+<div><div class="section-title">04 / THE RHYTHM SLEEVE</div><canvas id="sleeve" width="1000" height="800" aria-label="五层节奏与胸前随身听细节"></canvas><div class="rules"><div class="rule"><b>重拍经过全身</b><p>身体舒展、肩臂打开、衣缝发亮。音乐的力度落在整个人身上。</p><span class="density">30 → 60 → 120 → 240 / MIN</span></div><div class="rule"><b>第五级，水流也展开</b><p>入层时绽开一次光流，每个快速音符化作掠过身边的光屑。</p><span class="density">1200 / MIN · 50 MS / NOTE</span></div><div class="rule"><b>一盘磁带，两段旅程</b><p>寻找是珊瑚橙，发现是酸橙黄，返程是薄荷绿。</p></div><div class="rule"><b>没写歌名的带子</b><p>壳背贴着一截磨旧的胶带。是谁留下的字，已经看不清了。</p></div></div></div></div>
 <p class="foot">此页复用游戏音频引擎、乐谱和 Canvas 绘制。首次播放会本地合成 12 条音轨；无需联网。画面不会改变音乐的速度。</p>
 </main><script>/* TAPE_BUNDLE */</script><script>
 const {SCORE,VARIANTS,WARM_LAYER_TRACKS,renderStemAsync,renderPhrasePickup,AdaptiveMusicEngine}=SignalBelow;
-const {sampleTapeVisual,drawTapeDeck,drawTapeSleeve,drawTapeRibbons,drawTapeMixStrip,drawDiver,drawHUDTopLeft,initMazeHUDTopLeft,cutPanel,TAPE}=DeepTape;
+const {sampleTapeVisual,drawTapeDeck,drawTapeSleeve,drawTapeRibbons,drawTapeResonanceField,drawDiver,drawHUDTopLeft,initMazeHUDTopLeft,cutPanel,TAPE}=DeepTape;
 const $=id=>document.getElementById(id),deck=$('deck').getContext('2d'),scene=$('scene').getContext('2d'),sleeve=$('sleeve').getContext('2d');
 let ctx,engine,loading=false,wantPlay=false,level=5,mood='found',tourStart=null,tourStage=-1,request=0;
 const cache={},levelButtons=[];
@@ -43,12 +43,13 @@ async function play(){if(loading)return;wantPlay=true;const ticket=++request;loa
  }const pcm=renderPhrasePickup(),pickup=ctx.createBuffer(1,pcm.length,SCORE.sampleRate);pickup.getChannelData(0).set(pcm);cache[id]={buffers,pickup}}
  if(ticket!==request||!wantPlay)return;if(engine)engine.dispose();const {buffers,pickup}=cache[id];engine=new AdaptiveMusicEngine(ctx,buffers.slice(0,6),buffers.slice(6,8),buffers.slice(8),pickup,id);engine.start();engine.setVolume(Number($('volume').value)/100);engine.setLevel(level,mood==='return',mood);$('status').textContent='播放中 · 画面直接读取实际音频输出时钟与乐谱。';
  }catch(error){wantPlay=false;$('status').textContent='播放失败：'+error.message}finally{loading=false;$('play').disabled=$('variant').disabled=false}}
-$('play').onclick=()=>{endTour();play()};$('stop').onclick=stop;$('variant').onchange=()=>{stop();$('status').textContent='版本已切换 · 点击播放。'};
+$('play').onclick=()=>{endTour();play()};
+$('field4').onclick=()=>{endTour();choose(4,'search')};$('field5').onclick=()=>{endTour();choose(5,'found')};$('fieldPlay').onclick=()=>{endTour();play()};$('stop').onclick=stop;$('variant').onchange=()=>{stop();$('status').textContent='版本已切换 · 点击播放。'};
 $('tour').onclick=async()=>{if(tourStart!==null){endTour();return}choose(0,'search');if(!wantPlay||!engine)await play();if(!engine||!wantPlay)return;tourStart=engine.getClock().beats;tourStage=-1;$('tour').setAttribute('aria-pressed','true')};
 $('volume').oninput=()=>{if(engine)engine.setVolume(DeepTape.state.audio.muted?0:Number($('volume').value)/100)};
-function snapshot(){const slots=Array(12).fill(0),mix=SCORE.levelMixes[level];const indices=mood==='search'?[0,1,2,3,4,5]:[mood==='return'?7:6,8,9,3,10,11];indices.forEach((slot,i)=>slots[slot]=mix[i]);return {playing:true,level,requestedLevel:level,mood,requestedMood:mood,beats:8.012,beat:8,bar:2,beatPhase:.012,trackGains:slots,variant:$('variant').value}}
+function snapshot(){const slots=Array(12).fill(0),mix=SCORE.levelMixes[level];const indices=mood==='search'?[0,1,2,3,4,5]:[mood==='return'?7:6,8,9,3,10,11];indices.forEach((slot,i)=>slots[slot]=mix[i]);return {playing:true,level,requestedLevel:level,mood,requestedMood:mood,beats:8.012,beat:8,bar:2,beatPhase:.012,levelAgeSeconds:.28,trackGains:slots,variant:$('variant').value}}
 const colors={suit:'#253f48',body:'#41616c',tank:'#dde3d2',mask:'#85a8ad',fin:'#ff754c',accent:'#f4e7c7',skin:'#dfb390'};
-function diver(c,x,y,scale,v,id){c.save();c.translate(x,y);c.scale(scale,scale);drawDiver(c,0,0,-.2,colors,{id,animTime:performance.now()/1000,hasTank:true,tankCount:1,vx:1.5,vy:0,autoSwim:true,tapeVisual:v});c.restore()}
+function diver(c,x,y,scale,v,id,echo=false){c.save();c.translate(x,y);c.scale(scale,scale);drawDiver(c,0,0,echo?2.9:-.2,echo?{...colors,fin:'#415565',accent:'#d8cab2'}:colors,{id,animTime:performance.now()/1000,hasTank:true,tankCount:1,vx:1.5,vy:0,autoSwim:true,tapeVisual:echo?undefined:v,resonanceVisual:v,resonanceEcho:echo});c.restore()}
 function field(v,t){scene.save();scene.scale(2,2);scene.fillStyle='#0a1720';scene.fillRect(0,0,375,660);
  const glow=scene.createRadialGradient(240,280,15,230,300,300);glow.addColorStop(0,'#213e46');glow.addColorStop(1,'#0a1720');scene.fillStyle=glow;scene.fillRect(0,0,375,660);
  scene.fillStyle='#12242d';scene.beginPath();scene.moveTo(0,0);[[105,0],[145,63],[127,160],[174,235],[135,310],[150,450],[93,520],[100,660],[0,660]].forEach(p=>scene.lineTo(...p));scene.closePath();scene.fill();
@@ -56,14 +57,16 @@ function field(v,t){scene.save();scene.scale(2,2);scene.fillStyle='#0a1720';scen
  scene.strokeStyle='#425b54';scene.lineWidth=1.1;scene.beginPath();scene.moveTo(210,0);scene.bezierCurveTo(290,100,110,190,223,300);scene.stroke();
  scene.fillStyle='#73938f';for(let i=0;i<34;i++){const x=(i*93.7)%375,y=(i*41.3+t*6)%660;scene.globalAlpha=.12+(i%4)*.04;scene.fillRect(x,y,1,1)}scene.globalAlpha=1;
  diver(scene,223,300,1.25,v,'field');
+ if(v.lanes[5].gain>.01){diver(scene,271,224,1.1,v,'target',true);drawTapeResonanceField(scene,271,224,2.9,v,true)}
+ drawTapeResonanceField(scene,223,300,-.2,v);
  scene.fillStyle=TAPE.paper;scene.font='9px Arial';scene.textAlign='center';scene.fillText('28 / 60 m',240,71);
  scene.font='bold 8px Arial';scene.fillStyle=TAPE.muted;scene.fillText('JACOB WELL / 01',230,620);
  DeepTape.setVisual(v);drawHUDTopLeft(t);scene.restore()}
 function frame(){let clock=engine&&engine.getClock();if(tourStart!==null&&clock&&clock.playing){const stage=Math.floor((clock.beats-tourStart)/8);if(stage!==tourStage){tourStage=stage;const steps=[0,1,2,3,4,5,5,0];if(stage<steps.length)choose(steps[stage],stage===7?'return':stage>=5?'found':'search');else endTour()}}
  const live=!!clock&&clock.playing;const v=sampleTapeVisual(live?clock:snapshot());
- if(DeepTape.state.audio.muted){v.kick=v.snare=0;v.lanes.forEach(l=>l.hit=0)}if(engine)engine.setVolume(DeepTape.state.audio.muted?0:Number($('volume').value)/100);
- deck.save();deck.scale(2,2);deck.clearRect(0,0,500,300);deck.fillStyle='#1a3039';cutPanel(deck,22,33,455,230,18);deck.fill();drawTapeDeck(deck,250,143,342,v);deck.fillStyle=TAPE.muted;deck.font='10px monospace';deck.textAlign='left';deck.fillText('NO. 001  /  RESCUE MIX',24,287);deck.restore();
- sleeve.save();sleeve.scale(2,2);sleeve.clearRect(0,0,500,400);drawTapeSleeve(sleeve,28,24,444,v);sleeve.strokeStyle='#34444a';sleeve.beginPath();sleeve.moveTo(28,245);sleeve.lineTo(472,245);sleeve.stroke();diver(sleeve,280,315,3,v,'detail');sleeve.fillStyle=TAPE.muted;sleeve.font='10px Arial';sleeve.textAlign='left';sleeve.fillText('胸前挂扣 / 与 HUD 同一拍',28,373);sleeve.restore();
+ v.muted=DeepTape.state.audio.muted;if(v.muted){v.kick=v.snare=0;v.lanes.forEach(l=>l.hit=0)}if(engine)engine.setVolume(DeepTape.state.audio.muted?0:Number($('volume').value)/100);
+ deck.save();deck.scale(2,2);deck.clearRect(0,0,500,300);deck.fillStyle='#1a3039';cutPanel(deck,22,33,455,230,18);deck.fill();drawTapeDeck(deck,250,143,342,v);deck.fillStyle=TAPE.muted;deck.font='10px monospace';deck.textAlign='left';deck.fillText('NO. 002  /  RESCUE MIX',24,287);deck.restore();
+ sleeve.save();sleeve.scale(2,2);sleeve.clearRect(0,0,500,400);drawTapeSleeve(sleeve,28,24,444,v);sleeve.strokeStyle='#34444a';sleeve.beginPath();sleeve.moveTo(28,267);sleeve.lineTo(472,267);sleeve.stroke();diver(sleeve,280,326,2.5,v,'detail');drawTapeResonanceField(sleeve,280,326,-.2,v);sleeve.fillStyle=TAPE.muted;sleeve.font='10px Arial';sleeve.textAlign='left';sleeve.fillText('衣缝、身体与水流 / 同一拍',28,373);sleeve.restore();
  field(v,performance.now()/1000);$('deckState').textContent=live?`${v.level}/5 层 · 120 BPM · ${clock.entryWaitSeconds>.01?'入口 '+clock.entryWaitSeconds.toFixed(2)+'s':v.mood==='return'?'SIDE B':'SIDE A'}`:`静态试装 · 0${level} / 05`;
  requestAnimationFrame(frame)}
 const pointer={active:false,x:0,y:0};function point(e){const r=$('scene').getBoundingClientRect();return [(e.clientX-r.left)*375/r.width,(e.clientY-r.top)*660/r.height]}

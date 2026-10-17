@@ -6,6 +6,7 @@ const ts = require('typescript');
 const { browserBundle } = require('./adaptiveAudioModules');
 const modules = {
     AdaptiveMusicVisuals: 'audio/AdaptiveMusicVisuals', TapeDeckVisual: 'render/TapeDeckVisual',
+    TapeResonance: 'render/TapeResonance',
     RenderDiver: 'render/RenderDiver', HUDTopLeft: 'render/HUDTopLeft', RenderAudioToggle: 'render/RenderAudioToggle',
     character: 'core/config/character', gameplay: 'core/config/gameplay',
 };
@@ -34,7 +35,7 @@ function load(name){const id=name.split('/').pop();
  if(id==='DecompressionSystem')return {getDecoRuntime:()=>deco,getDecoLevel:()=>0,getCurrentStopInfo:()=>null,isDecompressionRequired:()=>false,isDecoLockActive:()=>false,setDecoBoost:noop,getCurrentDepthMeters:()=>28};
  if(!factories[id])throw Error('Missing preview module: '+name);
  if(!cache[id]){cache[id]={};factories[id](cache[id],load)}return cache[id];}
-window.DeepTape={...load('AdaptiveMusicVisuals'),...load('TapeDeckVisual'),...load('RenderDiver'),...load('HUDTopLeft'),
+window.DeepTape={...load('AdaptiveMusicVisuals'),...load('TapeDeckVisual'),...load('TapeResonance'),...load('RenderDiver'),...load('HUDTopLeft'),
  setVisual:v=>{visual=v},state,player};})();`;
 const output = path.join(__dirname, '../design/deeptape');
 fs.mkdirSync(output, { recursive: true });

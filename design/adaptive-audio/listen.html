@@ -636,9 +636,11 @@ class AdaptiveMusicEngine {
         const playing = this.sources.length > 0 && !this.stoppedAt && outputTime >= this.epoch && this.ctx.state !== 'suspended' && this.ctx.state !== 'closed';
         const seconds = playing ? outputTime - this.epoch : 0;
         const beats = seconds * AdaptiveScore_1.SCORE.bpm / 60;
-        let level = 0, mood = 'search';
+        let level = 0, mood = 'search', levelAt = this.epoch;
         for (const event of this.visualTimeline)
             if (event.at <= outputTime) {
+                if (event.level !== level)
+                    levelAt = event.at;
                 level = event.level;
                 mood = event.mood;
             }
@@ -654,7 +656,7 @@ class AdaptiveMusicEngine {
         });
         const divisions = AdaptiveScore_1.SCORE.pulseDivisions[level];
         const phase = (beats * divisions) % 1;
-        return { playing, level, requestedLevel: this.requested, beats, seconds, outputTime, trackGains, variant: this.variant,
+        return { playing, level, requestedLevel: this.requested, beats, seconds, outputTime, trackGains, variant: this.variant, levelAgeSeconds: playing ? Math.max(0, outputTime - levelAt) : 0,
             beat: Math.floor(beats), bar: Math.floor(beats / 4) % AdaptiveScore_1.SCORE.bars,
             beatPhase: beats % 1, subdivisionPhase: phase,
             pulse: playing && level > 0 ? Math.exp(-phase * 9) : 0, bpm: AdaptiveScore_1.SCORE.bpm, entryWaitSeconds: this.pending ? Math.max(0, this.pending.at - outputTime) : 0, mood, requestedMood: this.requestedMood };

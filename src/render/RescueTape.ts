@@ -17,6 +17,7 @@ export function getRescueTapeVisual(): TapeVisual {
         visual.kick = detector.pulseT * .5;
     }
     // Muting leaves a visible tape and progress, but stops claiming audible hits.
-    if (state.audio.muted) { visual.kick = visual.snare = 0; visual.lanes.forEach(lane => lane.hit = 0); }
+    visual.muted = state.audio.muted;
+    if (visual.muted) { visual.kick = visual.snare = 0; visual.lanes.forEach(lane => lane.hit = 0); }
     return visual;
 }

@@ -62,6 +62,7 @@ ctx.currentTime = 10.643;
 const ramp = engine.getClock();
 close(ramp.trackGains[3], .5, 'visual gain follows the actual six-millisecond ramp');
 close(ramp.seconds, .503); assert.equal(ramp.level, 3); assert.equal(ramp.variant, 'pursuit');
+close(ramp.levelAgeSeconds, .003, 'entry blossom age starts at the audible transition');
 ctx.currentTime = 10.7; engine.setLevel(4);
 ctx.currentTime = 12.15;
 assert.equal(engine.getClock().level, 4);
@@ -77,16 +78,66 @@ console.log('通过：A/B/C × 寻找/发现/返程全部实际起音；320个�
 
 // Exercise the actual HUD stationary hold and release with a recording canvas.
 const artwork = compile('render/TapeDeckVisual', {});
+const resonance = compile('render/TapeResonance', { './TapeDeckVisual': artwork });
+const v4 = visuals.sampleTapeVisual(clock(4, 8, 'undertow'));
+const v5 = visuals.sampleTapeVisual(clock(5, 8, 'undertow'));
+v5.levelAgeSeconds = .28;
+const body4 = resonance.sampleTapeBody(v4), body5 = resonance.sampleTapeBody(v5);
+assert.equal(body4.bloom, 0, 'fourth layer never gets the fifth-layer blossom');
+assert.equal(body5.bloom, 1);
+assert(body5.openArms > body4.openArms * 4, 'fifth layer has a clearly different whole-body pose');
+assert(body5.scaleY > body4.scaleY && body5.lift > body4.lift * 2);
+assert(resonance.sampleTapeBody(v5, true).lift < body5.lift, 'target echo stays subtle');
+const neutral = resonance.sampleTapeBody();
+assert.deepEqual(resonance.sampleTapeBody({ ...v5, muted: true }), neutral);
+assert.deepEqual(resonance.sampleTapeBody({ ...v5, playing: false }), neutral);
+assert.equal(resonance.tapeRushMarks(v4).length, 0);
+assert.equal(resonance.tapeRushMarks({ ...v5, muted: true }).length, 0);
+assert.equal(resonance.tapeRushMarks({ ...v5, levelAgeSeconds: .04 }).length, 1, 'entry does not invent notes before the layer started');
+for (const fps of [15, 30, 60, 120]) {
+    let previous = null;
+    for (let frame = 0; frame < fps * 32; frame++) {
+        const v = visuals.sampleTapeVisual(clock(5, frame / fps * 2 + 32, 'pursuit', 'found'));
+        const marks = resonance.tapeRushMarks(v);
+        assert(marks.length > 0 && marks.length <= 8, 'bounded current-time marks, never a queued backlog');
+        assert.equal(marks[0].step, v.lanes[5].step);
+        assert(marks.every(m => m.alpha >= 0 && m.alpha <= 1 && Number.isFinite(m.radius)));
+        if (previous !== null) {
+            // At 15fps some notes fall between frames; every skipped mark is
+            // still present in the deterministic trail on the next frame.
+            for (let step = previous + 1; step <= marks[0].step; step++) assert(marks.some(m => m.step === step));
+        }
+        previous = marks[0].step;
+    }
+}
+let fieldCalls = 0;
+const fieldContext = new Proxy({ globalAlpha: 1, createRadialGradient: () => ({ addColorStop() {} }) }, {
+    get: (target, key) => key in target ? target[key] : (...args) => {
+        fieldCalls++;
+        for (const arg of args) if (typeof arg === 'number') assert(Number.isFinite(arg), key + ' non-finite draw');
+    },
+    set(target, key, value) { if (key === 'globalAlpha') assert(value >= 0 && value <= 1); target[key] = value; return true; },
+});
+resonance.drawTapeResonanceField(fieldContext, 0, 0, 0, { ...v5, muted: true });
+assert.equal(fieldCalls, 0, 'muted music must not retain a strong field');
+for (const v of [v4, v5, { ...v5, levelAgeSeconds: .9 }]) {
+    resonance.drawTapeResonanceField(fieldContext, 0, 0, 0, v);
+    resonance.drawTapeResonanceField(fieldContext, 25, 30, 1, v, true);
+}
+console.log('通过：五级全身姿态明显展开、目标轻呼应、15/30/60/120fps音符尾迹追帧、停止/静音清场、绘制坐标与透明度有效。');
 const context = new Proxy({ measureText: text => ({ width: text.length * 7 }), createRadialGradient: () => ({ addColorStop() {} }),
     createLinearGradient: () => ({ addColorStop() {} }), globalAlpha: 1 }, { get(target, key) { return key in target ? target[key] : () => {}; } });
 const CONFIG = { ...compile('core/config/gameplay', {}).gameplayConfig, ...compile('core/config/character', {}).characterConfig };
 const state = { audio: { muted: false }, mazeRescue: { phase: 'play', mazeTileSize: 120 } }, player = { o2: 80, o2Max: 100, y: 600 };
-let sleeves = 0, calls = 0, time = 1000;
+let sleeves = 0, calls = 0, tapes = 0, time = 1000;
 const originalNow = Date.now; Date.now = () => time;
 try {
     const hud = compile('render/HUDTopLeft', {
         '../core/config': { CONFIG }, '../core/state': { state, player }, './Canvas': { ctx: context, logicW: 375, logicH: 667 },
-        './TapeDeckVisual': { ...artwork, drawTapeSleeve: (...args) => { sleeves++; artwork.drawTapeSleeve(...args); } },
+        './TapeDeckVisual': { ...artwork,
+            drawTapeDeck: (...args) => { tapes++; artwork.drawTapeDeck(...args); },
+            drawTapeMixStrip: () => { throw Error('Default sidebar blocks the view'); },
+            drawTapeSleeve: (...args) => { sleeves++; artwork.drawTapeSleeve(...args); } },
         './RescueTape': { getRescueTapeVisual: () => visuals.sampleTapeVisual(clock(5, 8, 'undertow')) },
         './RenderAudioToggle': { drawAudioIcon() {}, toggleMuted() {} }, '../gm/GMPanel': { toggleGMOpen() {}, isGMOpen: () => false },
         '../logic/BreathSystem': { getBreathPhaseAngle: () => 0, getBreathPhase: () => 'inhale', getBreathPressure: () => 0, getLungVolume: () => .5 },
@@ -96,6 +147,8 @@ try {
             setDecoBoost() {}, getCurrentDepthMeters: () => 5 },
     });
     hud.initMazeHUDTopLeft();
+    hud.drawHUDTopLeft(0);
+    assert.equal(tapes, 1); assert.equal(sleeves, 0, 'default HUD shows only the tape, no sleeve');
     // No deco slot: oxygen95, depth168, drive230, audio292, tape360.
     assert(hud.handleHUDTouchStart(1, 46, 360)); time += 300;
     hud.drawHUDTopLeft(0); assert.equal(sleeves, 1, 'stationary hold opens detail without touchmove');
@@ -103,4 +156,9 @@ try {
     assert.equal(calls, 0, 'long hold does not also tap');
     hud.handleHUDTouchStart(2, 46, 360); time += 50; hud.handleHUDTouchEnd(2, 46, 360); assert.equal(calls, 1);
 } finally { Date.now = originalNow; }
-console.log('通过：真实HUD静止长按展开、松手关闭、短按提示。');
+console.log('通过：默认仅磁带、真实HUD静止长按展开、松手关闭、短按提示。');
+
+// Keep the earliest narrative a clue, not an explanation of the voice's source.
+const firstNight = compile('story/scripts/night_01_arrival', {}).night_01_arrival;
+assert(firstNight.nodes.some(n => n.speaker === 'narration' && n.text.includes('怎么也找不到')));
+assert(!firstNight.nodes.some(n => /心声|心里的声音|声音来自|被救.*声音/.test(n.text || '')));

@@ -1,6 +1,7 @@
 import { CONFIG } from '../core/config';
 import { TapeVisual } from '../audio/AdaptiveMusicVisuals';
 import { drawTapeDeck } from './TapeDeckVisual';
+import { sampleTapeBody, drawTapeBodySeams } from './TapeResonance';
 import { drawRelicIconAt } from './RenderRelic';
 import type { RelicKind } from '../logic/Relic';
 
@@ -16,6 +17,8 @@ type DiverColors = {
 
 type DiverMotion = {
     tapeVisual?: TapeVisual;
+    resonanceVisual?: TapeVisual;
+    resonanceEcho?: boolean;
     animTime?: number;
     hasTank?: boolean;
     /**
@@ -712,6 +715,8 @@ export function drawDiver(
     };
 
     const cfg = CONFIG.diver;
+    const resonanceVisual = motion.resonanceVisual || motion.tapeVisual;
+    const resonance = sampleTapeBody(resonanceVisual, motion.resonanceEcho);
     const time = motion.animTime ?? Date.now() / 150;
     // tankCount 优先：传 0/1/2 直接生效；不传则按 hasTank 推（true→1, false→0）
     const tankCount = motion.tankCount != null
@@ -838,12 +843,14 @@ export function drawDiver(
                       * (idleBlend * 0.6 + speedNormForBody);
 
     const leftArmUpperBase = baseL
+        + resonance.openArms
         + Math.sin(time * cfg.armIdleFrequency) * cfg.armIdleAmplitude * idleBlend
         + armBodySway
         + leftArmKick * cfg.armKickSwing * strokeScale
         - leftArmTurn * cfg.armTurnSwing
         + turnVisual * cfg.armTurnLeanFactor;
     const rightArmUpperBase = baseR
+        - resonance.openArms
         - Math.sin(time * cfg.armIdleFrequency) * cfg.armIdleAmplitude * idleBlend
         - armBodySway
         - rightArmKick * cfg.armKickSwing * strokeScale
@@ -898,7 +905,9 @@ export function drawDiver(
 
     renderCtx.save();
     renderCtx.translate(x + driftX, y + driftY);
-    renderCtx.rotate(angle + bodyRoll);
+    renderCtx.rotate(angle + bodyRoll + resonance.roll);
+    renderCtx.translate(0, -resonance.lift);
+    renderCtx.scale(resonance.scaleX, resonance.scaleY);
     // 用 Y 轴压缩模拟 3D 侧倾（roll）：bodyRoll 越大身体越"侧过去"，Y 方向被压扁
     // rollSquash 是额外的 Y 缩放因子，最多 cfg.rollSquashMax 的压缩量
     const rollSquash = 1 - Math.abs(bodyRoll) * cfg.rollSquashFactor;
@@ -918,7 +927,7 @@ export function drawDiver(
     // 幅度：由速度主导（静止时=低幅常驻呼吸，不再归零） + kickDrive 给加速瞬间的额外鞭打
     // idle 也给一点微幅（cfg.legIdleAmpNorm），让双腿在静止漂浮时做呼吸式抽动
     const idleLegAmp = cfg.legIdleAmpNorm * idleBlend;
-    const ampNorm = clamp(speedNorm + kickDriveVal * 0.5 + idleLegAmp, 0, 1);
+    const ampNorm = clamp(speedNorm + kickDriveVal * 0.5 + idleLegAmp + resonance.kick * resonance.bloom * .2, 0, 1);
 
     // 取/建本角色的相位时钟
     let clock = legClocks.get(clockId);
@@ -1263,7 +1272,8 @@ export function drawDiver(
 
     // A small clipped waterproof cassette rides the right chest strap, inside
     // the same body transform as the diver (including roll and drift).
-    if (motion.tapeVisual) drawTapeDeck(renderCtx, 3, 8, 14, motion.tapeVisual, true);
+    if (resonanceVisual) drawTapeBodySeams(renderCtx, resonanceVisual, motion.resonanceEcho);
+    if (motion.tapeVisual) drawTapeDeck(renderCtx, 3, 9, 22, motion.tapeVisual, true);
 
     // 头部：加入蛇形传导偏移（头先转、身后跟）
     // headYawLead 是沿身体 y 轴的微小偏移，让头颈看起来像先扭动

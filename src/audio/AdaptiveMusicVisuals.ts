@@ -8,7 +8,7 @@ export interface VisualLane {
 export interface TapeVisual {
     playing: boolean; level: number; requestedLevel: number; mood: MusicMood;
     beats: number; beatPhase: number; bar: number; kick: number; snare: number;
-    lanes: VisualLane[]; fallback: boolean;
+    lanes: VisualLane[]; fallback: boolean; muted: boolean; levelAgeSeconds: number;
 }
 const tracks: ScoreTrack[] = [...SCORE.stems, 'bedFound', 'bedReturn', ...WARM_LAYER_TRACKS];
 const cache: { [key: string]: MusicHit[] } = {};
@@ -55,7 +55,8 @@ export function sampleTapeVisual(clock: MusicClock | null): TapeVisual {
     const result: TapeVisual = { playing: !!clock && clock.playing, level: clock ? clock.level : 0,
         requestedLevel: clock ? clock.requestedLevel : 0, mood: clock ? clock.mood : 'search',
         beats: clock ? clock.beats : 0, beatPhase: clock ? clock.beatPhase : 0,
-        bar: clock ? clock.bar : 0, kick: 0, snare: 0, lanes, fallback: false };
+        bar: clock ? clock.bar : 0, kick: 0, snare: 0, lanes, fallback: false, muted: false,
+        levelAgeSeconds: clock && Number.isFinite(clock.levelAgeSeconds) ? clock.levelAgeSeconds : Infinity };
     if (!clock || !clock.playing) return result;
     tracks.forEach((track, slot) => {
         const gain = clock.trackGains[slot] || 0;

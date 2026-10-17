@@ -3,6 +3,8 @@ import { TapeVisual } from '../audio/AdaptiveMusicVisuals';
 // Small, code-native artwork: the exact same cassette is worn by the diver and
 // drawn in the HUD, detail sleeve, and review page. No image loading or particles.
 export const TAPE = { ink: '#101e26', paper: '#f4e7c7', orange: '#ff754c', lime: '#d7ee74', mint: '#81e3ce', muted: '#738e92' };
+// A worn owner's note, not an explanation of where the music comes from.
+export const TAPE_NOTE = '听不清，就再近一点。';
 const TAU = Math.PI * 2;
 export function tapeAccent(v: TapeVisual): string { return v.mood === 'return' ? TAPE.mint : v.mood === 'found' ? TAPE.lime : TAPE.orange; }
 export function cutPanel(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, cut = 6): void {
@@ -81,11 +83,11 @@ export function drawTapeRibbons(c: CanvasRenderingContext2D, x: number, y: numbe
 export function drawTapeSleeve(c: CanvasRenderingContext2D, x: number, y: number, w: number, v: TapeVisual): void {
     c.save(); c.translate(x, y);
     c.fillStyle = TAPE.ink; c.strokeStyle = tapeAccent(v); c.lineWidth = 1;
-    cutPanel(c, 0, 0, w, 196, 10); c.fill(); c.stroke();
+    cutPanel(c, 0, 0, w, 224, 10); c.fill(); c.stroke();
     c.fillStyle = tapeAccent(v); c.fillRect(12, 12, 4, 25);
     c.fillStyle = TAPE.paper; c.textAlign = 'left'; c.textBaseline = 'middle';
     c.font = 'bold 15px Arial'; c.fillText('深流随身听', 24, 20);
-    c.fillStyle = TAPE.muted; c.font = '9px Arial'; c.fillText('DEEPTAPE / VOL. 01', 24, 36);
+    c.fillStyle = TAPE.muted; c.font = '9px Arial'; c.fillText('VOL. 01 / 收录：—', 24, 36);
     drawTapeDeck(c, w - 40, 26, 45, v);
     c.fillStyle = tapeAccent(v); c.font = 'bold 11px Arial';
     c.fillText(v.fallback ? '双音模式' : !v.playing ? '磁带就绪' : v.mood === 'return' ? 'B 面 / 一起回去' : v.mood === 'found' ? 'A 面 / 就在这里' : 'A 面 / 向深处去', 14, 58);
@@ -94,17 +96,8 @@ export function drawTapeSleeve(c: CanvasRenderingContext2D, x: number, y: number
     ['微光', '低流', '重鼓', '疾行', '奔涌'].forEach((label, i) => { c.fillStyle = v.lanes[i + 1].gain > .01 ? TAPE.paper : TAPE.muted; c.fillText('0' + (i + 1) + ' ' + label, 14, 85 + i * 17); });
     c.fillStyle = TAPE.muted; c.font = '10px Arial';
     c.fillText(v.playing ? `${v.level}/5 层  ·  120 BPM  ·  ${v.bar + 1}/8 小节` : '带上音乐，下潜。', 14, 180);
-    c.restore();
-}
-
-/** Persistent, compact five-lane mix strip beside the tape HUD control. */
-export function drawTapeMixStrip(c: CanvasRenderingContext2D, x: number, y: number, w: number, v: TapeVisual, muted = false): void {
-    c.save(); c.translate(x, y);
-    c.fillStyle = 'rgba(16,30,38,.88)'; cutPanel(c, 0, 0, w, 52, 6); c.fill();
-    c.fillStyle = tapeAccent(v); c.fillRect(0, 6, 2, 13);
-    c.font = 'bold 9px Arial'; c.textAlign = 'left'; c.textBaseline = 'middle';
-    c.fillStyle = TAPE.paper;
-    c.fillText(muted ? '深流 / MUTE' : v.fallback ? '深流 / 双音' : v.mood === 'return' ? '深流 / 一起回去' : v.mood === 'found' ? '深流 / 就在这里' : '深流 / 向深处去', 9, 11);
-    drawTapeRibbons(c, 9, 21, w - 18, 5, v);
+    c.save(); c.translate(14, 197); c.rotate(-.025);
+    c.fillStyle = TAPE.paper; cutPanel(c, 0, -2, w - 28, 21, 3); c.fill();
+    c.fillStyle = TAPE.ink; c.font = 'italic 10px Arial'; c.fillText(TAPE_NOTE, 7, 9); c.restore();
     c.restore();
 }

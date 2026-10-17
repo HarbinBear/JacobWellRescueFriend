@@ -17,6 +17,8 @@ import { drawRelicsWorld, drawRelicHintsWorld } from './RenderRelic';
 // BCD 浮力背心：气囊鼓胀度 / 排气状态（驱动潜水员身上的背心视觉）
 import { getBCDInflationRatio, isBCDVenting } from '../logic/BCDSystem';
 import { getRescueTapeVisual } from './RescueTape';
+import { drawTapeResonanceField } from './TapeResonance';
+import { isRescueTargetVisible } from '../logic/NPCPerception';
 // 撤离玩法：拾取调试可视化（GM 开关控制）
 import { drawPickupDebugOverlay } from '../extraction/render/PickupDebugOverlay';
 // 撤离玩法：水底丢弃物世界层渲染
@@ -453,6 +455,10 @@ export function draw() {
     profileBegin('draw.diver');
     // --- 绘制角色 ---
 
+    // One audible-time sample drives both people, the cassette and the water.
+    const tapeVisual = isMazeMode && CONFIG.lifeDetector.enabled && state.mazeRescue.phase === 'play' ? getRescueTapeVisual() : undefined;
+    const targetEchoVisible = !!tapeVisual && tapeVisual.lanes[5].gain > .01 && isRescueTargetVisible();
+
     // 绘制 NPC
     if(state.npc && state.npc.active) {
         const npcColors = {
@@ -470,6 +476,8 @@ export function draw() {
             vx: state.npc.vx,
             vy: state.npc.vy,
             id: 'npc',
+            resonanceVisual: targetEchoVisible ? tapeVisual : undefined,
+            resonanceEcho: true,
         });
     }
 
@@ -510,7 +518,8 @@ export function draw() {
         // BCD 浮力背心：气囊鼓胀度 + 肩阀是否正在排气（仅迷宫模式有值，其他模式为 0/false）
         bcdInflation: getBCDInflationRatio(),
         bcdVenting: isBCDVenting(),
-        tapeVisual: state.screen === 'mazeRescue' && CONFIG.lifeDetector.enabled && CONFIG.lifeDetector.ledOnDiver ? getRescueTapeVisual() : undefined,
+        tapeVisual: CONFIG.lifeDetector.ledOnDiver ? tapeVisual : undefined,
+        resonanceVisual: tapeVisual,
     });
 
 
@@ -639,6 +648,17 @@ export function draw() {
 
     profileEnd('draw.lighting');
     profileBegin('draw.overlay');
+
+    // The musical currents remain legible in deep water; draw them before red
+    // danger overlays and every HUD/control. No screen flash or camera shake.
+    if (tapeVisual) {
+        ctx.save();
+        ctx.translate(logicW / 2 + shakeX, logicH / 2 + shakeY);
+        ctx.scale(zoom, zoom); ctx.translate(-camX, -camY);
+        drawTapeResonanceField(ctx, player.x, player.y, player.angle, tapeVisual);
+        if (targetEchoVisible) drawTapeResonanceField(ctx, state.npc.x, state.npc.y, state.npc.angle, tapeVisual, true);
+        ctx.restore();
+    }
 
     // 绘制亮色悬浮尘埃（光照后，被手电照亮的尘埃散射发光）
     ctx.save();
