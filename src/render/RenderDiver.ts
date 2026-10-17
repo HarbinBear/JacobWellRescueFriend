@@ -1,7 +1,7 @@
 import { CONFIG } from '../core/config';
 import { TapeVisual } from '../audio/AdaptiveMusicVisuals';
 import { drawTapeDeck } from './TapeDeckVisual';
-import { sampleTapeBody, drawTapeBodySeams } from './TapeResonance';
+import { sampleTapeBody, drawTapeChestAccent } from './TapeResonance';
 import { drawRelicIconAt } from './RenderRelic';
 import type { RelicKind } from '../logic/Relic';
 
@@ -1272,7 +1272,7 @@ export function drawDiver(
 
     // A small clipped waterproof cassette rides the right chest strap, inside
     // the same body transform as the diver (including roll and drift).
-    if (resonanceVisual) drawTapeBodySeams(renderCtx, resonanceVisual, motion.resonanceEcho);
+    if (resonanceVisual) drawTapeChestAccent(renderCtx, resonanceVisual, motion.resonanceEcho);
     if (motion.tapeVisual) drawTapeDeck(renderCtx, 3, 9, 22, motion.tapeVisual, true);
 
     // 头部：加入蛇形传导偏移（头先转、身后跟）

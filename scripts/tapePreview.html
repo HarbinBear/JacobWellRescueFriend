@@ -19,11 +19,11 @@ main{max-width:1180px;margin:auto;padding:32px 36px 60px}nav{display:flex;justif
 <div><span class="label">02 / FIVE LAYERS, ONE TAPE</span><div class="row levels" id="levels" role="group" aria-label="音乐层数"></div><div class="row" id="moods" role="group" aria-label="旅程状态"><button data-mood="search" aria-pressed="false">向深处去</button><button data-mood="found" aria-pressed="true">就在这里</button><button data-mood="return" aria-pressed="false">一起回去</button></div></div></div>
 <p id="status" role="status" aria-live="polite">静态试装。点击播放，听看同一套游戏音乐与节拍动画；完整旅程约 32 秒。</p>
 <div class="study"><div><div class="section-title">03 / IN THE FIELD</div><div class="row" style="margin-bottom:12px"><button id="field4">对比第4级</button><button id="field5">对比第5级</button><button id="fieldPlay">▶ 播放这一段</button></div><div class="scene"><canvas id="scene" width="750" height="1320" aria-label="真实游戏HUD与潜水员绘制，洞穴和数值为预览场景"></canvas><div class="caption">游戏原 HUD / 原角色绘制 · 洞穴与数值为模拟场景<br>默认只有磁带；按住再展开封套。</div></div></div>
-<div><div class="section-title">04 / THE RHYTHM SLEEVE</div><canvas id="sleeve" width="1000" height="800" aria-label="五层节奏与胸前随身听细节"></canvas><div class="rules"><div class="rule"><b>重拍经过全身</b><p>身体舒展、肩臂打开、衣缝发亮。音乐的力度落在整个人身上。</p><span class="density">30 → 60 → 120 → 240 / MIN</span></div><div class="rule"><b>第五级，水流也展开</b><p>入层时绽开一次光流，每个快速音符化作掠过身边的光屑。</p><span class="density">1200 / MIN · 50 MS / NOTE</span></div><div class="rule"><b>一盘磁带，两段旅程</b><p>寻找是珊瑚橙，发现是酸橙黄，返程是薄荷绿。</p></div><div class="rule"><b>没写歌名的带子</b><p>壳背贴着一截磨旧的胶带。是谁留下的字，已经看不清了。</p></div></div></div></div>
+<div><div class="section-title">04 / THE RHYTHM SLEEVE</div><canvas id="sleeve" width="1000" height="800" aria-label="五层节奏与胸前随身听细节"></canvas><div class="rules"><div class="rule"><b>重拍经过全身</b><p>身体舒展、肩臂打开、胸口微光回应。音乐的力度落在整个人身上。</p><span class="density">30 → 60 → 120 → 240 / MIN</span></div><div class="rule"><b>第五级，全身回应</b><p>身体和肩臂更明显地随重拍舒展，快速音符逐格推进磁带窗口。</p><span class="density">1200 / MIN · 50 MS / NOTE</span></div><div class="rule"><b>一盘磁带，两段旅程</b><p>寻找是珊瑚橙，发现是酸橙黄，返程是薄荷绿。</p></div><div class="rule"><b>没写歌名的带子</b><p>壳背贴着一截磨旧的胶带。是谁留下的字，已经看不清了。</p></div></div></div></div>
 <p class="foot">此页复用游戏音频引擎、乐谱和 Canvas 绘制。首次播放会本地合成 12 条音轨；无需联网。画面不会改变音乐的速度。</p>
 </main><script>/* TAPE_BUNDLE */</script><script>
 const {SCORE,VARIANTS,WARM_LAYER_TRACKS,renderStemAsync,renderPhrasePickup,AdaptiveMusicEngine}=SignalBelow;
-const {sampleTapeVisual,drawTapeDeck,drawTapeSleeve,drawTapeRibbons,drawTapeResonanceField,drawDiver,drawHUDTopLeft,initMazeHUDTopLeft,cutPanel,TAPE}=DeepTape;
+const {sampleTapeVisual,drawTapeDeck,drawTapeSleeve,drawTapeRibbons,drawDiver,drawHUDTopLeft,initMazeHUDTopLeft,cutPanel,TAPE}=DeepTape;
 const $=id=>document.getElementById(id),deck=$('deck').getContext('2d'),scene=$('scene').getContext('2d'),sleeve=$('sleeve').getContext('2d');
 let ctx,engine,loading=false,wantPlay=false,level=5,mood='found',tourStart=null,tourStage=-1,request=0;
 const cache={},levelButtons=[];
@@ -57,8 +57,7 @@ function field(v,t){scene.save();scene.scale(2,2);scene.fillStyle='#0a1720';scen
  scene.strokeStyle='#425b54';scene.lineWidth=1.1;scene.beginPath();scene.moveTo(210,0);scene.bezierCurveTo(290,100,110,190,223,300);scene.stroke();
  scene.fillStyle='#73938f';for(let i=0;i<34;i++){const x=(i*93.7)%375,y=(i*41.3+t*6)%660;scene.globalAlpha=.12+(i%4)*.04;scene.fillRect(x,y,1,1)}scene.globalAlpha=1;
  diver(scene,223,300,1.25,v,'field');
- if(v.lanes[5].gain>.01){diver(scene,271,224,1.1,v,'target',true);drawTapeResonanceField(scene,271,224,2.9,v,true)}
- drawTapeResonanceField(scene,223,300,-.2,v);
+ if(v.lanes[5].gain>.01){diver(scene,271,224,1.1,v,'target',true)}
  scene.fillStyle=TAPE.paper;scene.font='9px Arial';scene.textAlign='center';scene.fillText('28 / 60 m',240,71);
  scene.font='bold 8px Arial';scene.fillStyle=TAPE.muted;scene.fillText('JACOB WELL / 01',230,620);
  DeepTape.setVisual(v);drawHUDTopLeft(t);scene.restore()}
@@ -66,7 +65,7 @@ function frame(){let clock=engine&&engine.getClock();if(tourStart!==null&&clock&
  const live=!!clock&&clock.playing;const v=sampleTapeVisual(live?clock:snapshot());
  v.muted=DeepTape.state.audio.muted;if(v.muted){v.kick=v.snare=0;v.lanes.forEach(l=>l.hit=0)}if(engine)engine.setVolume(DeepTape.state.audio.muted?0:Number($('volume').value)/100);
  deck.save();deck.scale(2,2);deck.clearRect(0,0,500,300);deck.fillStyle='#1a3039';cutPanel(deck,22,33,455,230,18);deck.fill();drawTapeDeck(deck,250,143,342,v);deck.fillStyle=TAPE.muted;deck.font='10px monospace';deck.textAlign='left';deck.fillText('NO. 002  /  RESCUE MIX',24,287);deck.restore();
- sleeve.save();sleeve.scale(2,2);sleeve.clearRect(0,0,500,400);drawTapeSleeve(sleeve,28,24,444,v);sleeve.strokeStyle='#34444a';sleeve.beginPath();sleeve.moveTo(28,267);sleeve.lineTo(472,267);sleeve.stroke();diver(sleeve,280,326,2.5,v,'detail');drawTapeResonanceField(sleeve,280,326,-.2,v);sleeve.fillStyle=TAPE.muted;sleeve.font='10px Arial';sleeve.textAlign='left';sleeve.fillText('衣缝、身体与水流 / 同一拍',28,373);sleeve.restore();
+ sleeve.save();sleeve.scale(2,2);sleeve.clearRect(0,0,500,400);drawTapeSleeve(sleeve,28,24,444,v);sleeve.strokeStyle='#34444a';sleeve.beginPath();sleeve.moveTo(28,267);sleeve.lineTo(472,267);sleeve.stroke();diver(sleeve,280,326,2.5,v,'detail');sleeve.fillStyle=TAPE.muted;sleeve.font='10px Arial';sleeve.textAlign='left';sleeve.fillText('身体与磁带 / 同一拍',28,373);sleeve.restore();
  field(v,performance.now()/1000);$('deckState').textContent=live?`${v.level}/5 层 · 120 BPM · ${clock.entryWaitSeconds>.01?'入口 '+clock.entryWaitSeconds.toFixed(2)+'s':v.mood==='return'?'SIDE B':'SIDE A'}`:`静态试装 · 0${level} / 05`;
  requestAnimationFrame(frame)}
 const pointer={active:false,x:0,y:0};function point(e){const r=$('scene').getBoundingClientRect();return [(e.clientX-r.left)*375/r.width,(e.clientY-r.top)*660/r.height]}

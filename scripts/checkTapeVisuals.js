@@ -91,40 +91,7 @@ assert(resonance.sampleTapeBody(v5, true).lift < body5.lift, 'target echo stays 
 const neutral = resonance.sampleTapeBody();
 assert.deepEqual(resonance.sampleTapeBody({ ...v5, muted: true }), neutral);
 assert.deepEqual(resonance.sampleTapeBody({ ...v5, playing: false }), neutral);
-assert.equal(resonance.tapeRushMarks(v4).length, 0);
-assert.equal(resonance.tapeRushMarks({ ...v5, muted: true }).length, 0);
-assert.equal(resonance.tapeRushMarks({ ...v5, levelAgeSeconds: .04 }).length, 1, 'entry does not invent notes before the layer started');
-for (const fps of [15, 30, 60, 120]) {
-    let previous = null;
-    for (let frame = 0; frame < fps * 32; frame++) {
-        const v = visuals.sampleTapeVisual(clock(5, frame / fps * 2 + 32, 'pursuit', 'found'));
-        const marks = resonance.tapeRushMarks(v);
-        assert(marks.length > 0 && marks.length <= 8, 'bounded current-time marks, never a queued backlog');
-        assert.equal(marks[0].step, v.lanes[5].step);
-        assert(marks.every(m => m.alpha >= 0 && m.alpha <= 1 && Number.isFinite(m.radius)));
-        if (previous !== null) {
-            // At 15fps some notes fall between frames; every skipped mark is
-            // still present in the deterministic trail on the next frame.
-            for (let step = previous + 1; step <= marks[0].step; step++) assert(marks.some(m => m.step === step));
-        }
-        previous = marks[0].step;
-    }
-}
-let fieldCalls = 0;
-const fieldContext = new Proxy({ globalAlpha: 1, createRadialGradient: () => ({ addColorStop() {} }) }, {
-    get: (target, key) => key in target ? target[key] : (...args) => {
-        fieldCalls++;
-        for (const arg of args) if (typeof arg === 'number') assert(Number.isFinite(arg), key + ' non-finite draw');
-    },
-    set(target, key, value) { if (key === 'globalAlpha') assert(value >= 0 && value <= 1); target[key] = value; return true; },
-});
-resonance.drawTapeResonanceField(fieldContext, 0, 0, 0, { ...v5, muted: true });
-assert.equal(fieldCalls, 0, 'muted music must not retain a strong field');
-for (const v of [v4, v5, { ...v5, levelAgeSeconds: .9 }]) {
-    resonance.drawTapeResonanceField(fieldContext, 0, 0, 0, v);
-    resonance.drawTapeResonanceField(fieldContext, 25, 30, 1, v, true);
-}
-console.log('通过：五级全身姿态明显展开、目标轻呼应、15/30/60/120fps音符尾迹追帧、停止/静音清场、绘制坐标与透明度有效。');
+console.log('通过：五级全身姿态明显展开、目标轻呼应、停止/静音恢复自然姿态。');
 const context = new Proxy({ measureText: text => ({ width: text.length * 7 }), createRadialGradient: () => ({ addColorStop() {} }),
     createLinearGradient: () => ({ addColorStop() {} }), globalAlpha: 1 }, { get(target, key) { return key in target ? target[key] : () => {}; } });
 const CONFIG = { ...compile('core/config/gameplay', {}).gameplayConfig, ...compile('core/config/character', {}).characterConfig };

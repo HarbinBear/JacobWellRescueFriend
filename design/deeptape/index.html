@@ -19,7 +19,7 @@ main{max-width:1180px;margin:auto;padding:32px 36px 60px}nav{display:flex;justif
 <div><span class="label">02 / FIVE LAYERS, ONE TAPE</span><div class="row levels" id="levels" role="group" aria-label="音乐层数"></div><div class="row" id="moods" role="group" aria-label="旅程状态"><button data-mood="search" aria-pressed="false">向深处去</button><button data-mood="found" aria-pressed="true">就在这里</button><button data-mood="return" aria-pressed="false">一起回去</button></div></div></div>
 <p id="status" role="status" aria-live="polite">静态试装。点击播放，听看同一套游戏音乐与节拍动画；完整旅程约 32 秒。</p>
 <div class="study"><div><div class="section-title">03 / IN THE FIELD</div><div class="row" style="margin-bottom:12px"><button id="field4">对比第4级</button><button id="field5">对比第5级</button><button id="fieldPlay">▶ 播放这一段</button></div><div class="scene"><canvas id="scene" width="750" height="1320" aria-label="真实游戏HUD与潜水员绘制，洞穴和数值为预览场景"></canvas><div class="caption">游戏原 HUD / 原角色绘制 · 洞穴与数值为模拟场景<br>默认只有磁带；按住再展开封套。</div></div></div>
-<div><div class="section-title">04 / THE RHYTHM SLEEVE</div><canvas id="sleeve" width="1000" height="800" aria-label="五层节奏与胸前随身听细节"></canvas><div class="rules"><div class="rule"><b>重拍经过全身</b><p>身体舒展、肩臂打开、衣缝发亮。音乐的力度落在整个人身上。</p><span class="density">30 → 60 → 120 → 240 / MIN</span></div><div class="rule"><b>第五级，水流也展开</b><p>入层时绽开一次光流，每个快速音符化作掠过身边的光屑。</p><span class="density">1200 / MIN · 50 MS / NOTE</span></div><div class="rule"><b>一盘磁带，两段旅程</b><p>寻找是珊瑚橙，发现是酸橙黄，返程是薄荷绿。</p></div><div class="rule"><b>没写歌名的带子</b><p>壳背贴着一截磨旧的胶带。是谁留下的字，已经看不清了。</p></div></div></div></div>
+<div><div class="section-title">04 / THE RHYTHM SLEEVE</div><canvas id="sleeve" width="1000" height="800" aria-label="五层节奏与胸前随身听细节"></canvas><div class="rules"><div class="rule"><b>重拍经过全身</b><p>身体舒展、肩臂打开、胸口微光回应。音乐的力度落在整个人身上。</p><span class="density">30 → 60 → 120 → 240 / MIN</span></div><div class="rule"><b>第五级，全身回应</b><p>身体和肩臂更明显地随重拍舒展，快速音符逐格推进磁带窗口。</p><span class="density">1200 / MIN · 50 MS / NOTE</span></div><div class="rule"><b>一盘磁带，两段旅程</b><p>寻找是珊瑚橙，发现是酸橙黄，返程是薄荷绿。</p></div><div class="rule"><b>没写歌名的带子</b><p>壳背贴着一截磨旧的胶带。是谁留下的字，已经看不清了。</p></div></div></div></div>
 <p class="foot">此页复用游戏音频引擎、乐谱和 Canvas 绘制。首次播放会本地合成 12 条音轨；无需联网。画面不会改变音乐的速度。</p>
 </main><script>(function(){const factories={"AdaptiveScore":function(exports,require){"use strict";
 var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
@@ -1046,9 +1046,7 @@ function drawTapeSleeve(c, x, y, w, v) {
 },"TapeResonance":function(exports,require){"use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.sampleTapeBody = sampleTapeBody;
-exports.drawTapeBodySeams = drawTapeBodySeams;
-exports.tapeRushMarks = tapeRushMarks;
-exports.drawTapeResonanceField = drawTapeResonanceField;
+exports.drawTapeChestAccent = drawTapeChestAccent;
 const TapeDeckVisual_1 = require("./TapeDeckVisual");
 const TAU = Math.PI * 2;
 const clamp = (n) => Math.max(0, Math.min(1, n));
@@ -1069,139 +1067,17 @@ function sampleTapeBody(v, echo = false) {
         lift: amount * kick * (presence + bloom * 2.5),
         openArms: amount * (presence * .055 + bloom * (.18 + kick * .1)) };
 }
-/** Larger luminous cloth seams make the whole body read at gameplay scale. */
-function drawTapeBodySeams(c, v, echo = false) {
+/** A small chest light stays inside the body; no surrounding outlines. */
+function drawTapeChestAccent(c, v, echo = false) {
     const r = sampleTapeBody(v, echo);
     if (r.presence < .01)
         return;
     c.save();
-    const alpha = c.globalAlpha;
-    c.strokeStyle = echo ? TapeDeckVisual_1.TAPE.paper : (0, TapeDeckVisual_1.tapeAccent)(v);
-    c.lineCap = 'round';
-    c.lineJoin = 'round';
-    for (const side of [-1, 1]) {
-        c.beginPath();
-        c.moveTo(-13, side * 5);
-        c.quadraticCurveTo(-3, side * (10 + r.bloom * 2), 10, side * 5);
-        c.globalAlpha = alpha * r.presence * (.18 + r.kick * .32);
-        c.lineWidth = 4 + r.bloom * 2;
-        c.stroke();
-        c.globalAlpha = alpha * r.presence * (.45 + r.kick * .5);
-        c.lineWidth = 1.1 + r.bloom * .8;
-        c.stroke();
-    }
-    // Small organic chest accent, repeated on the target without a second tape.
-    c.globalAlpha = alpha * r.presence * (.35 + r.kick * .5);
-    c.fillStyle = TapeDeckVisual_1.TAPE.paper;
+    c.globalAlpha *= r.presence * (.35 + r.kick * .5);
+    c.fillStyle = echo ? TapeDeckVisual_1.TAPE.paper : (0, TapeDeckVisual_1.tapeAccent)(v);
     c.beginPath();
     c.ellipse(6, 0, 2.2 + r.kick * 1.4, 1.3 + r.kick, -.2, 0, TAU);
     c.fill();
-    c.restore();
-}
-/** No spawned particle queue: even after a dropped frame, every mark is located
- * by its real 50ms note age. At most eight marks are alive. */
-function tapeRushMarks(v) {
-    if (!v.playing || v.muted || v.lanes[5].gain < .001)
-        return [];
-    const lane = v.lanes[5], marks = [];
-    for (let tail = 0; tail < 8; tail++) {
-        const age = lane.age + tail * .05, step = lane.step - tail;
-        if (age < 0 || age > .38 || step < 0)
-            continue;
-        if (v.level === 5 && age > v.levelAgeSeconds + 1e-8)
-            continue;
-        const t = age / .38;
-        marks.push({ step, angle: step * 2.3999632297,
-            radius: 24 + Math.pow(t, .72) * 118,
-            alpha: lane.gain * (1 - t) * .95,
-            length: 9 + Math.sin(t * Math.PI) * 22 });
-    }
-    return marks;
-}
-/** Spacious, lyrical currents rather than a bigger instrument readout.
- * Draw after the darkness mask and before danger overlays and the HUD. */
-function drawTapeResonanceField(c, x, y, angle, v, echo = false) {
-    const r = sampleTapeBody(v, echo);
-    if (r.presence < .01)
-        return;
-    c.save();
-    c.translate(x, y);
-    c.rotate(angle);
-    const alpha = c.globalAlpha, color = (0, TapeDeckVisual_1.tapeAccent)(v);
-    const radius = echo ? 30 : 28 + r.bloom * 118;
-    const glow = c.createRadialGradient(3, 0, 2, 3, 0, radius);
-    glow.addColorStop(0, echo ? 'rgba(244,231,199,.28)' : 'rgba(215,238,116,.22)');
-    glow.addColorStop(.35, 'rgba(129,227,206,.08)');
-    glow.addColorStop(1, 'rgba(129,227,206,0)');
-    c.globalAlpha = alpha * r.presence * (.55 + r.kick * .45);
-    c.fillStyle = glow;
-    c.beginPath();
-    c.ellipse(3, 0, radius, radius * .85, 0, 0, TAU);
-    c.fill();
-    // Contours around the whole swimmer, visible even with a tiny chest device.
-    c.strokeStyle = echo ? TapeDeckVisual_1.TAPE.paper : color;
-    c.lineCap = 'round';
-    for (const side of [-1, 1]) {
-        c.beginPath();
-        c.moveTo(-35, side * (7 + r.kick * 3));
-        c.bezierCurveTo(-13, side * (18 + r.kick * 9), 16, side * (16 + r.bloom * 5), 28, side * 3);
-        c.globalAlpha = alpha * r.presence * (.2 + r.kick * .5);
-        c.lineWidth = 3.2 + r.bloom * 2;
-        c.stroke();
-        c.globalAlpha = alpha * r.presence * (.4 + r.kick * .5);
-        c.lineWidth = 1.2;
-        c.stroke();
-    }
-    if (echo || r.bloom < .005) {
-        c.restore();
-        return;
-    }
-    // Wide silk-like streams: stable presence at level five, shaped by the kicks.
-    const sway = Math.sin(v.beats * Math.PI) * 13;
-    for (let i = 0; i < 3; i++) {
-        const side = i % 2 ? -1 : 1, spread = 36 + i * 19;
-        c.beginPath();
-        c.moveTo(-100 - i * 9, side * (spread + sway));
-        c.bezierCurveTo(-65, side * (-20 + sway), 26, side * (spread + r.kick * 35), 118 + i * 12, side * (spread * .3 - sway));
-        c.globalAlpha = alpha * r.bloom * (.1 + r.kick * .2);
-        c.strokeStyle = i === 1 ? TapeDeckVisual_1.TAPE.mint : color;
-        c.lineWidth = 8 + r.kick * 6;
-        c.stroke();
-        c.globalAlpha = alpha * r.bloom * (.32 + r.kick * .4);
-        c.lineWidth = 1.5 + i * .25;
-        c.stroke();
-    }
-    // A single entry blossom, aged on the actual audible layer transition.
-    if (v.level === 5 && v.levelAgeSeconds < 1.15) {
-        const age = clamp(v.levelAgeSeconds / 1.15), reach = 24 + age * 140;
-        for (let i = 0; i < 7; i++) {
-            c.save();
-            c.rotate(i * TAU / 7 + age * .25);
-            c.globalAlpha = alpha * r.bloom * (1 - age) * .5;
-            c.fillStyle = i % 2 ? TapeDeckVisual_1.TAPE.mint : TapeDeckVisual_1.TAPE.lime;
-            c.beginPath();
-            c.moveTo(17, 0);
-            c.quadraticCurveTo(reach * .55, -18 * (1 - age), reach, -4);
-            c.quadraticCurveTo(reach * .62, 17 * (1 - age), 17, 0);
-            c.fill();
-            c.restore();
-        }
-    }
-    // Each of the twenty notes per second gets its own bright, travelling stroke.
-    for (const mark of tapeRushMarks(v)) {
-        c.save();
-        c.rotate(mark.angle);
-        c.globalAlpha = alpha * mark.alpha;
-        c.strokeStyle = color;
-        c.lineWidth = 2.6;
-        c.beginPath();
-        c.moveTo(mark.radius, 0);
-        c.lineTo(mark.radius + mark.length, 2);
-        c.stroke();
-        c.fillStyle = TapeDeckVisual_1.TAPE.paper;
-        c.fillRect(mark.radius + mark.length - 1, 0, 2.5, 2.5);
-        c.restore();
-    }
     c.restore();
 }
 },"RenderDiver":function(exports,require){"use strict";
@@ -2197,7 +2073,7 @@ function drawDiver(renderCtx, x, y, angle, colors = null, motion = {}) {
     // A small clipped waterproof cassette rides the right chest strap, inside
     // the same body transform as the diver (including roll and drift).
     if (resonanceVisual)
-        (0, TapeResonance_1.drawTapeBodySeams)(renderCtx, resonanceVisual, motion.resonanceEcho);
+        (0, TapeResonance_1.drawTapeChestAccent)(renderCtx, resonanceVisual, motion.resonanceEcho);
     if (motion.tapeVisual)
         (0, TapeDeckVisual_1.drawTapeDeck)(renderCtx, 3, 9, 22, motion.tapeVisual, true);
     // 头部：加入蛇形传导偏移（头先转、身后跟）
@@ -4197,7 +4073,7 @@ function load(name){const id=name.split('/').pop();
 window.DeepTape={...load('AdaptiveMusicVisuals'),...load('TapeDeckVisual'),...load('TapeResonance'),...load('RenderDiver'),...load('HUDTopLeft'),
  setVisual:v=>{visual=v},state,player};})();</script><script>
 const {SCORE,VARIANTS,WARM_LAYER_TRACKS,renderStemAsync,renderPhrasePickup,AdaptiveMusicEngine}=SignalBelow;
-const {sampleTapeVisual,drawTapeDeck,drawTapeSleeve,drawTapeRibbons,drawTapeResonanceField,drawDiver,drawHUDTopLeft,initMazeHUDTopLeft,cutPanel,TAPE}=DeepTape;
+const {sampleTapeVisual,drawTapeDeck,drawTapeSleeve,drawTapeRibbons,drawDiver,drawHUDTopLeft,initMazeHUDTopLeft,cutPanel,TAPE}=DeepTape;
 const $=id=>document.getElementById(id),deck=$('deck').getContext('2d'),scene=$('scene').getContext('2d'),sleeve=$('sleeve').getContext('2d');
 let ctx,engine,loading=false,wantPlay=false,level=5,mood='found',tourStart=null,tourStage=-1,request=0;
 const cache={},levelButtons=[];
@@ -4231,8 +4107,7 @@ function field(v,t){scene.save();scene.scale(2,2);scene.fillStyle='#0a1720';scen
  scene.strokeStyle='#425b54';scene.lineWidth=1.1;scene.beginPath();scene.moveTo(210,0);scene.bezierCurveTo(290,100,110,190,223,300);scene.stroke();
  scene.fillStyle='#73938f';for(let i=0;i<34;i++){const x=(i*93.7)%375,y=(i*41.3+t*6)%660;scene.globalAlpha=.12+(i%4)*.04;scene.fillRect(x,y,1,1)}scene.globalAlpha=1;
  diver(scene,223,300,1.25,v,'field');
- if(v.lanes[5].gain>.01){diver(scene,271,224,1.1,v,'target',true);drawTapeResonanceField(scene,271,224,2.9,v,true)}
- drawTapeResonanceField(scene,223,300,-.2,v);
+ if(v.lanes[5].gain>.01){diver(scene,271,224,1.1,v,'target',true)}
  scene.fillStyle=TAPE.paper;scene.font='9px Arial';scene.textAlign='center';scene.fillText('28 / 60 m',240,71);
  scene.font='bold 8px Arial';scene.fillStyle=TAPE.muted;scene.fillText('JACOB WELL / 01',230,620);
  DeepTape.setVisual(v);drawHUDTopLeft(t);scene.restore()}
@@ -4240,7 +4115,7 @@ function frame(){let clock=engine&&engine.getClock();if(tourStart!==null&&clock&
  const live=!!clock&&clock.playing;const v=sampleTapeVisual(live?clock:snapshot());
  v.muted=DeepTape.state.audio.muted;if(v.muted){v.kick=v.snare=0;v.lanes.forEach(l=>l.hit=0)}if(engine)engine.setVolume(DeepTape.state.audio.muted?0:Number($('volume').value)/100);
  deck.save();deck.scale(2,2);deck.clearRect(0,0,500,300);deck.fillStyle='#1a3039';cutPanel(deck,22,33,455,230,18);deck.fill();drawTapeDeck(deck,250,143,342,v);deck.fillStyle=TAPE.muted;deck.font='10px monospace';deck.textAlign='left';deck.fillText('NO. 002  /  RESCUE MIX',24,287);deck.restore();
- sleeve.save();sleeve.scale(2,2);sleeve.clearRect(0,0,500,400);drawTapeSleeve(sleeve,28,24,444,v);sleeve.strokeStyle='#34444a';sleeve.beginPath();sleeve.moveTo(28,267);sleeve.lineTo(472,267);sleeve.stroke();diver(sleeve,280,326,2.5,v,'detail');drawTapeResonanceField(sleeve,280,326,-.2,v);sleeve.fillStyle=TAPE.muted;sleeve.font='10px Arial';sleeve.textAlign='left';sleeve.fillText('衣缝、身体与水流 / 同一拍',28,373);sleeve.restore();
+ sleeve.save();sleeve.scale(2,2);sleeve.clearRect(0,0,500,400);drawTapeSleeve(sleeve,28,24,444,v);sleeve.strokeStyle='#34444a';sleeve.beginPath();sleeve.moveTo(28,267);sleeve.lineTo(472,267);sleeve.stroke();diver(sleeve,280,326,2.5,v,'detail');sleeve.fillStyle=TAPE.muted;sleeve.font='10px Arial';sleeve.textAlign='left';sleeve.fillText('身体与磁带 / 同一拍',28,373);sleeve.restore();
  field(v,performance.now()/1000);$('deckState').textContent=live?`${v.level}/5 层 · 120 BPM · ${clock.entryWaitSeconds>.01?'入口 '+clock.entryWaitSeconds.toFixed(2)+'s':v.mood==='return'?'SIDE B':'SIDE A'}`:`静态试装 · 0${level} / 05`;
  requestAnimationFrame(frame)}
 const pointer={active:false,x:0,y:0};function point(e){const r=$('scene').getBoundingClientRect();return [(e.clientX-r.left)*375/r.width,(e.clientY-r.top)*660/r.height]}
