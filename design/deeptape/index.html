@@ -1,0 +1,4091 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DEEPTAPE / 深流随身听</title>
+<style>
+*{box-sizing:border-box} :root{--ink:#101e26;--paper:#f4e7c7;--orange:#ff754c;--muted:#95a7a4;--lime:#d7ee74}
+body{margin:0;background:#0b151c;color:var(--paper);font:14px/1.7 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif}
+main{max-width:1180px;margin:auto;padding:32px 36px 60px}nav{display:flex;justify-content:space-between;border-bottom:1px solid #34444a;padding-bottom:17px;font:11px monospace;letter-spacing:.12em}a{color:var(--muted);text-decoration:none}a:hover{color:var(--orange)}
+.hero{display:grid;grid-template-columns:1fr 1fr;gap:40px;align-items:center;margin:38px 0 20px}.eyebrow{color:var(--orange);font:11px monospace;letter-spacing:.18em}h1{font-size:clamp(65px,8vw,106px);font-weight:900;line-height:.85;letter-spacing:-.075em;margin:20px 0 25px}h1 em{color:var(--orange);font-style:normal}h2{font-size:21px;margin:0 0 12px;letter-spacing:.04em}p{color:var(--muted);max-width:460px}.intro{font-size:15px;line-height:1.9}.tag{display:inline-block;border:1px solid #45504a;padding:3px 10px;color:var(--lime);font:10px monospace;margin-top:14px}
+.device{position:relative;border:1px solid #34444a;background:#12232c;clip-path:polygon(20px 0,100% 0,100% calc(100% - 20px),calc(100% - 20px) 100%,0 100%,0 20px);padding:20px}canvas{display:block;width:100%}#deck{aspect-ratio:500/300}.device footer{display:flex;justify-content:space-between;font:10px monospace;color:var(--muted)}.device footer b{color:var(--lime);font-weight:400}
+.transport{border-top:1px solid #34444a;border-bottom:1px solid #34444a;padding:18px 0;display:grid;grid-template-columns:1fr 1.4fr;gap:24px}button,select{font:inherit;color:var(--paper);background:var(--ink);border:1px solid #415058;padding:9px 14px;cursor:pointer;min-height:42px}button:hover{border-color:var(--orange)}button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--lime);outline-offset:3px}button.primary{background:var(--orange);color:var(--ink);border-color:var(--orange);font-weight:700}button[aria-pressed=true]{border-color:var(--lime);color:var(--lime);background:#253833}button:disabled{opacity:.5;cursor:wait}.row{display:flex;gap:7px;flex-wrap:wrap;align-items:center}.levels button{padding:8px 0;flex:1;min-width:42px;font:12px monospace}.levels{margin-bottom:8px}.label{display:block;color:var(--muted);font:10px monospace;letter-spacing:.1em;margin-bottom:10px}#status{font-size:12px;min-height:20px;margin:10px 0 0;max-width:100%}.volume{display:flex;align-items:center;gap:10px;color:var(--muted);font:11px monospace;margin-top:12px}input{accent-color:var(--orange);min-width:0}#volume{width:125px}
+.study{display:grid;grid-template-columns:375px 1fr;gap:48px;margin-top:36px;align-items:start}.scene{border:1px solid #34444a;max-width:375px;background:#0b151c}#scene{touch-action:none;aspect-ratio:375/660}.caption{padding:10px 14px;color:var(--muted);font-size:11px;border-top:1px solid #34444a}.section-title{display:flex;align-items:center;gap:14px;font:11px monospace;letter-spacing:.13em;color:var(--muted);margin-bottom:18px}.section-title:after{content:"";height:1px;flex:1;background:#34444a}#sleeve{max-width:500px;aspect-ratio:500/400;background:#0d1b23;border:1px solid #34444a} .rules{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:20px}.rule{border-top:1px solid #34444a;padding-top:14px}.rule b{display:block;font-size:13px;color:var(--paper)}.rule p{font-size:12px;margin:8px 0}.density{font:11px monospace;color:var(--lime)}.foot{margin-top:38px;font-size:11px;color:var(--muted)}
+@media(max-width:800px){main{padding:22px 18px 40px}.hero{grid-template-columns:1fr;gap:20px;margin-top:26px}h1{font-size:78px}.intro{max-width:100%}.transport,.study{grid-template-columns:1fr}.study{gap:26px}.scene{margin:auto;width:100%}.device{max-width:560px}.rules{gap:15px}nav{font-size:9px}.tag{margin-top:0}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+</style></head><body><main>
+<nav><span>JACOB WELL / FIELD MIX 01</span><a href="../adaptive-audio/listen.html">音乐拆轨试听 ↗</a></nav>
+<div class="hero"><div><span class="eyebrow">把深处，听成一首歌。</span><h1>DEEP<br><em>TAPE.</em></h1><h2>深流随身听</h2><p class="intro">一台挂在胸前的防水磁带机。<br>越靠近，音乐越丰盛。找到你，再一起回去。</p><span class="tag">WATERPROOF / SIDE A → SIDE B</span></div>
+<div class="device"><canvas id="deck" width="1000" height="600" aria-label="防水磁带机实时节拍动画"></canvas><footer><span>ORIGINAL GAME ART / LIVE SCORE</span><b id="deckState">静态试装 · 05 / 05</b></footer></div></div>
+<div class="transport"><div><span class="label">01 / PRESS PLAY</span><div class="row"><button class="primary" id="play">▶ 播放音乐</button><button id="stop">■ 停止</button><button id="tour" aria-pressed="false">完整旅程</button></div><div class="volume"><label for="variant">MIX</label><select id="variant" aria-label="音乐版本"></select><label for="volume">VOL</label><input id="volume" type="range" min="0" max="100" value="65" aria-label="音量"></div></div>
+<div><span class="label">02 / FIVE LAYERS, ONE TAPE</span><div class="row levels" id="levels" role="group" aria-label="音乐层数"></div><div class="row" id="moods" role="group" aria-label="旅程状态"><button data-mood="search" aria-pressed="false">向深处去</button><button data-mood="found" aria-pressed="true">就在这里</button><button data-mood="return" aria-pressed="false">一起回去</button></div></div></div>
+<p id="status" role="status" aria-live="polite">静态试装。点击播放，听看同一套游戏音乐与节拍动画；完整旅程约 32 秒。</p>
+<div class="study"><div><div class="section-title">03 / IN THE FIELD</div><div class="scene"><canvas id="scene" width="750" height="1320" aria-label="真实游戏HUD与潜水员绘制，洞穴和数值为预览场景"></canvas><div class="caption">游戏原 HUD / 原角色绘制 · 洞穴与数值为模拟场景<br>点按控件可交互，按住磁带展开节奏封套。</div></div></div>
+<div><div class="section-title">04 / THE RHYTHM SLEEVE</div><canvas id="sleeve" width="1000" height="800" aria-label="五层节奏与胸前随身听细节"></canvas><div class="rules"><div class="rule"><b>鼓点有重量</b><p>低频让机壳短促抬起。切分、重鼓和军鼓使用原乐谱起音。</p><span class="density">30 → 60 → 120 → 240 / MIN</span></div><div class="rule"><b>疾奏有去向</b><p>每个快速音符前进一格，留下短尾迹；整块界面保持稳定。</p><span class="density">1200 / MIN · 50 MS / NOTE</span></div><div class="rule"><b>一盘磁带，两段旅程</b><p>寻找是珊瑚橙，发现是酸橙黄，返程是薄荷绿。</p></div><div class="rule"><b>角色带着音乐</b><p>胸前挂扣、固定绑带与防水线缆；小磁带和 HUD 同步运转。</p></div></div></div></div>
+<p class="foot">此页复用游戏音频引擎、乐谱和 Canvas 绘制。首次播放会本地合成 12 条音轨；无需联网。画面不会改变音乐的速度。</p>
+</main><script>(function(){const factories={"AdaptiveScore":function(exports,require){"use strict";
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.RETURN_CROSSFADE = exports.DISCOVERY_CROSSFADE = exports.PICKUP_GAIN = exports.PHRASE_BEATS = exports.WARM_LAYER_TRACKS = exports.THEME_TRACKS = exports.SCORE = exports.DEFAULT_VARIANT = exports.VARIANTS = void 0;
+exports.notesFor = notesFor;
+exports.renderStem = renderStem;
+exports.renderStemAsync = renderStemAsync;
+exports.selectMusicLevel = selectMusicLevel;
+exports.musicTransition = musicTransition;
+exports.planDiscoveryEntry = planDiscoveryEntry;
+exports.selectRescueMusicLevel = selectRescueMusicLevel;
+// Signal Below VII：发现后重配为相对大调，主题保留开头动机、重写句尾落点；清晰和弦伴奏、返程答句与短过门入口。
+exports.VARIANTS = {
+    undertow: { title: 'A · 深流', description: '寻找时保留悬念，发现后转向温暖的大调与宽阔长句。',
+        transpose: 0, leadGain: 0.17, driveGain: 0.14, rushGain: 0.34, bassGain: 0.25, style: 0 },
+    flare: { title: 'B · 微光奔涌', description: '上行主题与柔和的六/九和弦，发现后更舒展、明亮。',
+        transpose: 2, leadGain: 0.19, driveGain: 0.15, rushGain: 0.34, bassGain: 0.23, style: 1 },
+    pursuit: { title: 'C · 最后航线', description: '切分推进保留行动感，发现后用明确的大调落点回应。',
+        transpose: -2, leadGain: 0.18, driveGain: 0.16, rushGain: 0.36, bassGain: 0.27, style: 2 },
+};
+exports.DEFAULT_VARIANT = 'undertow';
+exports.SCORE = {
+    title: 'Signal Below VII', bpm: 120, beatsPerBar: 4, bars: 8,
+    sampleRate: 24000, duration: 16, masterGain: 0.78,
+    pulseDivisions: [0, 0.25, 0.5, 1, 2, 10],
+    // 五级重新编排前景：底轨/第四轨让位，保留低频驱动，不只是整体加音量。
+    levelMixes: [
+        [1, 0, 0, 0, 0, 0], [1, 1, 0, 0, 0, 0], [1, 1, 1, 0, 0, 0],
+        [1, 1, 1, 1, 0, 0], [0.82, 0.9, 0.9, 1, 0.9, 0], [0.68, 0.78, 0.85, 1, 0.55, 0.94],
+    ],
+    stems: ['bed', 'beacon', 'bass', 'drums', 'arp', 'spark'],
+    labels: ['电子弦乐主题', '深处信标 · 30/min', '低弦与低音 · 60/min',
+        '重鼓推进 · 120/min', '弦乐疾行 · 240/min', '前景疾奏 · 1200/min'],
+};
+exports.THEME_TRACKS = ['bed', 'bedFound', 'bedReturn'];
+exports.WARM_LAYER_TRACKS = ['beaconFound', 'bassFound', 'arpFound', 'sparkFound'];
+exports.PHRASE_BEATS = 8; // 每两小节一组：主题问句/答句与和声换位，共0/8/16/24拍四个入口。
+exports.PICKUP_GAIN = 0.65;
+exports.DISCOVERY_CROSSFADE = 0.30;
+exports.RETURN_CROSSFADE = 0.65;
+const TAU = Math.PI * 2;
+const roots = [38, 34, 43, 33]; // Dm(add9) / Bbmaj7 / Gm / A7；属和弦保留渴望与张力。
+const chords = [[50, 53, 57, 64], [46, 50, 53, 57], [43, 50, 53, 58], [45, 52, 55, 61]];
+// 发现后的完整配器共同换和声，不能只换底轨、让小调低音继续压在下面。
+const warmHarmonies = [
+    { roots: [41, 40, 34, 36], chords: [[53, 57, 60, 67], [52, 55, 60, 64], [50, 53, 57, 60], [53, 57, 60, 65]] }, // F(add9)/C-E/Bbmaj9/F-C
+    { roots: [41, 33, 34, 36], chords: [[53, 57, 60, 67], [48, 52, 55, 60], [50, 53, 57, 60], [48, 52, 55, 57]] }, // F(add9)/Am7/Bbmaj9/C6
+    { roots: [41, 34, 43, 41], chords: [[53, 57, 60, 65], [50, 53, 55, 60], [50, 53, 57, 62], [53, 57, 60, 67]] }, // F/Bb6-9/Gm9(no3)/F(add9)
+];
+// D小调的级数映射到F大调；保留开头节奏/轮廓，三音、六音、七音有实际改变。
+function warmPitch(pitch) {
+    const map = [0, 0, 2, 4, 4, 5, 5, 7, 9, 9, 11, 11];
+    return 65 + Math.floor(pitch / 12) * 12 + map[((pitch % 12) + 12) % 12];
+}
+// 相对 D4 的主题旋律；三版的节奏、旋律轮廓与鼓型各不相同。
+const melodies = [
+    [[0, 12, 1.5], [1.5, 7, 0.5], [2, 10, 1], [3, 12, 1]], [[0, 15, 2], [2, 14, 1], [3, 12, 1]],
+    [[0, 12, 1.5], [1.5, 10, 0.5], [2, 8, 2]], [[0, 7, 2], [2, 3, 1], [3, 7, 1]],
+    [[0, 8, 1], [1, 12, 1], [2, 15, 2]], [[0, 17, 1.5], [1.5, 15, 0.5], [2, 12, 2]],
+    [[0, 14, 2], [2, 11, 1], [3, 9, 1]], [[0, 11, 1], [1, 14, 1], [2, 11, 1], [3, 7, 1]],
+];
+const risingMelody = [
+    [[0, 7, 1], [1, 10, 1], [2, 12, 2]], [[0, 14, 1], [1, 15, 3]],
+    [[0, 15, 2], [2, 12, 1], [3, 10, 1]], [[0, 8, 3], [3, 7, 1]],
+    [[0, 8, 1], [1, 12, 1], [2, 15, 1], [3, 17, 1]], [[0, 20, 2], [2, 19, 1], [3, 17, 1]],
+    [[0, 14, 1], [1, 11, 1], [2, 7, 2]], [[0, 11, 2], [2, 14, 1], [3, 19, 1]],
+];
+const urgentMelody = [
+    [[0, 0, 1.5], [1.5, 7, 0.5], [2, 12, 1], [3, 10, 1]], [[0, 12, 1], [1, 14, 0.5], [1.5, 15, 1], [2.5, 14, 1.5]],
+    [[0, 8, 1.5], [1.5, 12, 0.5], [2, 15, 1], [3, 12, 1]], [[0, 10, 1], [1, 8, 1], [2, 7, 2]],
+    [[0, 3, 0.75], [0.75, 8, 0.75], [1.5, 12, 0.5], [2, 15, 2]], [[0, 17, 1], [1, 15, 1], [2, 12, 1], [3, 8, 1]],
+    [[0, 7, 1.5], [1.5, 11, 0.5], [2, 14, 1], [3, 11, 1]], [[0, 14, 1], [1, 11, 1], [2, 7, 1], [3, 11, 1]],
+];
+function notesFor(stem, variant = exports.DEFAULT_VARIANT) {
+    const notes = [], cfg = exports.VARIANTS[variant];
+    const warm = stem === 'bedFound' || stem === 'bedReturn' || exports.WARM_LAYER_TRACKS.indexOf(stem) >= 0;
+    const part = stem.replace('Found', '');
+    const add = (beat, midi, length, amp, voice) => notes.push({ beat, midi: midi + cfg.transpose, length, amp, voice });
+    for (let bar = 0; bar < exports.SCORE.bars; bar++) {
+        const b = bar * 4, c = Math.floor(bar / 2);
+        let chord = warm ? warmHarmonies[cfg.style].chords[c] : chords[c];
+        let root = warm ? warmHarmonies[cfg.style].roots[c] : roots[c];
+        if (stem === 'bed' || stem === 'bedFound' || stem === 'bedReturn') {
+            const searching = stem === 'bed', returning = stem === 'bedReturn';
+            // 返程末段从转位属低音回到主和弦根音；其余保持同主题的和声亲缘。
+            if (returning && c === 3) {
+                chord = [53, 57, 60, 65];
+                root = 41;
+            }
+            if (bar % 2 === 0) {
+                const voicing = searching ? [chord[0], chord[1], chord[2], chord[3]] : chord;
+                voicing.forEach(n => add(b, n, 8, searching ? 0.025 : 0.028, 'strings'));
+                add(b, root + 12, 8, returning ? 0.09 : 0.065, 'cello');
+            }
+            // 和声有清楚、柔软的起音，放在中音区；不再只靠弱而慢的弦乐垫底。
+            [0, 2].forEach(at => {
+                chord.forEach((n, i) => add(b + at, n, returning ? 1.9 : 1.7, (searching ? 0.065 : returning ? 0.10 : 0.085) * (at ? 0.78 : 1) * (i === 3 ? 0.75 : 1), 'chord'));
+                add(b + at, root + 12, 1.8, searching ? 0.055 : 0.07, 'bass');
+            });
+            const melody = cfg.style === 1 ? risingMelody : cfg.style === 2 ? urgentMelody : melodies;
+            // 保留开头动机，句尾改成和弦音并延长；返程末句落回主音，形成释放。
+            // 问句保留原动机；答句删去末尾碎音，让第二个音落定并延伸到句末。
+            const line = returning ? (bar % 2 === 0 ? melody[bar].slice(0, 2) : [[0, melody[bar][0][1], 4]])
+                : !searching && bar % 2 === 1 ? melody[bar].slice(0, 2) : melody[bar];
+            line.forEach(([at, pitch, length], index) => {
+                let midi = searching ? 50 + pitch : warmPitch(pitch) - (returning ? 12 : 0);
+                let held = length;
+                if (!searching && index === line.length - 1) {
+                    const pitchClass = returning && bar === 7 ? 5 : chord[bar % 2 === 0 ? 1 : 0] % 12;
+                    midi += ((pitchClass - midi % 12 + 18) % 12) - 6;
+                    held = 4 - at;
+                }
+                add(b + at, midi, held, cfg.leadGain * (searching ? 0.72 : returning ? 0.68 : 0.82) * (at === 0 ? 1 : 0.88), searching ? 'veil' : returning ? 'home' : 'horizon');
+            });
+            if (!searching && !returning && bar % 2 === 1) {
+                add(b + 2.5, chord[1] + 12, 1.5, cfg.leadGain * 0.14, 'strings');
+            }
+        }
+        else if (part === 'beacon') {
+            add(b, chord[0] + 12, 1.6, 0.17, 'sonar');
+            add(b + 0.22, root + 12, 0.65, 0.07, 'sonar');
+        }
+        else if (part === 'bass') {
+            for (let i = 0; i < 2; i++) {
+                add(b + i * 2, root, 1.5, cfg.bassGain * (i ? 0.9 : 1), 'bass');
+                add(b + i * 2, root + 12, 1.2, 0.09, 'cello');
+            }
+        }
+        else if (part === 'drums') {
+            const kicks = cfg.style === 2 ? [0, 1.5, 2, 2.75] : [0, 1, 2, 3];
+            kicks.forEach(i => add(b + i, 0, 0.65, 0.39, 'kick'));
+            [1, 3].forEach(i => add(b + i, 0, 0.4, cfg.style === 2 ? 0.25 : 0.2, 'snare'));
+            [0.5, 1.5, 2.5, 3.5].forEach(i => add(b + i, 0, 0.13, 0.065, 'hat'));
+        }
+        else if (part === 'arp') {
+            const order = cfg.style === 1 ? [0, 1, 2, 3, 2, 3, 2, 1] : [0, 2, 1, 2, 0, 3, 2, 1];
+            order.forEach((n, i) => {
+                add(b + i / 2, chord[n] + 12, 0.36, cfg.driveGain * (i % 2 ? 0.82 : 1), 'drive');
+                add(b + i / 2, root + 12, 0.3, 0.075, 'bass');
+            });
+            if (bar % 2 === 0)
+                [chord[0] + 24, chord[2] + 12].forEach(n => add(b, n, 8, 0.037, 'strings'));
+            for (let i = 0; i < 8; i++)
+                add(b + i / 2 + 0.25, 0, 0.18, 0.06, 'hat');
+            if (bar % 2)
+                [2.75, 3.5, 3.75].forEach(i => add(b + i, 0, 0.22, 0.1, 'snare'));
+        }
+        else {
+            // 1200 次/min 的有音高疾奏；五音分组重复两次，重音锚定四拍结构。
+            const order = cfg.style === 1 ? [0, 1, 2, 3, 2] : cfg.style === 2 ? [2, 0, 1, 3, 1] : [0, 2, 1, 3, 2];
+            for (let i = 0; i < 40; i++) {
+                const accent = i % 10 === 0 ? 1.1 : i % 5 === 0 ? 0.98 : 0.8;
+                add(b + i / 10, chord[order[i % 5]] + 24, 0.074, cfg.rushGain * accent, 'rush');
+            }
+            for (let i = 0; i < 32; i++)
+                add(b + i / 8, 0, 0.07, i % 4 ? 0.025 : 0.05, 'hat');
+            const kicks = cfg.style === 2 ? [0.5, 1, 2.5, 3, 3.5] : [0.5, 1.5, 2.5, 3.5];
+            kicks.forEach(i => add(b + i, 0, 0.4, 0.22, 'kick'));
+            [1.75, 3.75].forEach(i => add(b + i, 0, 0.16, 0.085, 'snare'));
+        }
+    }
+    return notes;
+}
+function partName(stem) { return stem.replace('Found', ''); }
+function stringWave(phase, t, freq, lead, rate) {
+    const vibrato = lead ? Math.sin(TAU * 5.3 * t) * Math.min(1, t / 0.22) * freq * 0.00065 : 0;
+    let sum = 0;
+    for (let h = 1; h <= (lead ? 7 : 5); h++) {
+        if (freq * h > rate * 0.45)
+            break;
+        const weight = Math.exp(-h / (lead ? 4.5 : 2.8)) / h;
+        sum += weight * (Math.sin(phase * h + vibrato * h) * 0.62
+            + Math.sin(phase * h * 1.003 + 0.4) * 0.19
+            + Math.sin(phase * h * 0.997 - 0.4) * 0.19);
+    }
+    return sum;
+}
+function* renderChunks(stem, rate, out, variant, part) {
+    const isMelody = (n) => ['lead', 'veil', 'horizon', 'home'].indexOf(n.voice) >= 0;
+    const notes = notesFor(stem, variant).filter(n => !part || isMelody(n) === (part === 'melody')), beatSeconds = 60 / exports.SCORE.bpm;
+    for (let n = 0; n < notes.length; n++) {
+        const note = notes[n], start = Math.round(note.beat * beatSeconds * rate);
+        const freq = 440 * Math.pow(2, (note.midi - 69) / 12), duration = note.length * beatSeconds;
+        const melodic = ['lead', 'veil', 'horizon', 'home'].indexOf(note.voice) >= 0;
+        const sustained = note.voice === 'strings' || melodic || note.voice === 'cello';
+        const tail = note.voice === 'strings' ? 0.7 : melodic ? 0.24 : note.voice === 'rush' ? 0.012 : sustained ? 0.18 : 0.07;
+        const total = duration + tail;
+        let seed = (n + 1) * 7187, prevNoise = 0;
+        for (let i = 0; i < Math.ceil(total * rate); i++) {
+            const t = i / rate, phase = TAU * freq * t;
+            seed = (Math.imul(seed, 1664525) + 1013904223) | 0;
+            const noise = (seed >>> 0) / 2147483648 - 1;
+            let v = 0;
+            if (note.voice === 'strings' || melodic) {
+                const lead = melodic;
+                const attack = Math.min(1, t / (note.voice === 'veil' ? 0.10 : note.voice === 'home' ? 0.065 : lead ? 0.035 : 0.32));
+                const end = t > duration ? Math.max(0, 1 - (t - duration) / tail) : 1;
+                const swell = lead ? 0.92 + 0.08 * Math.sin(t * 3) : 0.8 + 0.2 * Math.min(1, t / 1.6);
+                let tone = stringWave(phase, t, freq, lead, rate);
+                if (note.voice === 'veil')
+                    tone = tone * 0.4 + Math.sin(phase) * 0.38 + Math.sin(phase * 2) * 0.05;
+                if (note.voice === 'horizon')
+                    tone = tone * 0.95 + Math.sin(phase * 2.001) * 0.09;
+                if (note.voice === 'home')
+                    tone = tone * 0.45 + Math.sin(phase) * 0.35 + Math.sin(phase * 2) * 0.07;
+                v = tone * attack * end * swell;
+            }
+            else if (note.voice === 'chord') {
+                const attack = Math.min(1, t / 0.012);
+                const release = Math.min(1, Math.max(0, (duration - t) / 0.16));
+                v = (Math.sin(phase) * 0.75 + Math.sin(phase * 2) * 0.19 + Math.sin(phase * 3) * 0.06)
+                    * attack * release * (0.55 + 0.45 * Math.exp(-t * 3));
+            }
+            else if (note.voice === 'cello') {
+                const env = Math.min(1, t / 0.035) * Math.min(1, Math.max(0, (total - t) / 0.2));
+                v = env * (Math.sin(phase) * 0.65 + Math.sin(phase * 2.002) * 0.24
+                    + Math.sin(phase * 3) * 0.13 + Math.sin(phase * 4) * 0.06);
+            }
+            else if (note.voice === 'sonar') {
+                v = Math.min(1, t / 0.006) * Math.exp(-t * 5) *
+                    (Math.sin(phase + Math.sin(phase * 0.5) * Math.exp(-t * 8) * 1.1) * 0.8
+                        + Math.sin(phase * 2) * 0.12);
+            }
+            else if (note.voice === 'bass') {
+                const env = Math.min(1, t / 0.006) * Math.exp(-t * 5.2);
+                v = Math.tanh((Math.sin(phase) * 0.85 + Math.sin(phase * 2) * 0.24
+                    + Math.sin(phase * 3) * 0.12) * 1.7) * env;
+            }
+            else if (note.voice === 'kick') {
+                const p = TAU * (46 * t + 110 * (1 - Math.exp(-t * 34)) / 34);
+                v = Math.min(1, t / 0.0015) * (Math.tanh(Math.sin(p) * 1.8) * Math.exp(-t * 13)
+                    + noise * Math.exp(-t * 180) * 0.19);
+            }
+            else if (note.voice === 'snare') {
+                v = Math.min(1, t / 0.001) * ((noise - prevNoise * 0.4) * 0.75 * Math.exp(-t * 24)
+                    + Math.sin(TAU * 185 * t) * Math.exp(-t * 30) * 0.35);
+            }
+            else if (note.voice === 'hat') {
+                v = (noise - prevNoise) * 0.5 * Math.exp(-t * (duration > 0.07 ? 35 : 95))
+                    * Math.min(1, t / 0.001);
+            }
+            else if (note.voice === 'rush') {
+                // 前景金属/锯齿疾奏：突出二至五次泛音，缩短每次发声以保留 50ms 间隔。
+                // 不用 tanh 产生不可控的超奈奎斯特泛音；逐谐波截断。
+                let tone = 0;
+                const weights = [0.28, 0.48, 0.37, 0.24, 0.13, 0.07];
+                for (let h = 1; h <= weights.length; h++) {
+                    if (freq * h > rate * 0.44)
+                        break;
+                    tone += weights[h - 1] * (Math.sin(phase * h) * 0.8
+                        + Math.sin(phase * h * 1.004) * 0.2);
+                }
+                const env = Math.min(1, t / 0.0008) * Math.exp(-t * 52);
+                v = tone * env + (noise - prevNoise) * 0.12 * Math.exp(-t * 420) * Math.min(1, t / 0.0006);
+            }
+            else {
+                const env = Math.min(1, t / 0.002) * Math.exp(-t * 13);
+                v = Math.tanh((Math.sin(phase) + 0.48 * Math.sin(phase * 2.001)
+                    + 0.29 * Math.sin(phase * 3) + 0.16 * Math.sin(phase * 4)
+                    + 0.09 * Math.sin(phase * 5)) * 1.25) * env;
+            }
+            prevNoise = noise;
+            const beatPhase = ((start + i) / rate / beatSeconds) % 1;
+            const duck = partName(stem) === 'arp' ? 0.65 + 0.35 * Math.min(1, beatPhase * 7) : 1;
+            const release = Math.min(1, Math.max(0, (total - t) / (note.voice === 'rush' ? 0.006 : 0.01)));
+            const value = v * note.amp * duck * release;
+            out[(start + i) % out.length] += value;
+            if (melodic || note.voice === 'strings' || note.voice === 'drive' || note.voice === 'rush') {
+                const wet = sustained ? 0.13 : note.voice === 'rush' ? 0.025 : 0.12;
+                out[(start + i + Math.round(rate * 0.125)) % out.length] += value * wet;
+                out[(start + i + Math.round(rate * 0.375)) % out.length] += value * wet * 0.7;
+                out[(start + i + Math.round(rate * 0.625)) % out.length] += value * wet * 0.4;
+            }
+            if (i % 2048 === 2047)
+                yield;
+        }
+    }
+}
+// 新主题含高音声部，循环边缘仅做2ms消点击，不承担层进入的渐强。
+function finishThemeLoop(out, stem, rate) {
+    if (stem === 'bedFound' || stem === 'bedReturn') {
+        const edge = Math.round(rate * 0.002);
+        for (let i = 0; i < edge; i++) {
+            const gain = Math.sin(i / edge * Math.PI / 2) ** 2;
+            out[i] *= gain;
+            out[out.length - 1 - i] *= gain;
+        }
+    }
+    return out;
+}
+function renderStem(stem, rate = exports.SCORE.sampleRate, variant = exports.DEFAULT_VARIANT, part) {
+    const out = new Float32Array(Math.round(rate * exports.SCORE.duration));
+    const chunks = renderChunks(stem, rate, out, variant, part);
+    while (!chunks.next().done) { /* 离线导出 */ }
+    return finishThemeLoop(out, stem, rate);
+}
+function renderStemAsync(stem_1) {
+    return __awaiter(this, arguments, void 0, function* (stem, variant = exports.DEFAULT_VARIANT) {
+        const out = new Float32Array(exports.SCORE.sampleRate * exports.SCORE.duration);
+        const chunks = renderChunks(stem, exports.SCORE.sampleRate, out, variant);
+        let done = false;
+        while (!done) {
+            const deadline = Date.now() + 5;
+            do {
+                done = !!chunks.next().done;
+            } while (!done && Date.now() < deadline);
+            if (!done)
+                yield new Promise(resolve => setTimeout(resolve, 0));
+        }
+        return finishThemeLoop(out, stem, exports.SCORE.sampleRate);
+    });
+}
+function selectMusicLevel(intensity, previous, hysteresis = 0.03) {
+    if (!Number.isFinite(intensity) || intensity < 0)
+        return 0;
+    const x = Math.max(0, Math.min(1, intensity));
+    let level = Math.max(1, Math.min(5, previous || 1));
+    while (level < 5 && x >= level / 5 + hysteresis)
+        level++;
+    while (level > 1 && x < (level - 1) / 5 - hysteresis)
+        level--;
+    return level;
+}
+// 五级用独立短过门收束：优先半小节，必要时一拍入口，避免等整段乐句。
+function musicTransition(from, to, settle = false) {
+    if (settle)
+        return { gridBeats: 1, fadeSeconds: 1.5 };
+    if (to < from)
+        return { gridBeats: to < 5 && from === 5 ? 0 : 1, fadeSeconds: 0.5 };
+    return { gridBeats: [1, 4, 2, 1, 4, 2][to], fadeSeconds: to === 5 ? 0.14 : 0.006 };
+}
+// 预测到达附近的入口：最多提前120ms，最迟约半秒；半小节在350ms内时优先。
+// 一拍入口也有专门的滚奏/收束，不只是把原来大段乐句硬切开。
+function planDiscoveryEntry(now, epoch, secondsUntilEntry = 0) {
+    const eta = now + Math.max(0, Math.min(1.1, Number.isFinite(secondsUntilEntry) ? secondsUntilEntry : 0));
+    const earliest = Math.max(now + 0.025, eta - 0.12);
+    const beat = 60 / exports.SCORE.bpm;
+    const next = (beats) => epoch + Math.max(0, Math.ceil((earliest - epoch) / (beat * beats))) * beat * beats;
+    const halfBar = next(2);
+    return halfBar - eta <= 0.35 ? halfBar : next(1);
+}
+// 距离只申请前四层；人物入镜授权第五层，历史 npcFound 不授权。
+function selectRescueMusicLevel(intensity, previous, targetVisible, hysteresis = 0.03) {
+    const distanceLevel = selectMusicLevel(intensity, Math.min(4, previous), hysteresis);
+    return targetVisible ? 5 : Math.min(4, distanceLevel);
+}
+},"AdaptiveMusicEngine":function(exports,require){"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.AdaptiveMusicEngine = void 0;
+const AdaptiveScore_1 = require("./AdaptiveScore");
+// 所有 BufferSource 同一音频时间启动、始终循环。切档只操作 Gain，不重启文件。
+class AdaptiveMusicEngine {
+    constructor(ctx, buffers, themes = [], warmLayers = [], pickupBuffer, variant = AdaptiveScore_1.DEFAULT_VARIANT) {
+        this.ctx = ctx;
+        this.buffers = buffers;
+        this.themes = themes;
+        this.warmLayers = warmLayers;
+        this.pickupBuffer = pickupBuffer;
+        this.variant = variant;
+        this.sources = [];
+        this.gains = [];
+        this.epoch = 0;
+        this.level = 0;
+        this.requested = 0;
+        this.mood = 'search';
+        this.requestedMood = 'search';
+        this.pending = null;
+        this.envelopes = [];
+        this.pickup = null;
+        this.masterTarget = -1;
+        this.stoppedAt = 0;
+        this.visualTimeline = [];
+        if (buffers.length !== AdaptiveScore_1.SCORE.stems.length || (themes.length !== 0 && themes.length !== 2) || (warmLayers.length !== 0 && (warmLayers.length !== 4 || themes.length !== 2)) || [...buffers, ...themes, ...warmLayers].some(b => Math.abs(b.duration - AdaptiveScore_1.SCORE.duration) > 1 / AdaptiveScore_1.SCORE.sampleRate)) {
+            throw new Error('音乐必须有六轨，可选两条主题变体；均为16秒循环');
+        }
+        this.master = ctx.createGain();
+        this.master.gain.value = 0;
+        this.master.connect(ctx.destination);
+    }
+    start() {
+        this.flush();
+        if (this.stoppedAt)
+            this.releaseSources();
+        if (this.sources.length)
+            return;
+        this.epoch = this.ctx.currentTime + 0.06;
+        this.level = this.requested = 0;
+        this.mood = this.requestedMood = 'search';
+        this.pending = null;
+        this.stoppedAt = 0;
+        this.envelopes = [];
+        this.visualTimeline = [{ at: this.epoch, level: 0, mood: 'search' }];
+        [...this.buffers, ...this.themes, ...this.warmLayers].forEach((buffer, i) => {
+            const source = this.ctx.createBufferSource(), gain = this.ctx.createGain();
+            source.buffer = buffer;
+            source.loop = true;
+            source.loopStart = 0;
+            source.loopEnd = AdaptiveScore_1.SCORE.duration;
+            gain.gain.value = 0;
+            source.connect(gain);
+            gain.connect(this.master);
+            this.sources.push(source);
+            this.gains.push(gain);
+            this.envelopes.push([{ from: 0, to: i === 0 ? 1 : 0, start: this.epoch, end: this.epoch + 0.5 }]);
+        });
+        this.gains[0].gain.setValueAtTime(0, this.epoch);
+        this.gains[0].gain.linearRampToValueAtTime(1, this.epoch + 0.5);
+        this.sources.forEach(source => source.start(this.epoch));
+    }
+    setVolume(value) {
+        const target = Math.max(0, Math.min(1, value));
+        if (target === this.masterTarget || (this.stoppedAt && target > 0))
+            return;
+        const now = this.ctx.currentTime;
+        const p = this.master.gain;
+        p.cancelScheduledValues(now);
+        p.setValueAtTime(p.value, now);
+        p.linearRampToValueAtTime(target, now + 0.04);
+        this.masterTarget = target;
+    }
+    setLevel(value, settle = false, mood, secondsUntilEntry) {
+        this.flush();
+        const target = Number.isFinite(value) ? Math.max(0, Math.min(5, Math.round(value))) : 0;
+        const nextMood = mood || (settle ? 'return' : target === 5 ? 'found' : this.requestedMood);
+        if (!this.sources.length || this.stoppedAt)
+            return;
+        if (target === this.requested && nextMood === this.requestedMood) {
+            // 恒速预判不会反复排队；只有到达估计明显偏移才修正尚未播放的入口。
+            if (target !== 5 || !this.pending || secondsUntilEntry === undefined
+                || this.pending.at - this.ctx.currentTime < 0.08)
+                return;
+            const revised = (0, AdaptiveScore_1.planDiscoveryEntry)(this.ctx.currentTime, this.epoch, secondsUntilEntry);
+            if (!(secondsUntilEntry > this.pending.at - this.ctx.currentTime + 0.25 || revised < this.pending.at - 0.3))
+                return;
+        }
+        this.cancelPickup();
+        this.requested = target;
+        this.requestedMood = nextMood;
+        const now = this.ctx.currentTime;
+        const plan = (0, AdaptiveScore_1.musicTransition)(this.level, target, settle);
+        const themeChanged = this.mood !== nextMood;
+        const gridBeats = themeChanged ? (nextMood === 'found' ? 2 : 1) : plan.gridBeats;
+        const grid = gridBeats * 60 / AdaptiveScore_1.SCORE.bpm;
+        const at = target === 5 || (themeChanged && nextMood === 'found') ? (0, AdaptiveScore_1.planDiscoveryEntry)(now, this.epoch, secondsUntilEntry) : gridBeats === 0 ? now + 0.025
+            : this.epoch + Math.max(0, Math.ceil((now + 0.025 - this.epoch) / grid)) * grid;
+        const mix = AdaptiveScore_1.SCORE.levelMixes[target];
+        const activeTheme = this.themes.length ? { search: 0, found: 6, return: 7 }[nextMood] : 0;
+        const warm = nextMood !== 'search' && this.warmLayers.length > 0;
+        const layerSlots = warm ? [activeTheme, 8, 9, 3, 10, 11] : [activeTheme, 1, 2, 3, 4, 5];
+        const nextMix = this.gains.map((_, i) => {
+            const slot = layerSlots.indexOf(i);
+            return slot < 0 ? 0 : mix[slot];
+        });
+        for (let i = 0; i < this.gains.length; i++) {
+            const p = this.gains[i].gain;
+            let current = this.envelopes[i][0].from;
+            for (const e of this.envelopes[i]) {
+                if (now < e.start)
+                    break;
+                const fraction = Math.max(0, Math.min(1, (now - e.start) / (e.end - e.start)));
+                current = e.from + (e.to - e.from) * fraction;
+            }
+            // 自己求当前包络，兼容没有 cancelAndHoldAtTime 的微信实现。
+            p.cancelScheduledValues(now);
+            p.setValueAtTime(current, now);
+            let from = current;
+            const envelopes = [];
+            if (i === 0 && now < this.epoch + 0.5 && at >= this.epoch + 0.5) {
+                // 等小节期间照常完成底轨首次淡入，不把它拉长到下一个小节。
+                p.linearRampToValueAtTime(1, this.epoch + 0.5);
+                envelopes.push({ from: current, to: 1, start: now, end: this.epoch + 0.5 });
+                from = 1;
+            }
+            p.setValueAtTime(from, at);
+            const recoloring = themeChanged && (i === 0 || i === 6 || i === 7 || ((nextMood === 'found' || this.mood === 'search') && i !== 3));
+            const fade = target === 5 && (i === 5 || i === 11) ? plan.fadeSeconds : recoloring ? (nextMood === 'return' ? AdaptiveScore_1.RETURN_CROSSFADE : AdaptiveScore_1.DISCOVERY_CROSSFADE) : plan.fadeSeconds;
+            p.linearRampToValueAtTime(nextMix[i], at + fade);
+            envelopes.push({ from, to: nextMix[i], start: at, end: at + fade });
+            // Retain the short audible past: currentTime can lead the speaker by a buffer.
+            const history = this.envelopes[i].filter(e => e.start < now && e.end > now - 1).map(e => (Object.assign(Object.assign({}, e), { to: e.end > now ? current : e.to, end: Math.min(e.end, now) })));
+            this.envelopes[i] = [...history, ...envelopes];
+        }
+        if (target === 5 && this.level < 5 && this.pickupBuffer && at - now >= 0.12) {
+            const source = this.ctx.createBufferSource(), gain = this.ctx.createGain();
+            source.buffer = this.pickupBuffer;
+            gain.gain.value = AdaptiveScore_1.PICKUP_GAIN;
+            source.connect(gain);
+            gain.connect(this.master);
+            const start = Math.max(now + 0.025, at - this.pickupBuffer.duration);
+            gain.gain.setValueAtTime(0, start);
+            gain.gain.linearRampToValueAtTime(AdaptiveScore_1.PICKUP_GAIN, Math.min(at, start + 0.012));
+            source.start(start, Math.max(0, start - (at - this.pickupBuffer.duration)));
+            source.stop(at);
+            const pickup = { source, gain };
+            this.pickup = pickup;
+            source.onended = () => {
+                source.disconnect();
+                gain.disconnect();
+                if (this.pickup === pickup)
+                    this.pickup = null;
+            };
+        }
+        this.pending = { level: target, mood: nextMood, at };
+        this.visualTimeline = this.visualTimeline.filter(e => e.at <= now);
+        this.visualTimeline.push({ at, level: target, mood: nextMood });
+        if (this.visualTimeline.length > 16)
+            this.visualTimeline.shift();
+    }
+    cancelPickup() {
+        if (!this.pickup)
+            return;
+        try {
+            this.pickup.source.stop();
+            this.pickup.source.disconnect();
+            this.pickup.gain.disconnect();
+        }
+        catch (_) { /* 已结束 */ }
+        this.pickup = null;
+    }
+    flush() {
+        if (this.pending && this.ctx.currentTime >= this.pending.at) {
+            this.level = this.pending.level;
+            this.mood = this.pending.mood;
+            this.pending = null;
+        }
+        if (this.stoppedAt && this.ctx.currentTime >= this.stoppedAt)
+            this.releaseSources();
+    }
+    stop(immediate = false, fadeSeconds = 0.35) {
+        if (!this.sources.length || (this.stoppedAt && !immediate))
+            return;
+        this.cancelPickup();
+        const now = this.ctx.currentTime;
+        this.master.gain.cancelScheduledValues(now);
+        this.master.gain.setValueAtTime(this.master.gain.value, now);
+        this.master.gain.linearRampToValueAtTime(0, now + (immediate ? 0 : fadeSeconds));
+        this.masterTarget = 0;
+        this.stoppedAt = now + (immediate ? 0 : fadeSeconds + 0.02);
+        // 即使游戏下一帧不再执行，也由音频时钟停止。
+        this.sources.forEach(source => { try {
+            source.stop(this.stoppedAt);
+        }
+        catch (_) { /* 已停止 */ } });
+        if (immediate)
+            this.releaseSources();
+    }
+    releaseSources() {
+        this.cancelPickup();
+        this.sources.forEach(s => { try {
+            s.disconnect();
+        }
+        catch (_) { /* 已释放 */ } });
+        this.gains.forEach(g => g.disconnect());
+        this.sources = [];
+        this.gains = [];
+        this.pending = null;
+        this.level = this.requested = 0;
+        this.stoppedAt = 0;
+    }
+    secondsToNextBeat() {
+        const beat = 60 / AdaptiveScore_1.SCORE.bpm;
+        const at = this.epoch + Math.max(0, Math.ceil((this.ctx.currentTime + 0.025 - this.epoch) / beat)) * beat;
+        return Math.max(0, at - this.ctx.currentTime);
+    }
+    secondsToNextPhrase() {
+        const seconds = AdaptiveScore_1.PHRASE_BEATS * 60 / AdaptiveScore_1.SCORE.bpm;
+        const at = this.epoch + Math.max(0, Math.ceil((this.ctx.currentTime + 0.025 - this.epoch) / seconds)) * seconds;
+        return Math.max(0, at - this.ctx.currentTime);
+    }
+    hasSources() { this.flush(); return this.sources.length > 0; }
+    audibleTime() {
+        // Browser output timestamp includes the hardware path; WeChat implementations
+        // without it use their reported output/base latency, never an invented delay.
+        if (this.ctx.getOutputTimestamp && typeof performance !== 'undefined') {
+            try {
+                const stamp = this.ctx.getOutputTimestamp();
+                if (stamp && stamp.contextTime > 0 && stamp.performanceTime > 0) {
+                    const age = (performance.now() - stamp.performanceTime) / 1000;
+                    if (age >= 0 && age < 0.25)
+                        return Math.min(this.ctx.currentTime, Math.max(0, stamp.contextTime + age));
+                }
+            }
+            catch (_) { /* Some WeChat contexts expose an unsupported method. */ }
+        }
+        const latency = this.ctx.outputLatency || this.ctx.baseLatency || 0;
+        return Math.max(0, this.ctx.currentTime - (Number.isFinite(latency) ? Math.max(0, latency) : 0));
+    }
+    getClock() {
+        this.flush();
+        const outputTime = this.audibleTime();
+        const playing = this.sources.length > 0 && !this.stoppedAt && outputTime >= this.epoch && this.ctx.state !== 'suspended' && this.ctx.state !== 'closed';
+        const seconds = playing ? outputTime - this.epoch : 0;
+        const beats = seconds * AdaptiveScore_1.SCORE.bpm / 60;
+        let level = 0, mood = 'search';
+        for (const event of this.visualTimeline)
+            if (event.at <= outputTime) {
+                level = event.level;
+                mood = event.mood;
+            }
+        const trackGains = this.envelopes.map(events => {
+            let value = events.length ? events[0].from : 0;
+            for (const e of events) {
+                if (outputTime < e.start)
+                    break;
+                const t = e.end > e.start ? Math.max(0, Math.min(1, (outputTime - e.start) / (e.end - e.start))) : 1;
+                value = e.from + (e.to - e.from) * t;
+            }
+            return playing ? value : 0;
+        });
+        const divisions = AdaptiveScore_1.SCORE.pulseDivisions[level];
+        const phase = (beats * divisions) % 1;
+        return { playing, level, requestedLevel: this.requested, beats, seconds, outputTime, trackGains, variant: this.variant,
+            beat: Math.floor(beats), bar: Math.floor(beats / 4) % AdaptiveScore_1.SCORE.bars,
+            beatPhase: beats % 1, subdivisionPhase: phase,
+            pulse: playing && level > 0 ? Math.exp(-phase * 9) : 0, bpm: AdaptiveScore_1.SCORE.bpm, entryWaitSeconds: this.pending ? Math.max(0, this.pending.at - outputTime) : 0, mood, requestedMood: this.requestedMood };
+    }
+    dispose() { this.stop(true); this.master.disconnect(); }
+}
+exports.AdaptiveMusicEngine = AdaptiveMusicEngine;
+},"AdaptiveCues":function(exports,require){"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.AdaptiveCuePlayer = exports.CUE_SECONDS = void 0;
+exports.renderMusicCue = renderMusicCue;
+exports.renderPhrasePickup = renderPhrasePickup;
+exports.musicCueDuck = musicCueDuck;
+const AdaptiveScore_1 = require("./AdaptiveScore");
+exports.CUE_SECONDS = { found: 0.7, secured: 2.2, death: 6.4 };
+// 原创合成。死亡先清楚duang一下，再下沉为遥远共鸣；乐句过门为无音高滚奏。
+function renderMusicCue(cue, variant = AdaptiveScore_1.DEFAULT_VARIANT) {
+    const rate = AdaptiveScore_1.SCORE.sampleRate, seconds = exports.CUE_SECONDS[cue];
+    const out = new Float32Array(Math.round(rate * seconds));
+    const tonic = 146.832 * Math.pow(2, AdaptiveScore_1.VARIANTS[variant].transpose / 12);
+    for (let i = 0; i < out.length; i++) {
+        const t = i / rate;
+        let value = 0;
+        if (cue === 'death') {
+            // 手机也能辨认的中低频撞击主体；尾音仍可沉得很低，但起音不能消失。
+            const strikePhase = 2 * Math.PI * tonic * (0.76 * t + 0.36 * (1 - Math.exp(-t * 18)) / 18);
+            const strike = Math.min(1, t / 0.003) * Math.exp(-t * 2.9)
+                * (Math.sin(strikePhase) * 0.43 + Math.sin(strikePhase * 2.71) * 0.24 * Math.exp(-t * 4.5)
+                    + Math.sin(strikePhase * 4.03) * 0.12 * Math.exp(-t * 11));
+            const base = tonic * 0.50;
+            const fall = (u, ratio) => 2 * Math.PI * base * ratio
+                * (0.73 * u + 0.27 * (1 - Math.exp(-u * 0.85)) / 0.85);
+            const bloom = (u) => (1 - Math.exp(-u * 9)) ** 2 * Math.exp(-u * 0.52);
+            // 明确撞击之后才是下坠的低频与远处共鸣。
+            value = strike + bloom(t) * (Math.sin(fall(t, 1)) * 0.31
+                + Math.sin(fall(t, 1.498) + Math.sin(t * 1.7) * 0.2) * 0.105
+                + Math.sin(fall(t, 2.006)) * 0.055);
+            [0.19, 0.43, 0.79].forEach((delay, n) => {
+                const u = t - delay;
+                if (u < 0)
+                    return;
+                const distant = (1 - Math.exp(-u * 4)) ** 2 * Math.exp(-u * 0.68);
+                value += distant * (Math.sin(fall(u, 2.99 + n * 0.007))
+                    + Math.sin(fall(u, 4.004 + n * 0.009)) * 0.32) * 0.043 / (n + 1);
+            });
+        }
+        else {
+            const notes = cue === 'secured' ? [[0, 1, 0.25], [0.15, 1.5, 0.18], [0.3, 2, 0.10]]
+                : [[0, 2, 0.14], [0.17, 3, 0.12]];
+            notes.forEach(([at, ratio, gain]) => {
+                const u = t - at;
+                if (u < 0)
+                    return;
+                const phase = 2 * Math.PI * tonic * ratio * u;
+                value += (Math.sin(phase) + 0.16 * Math.sin(phase * 2.003)) * gain
+                    * Math.min(1, u / 0.006) * Math.exp(-u * (cue === 'secured' ? 2.8 : 8));
+            });
+            if (cue === 'secured') {
+                // 两下扣合声，用确定性高频瞬态，不依赖外部音效下载。
+                [0, 0.065].forEach(at => {
+                    const u = t - at;
+                    if (u >= 0)
+                        value += Math.sin(2 * Math.PI * 1700 * u) * 0.11
+                            * Math.min(1, u / 0.001) * Math.exp(-u * 160);
+                });
+            }
+        }
+        out[i] = value * Math.min(1, (seconds - t) / 0.18);
+    }
+    return out;
+}
+// 一拍（500ms）小过门：两个短击→加密滚奏→末端收束，为快速入口写成完整手势。
+// 不含固定音高，换和声时不会留下旧调旋律；不足一拍时播放末段，起播由引擎消点击。
+function renderPhrasePickup() {
+    const rate = AdaptiveScore_1.SCORE.sampleRate, duration = 60 / AdaptiveScore_1.SCORE.bpm;
+    const out = new Float32Array(Math.round(rate * duration));
+    const hits = [0, 0.25, 0.5, 0.625, 0.75, 0.875];
+    let seed = 73491, smooth = 0;
+    for (let i = 0; i < out.length; i++) {
+        seed = (Math.imul(seed, 1664525) + 1013904223) | 0;
+        const noise = (seed >>> 0) / 2147483648 - 1;
+        smooth += (noise - smooth) * 0.3;
+        const t = i / rate;
+        let roll = 0;
+        for (const hit of hits) {
+            const u = t - hit * duration;
+            if (u >= 0 && u < 0.12)
+                roll += (smooth * 0.7 + Math.sin(2 * Math.PI * 210 * u) * 0.32)
+                    * Math.min(1, u / 0.002) * Math.exp(-u * 32) * (0.65 + 0.35 * t / duration);
+        }
+        const breath = (noise - smooth) * 0.065 * (t / duration) ** 2;
+        out[i] = (roll + breath) * Math.min(1, t / 0.008, (duration - t) / 0.025);
+    }
+    return out;
+}
+// 确认音只让出起音空间，随即恢复返程和声；不再压低整个2.2秒尾音。
+function musicCueDuck(elapsed) {
+    if (elapsed < 0 || elapsed >= 0.55)
+        return 1;
+    if (elapsed < 0.04)
+        return 1 - 0.28 * elapsed / 0.04;
+    if (elapsed < 0.16)
+        return 0.72;
+    return 0.72 + 0.28 * (elapsed - 0.16) / 0.39;
+}
+// 独立于搜索音乐的总线；音乐停播后钟声仍可自然结束，静音/后台会停止所有尾音。
+class AdaptiveCuePlayer {
+    constructor(ctx) {
+        this.ctx = ctx;
+        this.voices = [];
+        this.gain = ctx.createGain();
+        this.gain.gain.value = 0;
+        this.gain.connect(ctx.destination);
+    }
+    setVolume(value) { this.gain.gain.value = Math.max(0, Math.min(1, value)); }
+    play(cue, variant) {
+        const pcm = renderMusicCue(cue, variant);
+        const buffer = this.ctx.createBuffer(1, pcm.length, AdaptiveScore_1.SCORE.sampleRate);
+        buffer.getChannelData(0).set(pcm);
+        const source = this.ctx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(this.gain);
+        this.voices.push(source);
+        source.onended = () => { source.disconnect(); this.voices = this.voices.filter(s => s !== source); };
+        source.start(this.ctx.currentTime + 0.01);
+    }
+    stop() {
+        this.voices.forEach(source => { try {
+            source.stop();
+            source.disconnect();
+        }
+        catch (_) { /* 已结束 */ } });
+        this.voices = [];
+    }
+}
+exports.AdaptiveCuePlayer = AdaptiveCuePlayer;
+}};const cache={};
+        function load(name){name=name.replace('./','');if(!cache[name]){const e={};cache[name]=e;factories[name](e,load);}return cache[name];}
+        window.SignalBelow={...load('AdaptiveScore'),...load('AdaptiveMusicEngine'),...load('AdaptiveCues')};})();
+(function(){const factories={"AdaptiveMusicVisuals":function(exports,require){"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.visualOnsets = visualOnsets;
+exports.sampleTapeVisual = sampleTapeVisual;
+const AdaptiveScore_1 = require("./AdaptiveScore");
+const tracks = [...AdaptiveScore_1.SCORE.stems, 'bedFound', 'bedReturn', ...AdaptiveScore_1.WARM_LAYER_TRACKS];
+const cache = {};
+const loopBeats = AdaptiveScore_1.SCORE.bars * AdaptiveScore_1.SCORE.beatsPerBar;
+/** The exact score onsets, including C's syncopation, shared by game and preview.
+ * No FFT window, threshold, per-frame trigger, timer, or invented metronome. */
+function visualOnsets(track, variant = AdaptiveScore_1.DEFAULT_VARIANT, kind = 'main') {
+    const key = `${variant}/${track}/${kind}`;
+    if (cache[key])
+        return cache[key];
+    const part = track.replace('Found', '');
+    const voices = kind === 'kick' ? ['kick'] : kind === 'snare' ? ['snare']
+        : part === 'beacon' ? ['sonar'] : part === 'bass' ? ['bass']
+            : part === 'drums' ? ['kick', 'snare'] : part === 'arp' ? ['drive']
+                : part === 'spark' ? ['rush'] : ['veil', 'horizon', 'home', 'chord'];
+    const hits = [];
+    for (const note of (0, AdaptiveScore_1.notesFor)(track, variant).filter(n => voices.indexOf(n.voice) >= 0).sort((a, b) => a.beat - b.beat)) {
+        const strength = part === 'spark' ? note.amp / .4 : part === 'drums' || kind !== 'main' ? note.amp / .39 : part === 'beacon' ? note.amp / .17 : 1;
+        const previous = hits[hits.length - 1];
+        if (previous && Math.abs(previous.beat - note.beat) < 1e-8)
+            previous.strength = Math.max(previous.strength, strength);
+        else
+            hits.push({ beat: note.beat, strength: Math.min(1, strength) });
+    }
+    return cache[key] = hits;
+}
+function sample(hits, beats, decay) {
+    if (!hits.length)
+        return { hit: 0, gain: 0, age: Infinity, step: 0, phase: 0 };
+    const cycle = Math.floor(beats / loopBeats), position = beats - cycle * loopBeats;
+    // Binary search keeps the 320-note stream cheap even on a phone.
+    let low = 0, high = hits.length;
+    while (low < high) {
+        const mid = (low + high) >>> 1;
+        if (hits[mid].beat <= position + 1e-9)
+            low = mid + 1;
+        else
+            high = mid;
+    }
+    const index = low - 1, current = index < 0 ? hits.length - 1 : index;
+    const birth = hits[current].beat + (index < 0 ? cycle - 1 : cycle) * loopBeats;
+    const next = current + 1 < hits.length ? hits[current + 1].beat - hits[current].beat : loopBeats - hits[current].beat + hits[0].beat;
+    const age = (beats - birth) * 60 / AdaptiveScore_1.SCORE.bpm;
+    const beforeStart = birth < 0;
+    return { hit: beforeStart ? 0 : hits[current].strength * Math.exp(-age / decay), gain: 1,
+        age: beforeStart ? Infinity : age, step: (index < 0 ? cycle - 1 : cycle) * hits.length + current,
+        phase: Math.max(0, Math.min(1, (beats - birth) / next)) };
+}
+function sampleTapeVisual(clock) {
+    const lanes = Array.from({ length: 6 }, () => ({ hit: 0, gain: 0, age: Infinity, step: 0, phase: 0 }));
+    const result = { playing: !!clock && clock.playing, level: clock ? clock.level : 0,
+        requestedLevel: clock ? clock.requestedLevel : 0, mood: clock ? clock.mood : 'search',
+        beats: clock ? clock.beats : 0, beatPhase: clock ? clock.beatPhase : 0,
+        bar: clock ? clock.bar : 0, kick: 0, snare: 0, lanes, fallback: false };
+    if (!clock || !clock.playing)
+        return result;
+    tracks.forEach((track, slot) => {
+        const gain = clock.trackGains[slot] || 0;
+        if (gain < .001)
+            return;
+        const lane = slot === 6 || slot === 7 ? 0 : slot >= 8 ? [1, 2, 4, 5][slot - 8] : slot;
+        const event = sample(visualOnsets(track, clock.variant), clock.beats, lane === 5 ? .014 : lane === 4 ? .055 : .12);
+        event.hit *= gain;
+        event.gain = gain;
+        if (gain >= lanes[lane].gain)
+            lanes[lane] = event;
+        if (track === 'drums' || track === 'spark' || track === 'sparkFound') {
+            result.kick = Math.max(result.kick, sample(visualOnsets(track, clock.variant, 'kick'), clock.beats, .075).hit * gain);
+            result.snare = Math.max(result.snare, sample(visualOnsets(track, clock.variant, 'snare'), clock.beats, .055).hit * gain);
+        }
+    });
+    return result;
+}
+},"TapeDeckVisual":function(exports,require){"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.TAPE = void 0;
+exports.tapeAccent = tapeAccent;
+exports.cutPanel = cutPanel;
+exports.drawTapeDeck = drawTapeDeck;
+exports.drawTapeRibbons = drawTapeRibbons;
+exports.drawTapeSleeve = drawTapeSleeve;
+exports.drawTapeMixStrip = drawTapeMixStrip;
+// Small, code-native artwork: the exact same cassette is worn by the diver and
+// drawn in the HUD, detail sleeve, and review page. No image loading or particles.
+exports.TAPE = { ink: '#101e26', paper: '#f4e7c7', orange: '#ff754c', lime: '#d7ee74', mint: '#81e3ce', muted: '#738e92' };
+const TAU = Math.PI * 2;
+function tapeAccent(v) { return v.mood === 'return' ? exports.TAPE.mint : v.mood === 'found' ? exports.TAPE.lime : exports.TAPE.orange; }
+function cutPanel(c, x, y, w, h, cut = 6) {
+    c.beginPath();
+    c.moveTo(x + cut, y);
+    c.lineTo(x + w, y);
+    c.lineTo(x + w, y + h - cut);
+    c.lineTo(x + w - cut, y + h);
+    c.lineTo(x, y + h);
+    c.lineTo(x, y + cut);
+    c.closePath();
+}
+function reel(c, x, angle, hit) {
+    c.save();
+    c.translate(x, 0);
+    c.rotate(angle);
+    c.fillStyle = exports.TAPE.paper;
+    c.beginPath();
+    c.arc(0, 0, 6 + hit * .5, 0, TAU);
+    c.fill();
+    c.fillStyle = exports.TAPE.ink;
+    c.beginPath();
+    c.arc(0, 0, 2.2, 0, TAU);
+    c.fill();
+    c.strokeStyle = exports.TAPE.ink;
+    c.lineWidth = 1.6;
+    for (let i = 0; i < 3; i++) {
+        const a = i * TAU / 3;
+        c.beginPath();
+        c.moveTo(Math.cos(a) * 3.6, Math.sin(a) * 3.6);
+        c.lineTo(Math.cos(a) * 5.2, Math.sin(a) * 5.2);
+        c.stroke();
+    }
+    c.restore();
+}
+/** width is the total footprint, including the rhythmic outline. */
+function drawTapeDeck(c, x, y, width, v, worn = false) {
+    const accent = tapeAccent(v), kick = v.kick;
+    c.save();
+    c.translate(x, y);
+    c.scale(width / 66, width / 66);
+    // The shell punches on actual kick onsets; the 20 Hz rush stays in its ribbon.
+    c.rotate(worn ? -.12 : -.045 - kick * .025);
+    c.translate(0, -kick * 1.3);
+    if (worn) {
+        c.strokeStyle = exports.TAPE.paper;
+        c.lineWidth = 1.8;
+        c.beginPath();
+        c.moveTo(-20, -10);
+        c.quadraticCurveTo(-31, -21, -23, -30);
+        c.stroke();
+        c.fillStyle = '#273e47';
+        c.fillRect(-25, -24, 4, 48);
+    }
+    c.fillStyle = 'rgba(0,0,0,.35)';
+    cutPanel(c, -28, -19, 59, 44, 5);
+    c.fill();
+    c.fillStyle = exports.TAPE.ink;
+    c.strokeStyle = accent;
+    c.lineWidth = 1.4;
+    cutPanel(c, -29, -22, 58, 44, 5);
+    c.fill();
+    c.stroke();
+    // Orange enamel, paper label, little waterproof latch.
+    c.fillStyle = accent;
+    cutPanel(c, -26, -19, 52, 13, 3);
+    c.fill();
+    c.fillStyle = exports.TAPE.ink;
+    c.font = 'bold 6px Arial';
+    c.textAlign = 'left';
+    c.textBaseline = 'middle';
+    c.fillText('DEEPTAPE', -22, -12);
+    c.fillText(v.mood === 'return' ? 'B' : 'A', 19, -12);
+    c.fillStyle = '#253a42';
+    cutPanel(c, -24, -3, 48, 16, 3);
+    c.fill();
+    c.strokeStyle = exports.TAPE.muted;
+    c.lineWidth = 1;
+    c.beginPath();
+    c.moveTo(-15, 5);
+    c.lineTo(15, 5);
+    c.stroke();
+    c.save();
+    c.translate(0, 5);
+    reel(c, -14, v.beats * Math.PI / 2, v.lanes[2].hit);
+    reel(c, 14, v.beats * Math.PI / 2 + .5, v.lanes[2].hit);
+    c.restore();
+    // Five separate layer windows: fast notes advance a location, not a white strobe.
+    for (let i = 1; i <= 5; i++) {
+        const lane = v.lanes[i];
+        c.globalAlpha *= .25 + lane.gain * .75;
+        c.fillStyle = i === 5 ? exports.TAPE.lime : exports.TAPE.paper;
+        c.fillRect(-21 + (i - 1) * 9, 16 - lane.hit * 3, 6, 2 + lane.hit * 3);
+        c.globalAlpha /= .25 + lane.gain * .75;
+    }
+    if (v.lanes[5].gain > .01) {
+        const head = ((v.lanes[5].step % 10) + 10) % 10;
+        c.fillStyle = exports.TAPE.lime;
+        c.fillRect(-24 + head * 4.9, -5, 4, 2);
+    }
+    c.fillStyle = exports.TAPE.paper;
+    c.fillRect(29, -10, 2, 8);
+    if (!v.playing) {
+        c.fillStyle = exports.TAPE.muted;
+        c.fillRect(-2, 2, 1.5, 6);
+        c.fillRect(1, 2, 1.5, 6);
+    }
+    c.restore();
+}
+/** Five event ribbons. At 1200/min each note owns a distinct moving cell. */
+function drawTapeRibbons(c, x, y, w, row, v) {
+    c.save();
+    const alpha = c.globalAlpha;
+    const colors = [exports.TAPE.mint, exports.TAPE.paper, exports.TAPE.orange, exports.TAPE.orange, exports.TAPE.lime];
+    for (let lane = 1; lane <= 5; lane++) {
+        const event = v.lanes[lane], count = lane === 5 ? 20 : 12;
+        const gap = 2, cell = (w - gap * (count - 1)) / count;
+        const head = ((event.step % count) + count) % count;
+        for (let i = 0; i < count; i++) {
+            const distance = (head - i + count) % count;
+            const trail = distance < 4 ? (1 - distance / 4) * event.gain : 0;
+            c.globalAlpha = alpha * (.1 + .75 * trail);
+            c.fillStyle = colors[lane - 1];
+            const h = row * (.26 + .42 * (i === head ? event.hit : trail * .3));
+            c.fillRect(x + i * (cell + gap), y + (lane - 1) * row + (row - h) / 2, cell, h);
+        }
+    }
+    c.restore();
+}
+function drawTapeSleeve(c, x, y, w, v) {
+    c.save();
+    c.translate(x, y);
+    c.fillStyle = exports.TAPE.ink;
+    c.strokeStyle = tapeAccent(v);
+    c.lineWidth = 1;
+    cutPanel(c, 0, 0, w, 196, 10);
+    c.fill();
+    c.stroke();
+    c.fillStyle = tapeAccent(v);
+    c.fillRect(12, 12, 4, 25);
+    c.fillStyle = exports.TAPE.paper;
+    c.textAlign = 'left';
+    c.textBaseline = 'middle';
+    c.font = 'bold 15px Arial';
+    c.fillText('深流随身听', 24, 20);
+    c.fillStyle = exports.TAPE.muted;
+    c.font = '9px Arial';
+    c.fillText('DEEPTAPE / VOL. 01', 24, 36);
+    drawTapeDeck(c, w - 40, 26, 45, v);
+    c.fillStyle = tapeAccent(v);
+    c.font = 'bold 11px Arial';
+    c.fillText(v.fallback ? '双音模式' : !v.playing ? '磁带就绪' : v.mood === 'return' ? 'B 面 / 一起回去' : v.mood === 'found' ? 'A 面 / 就在这里' : 'A 面 / 向深处去', 14, 58);
+    drawTapeRibbons(c, 66, 77, w - 80, 17, v);
+    c.font = '9px Arial';
+    ['微光', '低流', '重鼓', '疾行', '奔涌'].forEach((label, i) => { c.fillStyle = v.lanes[i + 1].gain > .01 ? exports.TAPE.paper : exports.TAPE.muted; c.fillText('0' + (i + 1) + ' ' + label, 14, 85 + i * 17); });
+    c.fillStyle = exports.TAPE.muted;
+    c.font = '10px Arial';
+    c.fillText(v.playing ? `${v.level}/5 层  ·  120 BPM  ·  ${v.bar + 1}/8 小节` : '带上音乐，下潜。', 14, 180);
+    c.restore();
+}
+/** Persistent, compact five-lane mix strip beside the tape HUD control. */
+function drawTapeMixStrip(c, x, y, w, v, muted = false) {
+    c.save();
+    c.translate(x, y);
+    c.fillStyle = 'rgba(16,30,38,.88)';
+    cutPanel(c, 0, 0, w, 52, 6);
+    c.fill();
+    c.fillStyle = tapeAccent(v);
+    c.fillRect(0, 6, 2, 13);
+    c.font = 'bold 9px Arial';
+    c.textAlign = 'left';
+    c.textBaseline = 'middle';
+    c.fillStyle = exports.TAPE.paper;
+    c.fillText(muted ? '深流 / MUTE' : v.fallback ? '深流 / 双音' : v.mood === 'return' ? '深流 / 一起回去' : v.mood === 'found' ? '深流 / 就在这里' : '深流 / 向深处去', 9, 11);
+    drawTapeRibbons(c, 9, 21, w - 18, 5, v);
+    c.restore();
+}
+},"RenderDiver":function(exports,require){"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.drawDiver = drawDiver;
+exports.drawLungs = drawLungs;
+exports.drawDiverSilhouette = drawDiverSilhouette;
+const config_1 = require("../core/config");
+const TapeDeckVisual_1 = require("./TapeDeckVisual");
+const RenderRelic_1 = require("./RenderRelic");
+// 模块级腿部相位时钟：每个角色独立追踪，由 drawDiver 每帧按速度+boost 推进
+// phase 取值 0~1，freq 为单帧推进比例
+const legClocks = new Map();
+// 模块级"躯干波动相位时钟"：驱动全身扭动（yaw / roll / compress / 手臂常驻摆动）
+// 与腿部时钟分开，因为 idle 时腿停摆但身体仍需微幅呼吸
+// bodyPhase ∈ [0,1)，idle 时低速推进、forward 时与腿部时钟同频推进
+const bodyClocks = new Map();
+function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+}
+function normalizeAngle(angle) {
+    while (angle > Math.PI)
+        angle -= Math.PI * 2;
+    while (angle < -Math.PI)
+        angle += Math.PI * 2;
+    return angle;
+}
+function easeStroke(progress) {
+    const p = clamp(progress, 0, 1);
+    return Math.sin(p * Math.PI);
+}
+function drawRoundRectPath(renderCtx, x, y, w, h, r) {
+    const radius = Math.min(r, w / 2, h / 2);
+    renderCtx.beginPath();
+    renderCtx.moveTo(x + radius, y);
+    renderCtx.lineTo(x + w - radius, y);
+    renderCtx.arcTo(x + w, y, x + w, y + radius, radius);
+    renderCtx.lineTo(x + w, y + h - radius);
+    renderCtx.arcTo(x + w, y + h, x + w - radius, y + h, radius);
+    renderCtx.lineTo(x + radius, y + h);
+    renderCtx.arcTo(x, y + h, x, y + h - radius, radius);
+    renderCtx.lineTo(x, y + radius);
+    renderCtx.arcTo(x, y, x + radius, y, radius);
+    renderCtx.closePath();
+}
+function drawCapsule(renderCtx, cx, cy, length, radius) {
+    const half = length / 2;
+    const inner = Math.max(0, half - radius);
+    renderCtx.beginPath();
+    renderCtx.arc(cx + inner, cy, radius, -Math.PI / 2, Math.PI / 2);
+    renderCtx.arc(cx - inner, cy, radius, Math.PI / 2, -Math.PI / 2);
+    renderCtx.closePath();
+}
+function drawArm(renderCtx, shoulderX, shoulderY, upperAngle, lowerAngle, colors) {
+    const upperLen = 8.2;
+    const lowerLen = 8.4;
+    const elbowX = shoulderX + Math.cos(upperAngle) * upperLen;
+    const elbowY = shoulderY + Math.sin(upperAngle) * upperLen;
+    const handX = elbowX + Math.cos(lowerAngle) * lowerLen;
+    const handY = elbowY + Math.sin(lowerAngle) * lowerLen;
+    renderCtx.strokeStyle = colors.suit;
+    renderCtx.lineCap = 'round';
+    renderCtx.lineJoin = 'round';
+    renderCtx.lineWidth = 5.2;
+    renderCtx.beginPath();
+    renderCtx.moveTo(shoulderX, shoulderY);
+    renderCtx.lineTo(elbowX, elbowY);
+    renderCtx.lineTo(handX, handY);
+    renderCtx.stroke();
+}
+// 手臂长度常量（用于反解去抓气嘴时的手腕限位）
+const ARM_UPPER_LEN = 8.2;
+const ARM_LOWER_LEN = 8.4;
+const ARM_MAX_REACH = ARM_UPPER_LEN + ARM_LOWER_LEN;
+/**
+ * 以"伸向手腕目标点"的方式绘制手臂（局部坐标系：+x 为角色朝向）。
+ * 简单策略：upperAngle = lowerAngle = atan2(targetDy, targetDx)，两段共线直接去抓。
+ * 若距离 > 最大伸展，按单位向量截断到最大伸展；若距离 < 最小展开（ARM_MAX_REACH * 0.3），
+ * 为了避免手臂"缩进身体里"，强制拉到最小展开距离并保持方向。
+ * 返回实际手腕位置（给上层画气嘴用）。
+ */
+function drawArmReach(renderCtx, shoulderX, shoulderY, targetX, targetY, colors) {
+    const dx = targetX - shoulderX;
+    const dy = targetY - shoulderY;
+    let dist = Math.hypot(dx, dy);
+    if (dist < 0.001)
+        dist = 0.001;
+    const ang = Math.atan2(dy, dx);
+    // 长度限位：目标太远 → 伸直；目标太近 → 不画成反折，按最小 40% 伸展
+    const minReach = ARM_MAX_REACH * 0.4;
+    const reach = Math.max(minReach, Math.min(ARM_MAX_REACH, dist));
+    // 两段的弯曲点：在上臂末端、下臂起点（肘关节）
+    // 为了让手臂不像硬棍子，让肘略微离直线一点（向外侧偏）
+    const elbowFrac = ARM_UPPER_LEN / ARM_MAX_REACH;
+    const straightElbowX = shoulderX + Math.cos(ang) * reach * elbowFrac;
+    const straightElbowY = shoulderY + Math.sin(ang) * reach * elbowFrac;
+    // 法线偏移（让肘稍微拱出去）
+    const nx = -Math.sin(ang);
+    const ny = Math.cos(ang);
+    // 距离越短，肘拱得越明显（最多 2.2 像素）
+    const bendAmt = (1 - Math.min(1, dist / ARM_MAX_REACH)) * 2.2 + 0.6;
+    const elbowX = straightElbowX + nx * bendAmt;
+    const elbowY = straightElbowY + ny * bendAmt;
+    const wristX = shoulderX + Math.cos(ang) * reach;
+    const wristY = shoulderY + Math.sin(ang) * reach;
+    renderCtx.strokeStyle = colors.suit;
+    renderCtx.lineCap = 'round';
+    renderCtx.lineJoin = 'round';
+    renderCtx.lineWidth = 5.2;
+    renderCtx.beginPath();
+    renderCtx.moveTo(shoulderX, shoulderY);
+    renderCtx.lineTo(elbowX, elbowY);
+    renderCtx.lineTo(wristX, wristY);
+    renderCtx.stroke();
+    return { wristX, wristY, angle: ang };
+}
+/**
+ * 绘制气嘴（regulator mouthpiece）+ 软管。
+ * 局部坐标系：+x 为角色朝向；mouthX/Y 是嘴部位置；regX/Y 是气嘴当前位置；
+ * hoseAnchorX/Y 是软管"身体端"锚点（一般取背后氧气瓶肩膀位置，这里用胸前肩点作为近似）。
+ */
+function drawRegulatorAndHose(renderCtx, regX, regY, hoseAnchorX, hoseAnchorY, regAngle, colors) {
+    // --- 软管：从胸前锚点到气嘴的三次贝塞尔，中间控制点给一个垂下的弧度 ---
+    const midX = (hoseAnchorX + regX) * 0.5;
+    const midY = (hoseAnchorY + regY) * 0.5;
+    // 软管弯曲：中点往朝向正方向（+x）和 +y 方向各拉一点，让软管像自然垂着
+    const ctrl1X = hoseAnchorX + (midX - hoseAnchorX) * 0.5 + 2;
+    const ctrl1Y = hoseAnchorY + (midY - hoseAnchorY) * 0.5 + 3;
+    const ctrl2X = regX - Math.cos(regAngle) * 3;
+    const ctrl2Y = regY - Math.sin(regAngle) * 3 + 2.5;
+    renderCtx.strokeStyle = '#1a2228';
+    renderCtx.lineCap = 'round';
+    renderCtx.lineWidth = 2.4;
+    renderCtx.beginPath();
+    renderCtx.moveTo(hoseAnchorX, hoseAnchorY);
+    renderCtx.bezierCurveTo(ctrl1X, ctrl1Y, ctrl2X, ctrl2Y, regX, regY);
+    renderCtx.stroke();
+    // 软管的橡胶波纹高光
+    renderCtx.strokeStyle = 'rgba(255,255,255,0.08)';
+    renderCtx.lineWidth = 1.0;
+    renderCtx.beginPath();
+    renderCtx.moveTo(hoseAnchorX, hoseAnchorY);
+    renderCtx.bezierCurveTo(ctrl1X, ctrl1Y, ctrl2X, ctrl2Y, regX, regY);
+    renderCtx.stroke();
+    // --- 气嘴本体：朝向 regAngle（咬嘴朝前、出气口朝后） ---
+    renderCtx.save();
+    renderCtx.translate(regX, regY);
+    renderCtx.rotate(regAngle);
+    // 机身（灰黑圆角矩形）
+    renderCtx.fillStyle = '#2a3238';
+    drawRoundRectPath(renderCtx, -3.2, -2.6, 6.4, 5.2, 1.4);
+    renderCtx.fill();
+    // 前端咬嘴（稍亮的橡胶色突出口）
+    renderCtx.fillStyle = colors.accent;
+    drawRoundRectPath(renderCtx, 1.5, -1.6, 2.4, 3.2, 1.0);
+    renderCtx.fill();
+    // 排气膜高光
+    renderCtx.fillStyle = 'rgba(255,255,255,0.12)';
+    renderCtx.beginPath();
+    renderCtx.ellipse(-0.4, -0.2, 1.6, 0.9, 0, 0, Math.PI * 2);
+    renderCtx.fill();
+    // 侧面排气口（小圆点）
+    renderCtx.fillStyle = '#14181c';
+    renderCtx.beginPath();
+    renderCtx.arc(-1.6, 1.6, 0.6, 0, Math.PI * 2);
+    renderCtx.fill();
+    renderCtx.restore();
+}
+function drawLegAndFin(renderCtx, hipX, hipY, side, legPhase, ampNorm, turnProgress, turnStrength, bodyYaw, colors) {
+    const cfg = config_1.CONFIG.diver;
+    // ===== 相位波形：俯视 2D 模拟上下打水 =====
+    // 一条腿的完整鞭打周期为 legPhase ∈ [0,1)：
+    //   0.0  腿完全收起（膝微弯、脚蹼抬离水平面）
+    //   0.5  腿伸直到底（发力瞬间，腿最长、脚蹼水平展开最长、往后甩出最远）
+    //   1.0  回到收起
+    // 主视觉三层叠加：
+    //   1) 腿前后伸缩（kickStretchAmp） ——让腿的总长度像呼吸一样变化
+    //   2) 脚蹼长度脉动（finLengthPulse） ——脚蹼在踢到底时最长
+    //   3) 脚蹼沿身体轴挥拍（finSweepAmp） ——踢到底时脚蹼往后甩出一段，再回收
+    // ampNorm（0~1）由速度 + kickDrive 综合驱动，ampNorm=0 时腿停住不动
+    // 髋→膝→踝相位滞后（鞭状传导）
+    // 注意：滞后只用于"前后伸缩"和"脚蹼脉动"的时间差，不产生任何左右分量
+    const hipPh = legPhase;
+    const kneePh = ((legPhase - cfg.kickPhaseLagKnee) % 1 + 1) % 1;
+    const anklePh = ((legPhase - cfg.kickPhaseLagAnkle) % 1 + 1) % 1;
+    // 发力波形：sin(2π·phase) 得到 -1→+1→-1 的鞭打（+1 = 下踢到底，-1 = 上抬到顶）
+    // ampNorm 作为总强度开关：0=完全不动
+    // hipWave 仅保留给将来使用，当前不参与任何侧向计算
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const _hipWave = Math.sin(hipPh * Math.PI * 2) * ampNorm;
+    const kneeWave = Math.sin(kneePh * Math.PI * 2) * ampNorm;
+    const ankleWave = Math.sin(anklePh * Math.PI * 2) * ampNorm;
+    // 转向修正（侧向唯一来源，只有在玩家转向时才产生侧向位移）
+    const turnEase = easeStroke(turnProgress) * turnStrength;
+    const turnOffset = turnEase * cfg.turnLegOffset;
+    // ===== 关键点坐标（局部坐标系：+x 为角色朝向，-x 为腿延伸方向） =====
+    // 侧向位移只来自 turnOffset 和 side * kickBaseSpread（基础张开，静态值）
+    // 所有与 wave 相关的 side 侧向项全部清零，避免脚蹼在左右方向画圈
+    // 髋点：基本不动，只有轻微 bodyYaw 和转向偏移
+    const hipPX = hipX;
+    const hipPY = hipY + bodyYaw * 0.3 + turnOffset * 0.2;
+    // 大腿：沿 -x 延伸，长度随 kneeWave 伸缩（纯前后运动）
+    const thighStretch = kneeWave * cfg.kickStretchAmp * 0.6;
+    const kneeForward = -(cfg.thighLength + thighStretch);
+    // 侧向：只有转向修正 + 静态基础张开（side * kickBaseSpread 当前为 0）
+    const kneeLateral = side * cfg.kickBaseSpread + turnOffset * 0.7;
+    const kneePX = hipPX + kneeForward;
+    const kneePY = hipPY + kneeLateral;
+    // 小腿：沿 -x 延伸，叠加更强的鞭状伸缩（纯前后运动）
+    const calfStretch = ankleWave * cfg.kickStretchAmp * 0.8;
+    const ankleForward = -(cfg.calfLength + calfStretch);
+    // 侧向：只保留转向修正（衰减到 0.25，膝盖侧向的延续）
+    const ankleLateral = turnOffset * 0.25;
+    const anklePX = kneePX + ankleForward;
+    const anklePY = kneePY + ankleLateral;
+    // ===== 绘制大腿 =====
+    drawTaperedLimb(renderCtx, hipPX, hipPY, kneePX, kneePY, cfg.thighWidthHip, cfg.thighWidthKnee, colors.suit, '#1c262c');
+    // ===== 绘制小腿 =====
+    drawTaperedLimb(renderCtx, kneePX, kneePY, anklePX, anklePY, cfg.calfWidthKnee, cfg.calfWidthAnkle, colors.suit, '#1c262c');
+    // ===== 膝盖关节小圆 =====
+    renderCtx.fillStyle = '#1c262c';
+    renderCtx.beginPath();
+    renderCtx.arc(kneePX, kneePY, cfg.kneeCapRadius, 0, Math.PI * 2);
+    renderCtx.fill();
+    // ===== 脚蹼挥拍：沿身体朝向轴的切向位移（主视觉三） =====
+    // 踢到底（ankleWave=+1）时脚蹼整体往后甩一段；上抬时脚蹼往前收回
+    // 切向 = -x 方向（身体后方），所以 ankleX 向 -x 再推一段
+    const finSweepX = -ankleWave * cfg.finSweepAmp; // 向身体后方的额外位移
+    // 挥拍的起点也就变成了新的 ankle 位置
+    const finAnchorX = anklePX + finSweepX;
+    const finAnchorY = anklePY;
+    // ===== 绘制蛙鞋 =====
+    // 脚蹼朝向仍然沿小腿延长线
+    const calfDX = anklePX - kneePX;
+    const calfDY = anklePY - kneePY;
+    const calfLen = Math.hypot(calfDX, calfDY) || 1;
+    const footDirX = calfDX / calfLen;
+    const footDirY = calfDY / calfLen;
+    // 蛙鞋末端柔性偏摆：只保留"转向修正"（玩家主动转弯时脚蹼偏转一点方向）
+    // **关键**：完全去掉 side * whipSignal 分量——左右腿本来用 side 相反符号驱动会形成"画圈"错觉
+    // 俯视 2D 下鞭腿是上下运动投影，脚蹼末端不应该有任何左右偏摆
+    const finTipAngle = turnEase * cfg.finTurnSkew * side;
+    // 蛙鞋长度脉动（主视觉之二）：踢到底时最长，抬起时缩短
+    const finLengthFactor = 1 + ankleWave * cfg.finLengthPulse;
+    const extraSpread = cfg.finSpreadBase + ampNorm * cfg.finSpreadStroke * 0.6;
+    drawSwimFin(renderCtx, finAnchorX, finAnchorY, footDirX, footDirY, finTipAngle, extraSpread, finLengthFactor, colors, cfg);
+    // ===== 脚踝接点（画在原踝位置，连接小腿末端和脚蹼根） =====
+    renderCtx.fillStyle = colors.suit;
+    renderCtx.beginPath();
+    renderCtx.arc(anklePX, anklePY, Math.max(1.8, cfg.calfWidthAnkle * 0.55), 0, Math.PI * 2);
+    renderCtx.fill();
+}
+// 绘制锥形四边形肢段（两端粗细不同的实心条带，带侧边暗色描线）
+function drawTaperedLimb(renderCtx, ax, ay, bx, by, widthA, widthB, fillColor, edgeColor) {
+    const dx = bx - ax;
+    const dy = by - ay;
+    const len = Math.hypot(dx, dy) || 1;
+    // 法线方向（垂直于肢段）
+    const nx = -dy / len;
+    const ny = dx / len;
+    const halfA = widthA * 0.5;
+    const halfB = widthB * 0.5;
+    const p1x = ax + nx * halfA, p1y = ay + ny * halfA;
+    const p2x = bx + nx * halfB, p2y = by + ny * halfB;
+    const p3x = bx - nx * halfB, p3y = by - ny * halfB;
+    const p4x = ax - nx * halfA, p4y = ay - ny * halfA;
+    // 主体填充
+    renderCtx.fillStyle = fillColor;
+    renderCtx.beginPath();
+    renderCtx.moveTo(p1x, p1y);
+    renderCtx.lineTo(p2x, p2y);
+    renderCtx.lineTo(p3x, p3y);
+    renderCtx.lineTo(p4x, p4y);
+    renderCtx.closePath();
+    renderCtx.fill();
+    // 两端圆头（避免肢段交接处露出锐角）
+    renderCtx.beginPath();
+    renderCtx.arc(ax, ay, halfA, 0, Math.PI * 2);
+    renderCtx.arc(bx, by, halfB, 0, Math.PI * 2);
+    renderCtx.fill();
+    // 侧边暗色勾边，增强轮廓
+    renderCtx.strokeStyle = edgeColor;
+    renderCtx.lineWidth = 1;
+    renderCtx.beginPath();
+    renderCtx.moveTo(p1x, p1y);
+    renderCtx.lineTo(p2x, p2y);
+    renderCtx.moveTo(p4x, p4y);
+    renderCtx.lineTo(p3x, p3y);
+    renderCtx.stroke();
+}
+// 绘制现代开趾蛙鞋：根部鞋套 → 颈部收束 → 叶片外扩 → 尖端圆润
+// 参数：ankleX/Y 为踝点（蛙鞋根部中心）；dirX/dirY 为脚背朝向（沿小腿延长线，单位向量）
+// tipAngle 为末端柔性偏摆角（弧度，相对脚背方向）
+function drawSwimFin(renderCtx, ankleX, ankleY, dirX, dirY, tipAngle, extraSpread, finLengthFactor, colors, cfg) {
+    const totalLen = cfg.finShapeLength * finLengthFactor;
+    const rootLen = cfg.finShapeLength * cfg.finShapeRootRatio; // 鞋套段不随脉动缩放，保持与脚踝贴合
+    const bellyLen = totalLen * cfg.finShapeBellyRatio;
+    // 宽度（叠加 extraSpread 作为小幅调整，避免完全相同的蛙鞋剪影）
+    const rootHalf = (cfg.finShapeRootWidth + extraSpread * 0.25) * 0.5;
+    const neckHalf = cfg.finShapeNeckWidth * 0.5;
+    const bellyHalf = (cfg.finShapeBellyWidth + extraSpread * 0.35) * 0.5;
+    const tipHalf = cfg.finShapeTipWidth * 0.5;
+    // 根部方向（沿 dir，即小腿延长线，蛙鞋往脚趾方向延伸）
+    const fx = dirX, fy = dirY;
+    // 法线（蛙鞋宽度方向）
+    const nx = -dirY, ny = dirX;
+    // 柔性偏摆：让"颈部之后"的段沿 tipAngle 做一个小角度偏转
+    // 用 cos/sin 构造偏转向量（以脚背方向为 0 角）
+    const cosA = Math.cos(tipAngle);
+    const sinA = Math.sin(tipAngle);
+    const bentFx = fx * cosA + nx * sinA;
+    const bentFy = fy * cosA + ny * sinA;
+    const bentNx = -bentFy;
+    const bentNy = bentFx;
+    // 关键中轴点
+    // 根：鞋套后缘（踝点稍微往脚跟方向一点，避免被小腿圆盖住）
+    const rootCX = ankleX - fx * 1.0;
+    const rootCY = ankleY - fy * 1.0;
+    // 颈：鞋套前缘/叶片起点
+    const neckCX = ankleX + fx * rootLen;
+    const neckCY = ankleY + fy * rootLen;
+    // 腹：叶片最宽处（已进入弯折段）
+    const bellyCX = ankleX + fx * rootLen + bentFx * (bellyLen - rootLen);
+    const bellyCY = ankleY + fy * rootLen + bentFy * (bellyLen - rootLen);
+    // 尖：叶片末端
+    const tipCX = ankleX + fx * rootLen + bentFx * (totalLen - rootLen);
+    const tipCY = ankleY + fy * rootLen + bentFy * (totalLen - rootLen);
+    // 剪影左右边线（四段点：root / neck / belly / tip，每点一对 ±half）
+    const rootLX = rootCX + nx * rootHalf, rootLY = rootCY + ny * rootHalf;
+    const rootRX = rootCX - nx * rootHalf, rootRY = rootCY - ny * rootHalf;
+    const neckLX = neckCX + nx * neckHalf, neckLY = neckCY + ny * neckHalf;
+    const neckRX = neckCX - nx * neckHalf, neckRY = neckCY - ny * neckHalf;
+    const bellyLX = bellyCX + bentNx * bellyHalf, bellyLY = bellyCY + bentNy * bellyHalf;
+    const bellyRX = bellyCX - bentNx * bellyHalf, bellyRY = bellyCY - bentNy * bellyHalf;
+    const tipLX = tipCX + bentNx * tipHalf, tipLY = tipCY + bentNy * tipHalf;
+    const tipRX = tipCX - bentNx * tipHalf, tipRY = tipCY - bentNy * tipHalf;
+    // ===== 先画叶片（fin 颜色） =====
+    renderCtx.fillStyle = colors.fin;
+    renderCtx.beginPath();
+    // 左边：root → neck → belly → tip（用曲线圆滑过渡）
+    renderCtx.moveTo(rootLX, rootLY);
+    renderCtx.lineTo(neckLX, neckLY);
+    renderCtx.quadraticCurveTo((neckLX + bellyLX) * 0.5 + bentNx * 1.2, (neckLY + bellyLY) * 0.5 + bentNy * 1.2, bellyLX, bellyLY);
+    renderCtx.quadraticCurveTo((bellyLX + tipLX) * 0.5 + bentNx * 0.6, (bellyLY + tipLY) * 0.5 + bentNy * 0.6, tipLX, tipLY);
+    // 尖端圆弧
+    renderCtx.quadraticCurveTo(tipCX + bentFx * tipHalf * 0.9, tipCY + bentFy * tipHalf * 0.9, tipRX, tipRY);
+    // 右边：tip → belly → neck → root
+    renderCtx.quadraticCurveTo((bellyRX + tipRX) * 0.5 - bentNx * 0.6, (bellyRY + tipRY) * 0.5 - bentNy * 0.6, bellyRX, bellyRY);
+    renderCtx.quadraticCurveTo((neckRX + bellyRX) * 0.5 - bentNx * 1.2, (neckRY + bellyRY) * 0.5 - bentNy * 1.2, neckRX, neckRY);
+    renderCtx.lineTo(rootRX, rootRY);
+    // 后缘回根
+    renderCtx.quadraticCurveTo(rootCX - fx * rootHalf * 0.8, rootCY - fy * rootHalf * 0.8, rootLX, rootLY);
+    renderCtx.closePath();
+    renderCtx.fill();
+    // ===== 中轴筋条（深色中线，增加蛙鞋识别度） =====
+    renderCtx.strokeStyle = 'rgba(0,0,0,0.35)';
+    renderCtx.lineWidth = 1.3;
+    renderCtx.beginPath();
+    renderCtx.moveTo(neckCX, neckCY);
+    renderCtx.quadraticCurveTo(bellyCX, bellyCY, tipCX - bentFx * 1.5, tipCY - bentFy * 1.5);
+    renderCtx.stroke();
+    // ===== 鞋套（根部橡胶包裹，颜色比叶片更深，表现脚背被蛙鞋包住） =====
+    const bootColor = colors.suit;
+    renderCtx.fillStyle = bootColor;
+    renderCtx.beginPath();
+    renderCtx.moveTo(rootLX, rootLY);
+    renderCtx.lineTo(neckLX, neckLY);
+    renderCtx.quadraticCurveTo(neckCX, neckCY, neckRX, neckRY);
+    renderCtx.lineTo(rootRX, rootRY);
+    renderCtx.quadraticCurveTo(rootCX - fx * rootHalf * 0.8, rootCY - fy * rootHalf * 0.8, rootLX, rootLY);
+    renderCtx.closePath();
+    renderCtx.fill();
+    // 鞋套与叶片的过渡高光
+    renderCtx.strokeStyle = 'rgba(255,255,255,0.08)';
+    renderCtx.lineWidth = 1;
+    renderCtx.beginPath();
+    renderCtx.moveTo(neckLX, neckLY);
+    renderCtx.quadraticCurveTo(neckCX, neckCY, neckRX, neckRY);
+    renderCtx.stroke();
+}
+// =============================================
+// BCD 浮力背心气囊（画在躯干之下，像 back-inflate wing 从身体两侧鼓出来）
+// ---------------------------------------------
+// inflation ∈ [0,1]：气越多，囊的侧向半宽与前后长度都增大，边缘更圆、高光更强。
+// 视觉上刻意做成"包在躯干外面的一层软壳"，与硬质气瓶的金属质感区分开：
+//   - 填充用低饱和蓝灰渐变（尼龙布 + 内胆）
+//   - 两道横向织带（真实 BCD 的束紧带），随充气被撑开
+//   - 左肩一个排气阀凸起；排气时阀口亮起并向外扩一圈淡光
+// =============================================
+function drawBCDBladder(renderCtx, inflation, venting, bodyYaw) {
+    const t = clamp(inflation, 0, 1);
+    if (t <= 0.005 && !venting)
+        return;
+    // 关键尺寸：空囊时略比躯干宽一点（贴身），满囊时明显鼓出
+    const halfY = 8.6 + 6.4 * t;
+    const frontX = 6.2 + 1.4 * t;
+    const backX = -16.8 - 2.4 * t;
+    const yc = bodyYaw * 0.35;
+    renderCtx.save();
+    renderCtx.translate(0, yc);
+    // ---- 囊体 ----
+    const grad = renderCtx.createLinearGradient(0, -halfY, 0, halfY);
+    grad.addColorStop(0, `rgba(126, 150, 166, ${0.62 + 0.28 * t})`);
+    grad.addColorStop(0.5, `rgba(74, 96, 112, ${0.7 + 0.24 * t})`);
+    grad.addColorStop(1, `rgba(38, 54, 66, ${0.72 + 0.22 * t})`);
+    renderCtx.fillStyle = grad;
+    renderCtx.beginPath();
+    renderCtx.moveTo(frontX, 0);
+    renderCtx.bezierCurveTo(frontX - 1.2, -halfY * 0.74, -4, -halfY, -11, -halfY * 0.9);
+    renderCtx.quadraticCurveTo(backX, -halfY * 0.46, backX, 0);
+    renderCtx.quadraticCurveTo(backX, halfY * 0.46, -11, halfY * 0.9);
+    renderCtx.bezierCurveTo(-4, halfY, frontX - 1.2, halfY * 0.74, frontX, 0);
+    renderCtx.closePath();
+    renderCtx.fill();
+    // 外缘描边：气越足边缘越亮（内压把布绷紧的反光）
+    renderCtx.strokeStyle = `rgba(180, 208, 224, ${0.2 + 0.4 * t})`;
+    renderCtx.lineWidth = 0.9 + 0.5 * t;
+    renderCtx.stroke();
+    // ---- 两道横向织带（被充气撑开，位置随 t 外移）----
+    renderCtx.strokeStyle = `rgba(28, 38, 46, ${0.5 + 0.2 * t})`;
+    renderCtx.lineWidth = 1.6;
+    renderCtx.beginPath();
+    for (const sx of [-2.5, -9.5]) {
+        renderCtx.moveTo(sx, -halfY * 0.92);
+        renderCtx.lineTo(sx, halfY * 0.92);
+    }
+    renderCtx.stroke();
+    // ---- 鼓胀高光：满气时囊面被绷成两条亮弧 ----
+    if (t > 0.15) {
+        renderCtx.strokeStyle = `rgba(225, 245, 255, ${0.14 + 0.26 * t})`;
+        renderCtx.lineWidth = 1.4;
+        for (const sign of [-1, 1]) {
+            renderCtx.beginPath();
+            renderCtx.moveTo(frontX - 3, sign * halfY * 0.55);
+            renderCtx.quadraticCurveTo(-6, sign * halfY * 0.82, -13.5, sign * halfY * 0.6);
+            renderCtx.stroke();
+        }
+    }
+    // ---- 左肩排气阀（真实 BCD 的 shoulder dump valve）----
+    const vx = -7.5;
+    const vy = -halfY * 0.86;
+    if (venting) {
+        // 阀口开启：亮起 + 一圈向外散的淡光（气正在往水里跑）
+        renderCtx.fillStyle = 'rgba(215, 245, 255, 0.55)';
+        renderCtx.beginPath();
+        renderCtx.arc(vx, vy, 4.6, 0, Math.PI * 2);
+        renderCtx.fill();
+        renderCtx.fillStyle = 'rgba(245, 255, 255, 0.95)';
+        renderCtx.beginPath();
+        renderCtx.arc(vx, vy, 2.0, 0, Math.PI * 2);
+        renderCtx.fill();
+    }
+    else {
+        renderCtx.fillStyle = 'rgba(52, 66, 76, 0.9)';
+        renderCtx.beginPath();
+        renderCtx.arc(vx, vy, 2.2, 0, Math.PI * 2);
+        renderCtx.fill();
+        renderCtx.fillStyle = 'rgba(150, 175, 190, 0.7)';
+        renderCtx.beginPath();
+        renderCtx.arc(vx, vy, 1.0, 0, Math.PI * 2);
+        renderCtx.fill();
+    }
+    renderCtx.restore();
+}
+function drawDiver(renderCtx, x, y, angle, colors = null, motion = {}) {
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r;
+    const defaultColors = {
+        suit: '#2d3b43',
+        body: '#576b74',
+        tank: '#c7d8df',
+        mask: '#8ea1ab',
+        fin: '#24343b',
+        accent: '#5f7078',
+        skin: '#ceb29c',
+    };
+    const c = Object.assign(Object.assign(Object.assign({}, defaultColors), (colors || {})), { fin: (colors === null || colors === void 0 ? void 0 : colors.fin) || (colors === null || colors === void 0 ? void 0 : colors.suit) || defaultColors.fin, accent: (colors === null || colors === void 0 ? void 0 : colors.accent) || defaultColors.accent, skin: (colors === null || colors === void 0 ? void 0 : colors.skin) || defaultColors.skin });
+    const cfg = config_1.CONFIG.diver;
+    const time = (_a = motion.animTime) !== null && _a !== void 0 ? _a : Date.now() / 150;
+    // tankCount 优先：传 0/1/2 直接生效；不传则按 hasTank 推（true→1, false→0）
+    const tankCount = motion.tankCount != null
+        ? Math.max(0, Math.min(2, motion.tankCount | 0))
+        : (motion.hasTank !== false ? 1 : 0);
+    const vx = (_b = motion.vx) !== null && _b !== void 0 ? _b : 0;
+    const vy = (_c = motion.vy) !== null && _c !== void 0 ? _c : 0;
+    const speed = Math.hypot(vx, vy);
+    const idleBlend = clamp(1 - speed / 1.2, 0, 1);
+    const swimBlend = clamp(speed / 3.5, 0, 1);
+    const autoSwim = motion.autoSwim === true;
+    const leftKickProgress = clamp((_d = motion.leftKickProgress) !== null && _d !== void 0 ? _d : 0, 0, 1);
+    const rightKickProgress = clamp((_e = motion.rightKickProgress) !== null && _e !== void 0 ? _e : 0, 0, 1);
+    const leftKickStrength = clamp((_f = motion.leftKickStrength) !== null && _f !== void 0 ? _f : 0, 0, 1);
+    const rightKickStrength = clamp((_g = motion.rightKickStrength) !== null && _g !== void 0 ? _g : 0, 0, 1);
+    const leftTurnProgress = clamp((_h = motion.leftTurnProgress) !== null && _h !== void 0 ? _h : 0, 0, 1);
+    const rightTurnProgress = clamp((_j = motion.rightTurnProgress) !== null && _j !== void 0 ? _j : 0, 0, 1);
+    const leftTurnStrength = clamp((_k = motion.leftTurnStrength) !== null && _k !== void 0 ? _k : 0, 0, 1);
+    const rightTurnStrength = clamp((_l = motion.rightTurnStrength) !== null && _l !== void 0 ? _l : 0, 0, 1);
+    const forwardVisual = clamp((_m = motion.forwardVisual) !== null && _m !== void 0 ? _m : 0, 0, 1);
+    const turnVisual = clamp((_o = motion.turnVisual) !== null && _o !== void 0 ? _o : 0, -1, 1);
+    // ===== 躯干波动相位时钟（全身动画统一驱动源） =====
+    // 三种状态叠加推进：
+    //   idle：低频常驻（漂浮呼吸）
+    //   forward：随腿部速度同频推进（身体扭动带动踢水）
+    //   turn：附加高频小扰动（转向时肌肉紧张）
+    const clockId = (_p = motion.id) !== null && _p !== void 0 ? _p : 'anon';
+    let bodyClock = bodyClocks.get(clockId);
+    if (!bodyClock) {
+        bodyClock = { phase: 0 };
+        bodyClocks.set(clockId, bodyClock);
+    }
+    const speedRefMaxForBody = 6;
+    const speedNormForBody = clamp(speed / speedRefMaxForBody, 0, 1);
+    const turnAbsVisual = Math.abs(turnVisual);
+    // 身体扭动频率：idle 慢 + forward 随速度加快 + turn 再加一点
+    const bodyFreq = cfg.bodyWaveIdleFreq
+        + speedNormForBody * cfg.bodyWaveForwardFreq
+        + turnAbsVisual * cfg.bodyWaveTurnFreq;
+    bodyClock.phase = (bodyClock.phase + bodyFreq) % 1;
+    // 主波形（-1→+1 正弦），以及相位领先量（供头部做蛇形传导）
+    const bodyWave = Math.sin(bodyClock.phase * Math.PI * 2);
+    const bodyWaveHead = Math.sin((bodyClock.phase + cfg.bodyWaveHeadLead) * Math.PI * 2);
+    // 二次谐波：让 compress / roll 呈现"踢两次身体起伏一次"的自然节奏
+    const bodyWave2 = Math.sin(bodyClock.phase * Math.PI * 4);
+    // 身体扭动幅度：三种场景加权
+    // - idle 幅度小且常驻
+    // - forward 幅度中等，与速度成比例
+    // - turn 幅度最大
+    const bodySwayAmp = cfg.bodyWaveIdleAmp * idleBlend
+        + cfg.bodyWaveForwardAmp * speedNormForBody
+        + cfg.bodyWaveTurnAmp * turnAbsVisual;
+    let turnAmount = 0;
+    if (speed > 0.18) {
+        const velAngle = Math.atan2(vy, vx);
+        turnAmount = clamp(normalizeAngle(velAngle - angle) / (Math.PI * 0.5), -1, 1);
+    }
+    // idle 下的漂浮位移（原有逻辑保留，但加一个与躯干波同步的呼吸轻漂）
+    const driftX = Math.sin(time * cfg.idleDriftSpeed) * 1.2 * idleBlend + Math.sin(time * (cfg.idleDriftSpeed * 1.8)) * 0.12
+        + bodyWave2 * cfg.bodyIdleDriftAmp * idleBlend;
+    const driftY = Math.cos(time * (cfg.idleDriftSpeed * 0.82)) * 0.8 * idleBlend
+        + bodyWave * cfg.bodyIdleDriftAmp * 0.6 * idleBlend;
+    const leftKickWave = easeStroke(leftKickProgress) * leftKickStrength;
+    const rightKickWave = easeStroke(rightKickProgress) * rightKickStrength;
+    const kickWave = leftKickWave - rightKickWave;
+    // ===== 身体 roll（绕前进轴的侧倾，用垂直缩放模拟） =====
+    // 转向时大幅侧倾（向转向内侧），前进时小幅摇摆，idle 时只有微弱呼吸
+    const bodyRoll = turnVisual * cfg.rollTurnFactor
+        + turnAmount * 0.08
+        + bodyWave * bodySwayAmp * cfg.rollWaveFactor
+        + kickWave * 0.02;
+    // ===== 身体 yaw（俯视下的左右扭动，驱动 S 型曲线） =====
+    // 转向时强烈偏向输入侧，前进时周期性左右扭动，idle 时低频漂动
+    const bodyYaw = turnAmount * 1.0
+        + turnVisual * cfg.yawTurnFactor
+        + bodyWave * bodySwayAmp * cfg.yawWaveFactor
+        + kickWave * 0.22;
+    // ===== 躯干前后呼吸压缩 =====
+    // forward 时随腿部相位做呼吸，idle 时随 bodyWave2 轻微起伏
+    const compressWave = bodyWave2 * cfg.compressWaveAmp * (idleBlend * 0.5 + speedNormForBody);
+    const torsoCompress = 1 - forwardVisual * 0.035 + compressWave;
+    // ===== 头部相对躯干的相位领先（蛇形传导：头先动、身后跟） =====
+    // headYawLead 表示头部额外的 yaw 偏移（世界坐标下头比身体更早完成扭动）
+    const headYawLead = bodyWaveHead * bodySwayAmp * cfg.headLeadFactor
+        + turnVisual * cfg.headTurnLead;
+    const swimCycle = Math.sin(time * cfg.legKickFrequency);
+    void swimCycle; // 保留符号防未来引用
+    const leftArmKick = leftKickWave;
+    const rightArmKick = rightKickWave;
+    const leftArmTurn = easeStroke(leftTurnProgress) * leftTurnStrength;
+    const rightArmTurn = easeStroke(rightTurnProgress) * rightTurnStrength;
+    const armClose = swimBlend * cfg.armCloseBySpeed;
+    // 自动挡巡航：双手完全收起贴身（身体局部坐标下 +x 为身体朝向，手臂从肩部向 -x 伸向后方 = 角度 π）
+    // blend 用 swimBlend 控制渐变：静止时手张开漂浮，移动时逐渐收拢为贴身姿态
+    const autoBlend = autoSwim ? swimBlend : 0;
+    const baseOpenL = Math.PI + 0.68 - armClose;
+    const baseOpenR = Math.PI - 0.68 + armClose;
+    const baseTuckL = Math.PI + 0.28;
+    const baseTuckR = Math.PI - 0.28;
+    const baseL = baseOpenL * (1 - autoBlend) + baseTuckL * autoBlend;
+    const baseR = baseOpenR * (1 - autoBlend) + baseTuckR * autoBlend;
+    const strokeScale = 1 - autoBlend * 0.9;
+    // ===== 手臂常驻动画：idle + forward 都要有 =====
+    // - idle 时靠 armIdleAmplitude * idleBlend 做低频轻摆（原有）
+    // - forward 时（即使 autoSwim 贴身），让手臂随身体波 bodyWave 做轻微反相摆动
+    //   左右反相：一侧外展时另一侧内收，模拟流体阻力带来的自然抖动
+    //   幅度用 armBodyWaveAmp 控制，autoSwim 下不完全收死（保留 40%）
+    const armBodySway = bodyWave * cfg.armBodyWaveAmp
+        * (1 - autoBlend * 0.6) // 贴身姿态下衰减但不归零
+        * (idleBlend * 0.6 + speedNormForBody);
+    const leftArmUpperBase = baseL
+        + Math.sin(time * cfg.armIdleFrequency) * cfg.armIdleAmplitude * idleBlend
+        + armBodySway
+        + leftArmKick * cfg.armKickSwing * strokeScale
+        - leftArmTurn * cfg.armTurnSwing
+        + turnVisual * cfg.armTurnLeanFactor;
+    const rightArmUpperBase = baseR
+        - Math.sin(time * cfg.armIdleFrequency) * cfg.armIdleAmplitude * idleBlend
+        - armBodySway
+        - rightArmKick * cfg.armKickSwing * strokeScale
+        + rightArmTurn * cfg.armTurnSwing
+        + turnVisual * cfg.armTurnLeanFactor;
+    // 前臂在巡航姿态下也贴身伸直：把原本的 ±0.22 偏转衰减掉
+    const forearmOffset = 0.22 * (1 - autoBlend * 0.85);
+    const leftArmLowerBase = leftArmUpperBase + forearmOffset - leftArmKick * 0.08 * strokeScale + leftArmTurn * 0.12 - armClose * 0.18;
+    const rightArmLowerBase = rightArmUpperBase - forearmOffset + rightArmKick * 0.08 * strokeScale - rightArmTurn * 0.12 + armClose * 0.18;
+    // ===== 双臂张开"迎接氧气"动画：直接对手臂角度做 blend（与 carry/regulator 互斥） =====
+    // 张开目标姿态：上臂指向身侧偏后（向外张），前臂顺势再外展一点 —— 形似"双臂张开拥抱迎接"
+    // 局部坐标：+x 为身体朝向，π 为正后方；左肩 y=-6.2，右肩 y=+6.2
+    // 左手目标角 π+0.95（上臂朝左后方约 54° 外展）；右手对称 π-0.95
+    const wa = motion.welcomeArmsAnim;
+    const welcomeActiveRaw = !!(wa && wa.active && wa.duration > 0);
+    // welcome 优先级最低：carryItem 先过滤；regulator 不影响左手但会接管右手，
+    // 所以 welcome 与 regulator 共存时也允许（regulator 后续会覆盖右手姿态）
+    const carryWillTakeover = !!(motion.carryItemAnim && motion.carryItemAnim.active);
+    const welcomeActive = welcomeActiveRaw && !carryWillTakeover;
+    let welcomeBlend = 0;
+    if (welcomeActive) {
+        const tw = Math.min(1, Math.max(0, wa.timer / wa.duration));
+        // A 0~0.30 张开（smoothstep 渐入）；B 0.30~0.70 保持；C 0.70~1.00 归位
+        if (tw < 0.30) {
+            const a = tw / 0.30;
+            welcomeBlend = a * a * (3 - 2 * a);
+        }
+        else if (tw < 0.70) {
+            welcomeBlend = 1;
+        }
+        else {
+            const c2 = (tw - 0.70) / 0.30;
+            const ec = c2 * c2 * (3 - 2 * c2);
+            welcomeBlend = 1 - ec;
+        }
+    }
+    // 张开动画期间叠加一点"接受能量"的呼吸抖动（让张开不死板）
+    const welcomeBreath = welcomeActive
+        ? Math.sin((wa.timer / Math.max(1, wa.duration)) * Math.PI * 4) * 0.05 * welcomeBlend
+        : 0;
+    const leftArmTargetUpper = Math.PI + 0.95 + welcomeBreath;
+    const leftArmTargetLower = leftArmTargetUpper + 0.18;
+    const rightArmTargetUpper = Math.PI - 0.95 - welcomeBreath;
+    const rightArmTargetLower = rightArmTargetUpper - 0.18;
+    const leftArmUpper = leftArmUpperBase + (leftArmTargetUpper - leftArmUpperBase) * welcomeBlend;
+    const leftArmLower = leftArmLowerBase + (leftArmTargetLower - leftArmLowerBase) * welcomeBlend;
+    const rightArmUpper = rightArmUpperBase + (rightArmTargetUpper - rightArmUpperBase) * welcomeBlend;
+    const rightArmLower = rightArmLowerBase + (rightArmTargetLower - rightArmLowerBase) * welcomeBlend;
+    renderCtx.save();
+    renderCtx.translate(x + driftX, y + driftY);
+    renderCtx.rotate(angle + bodyRoll);
+    // 用 Y 轴压缩模拟 3D 侧倾（roll）：bodyRoll 越大身体越"侧过去"，Y 方向被压扁
+    // rollSquash 是额外的 Y 缩放因子，最多 cfg.rollSquashMax 的压缩量
+    const rollSquash = 1 - Math.abs(bodyRoll) * cfg.rollSquashFactor;
+    const rollSquashClamped = Math.max(1 - cfg.rollSquashMax, rollSquash);
+    renderCtx.scale(1, rollSquashClamped);
+    // ===== 腿部相位时钟：完全由速度 + kickDrive boost 自驱（渲染侧自持） =====
+    // 速度归一化：玩家手动挡 maxSpeed=11，自动挡/NPC 一般 4~6，这里用 6 做归一化让两种模式都能进入高频段
+    const speedRefMax = 6;
+    const speedNorm = clamp(speed / speedRefMax, 0, 1);
+    const kickDriveVal = clamp((_q = motion.kickDrive) !== null && _q !== void 0 ? _q : 0, 0, 1);
+    // 频率：base + speedNorm 主导 + kickDrive 加速瞬间 boost
+    // kickDrive boost 降到 0.3 倍，避免手动挡加速瞬间腿摆得过快
+    const freq = cfg.legAutoFreqBase
+        + speedNorm * cfg.legAutoFreqBoost
+        + kickDriveVal * cfg.legAutoFreqBoost * 0.3;
+    // 幅度：由速度主导（静止时=低幅常驻呼吸，不再归零） + kickDrive 给加速瞬间的额外鞭打
+    // idle 也给一点微幅（cfg.legIdleAmpNorm），让双腿在静止漂浮时做呼吸式抽动
+    const idleLegAmp = cfg.legIdleAmpNorm * idleBlend;
+    const ampNorm = clamp(speedNorm + kickDriveVal * 0.5 + idleLegAmp, 0, 1);
+    // 取/建本角色的相位时钟
+    let clock = legClocks.get(clockId);
+    if (!clock) {
+        clock = { phase: 0 };
+        legClocks.set(clockId, clock);
+    }
+    // 速度极低且无 idle 幅度时才让相位归零；只要 idle 下还保留微幅，就让相位持续推进（维持呼吸感）
+    if (ampNorm < 0.02) {
+        const distTo0 = Math.min(clock.phase, 1 - clock.phase);
+        if (distTo0 > 0.005) {
+            clock.phase += (clock.phase < 0.5 ? -1 : 1) * 0.02;
+            clock.phase = ((clock.phase % 1) + 1) % 1;
+        }
+    }
+    else {
+        // idle 时用较低频率（bodyClock 节奏一致），前进时沿用原频率
+        const effectiveFreq = idleLegAmp > 0 && speedNorm < 0.05
+            ? cfg.legAutoFreqBase * cfg.legIdleFreqFactor
+            : freq;
+        clock.phase = (clock.phase + effectiveFreq) % 1;
+    }
+    const legPhaseVal = clock.phase;
+    drawLegAndFin(renderCtx, -8.2, -4.2, -1, legPhaseVal, ampNorm, leftTurnProgress, leftTurnStrength, bodyYaw, c);
+    // 右腿相位 +0.5，实现左右交替鞭打
+    drawLegAndFin(renderCtx, -8.2, 4.2, 1, (legPhaseVal + 0.5) % 1, ampNorm, rightTurnProgress, rightTurnStrength, bodyYaw, c);
+    renderCtx.save();
+    renderCtx.scale(torsoCompress, 1);
+    // BCD 浮力背心气囊：画在躯干之下，让躯干"坐"在气囊上，形成外包一层软壳的层次
+    drawBCDBladder(renderCtx, (_r = motion.bcdInflation) !== null && _r !== void 0 ? _r : 0, motion.bcdVenting === true, bodyYaw);
+    const bodyGradient = renderCtx.createLinearGradient(10, 0, -16, 0);
+    bodyGradient.addColorStop(0, c.body);
+    bodyGradient.addColorStop(0.65, c.suit);
+    bodyGradient.addColorStop(1, '#1c262c');
+    renderCtx.fillStyle = bodyGradient;
+    renderCtx.beginPath();
+    renderCtx.moveTo(13.5, 0);
+    renderCtx.bezierCurveTo(10, -8.8, -4, -10.6, -14.2, -4.5);
+    renderCtx.quadraticCurveTo(-17.2, 0, -14.2, 4.5);
+    renderCtx.bezierCurveTo(-4, 10.6, 10, 8.8, 13.5, 0);
+    renderCtx.closePath();
+    renderCtx.fill();
+    renderCtx.fillStyle = 'rgba(255,255,255,0.08)';
+    renderCtx.beginPath();
+    renderCtx.ellipse(2.5, -2.8 + bodyYaw * 0.15, 9.5, 2.6, -0.18, 0, Math.PI * 2);
+    renderCtx.fill();
+    if (tankCount > 0) {
+        renderCtx.save();
+        renderCtx.translate(-0.8, bodyYaw * 0.5);
+        const tankGradient = renderCtx.createLinearGradient(8, 0, -10, 0);
+        tankGradient.addColorStop(0, '#eef5f8');
+        tankGradient.addColorStop(0.28, c.tank);
+        tankGradient.addColorStop(0.65, '#9eb3bd');
+        tankGradient.addColorStop(1, '#748894');
+        renderCtx.fillStyle = tankGradient;
+        if (tankCount >= 2) {
+            // 双瓶：左右腋下各一只略小的气瓶（沿 y 轴 ±3.6）
+            // 单瓶尺寸 17.5×4.2 → 双瓶各 14×3.2，使总宽接近原观感但更壮
+            const tankLen = 14;
+            const tankR = 3.2;
+            const tankYOffset = 3.6;
+            // 左瓶
+            drawCapsule(renderCtx, -1.4, -tankYOffset, tankLen, tankR);
+            renderCtx.fill();
+            // 右瓶
+            drawCapsule(renderCtx, -1.4, tankYOffset, tankLen, tankR);
+            renderCtx.fill();
+            // 阀门接头：每瓶一只小方块
+            renderCtx.fillStyle = '#485962';
+            drawRoundRectPath(renderCtx, 4.0, -tankYOffset - 1.6, 3.0, 3.2, 1.0);
+            renderCtx.fill();
+            drawRoundRectPath(renderCtx, 4.0, tankYOffset - 1.6, 3.0, 3.2, 1.0);
+            renderCtx.fill();
+            // 罐身分割线（每瓶一条）
+            renderCtx.strokeStyle = 'rgba(32,40,46,0.6)';
+            renderCtx.lineWidth = 1.0;
+            renderCtx.beginPath();
+            // 左瓶环
+            renderCtx.moveTo(-3.5, -tankYOffset - tankR);
+            renderCtx.lineTo(-3.5, -tankYOffset + tankR);
+            // 右瓶环
+            renderCtx.moveTo(-3.5, tankYOffset - tankR);
+            renderCtx.lineTo(-3.5, tankYOffset + tankR);
+            renderCtx.stroke();
+        }
+        else {
+            // 单瓶：原有视觉
+            drawCapsule(renderCtx, -1.4, 0, 17.5, 4.2);
+            renderCtx.fill();
+            renderCtx.fillStyle = '#485962';
+            drawRoundRectPath(renderCtx, 4.5, -2.3, 3.8, 4.6, 1.2);
+            renderCtx.fill();
+            renderCtx.strokeStyle = 'rgba(32,40,46,0.65)';
+            renderCtx.lineWidth = 1.3;
+            renderCtx.beginPath();
+            renderCtx.moveTo(-5.2, -5.2);
+            renderCtx.lineTo(-5.2, 5.2);
+            renderCtx.moveTo(1.8, -5.2);
+            renderCtx.lineTo(1.8, 5.2);
+            renderCtx.stroke();
+        }
+        renderCtx.restore();
+    }
+    renderCtx.restore();
+    // ========== 气嘴脱落动画：右手伸出去抓 / 把气嘴塞回嘴 ==========
+    // 计算动画进度 t（0~1）；以及当前帧气嘴与右手腕位置
+    // 局部坐标：+x 为角色朝向、+y 为右侧
+    const ra = motion.regulatorAnim;
+    const regActive = !!(ra && ra.active && ra.duration > 0);
+    const headY = headYawLead * cfg.headOffsetScale;
+    const mouthX = 21.0; // 嘴部（头球前沿）局部 x
+    const mouthY = headY; // 嘴部局部 y（跟着头一起微动）
+    let handBlend = 0; // 0=走原右手动画，1=完全接管为"抓气嘴"姿态
+    let regX = mouthX;
+    let regY = mouthY;
+    let regAngleLocal = 0; // 气嘴自身旋转角（咬嘴朝前为 0）
+    let regVisible = false; // 气嘴是否以"外露"状态绘制（在嘴里时不画）
+    if (regActive) {
+        const t = Math.min(1, Math.max(0, ra.timer / ra.duration));
+        const strengthMul = 0.7 + 0.5 * ra.strength; // 轻撞 0.7，重撞 1.2
+        // 各阶段分段
+        // A: 0.00 ~ 0.20  气嘴被撞飞；手还来不及反应
+        // B: 0.20 ~ 0.55  手伸向气嘴
+        // C: 0.55 ~ 0.90  手抓着气嘴往回送
+        // D: 0.90 ~ 1.00  回到嘴边
+        const AEnd = 0.20;
+        const BEnd = 0.55;
+        const CEnd = 0.90;
+        // 气嘴被撞飞的"最远点"（朝右前下）：
+        //   y 正方向（角色右侧）14 像素 + x 方向前伸 8
+        //   加一点上下飘荡让它像漂在水里
+        const flungX = mouthX + 8 * strengthMul;
+        const flungY = mouthY + 15 * strengthMul;
+        // 胸前软管锚点（气瓶阀门口，位于身前中线偏右）
+        const hoseAnchorX = 2;
+        const hoseAnchorY = 4;
+        // 阶段 A：弹出（ease-out）
+        if (t < AEnd) {
+            const a = t / AEnd;
+            const ea = 1 - (1 - a) * (1 - a); // easeOut
+            regX = mouthX + (flungX - mouthX) * ea;
+            regY = mouthY + (flungY - mouthY) * ea;
+            handBlend = Math.min(0.3, a * 0.3); // 手才刚开始反应
+            regVisible = a > 0.05;
+            // 气嘴自旋一点
+            regAngleLocal = ea * 0.6;
+        }
+        else if (t < BEnd) {
+            // 阶段 B：气嘴在最远处轻漂；手伸过去
+            const b = (t - AEnd) / (BEnd - AEnd);
+            // 轻漂：围绕 flung 小范围浮动
+            const drift = Math.sin(b * Math.PI * 2) * 0.8;
+            regX = flungX + drift * 0.3;
+            regY = flungY + drift;
+            handBlend = 0.3 + 0.7 * smoothstepLocal(b); // 渐入完全接管
+            regVisible = true;
+            regAngleLocal = 0.6 + Math.sin(b * Math.PI * 2) * 0.25;
+        }
+        else if (t < CEnd) {
+            // 阶段 C：手抓着气嘴往嘴边送（气嘴跟随手腕）
+            const c2 = (t - BEnd) / (CEnd - BEnd);
+            const ec = c2 * c2 * (3 - 2 * c2); // smoothstep
+            // 气嘴位置由手腕驱动，这里占位成目标点，下面用 wrist 覆盖
+            regX = flungX + (mouthX - flungX) * ec;
+            regY = flungY + (mouthY - flungY) * ec;
+            handBlend = 1;
+            regVisible = true;
+            // 收回时气嘴自旋归零
+            regAngleLocal = 0.6 * (1 - ec);
+        }
+        else {
+            // 阶段 D：回到嘴边，手撤回
+            const d = (t - CEnd) / (1 - CEnd);
+            regX = mouthX;
+            regY = mouthY;
+            handBlend = 1 - d; // 手缓缓归位
+            // 最后 30% 气嘴已经含住，不外露
+            regVisible = d < 0.7;
+            regAngleLocal = 0;
+        }
+    }
+    // ========== 双手抱拾取物动画（与 regulator 互斥；regulator 优先） ==========
+    // 计算双手手腕目标点 + 物品在双手中央的位置（局部坐标）
+    const ca = motion.carryItemAnim;
+    const carryActiveRaw = !!(ca && ca.active && ca.duration > 0 && ca.itemKind);
+    // 若 regulator 正在抢右手，carry 让位（避免双手姿态打架）
+    const carryActive = carryActiveRaw && !regActive;
+    let carryArmBlend = 0; // 0=走原双手动画，1=完全接管为"双手抱物"姿态
+    let carryItemX = 0;
+    let carryItemY = 0;
+    let carryItemAlpha = 0; // 物品绘制透明度
+    let carryItemSize = 14; // 物品图标尺寸（局部坐标 px）
+    let carryLeftWristX = 0, carryLeftWristY = 0;
+    let carryRightWristX = 0, carryRightWristY = 0;
+    if (carryActive) {
+        const t = Math.min(1, Math.max(0, ca.timer / ca.duration));
+        // 把世界起点换算到角色身体局部坐标（不计 driftX/driftY 与 rollSquash 微差）
+        const dwx = ca.fromX - x;
+        const dwy = ca.fromY - y;
+        const cosA = Math.cos(angle);
+        const sinA = Math.sin(angle);
+        const startLocalX = cosA * dwx + sinA * dwy;
+        const startLocalY = -sinA * dwx + cosA * dwy;
+        // "抱住"目标位置：双手在身前合抱（胸前略偏外）
+        // 双手中央：身体局部 (carryHomeX, 0)；双手腕 ±carryHandSpread 分布
+        const carryHomeX = 17.5; // 胸前外伸（接近头球前沿但稍内）
+        const carryHandSpread = 5.5; // 两腕 y 间距 / 2
+        // 阶段切分
+        const AEnd = 0.25; // 双手伸出 + 物品起飞预备
+        const BEnd = 0.55; // 物品从地面飞到双手中心
+        const CEnd = 0.85; // 双手抱回胸前
+        // D: 0.85~1.0    手臂归位 + 物品淡出
+        // 物品的"地面"局部位置（A 阶段保持在起点）
+        const groundX = startLocalX;
+        const groundY = startLocalY;
+        // 抱住时的物品位置（双手中心）
+        const heldX = carryHomeX;
+        const heldY = 0;
+        if (t < AEnd) {
+            // A：双手伸向地面物品
+            const a = t / AEnd;
+            const ea = a * a * (3 - 2 * a); // smoothstep
+            carryArmBlend = ea;
+            carryItemX = groundX;
+            carryItemY = groundY;
+            carryItemAlpha = 1;
+            // 双手腕目标 = 物品位置上下分开（让双手"抓住"物品两侧）
+            carryLeftWristX = groundX;
+            carryLeftWristY = groundY - carryHandSpread;
+            carryRightWristX = groundX;
+            carryRightWristY = groundY + carryHandSpread;
+        }
+        else if (t < BEnd) {
+            // B：物品从地面飞到双手中心；双手位置随物品同步插值
+            const b = (t - AEnd) / (BEnd - AEnd);
+            const eb = b * b * (3 - 2 * b);
+            carryArmBlend = 1;
+            carryItemX = groundX + (heldX - groundX) * eb;
+            carryItemY = groundY + (heldY - groundY) * eb;
+            carryItemAlpha = 1;
+            carryLeftWristX = carryItemX;
+            carryLeftWristY = carryItemY - carryHandSpread;
+            carryRightWristX = carryItemX;
+            carryRightWristY = carryItemY + carryHandSpread;
+        }
+        else if (t < CEnd) {
+            // C：稳定抱住（小幅呼吸抖动）
+            const c2 = (t - BEnd) / (CEnd - BEnd);
+            const breathe = Math.sin(c2 * Math.PI * 2) * 0.6;
+            carryArmBlend = 1;
+            carryItemX = heldX + breathe * 0.3;
+            carryItemY = heldY;
+            carryItemAlpha = 1;
+            carryLeftWristX = carryItemX;
+            carryLeftWristY = carryItemY - carryHandSpread;
+            carryRightWristX = carryItemX;
+            carryRightWristY = carryItemY + carryHandSpread;
+        }
+        else {
+            // D：手臂归位 + 物品淡出（"收进背包"的视觉提示）
+            const d = (t - CEnd) / (1 - CEnd);
+            carryArmBlend = 1 - d;
+            carryItemX = heldX;
+            carryItemY = heldY;
+            carryItemAlpha = 1 - d;
+            carryLeftWristX = carryItemX;
+            carryLeftWristY = carryItemY - carryHandSpread * (1 - d * 0.4);
+            carryRightWristX = carryItemX;
+            carryRightWristY = carryItemY + carryHandSpread * (1 - d * 0.4);
+        }
+    }
+    // --- 绘制左手臂（regulator 不接管左手；carry 接管时插值到目标手腕） ---
+    if (carryActive && carryArmBlend > 0.01) {
+        const lShoulderX = 4.3, lShoulderY = -6.2;
+        const lElbowX0 = lShoulderX + Math.cos(leftArmUpper) * ARM_UPPER_LEN;
+        const lElbowY0 = lShoulderY + Math.sin(leftArmUpper) * ARM_UPPER_LEN;
+        const lWristX0 = lElbowX0 + Math.cos(leftArmLower) * ARM_LOWER_LEN;
+        const lWristY0 = lElbowY0 + Math.sin(leftArmLower) * ARM_LOWER_LEN;
+        const blendedX = lWristX0 + (carryLeftWristX - lWristX0) * carryArmBlend;
+        const blendedY = lWristY0 + (carryLeftWristY - lWristY0) * carryArmBlend;
+        drawArmReach(renderCtx, lShoulderX, lShoulderY, blendedX, blendedY, c);
+    }
+    else {
+        drawArm(renderCtx, 4.3, -6.2, leftArmUpper, leftArmLower, c);
+    }
+    // --- 绘制右手臂：regulator 优先；其次 carry；都没有则原姿态 ---
+    let rightWristX = 0, rightWristY = 0; // 供气嘴阶段 C 吸附
+    if (regActive && handBlend > 0.01) {
+        // 原右手腕（通过原角度反推）：肩 (4.3, 6.2) → upper → lower
+        const rShoulderX = 4.3, rShoulderY = 6.2;
+        const rElbowX0 = rShoulderX + Math.cos(rightArmUpper) * ARM_UPPER_LEN;
+        const rElbowY0 = rShoulderY + Math.sin(rightArmUpper) * ARM_UPPER_LEN;
+        const rWristX0 = rElbowX0 + Math.cos(rightArmLower) * ARM_LOWER_LEN;
+        const rWristY0 = rElbowY0 + Math.sin(rightArmLower) * ARM_LOWER_LEN;
+        // 目标手腕：阶段 B 指向气嘴；阶段 C/D 紧贴气嘴位置（所以正好 = regX/regY）
+        const targetWristX = regX;
+        const targetWristY = regY;
+        // 在原手腕与目标手腕之间按 handBlend 线性插值
+        const blendedWristX = rWristX0 + (targetWristX - rWristX0) * handBlend;
+        const blendedWristY = rWristY0 + (targetWristY - rWristY0) * handBlend;
+        const res = drawArmReach(renderCtx, rShoulderX, rShoulderY, blendedWristX, blendedWristY, c);
+        rightWristX = res.wristX;
+        rightWristY = res.wristY;
+    }
+    else if (carryActive && carryArmBlend > 0.01) {
+        const rShoulderX = 4.3, rShoulderY = 6.2;
+        const rElbowX0 = rShoulderX + Math.cos(rightArmUpper) * ARM_UPPER_LEN;
+        const rElbowY0 = rShoulderY + Math.sin(rightArmUpper) * ARM_UPPER_LEN;
+        const rWristX0 = rElbowX0 + Math.cos(rightArmLower) * ARM_LOWER_LEN;
+        const rWristY0 = rElbowY0 + Math.sin(rightArmLower) * ARM_LOWER_LEN;
+        const blendedX = rWristX0 + (carryRightWristX - rWristX0) * carryArmBlend;
+        const blendedY = rWristY0 + (carryRightWristY - rWristY0) * carryArmBlend;
+        drawArmReach(renderCtx, rShoulderX, rShoulderY, blendedX, blendedY, c);
+    }
+    else {
+        drawArm(renderCtx, 4.3, 6.2, rightArmUpper, rightArmLower, c);
+    }
+    // 阶段 C/D：把气嘴锚定到手腕位置，让气嘴看起来是被手捧着送回嘴的
+    if (regActive && ra.timer / ra.duration >= 0.55 && ra.timer / ra.duration < 0.90) {
+        regX = rightWristX;
+        regY = rightWristY;
+    }
+    // A small clipped waterproof cassette rides the right chest strap, inside
+    // the same body transform as the diver (including roll and drift).
+    if (motion.tapeVisual)
+        (0, TapeDeckVisual_1.drawTapeDeck)(renderCtx, 3, 8, 14, motion.tapeVisual, true);
+    // 头部：加入蛇形传导偏移（头先转、身后跟）
+    // headYawLead 是沿身体 y 轴的微小偏移，让头颈看起来像先扭动
+    renderCtx.fillStyle = c.suit;
+    renderCtx.beginPath();
+    renderCtx.arc(15.8, headY, 6.5, 0, Math.PI * 2);
+    renderCtx.fill();
+    // --- 气嘴 + 软管（在头之后绘制，压在最上层） ---
+    if (regActive && regVisible) {
+        // 气嘴朝向：让咬嘴口指向嘴部（让视觉上"对着嘴"的阶段 C/D 很自然）
+        // 计算从气嘴指向嘴的方向作为咬嘴朝向
+        const dx = mouthX - regX;
+        const dy = mouthY - regY;
+        let faceAngle;
+        if (Math.hypot(dx, dy) > 2) {
+            faceAngle = Math.atan2(dy, dx);
+        }
+        else {
+            // 太靠近嘴时直接指向 +x（朝前）
+            faceAngle = 0;
+        }
+        // 加上自旋分量（阶段 A/B 的翻滚感）
+        const drawAngle = faceAngle + regAngleLocal * 0.3;
+        drawRegulatorAndHose(renderCtx, regX, regY, 2, 4, drawAngle, c);
+    }
+    // --- 双手抱拾取物：在最上层绘制（与气嘴并列优先级，但两者互斥不会同框） ---
+    if (carryActive && carryItemAlpha > 0.01) {
+        renderCtx.save();
+        renderCtx.globalAlpha *= carryItemAlpha;
+        // drawRelicIconAt 内部会再 translate + scale，传 cx/cy 即可
+        // 物品在双手中略微"持握感"旋转：随 timer 做缓慢漂动
+        renderCtx.translate(carryItemX, carryItemY);
+        const tNorm = ca.timer / ca.duration;
+        const wob = Math.sin(tNorm * Math.PI * 2) * 0.08;
+        renderCtx.rotate(wob);
+        (0, RenderRelic_1.drawRelicIconAt)(renderCtx, ca.itemKind, 0, 0, carryItemSize);
+        renderCtx.restore();
+    }
+    renderCtx.restore();
+}
+// 局部 smoothstep（避免依赖上方工具的命名冲突）
+function smoothstepLocal(t) {
+    const x = Math.max(0, Math.min(1, t));
+    return x * x * (3 - 2 * x);
+}
+function drawLungs(renderCtx, x, y, o2) {
+    renderCtx.save();
+    renderCtx.translate(x, y);
+    let breath = Math.sin(Date.now() / 800) * 0.05;
+    renderCtx.scale(1 + breath, 1 + breath);
+    const w = 40, h = 60, gap = 6;
+    renderCtx.fillStyle = '#888';
+    renderCtx.beginPath();
+    renderCtx.moveTo(-3, -h / 2 - 10);
+    renderCtx.lineTo(3, -h / 2 - 10);
+    renderCtx.lineTo(3, -h / 2 - 20);
+    renderCtx.lineTo(-3, -h / 2 - 20);
+    renderCtx.fill();
+    drawLungLobe(renderCtx, -w / 2 - gap / 2, 0, w, h, o2, true);
+    drawLungLobe(renderCtx, w / 2 + gap / 2, 0, w, h, o2, false);
+    renderCtx.fillStyle = '#fff';
+    renderCtx.font = 'bold 16px Arial';
+    renderCtx.textAlign = 'center';
+    renderCtx.fillText(Math.floor(o2) + '%', 0, 5);
+    if (o2 < 30) {
+        let alpha = 0.5 + Math.sin(Date.now() / 100) * 0.5;
+        renderCtx.fillStyle = `rgba(255, 50, 50, ${alpha})`;
+        renderCtx.font = 'bold 14px Arial';
+        renderCtx.fillText('WARNING', 0, h / 2 + 20);
+    }
+    renderCtx.restore();
+}
+function drawLungLobe(renderCtx, x, y, w, h, o2, isLeft) {
+    renderCtx.save();
+    renderCtx.translate(x, y);
+    renderCtx.beginPath();
+    if (isLeft) {
+        renderCtx.moveTo(w / 2, -h / 2);
+        renderCtx.bezierCurveTo(w / 2, -h / 2, -w / 2, -h / 2 + 15, -w / 2, 0);
+        renderCtx.bezierCurveTo(-w / 2, h / 2 - 5, 0, h / 2, w / 2, h / 2);
+        renderCtx.lineTo(w / 2, -h / 2);
+    }
+    else {
+        renderCtx.moveTo(-w / 2, -h / 2);
+        renderCtx.bezierCurveTo(-w / 2, -h / 2, w / 2, -h / 2 + 15, w / 2, 0);
+        renderCtx.bezierCurveTo(w / 2, h / 2 - 5, 0, h / 2, -w / 2, h / 2);
+        renderCtx.lineTo(-w / 2, -h / 2);
+    }
+    renderCtx.closePath();
+    renderCtx.fillStyle = 'rgba(20, 0, 0, 0.9)';
+    renderCtx.fill();
+    renderCtx.strokeStyle = '#311';
+    renderCtx.lineWidth = 2;
+    renderCtx.stroke();
+    renderCtx.clip();
+    let fillHeight = h * (o2 / 100);
+    let fillY = h / 2 - fillHeight;
+    let lungColor = 'rgba(237, 106, 106, 1)';
+    if (o2 < 30) {
+        let flash = Math.floor(Date.now() / 200) % 2 === 0;
+        lungColor = flash ? 'rgba(237, 106, 106, 1)' : 'rgba(98, 54, 54, 1)';
+    }
+    renderCtx.fillStyle = lungColor;
+    renderCtx.fillRect(-w, fillY, w * 2, fillHeight);
+    renderCtx.strokeStyle = 'rgba(0, 0, 0, 0.2)';
+    renderCtx.lineWidth = 1;
+    renderCtx.beginPath();
+    if (isLeft) {
+        renderCtx.moveTo(w / 4, -h / 4);
+        renderCtx.quadraticCurveTo(0, 0, -w / 4, h / 4);
+        renderCtx.moveTo(w / 4, -h / 4);
+        renderCtx.quadraticCurveTo(w / 4, 0, 0, h / 3);
+    }
+    else {
+        renderCtx.moveTo(-w / 4, -h / 4);
+        renderCtx.quadraticCurveTo(0, 0, w / 4, h / 4);
+        renderCtx.moveTo(-w / 4, -h / 4);
+        renderCtx.quadraticCurveTo(-w / 4, 0, 0, h / 3);
+    }
+    renderCtx.stroke();
+    renderCtx.restore();
+}
+function drawDiverSilhouette(renderCtx, x, y, color, isDead = false) {
+    renderCtx.save();
+    renderCtx.translate(x, y);
+    if (isDead)
+        renderCtx.rotate(Math.PI / 2);
+    renderCtx.fillStyle = color;
+    renderCtx.beginPath();
+    renderCtx.arc(0, -24, 8, 0, Math.PI * 2);
+    renderCtx.fill();
+    drawRoundRectPath(renderCtx, -10, -20, 20, 34, 8);
+    renderCtx.fill();
+    drawRoundRectPath(renderCtx, -6, -10, 12, 18, 5);
+    renderCtx.fillStyle = 'rgba(255,255,255,0.18)';
+    renderCtx.fill();
+    renderCtx.fillStyle = color;
+    drawRoundRectPath(renderCtx, -4, -2, 8, 20, 3);
+    renderCtx.fill();
+    renderCtx.beginPath();
+    renderCtx.moveTo(-4, 18);
+    renderCtx.lineTo(-14, 32);
+    renderCtx.lineTo(-7, 30);
+    renderCtx.lineTo(-2, 21);
+    renderCtx.closePath();
+    renderCtx.fill();
+    renderCtx.beginPath();
+    renderCtx.moveTo(4, 18);
+    renderCtx.lineTo(14, 32);
+    renderCtx.lineTo(7, 30);
+    renderCtx.lineTo(2, 21);
+    renderCtx.closePath();
+    renderCtx.fill();
+    renderCtx.restore();
+}
+},"HUDTopLeft":function(exports,require){"use strict";
+// 左上角 HUD 统一管理器
+//
+// 设计目标：
+// - 所有左上角的HUD元素（氧气环、手动挡切换、音频开关、深流随身听）统一由此管理
+// - 统一的布局：顶部起点固定，每个元素之间有统一间距，竖向排列
+// - 统一的交互：每个图标都支持"短按=主操作+弹tip"、可选"长按=展开详情"
+// - 统一的入场动效：左侧滑入+淡入
+// - 统一的浮窗tip：点按图标自动浮出，2秒后自动淡出消失
+//
+// 为什么不直接在RenderMazeUI里一堆if：
+// - 左上角图标的数量、顺序、显隐会随着项目迭代变化
+// - 每个图标的交互手势都类似，有统一抽象可以避免到处写hit-test和状态管理
+// - tip系统是跨元素的通用能力，必须集中维护
+//
+// HUDItem 渲染契约：
+// - iconDraw(ctx, cx, cy, size, t) 被调用时，(cx,cy)是图标中心屏幕坐标，size是图标可绘制的直径；
+//   实现者负责在这个圈范围内画自己的图标
+// - 超出size范围的绘制应谨慎，会穿出管理器规划区域
+//
+// 交互契约：
+// - 每次点击先等待 touchEnd 判定：移动<8px且时长<300ms=短按，时长>=300ms=长按；
+//   若item不支持长按（supportsLongPress=false），则touchStart就直接触发短按
+// - 短按：onShortTap() 执行并展示 tipText
+// - 长按：onLongHoldStart() 触发，松手时 onLongHoldEnd()
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.registerHUDItem = registerHUDItem;
+exports.clearHUDItems = clearHUDItems;
+exports.handleHUDTouchStart = handleHUDTouchStart;
+exports.handleHUDTouchMove = handleHUDTouchMove;
+exports.handleHUDTouchEnd = handleHUDTouchEnd;
+exports.drawHUDTopLeft = drawHUDTopLeft;
+exports.initMazeHUDTopLeft = initMazeHUDTopLeft;
+const config_1 = require("../core/config");
+const state_1 = require("../core/state");
+const Canvas_1 = require("./Canvas");
+const TapeDeckVisual_1 = require("./TapeDeckVisual");
+const RescueTape_1 = require("./RescueTape");
+const RenderAudioToggle_1 = require("./RenderAudioToggle");
+const GMPanel_1 = require("../gm/GMPanel");
+const BreathSystem_1 = require("../logic/BreathSystem");
+const AudioManager_1 = require("../audio/AudioManager");
+const Loadout_1 = require("../extraction/logic/Loadout");
+const DecompressionSystem_1 = require("../logic/DecompressionSystem");
+// ========== 布局常量 ==========
+// 起点 X/Y，每项尺寸、间距（垂直排列）
+// 注意：HUD_START_Y 必须避开微信小游戏右上角胶囊和设备前置摄像头
+//       设计安全区基线 SAFE_TOP=62，图标顶边 = 62 → 中心 = 62 + ITEM_SIZE/2
+const HUD_START_X = 46; // 所有图标的中心X（左侧留足边距）
+const HUD_START_Y = 84; // 第一个图标中心Y（= SAFE_TOP 62 + HUD_ITEM_SIZE/2 22）
+const HUD_ITEM_SIZE = 44; // 图标直径（作为hitTest和视觉尺寸基准）
+const HUD_ITEM_GAP = 18; // 图标之间的垂直间距（从边缘到边缘）
+const HUD_TIP_OFFSET_X = 8; // tip面板相对图标右侧的X偏移
+const HUD_TIP_MAX_WIDTH = 220;
+const HUD_TIP_PADDING = 10;
+const HUD_TIP_LINE_HEIGHT = 16;
+const HUD_TIP_DURATION_MS = 2000; // tip显示时长
+const HUD_TIP_FADE_MS = 320; // tip淡入淡出时长
+const HUD_LONG_PRESS_MS = 280; // 长按判定阈值
+const HUD_TAP_MOVE_TOLERANCE = 10; // 点击手势允许的位移容差
+// ========== 模块状态 ==========
+const hudItems = [];
+const activeTouches = new Map();
+let currentTip = { itemId: null, text: '', spawnTime: 0, anchorX: 0, anchorY: 0 };
+let hudEntryTimer = 0;
+const HUD_ENTRY_FRAMES = 40;
+// ========== 注册API ==========
+function registerHUDItem(item) {
+    // 若已存在同id，则覆盖（支持热替换）
+    const idx = hudItems.findIndex(x => x.id === item.id);
+    if (idx >= 0)
+        hudItems[idx] = item;
+    else
+        hudItems.push(item);
+}
+function clearHUDItems() {
+    hudItems.length = 0;
+    activeTouches.clear();
+    currentTip = { itemId: null, text: '', spawnTime: 0, anchorX: 0, anchorY: 0 };
+    hudEntryTimer = 0;
+}
+// 返回当前可见HUD项的布局位置列表
+function getVisibleSlots() {
+    var _a;
+    const slots = [];
+    // 氧气环单独放大：参考 CONFIG.breath.oxygenRingSizeMul，其他图标保持原尺寸
+    const cfgBreath = config_1.CONFIG.breath || {};
+    const oxygenSizeMul = (_a = cfgBreath.oxygenRingSizeMul) !== null && _a !== void 0 ? _a : 1.0;
+    let y = HUD_START_Y;
+    let prevHalf = 0; // 上一项的半径，用于给不同尺寸图标之间留出正确间距
+    for (const item of hudItems) {
+        if (item.visible && !item.visible())
+            continue;
+        const sizeHere = item.id === 'oxygen' ? HUD_ITEM_SIZE * oxygenSizeMul : item.id === 'lifeDetector' ? 56 : HUD_ITEM_SIZE;
+        const halfHere = sizeHere / 2;
+        if (slots.length === 0) {
+            // 第一个项以固定起点为中心（但若它被放大，起点往下挪让它离顶部有合理留白）
+            y = HUD_START_Y + Math.max(0, halfHere - HUD_ITEM_SIZE / 2);
+        }
+        else {
+            // 后续项基于上一项的下边缘 + 统一间距 + 本项半径
+            y = y + prevHalf + HUD_ITEM_GAP + halfHere;
+        }
+        slots.push({ item, cx: HUD_START_X, cy: y, size: sizeHere });
+        prevHalf = halfHere;
+    }
+    return slots;
+}
+// 返回被击中的slot（触摸点到图标中心 <= size/2 + 容差）
+function hitTest(x, y) {
+    const slots = getVisibleSlots();
+    for (const slot of slots) {
+        const hitR = slot.size / 2 + 6;
+        if (Math.hypot(x - slot.cx, y - slot.cy) <= hitR)
+            return slot;
+    }
+    return null;
+}
+// ========== 输入接口（供 input.ts 调用） ==========
+// 返回 true 表示触摸已被HUD消费，input.ts应跳过后续逻辑
+function handleHUDTouchStart(touchId, x, y) {
+    const slot = hitTest(x, y);
+    if (!slot)
+        return false;
+    // 记录触摸追踪
+    activeTouches.set(touchId, {
+        touchId,
+        itemId: slot.item.id,
+        startTime: Date.now(),
+        startX: x,
+        startY: y,
+        longFired: false,
+    });
+    // 不支持长按的item：touchStart 立刻触发短按
+    if (!slot.item.supportsLongPress) {
+        fireShortTap(slot);
+    }
+    return true;
+}
+function handleHUDTouchMove(touchId, x, y) {
+    const track = activeTouches.get(touchId);
+    if (!track)
+        return false;
+    // 移动超出容差视为取消长按候选
+    const moved = Math.hypot(x - track.startX, y - track.startY);
+    if (moved > HUD_TAP_MOVE_TOLERANCE) {
+        // 若长按已触发，保持（允许手指在图标上轻微移动），否则直接放弃
+        if (!track.longFired) {
+            const slot = findSlotById(track.itemId);
+            if (slot && slot.item.supportsLongPress) {
+                // 取消追踪，拒绝后续判定
+                activeTouches.delete(touchId);
+                return false;
+            }
+        }
+    }
+    // 如果已超过长按阈值还没触发长按，触发长按
+    if (!track.longFired) {
+        const slot = findSlotById(track.itemId);
+        if (slot && slot.item.supportsLongPress) {
+            const dt = Date.now() - track.startTime;
+            if (dt >= HUD_LONG_PRESS_MS) {
+                track.longFired = true;
+                if (slot.item.onLongHoldStart)
+                    slot.item.onLongHoldStart();
+            }
+        }
+    }
+    return true;
+}
+function handleHUDTouchEnd(touchId, x, y) {
+    void x;
+    void y;
+    const track = activeTouches.get(touchId);
+    if (!track)
+        return false;
+    activeTouches.delete(touchId);
+    const slot = findSlotById(track.itemId);
+    if (!slot)
+        return true;
+    if (track.longFired) {
+        // 长按松手
+        if (slot.item.onLongHoldEnd)
+            slot.item.onLongHoldEnd();
+    }
+    else {
+        // 短按（对于支持长按的item，松手时才触发；不支持长按的在start时已经触发）
+        if (slot.item.supportsLongPress) {
+            fireShortTap(slot);
+        }
+    }
+    return true;
+}
+function findSlotById(id) {
+    const slots = getVisibleSlots();
+    return slots.find(s => s.item.id === id) || null;
+}
+function fireShortTap(slot) {
+    // HUD 栏所有图标点击都统一视为"次按钮"（切换/提示类辅助操作）
+    (0, AudioManager_1.playSFX)('uiSecondary');
+    if (slot.item.onShortTap)
+        slot.item.onShortTap();
+    const tipText = slot.item.tipText ? slot.item.tipText() : '';
+    if (tipText) {
+        currentTip = {
+            itemId: slot.item.id,
+            text: tipText,
+            spawnTime: Date.now(),
+            anchorX: slot.cx + slot.size / 2,
+            anchorY: slot.cy,
+        };
+    }
+}
+// ========== 渲染入口 ==========
+// 绘制整个左上角HUD（每帧由迷宫HUD调用）
+function drawHUDTopLeft(time) {
+    // A stationary finger must open the sleeve too; touchmove is not guaranteed.
+    for (const track of activeTouches.values()) {
+        const slot = findSlotById(track.itemId);
+        if (!track.longFired && slot && slot.item.supportsLongPress && Date.now() - track.startTime >= HUD_LONG_PRESS_MS) {
+            track.longFired = true;
+            currentTip.itemId = null;
+            if (slot.item.onLongHoldStart)
+                slot.item.onLongHoldStart();
+        }
+    }
+    // 入场动效
+    if (hudEntryTimer < HUD_ENTRY_FRAMES)
+        hudEntryTimer++;
+    const entry = hudEntryTimer / HUD_ENTRY_FRAMES;
+    const ease = 1 - Math.pow(1 - entry, 3);
+    const slideX = -50 * (1 - ease);
+    const alpha = ease;
+    const slots = getVisibleSlots();
+    Canvas_1.ctx.save();
+    Canvas_1.ctx.globalAlpha = alpha;
+    Canvas_1.ctx.translate(slideX, 0);
+    // 先绘制所有图标（不带长按附加面板）
+    for (const slot of slots) {
+        slot.item.iconDraw(Canvas_1.ctx, slot.cx, slot.cy, slot.size, time);
+        if (slot.item.id !== 'lifeDetector') {
+            const captions = { oxygen: 'AIR', depth: 'DEPTH', deco: 'DECO', driveMode: 'DRIVE', audio: 'SOUND', gm: 'TOOLS' };
+            Canvas_1.ctx.save();
+            Canvas_1.ctx.font = 'bold 7px Arial';
+            Canvas_1.ctx.textAlign = 'center';
+            Canvas_1.ctx.fillStyle = TapeDeckVisual_1.TAPE.paper;
+            Canvas_1.ctx.fillText(captions[slot.item.id] || '', slot.cx, slot.cy + slot.size / 2 + 9);
+            Canvas_1.ctx.restore();
+        }
+    }
+    Canvas_1.ctx.restore();
+    // 长按中的附加绘制（不受入场alpha影响，全屏叠加）
+    for (const slot of slots) {
+        const track = [...activeTouches.values()].find(t => t.itemId === slot.item.id && t.longFired);
+        if (track && slot.item.longHoldDraw) {
+            const dt = Date.now() - track.startTime - HUD_LONG_PRESS_MS;
+            const progress = Math.min(1, Math.max(0, dt / 180));
+            slot.item.longHoldDraw(Canvas_1.ctx, slot.cx, slot.cy, slot.size, progress);
+        }
+    }
+    // Tip 浮窗
+    drawTip();
+}
+function drawTip() {
+    if (!currentTip.itemId)
+        return;
+    const now = Date.now();
+    const age = now - currentTip.spawnTime;
+    if (age > HUD_TIP_DURATION_MS) {
+        currentTip.itemId = null;
+        return;
+    }
+    // 淡入/保持/淡出
+    let tipAlpha = 1;
+    if (age < HUD_TIP_FADE_MS) {
+        tipAlpha = age / HUD_TIP_FADE_MS;
+    }
+    else if (age > HUD_TIP_DURATION_MS - HUD_TIP_FADE_MS) {
+        tipAlpha = (HUD_TIP_DURATION_MS - age) / HUD_TIP_FADE_MS;
+    }
+    tipAlpha = Math.max(0, Math.min(1, tipAlpha));
+    // 计算面板尺寸（支持多行，用 \n 分割）
+    const lines = currentTip.text.split('\n');
+    const metrics = measureTipLines(lines);
+    const panelW = metrics.width + HUD_TIP_PADDING * 2;
+    const panelH = metrics.height + HUD_TIP_PADDING * 2;
+    const panelX = currentTip.anchorX + HUD_TIP_OFFSET_X;
+    const panelY = currentTip.anchorY - panelH / 2;
+    Canvas_1.ctx.save();
+    Canvas_1.ctx.globalAlpha = tipAlpha;
+    // 背景
+    Canvas_1.ctx.fillStyle = TapeDeckVisual_1.TAPE.ink;
+    (0, TapeDeckVisual_1.cutPanel)(Canvas_1.ctx, panelX, panelY, panelW, panelH, 6);
+    Canvas_1.ctx.fill();
+    // 细边
+    Canvas_1.ctx.strokeStyle = TapeDeckVisual_1.TAPE.orange;
+    Canvas_1.ctx.lineWidth = 0.6;
+    (0, TapeDeckVisual_1.cutPanel)(Canvas_1.ctx, panelX, panelY, panelW, panelH, 6);
+    Canvas_1.ctx.stroke();
+    // 文字
+    Canvas_1.ctx.fillStyle = TapeDeckVisual_1.TAPE.paper;
+    Canvas_1.ctx.textAlign = 'left';
+    Canvas_1.ctx.textBaseline = 'top';
+    Canvas_1.ctx.font = '12px Arial';
+    for (let i = 0; i < lines.length; i++) {
+        Canvas_1.ctx.fillText(lines[i], panelX + HUD_TIP_PADDING, panelY + HUD_TIP_PADDING + i * HUD_TIP_LINE_HEIGHT);
+    }
+    Canvas_1.ctx.restore();
+}
+function measureTipLines(lines) {
+    Canvas_1.ctx.save();
+    Canvas_1.ctx.font = '12px Arial';
+    let maxW = 0;
+    for (const line of lines) {
+        const w = Canvas_1.ctx.measureText(line).width;
+        if (w > maxW)
+            maxW = w;
+    }
+    Canvas_1.ctx.restore();
+    return {
+        width: Math.min(HUD_TIP_MAX_WIDTH, Math.max(50, maxW)),
+        height: lines.length * HUD_TIP_LINE_HEIGHT - (HUD_TIP_LINE_HEIGHT - 12),
+    };
+}
+function drawRRect(c, x, y, w, h, r) {
+    r = Math.min(r, w / 2, h / 2);
+    c.beginPath();
+    c.moveTo(x + r, y);
+    c.lineTo(x + w - r, y);
+    c.arcTo(x + w, y, x + w, y + r, r);
+    c.lineTo(x + w, y + h - r);
+    c.arcTo(x + w, y + h, x + w - r, y + h, r);
+    c.lineTo(x + r, y + h);
+    c.arcTo(x, y + h, x, y + h - r, r);
+    c.lineTo(x, y + r);
+    c.arcTo(x, y, x + r, y, r);
+    c.closePath();
+}
+// ========== 初始化：注册迷宫模式的4个HUD项 ==========
+// 在迷宫模式每次进入游戏时调用，确保items已经注册
+function initMazeHUDTopLeft() {
+    clearHUDItems();
+    // 1. 氧气环（短按弹 tip，不支持长按）
+    registerHUDItem({
+        id: 'oxygen',
+        visible: () => true,
+        iconDraw: drawOxygenIcon,
+        supportsLongPress: false,
+        onShortTap: () => { },
+        tipText: () => {
+            const o2 = Math.ceil(state_1.player.o2);
+            const o2Max = Math.max(1, Math.round(state_1.player.o2Max || 100));
+            const tanks = (0, Loadout_1.getActiveAirTanks)();
+            const tankCnt = tanks.length;
+            const maze = state_1.state.mazeRescue;
+            const depth = maze ? Math.max(0, Math.floor(state_1.player.y / (maze.mazeTileSize || 40))) : 0;
+            const tankLine = tankCnt > 1 ? `\n气瓶：双瓶携带` : (tankCnt === 1 ? `\n气瓶：单瓶` : '');
+            return `氧气：${o2}/${o2Max}${tankLine}\n深度：${depth}m`;
+        },
+    });
+    // 2. 深度仪表（显示当前深度 / 装备最大安全深度）
+    registerHUDItem({
+        id: 'depth',
+        visible: () => true,
+        iconDraw: drawDepthIcon,
+        supportsLongPress: false,
+        onShortTap: () => { },
+        tipText: () => {
+            const maze = state_1.state.mazeRescue;
+            const depth = maze ? Math.max(0, Math.floor(state_1.player.y / (maze.mazeTileSize || 120))) : 0;
+            const maxAllowed = maze ? (maze.maxDepthAllowed || 30) : 30;
+            const overFlag = depth > maxAllowed ? '\n⚠ 已超出潜水衣极限！' : '';
+            return `当前深度：${depth}m\n潜水衣极限：${maxAllowed}m${overFlag}`;
+        },
+    });
+    // 2b. 减压指示灯（只在进入"需要减压"状态或正在执行减压时显示）
+    // 短按：弹 tip 显示氮负荷、下一档深度、剩余时间
+    // 长按：在档位内长按可 5x 加速减压，但氧气 3x 消耗
+    registerHUDItem({
+        id: 'deco',
+        visible: () => {
+            const cfg = config_1.CONFIG.deco;
+            if (!cfg || !cfg.enabled || !cfg.hudVisible)
+                return false;
+            // 显示条件：
+            //   - 锁定中（正在做减压任务）→ 始终显示
+            //   - 或氮负荷 > 0（下过深水就显示，让玩家对它有感知）
+            //   - 或系统判定需要减压
+            const rt = (0, DecompressionSystem_1.getDecoRuntime)();
+            return (0, DecompressionSystem_1.isDecoLockActive)() || rt.nitrogenLoad > 0.001 || (0, DecompressionSystem_1.isDecompressionRequired)();
+        },
+        iconDraw: drawDecoIcon,
+        supportsLongPress: true,
+        onShortTap: () => { },
+        tipText: () => {
+            const rt = (0, DecompressionSystem_1.getDecoRuntime)();
+            const cfg = config_1.CONFIG.deco;
+            const pct = Math.round((rt.nitrogenLoad / ((cfg === null || cfg === void 0 ? void 0 : cfg.thresholdCritical) || 1.5)) * 100);
+            const stop = (0, DecompressionSystem_1.getCurrentStopInfo)();
+            const depth = Math.floor((0, DecompressionSystem_1.getCurrentDepthMeters)());
+            const lockHint = (0, DecompressionSystem_1.isDecoLockActive)() ? '\n🔒 强行出水 = 重度减压病' : '';
+            if (!stop) {
+                if ((0, DecompressionSystem_1.getDecoLevel)() === 0 && !(0, DecompressionSystem_1.isDecoLockActive)()) {
+                    return `氮气：${pct}%（安全）\n深度：${depth}m\n（深于 20m 开始累积）`;
+                }
+                return `氮气：${pct}%\n深度：${depth}m${lockHint}`;
+            }
+            const remain = Math.max(0, (stop.hold - stop.progress)).toFixed(1);
+            const diff = depth - stop.depth;
+            const depthHint = Math.abs(diff) <= 1.5
+                ? '✓ 已在档内，静止即可减压'
+                : (diff > 0 ? `↑ 上浮 ${diff}m 到停留点` : `↓ 下沉 ${-diff}m 到停留点`);
+            return `氮气：${pct}%\n下一档：${stop.depth}m（剩 ${remain}s）\n${depthHint}\n长按 5× 加速（耗氧 3×）${lockHint}`;
+        },
+        onLongHoldStart: () => {
+            (0, DecompressionSystem_1.setDecoBoost)(true);
+        },
+        onLongHoldEnd: () => {
+            (0, DecompressionSystem_1.setDecoBoost)(false);
+        },
+    });
+    // 3. 手动/自动挡切换（短按切换）
+    registerHUDItem({
+        id: 'driveMode',
+        visible: () => true,
+        iconDraw: drawDriveModeIcon,
+        supportsLongPress: false,
+        onShortTap: () => {
+            config_1.CONFIG.manualDrive.enabled = !config_1.CONFIG.manualDrive.enabled;
+        },
+        tipText: () => {
+            return config_1.CONFIG.manualDrive.enabled ? '已切换：手动挡\n搓屏驱动潜水员踢水' : '已切换：自动挡\n摇杆控制移动方向';
+        },
+    });
+    // 3. 全局音频开关（短按切换）
+    registerHUDItem({
+        id: 'audio',
+        visible: () => true,
+        iconDraw: drawAudioIconWrapper,
+        supportsLongPress: false,
+        onShortTap: () => {
+            (0, RenderAudioToggle_1.toggleMuted)();
+        },
+        tipText: () => {
+            return state_1.state.audio.muted ? '音频：已静音' : '音频：已开启';
+        },
+    });
+    // 4. 深流随身听：短按提示，按住展开磁带封套。
+    registerHUDItem({
+        id: 'lifeDetector',
+        visible: () => {
+            const cfg = config_1.CONFIG.lifeDetector;
+            return !!(cfg && cfg.enabled && cfg.hudVisible);
+        },
+        iconDraw: drawLifeDetectorIcon,
+        supportsLongPress: true,
+        longHoldDraw: (c, cx, cy, _size, progress) => {
+            c.save();
+            c.globalAlpha *= progress;
+            const w = Math.min(248, Canvas_1.logicW - 24);
+            (0, TapeDeckVisual_1.drawTapeSleeve)(c, Math.min(cx + 38, Canvas_1.logicW - w - 12), Math.max(64, Math.min(cy - 98, Canvas_1.logicH - 208)), w, (0, RescueTape_1.getRescueTapeVisual)());
+            c.restore();
+        },
+        onShortTap: () => { },
+        tipText: () => {
+            const v = (0, RescueTape_1.getRescueTapeVisual)();
+            if (state_1.state.audio.muted)
+                return '深流随身听 · 已静音\n点上方音量键恢复声音\n按住磁带可看分层节奏';
+            if (v.fallback)
+                return '深流随身听 · 双音模式\n按住查看节奏';
+            if (!v.playing)
+                return '深流随身听 · 磁带就绪\n带上音乐，下潜\n按住查看分层节奏';
+            return `深流随身听 · ${v.mood === 'return' ? '一起回去' : v.mood === 'found' ? '就在这里' : '向深处去'}\n${v.level}/5 层 · 越靠近，音乐越丰盛\n按住查看分层节奏`;
+        },
+    });
+    // 5. GM 面板切换（调试工具，放在最后）
+    // 旧的屏幕顶部独立 GM 按钮已下线，统一收缩到左上 HUD 栏
+    // 方案 A：仅迷宫模式可切 GM 面板，菜单 / 主线 / 竞技场不提供入口
+    registerHUDItem({
+        id: 'gm',
+        visible: () => true,
+        iconDraw: drawGMIcon,
+        supportsLongPress: false,
+        onShortTap: () => {
+            (0, GMPanel_1.toggleGMOpen)();
+        },
+        tipText: () => {
+            return (0, GMPanel_1.isGMOpen)() ? 'GM 面板：已打开' : 'GM 面板：已关闭';
+        },
+    });
+}
+// ========== 图标绘制函数 ==========
+// 氧气环图标：显示氧气百分比的圆环（替代原深度数字，现在只专注氧气视觉）
+//
+// 双瓶模式：用同心两条环表达
+//   - 外圈 = 第一瓶（先被消耗，氧耗时由满 → 空）
+//   - 内圈 = 第二瓶（外圈耗光后才开始消耗）
+// 单瓶模式：保留原来的单一圆环外观（仅外圈）
+function drawOxygenIcon(c, cx, cy, size, time) {
+    const maze = state_1.state.mazeRescue;
+    // 动画值优先（拾取时平滑上涨）
+    const o2DisplayRaw = (maze && maze.oxygenFeedback && typeof maze.oxygenFeedback.o2DisplayAnim === 'number')
+        ? maze.oxygenFeedback.o2DisplayAnim
+        : state_1.player.o2;
+    // === 解析当前携带的氧气瓶组合，算出每瓶的剩余比率 ===
+    // 规则：瓶 0 先被耗光，再耗瓶 1。
+    //   bottleRemaining[i] = clamp(o2 - sumOfPrevCaps, 0, cap[i]) / cap[i]
+    //   bottleCap[i] 取自 startO2（airTankS=60 / M=100 / L=150）
+    const tanks = (0, Loadout_1.getActiveAirTanks)();
+    const tankCaps = [];
+    for (const id of tanks) {
+        if (id === 'airTankL')
+            tankCaps.push(150);
+        else if (id === 'airTankM')
+            tankCaps.push(100);
+        else
+            tankCaps.push(60); // S 或未知
+    }
+    if (tankCaps.length === 0)
+        tankCaps.push(Math.max(1, state_1.player.o2Max || 100));
+    let totalCap = 0;
+    for (const c of tankCaps)
+        totalCap += c;
+    if (totalCap < 1)
+        totalCap = 1;
+    // 各瓶余量 ratio（0~1）
+    let remaining = Math.max(0, o2DisplayRaw);
+    const bottleRatios = [];
+    for (const cap of tankCaps) {
+        const here = Math.max(0, Math.min(cap, remaining));
+        bottleRatios.push(here / cap);
+        remaining -= here;
+    }
+    // 总比率（用于颜色/低氧脉冲判定）
+    const o2Ratio = Math.max(0, Math.min(1, o2DisplayRaw / totalCap));
+    const ringR = size / 2 - 2;
+    const ringW = 3.5;
+    // 氧气颜色（按总比率）
+    const o2Color = o2Ratio > 0.5 ? TapeDeckVisual_1.TAPE.mint :
+        o2Ratio > 0.25 ? 'rgba(255,200,80,0.95)' : 'rgba(255,80,80,0.95)';
+    const o2ColorDim = o2Ratio > 0.5 ? 'rgba(129,227,206,0.18)' :
+        o2Ratio > 0.25 ? 'rgba(255,200,80,0.18)' : 'rgba(255,80,80,0.18)';
+    c.save();
+    // 背景圆（磨砂感）
+    c.fillStyle = 'rgba(10,22,38,0.55)';
+    c.beginPath();
+    c.arc(cx, cy, ringR + 3, 0, Math.PI * 2);
+    c.fill();
+    const start = -Math.PI / 2;
+    const drawRing = (radius, ratio, dim, fill) => {
+        // 暗色轨道
+        c.strokeStyle = dim;
+        c.lineWidth = ringW;
+        c.beginPath();
+        c.arc(cx, cy, radius, 0, Math.PI * 2);
+        c.stroke();
+        // 进度环
+        if (ratio > 0.005) {
+            c.strokeStyle = fill;
+            c.lineWidth = ringW;
+            c.lineCap = 'round';
+            c.beginPath();
+            c.arc(cx, cy, radius, start, start + Math.PI * 2 * ratio);
+            c.stroke();
+            c.lineCap = 'butt';
+        }
+    };
+    if (bottleRatios.length >= 2) {
+        // 双瓶：外圈=瓶 0，内圈=瓶 1（半径再小 5）
+        drawRing(ringR, bottleRatios[0], o2ColorDim, o2Color);
+        drawRing(ringR - ringW - 1.6, bottleRatios[1], o2ColorDim, o2Color);
+    }
+    else {
+        drawRing(ringR, bottleRatios[0] || 0, o2ColorDim, o2Color);
+    }
+    // 撞岩石损失红色弧（按总比率算位置；只画在外圈上，反映"刚损失的总量"）
+    const lossT = (maze && maze.oxygenFeedback && maze.oxygenFeedback.o2LossTimer) || 0;
+    if (lossT > 0) {
+        // o2LossFromRatio / o2LossToRatio 是按 o2Max 归一化（见 OxygenTank.triggerO2LossFlash）
+        // 这里只展示在外圈，把总比率范围映射到外圈瓶 0 的弧上
+        const cap0 = tankCaps[0];
+        const cap0Ratio = cap0 / totalCap; // 瓶 0 占总容量的比例
+        const fromTotal = Math.max(0, Math.min(1, maze.oxygenFeedback.o2LossFromRatio));
+        const toTotal = Math.max(0, Math.min(1, maze.oxygenFeedback.o2LossToRatio));
+        // 把"总比率"投影到瓶 0 的弧（瓶 1 的损失我们简单跳过；多数玩家的红条都集中在瓶 0 段）
+        const fromRatio = Math.min(1, fromTotal / Math.max(0.0001, cap0Ratio));
+        const toRatio = Math.min(1, toTotal / Math.max(0.0001, cap0Ratio));
+        if (fromRatio > toRatio + 0.002) {
+            const lossStart = start + Math.PI * 2 * toRatio;
+            const lossEnd = start + Math.PI * 2 * fromRatio;
+            const lossAlpha = lossT * 0.95;
+            c.save();
+            c.globalAlpha = lossAlpha;
+            c.strokeStyle = 'rgba(255, 60, 60, 1)';
+            c.lineWidth = ringW + 1.5;
+            c.lineCap = 'round';
+            c.beginPath();
+            c.arc(cx, cy, ringR, lossStart, lossEnd);
+            c.stroke();
+            c.globalAlpha = lossAlpha * 0.5;
+            c.strokeStyle = 'rgba(255, 120, 120, 1)';
+            c.lineWidth = ringW + 4;
+            c.beginPath();
+            c.arc(cx, cy, ringR, lossStart, lossEnd);
+            c.stroke();
+            c.lineCap = 'butt';
+            c.restore();
+        }
+    }
+    // 低氧脉冲（按总比率）
+    if (o2Ratio <= 0.25) {
+        const pulse = 0.3 + 0.2 * Math.sin(time * 5);
+        c.globalAlpha = pulse;
+        c.strokeStyle = 'rgba(255,60,60,0.4)';
+        c.lineWidth = 7;
+        c.beginPath();
+        c.arc(cx, cy, ringR + 2, start, start + Math.PI * 2 * o2Ratio);
+        c.stroke();
+        c.lineWidth = ringW;
+        c.globalAlpha = 1;
+    }
+    // 氧气拾取脉冲
+    const pulseT = (maze && maze.oxygenFeedback && maze.oxygenFeedback.o2RingPulse) || 0;
+    if (pulseT > 0) {
+        const expandR = ringR + 4 + (1 - pulseT) * 22;
+        c.globalAlpha = pulseT * 0.9;
+        c.strokeStyle = 'rgba(120, 255, 180, 0.85)';
+        c.lineWidth = 3 * pulseT + 1;
+        c.beginPath();
+        c.arc(cx, cy, expandR, 0, Math.PI * 2);
+        c.stroke();
+        c.globalAlpha = 1;
+    }
+    // 中心显示"肺"形图标
+    drawLungs(c, cx, cy, ringR, o2Ratio);
+    c.restore();
+}
+// ---- 矢量肺图标：两瓣 + 气管 ----
+// 规模尺寸：以氧气环内圈半径 R 为参考，肺的最大覆盖半径约 0.78R
+// 动画：直接读取 BreathSystem 的肺容积 lungVolume（0~1，0=吐完最小, 1=吸完最大）
+//   exhale 阶段：1→0，连续收缩
+//   holdEmpty：保持 0，肺图标保持最小（玩家能看到"吐完气后的停顿保持"）
+//   inhale 阶段：0→1，连续膨胀
+//   holdFull：保持 1，肺图标保持最大（玩家能看到"吸完气后的停顿保持"）
+function drawLungs(c, cx, cy, ringR, o2Ratio) {
+    var _a, _b, _c, _d, _e, _f;
+    const cfg = config_1.CONFIG.breath || {};
+    // ==== 缩放动画：按肺容积在 exhale 谷值 ~ inhale 峰值之间线性插值 ====
+    const lungVolume = Math.max(0, Math.min(1, (0, BreathSystem_1.getLungVolume)()));
+    const pressure = Math.max(0, Math.min(1, (0, BreathSystem_1.getBreathPressure)()));
+    const scaleInhale = (_a = cfg.lungScaleInhale) !== null && _a !== void 0 ? _a : 1.15;
+    const scaleExhale = (_b = cfg.lungScaleExhale) !== null && _b !== void 0 ? _b : 0.85;
+    // lungVolume=0 → 吐完最小缩放；lungVolume=1 → 吸完最大缩放
+    let scale = scaleExhale + (scaleInhale - scaleExhale) * lungVolume;
+    // 急促度越高，呼吸起伏越剧烈，整体缩放幅度再加码 30%
+    scale = 1 + (scale - 1) * (1 + pressure * 0.3);
+    // phaseAngle/phase 只用于下方气管口气泡判断（exhale 瞬间冒一个白气泡），保持不变
+    const phase = (0, BreathSystem_1.getBreathPhase)();
+    const phaseAngle = (0, BreathSystem_1.getBreathPhaseAngle)();
+    void phaseAngle;
+    // ==== 颜色：按 o2Ratio 分段 ====
+    const colorHealthy = (_c = cfg.lungColorHealthy) !== null && _c !== void 0 ? _c : 'rgba(240,140,150,1)';
+    const colorMid = (_d = cfg.lungColorMid) !== null && _d !== void 0 ? _d : 'rgba(210,120,150,1)';
+    const colorLow = (_e = cfg.lungColorLow) !== null && _e !== void 0 ? _e : 'rgba(150,100,130,1)';
+    const colorCritical = (_f = cfg.lungColorCritical) !== null && _f !== void 0 ? _f : 'rgba(120,140,160,1)';
+    let lungColor;
+    if (o2Ratio > 0.5)
+        lungColor = colorHealthy;
+    else if (o2Ratio > 0.25)
+        lungColor = colorMid;
+    else if (o2Ratio > 0.1)
+        lungColor = colorLow;
+    else
+        lungColor = colorCritical;
+    // 基础尺寸：覆盖约环内径的 80%
+    const R = ringR * 0.78;
+    c.save();
+    c.translate(cx, cy);
+    c.scale(scale, scale);
+    // ==== 气管（中央竖线 + 主支气管分叉）====
+    const tracheaColor = 'rgba(60, 50, 60, 0.75)';
+    c.strokeStyle = tracheaColor;
+    c.lineWidth = Math.max(1, R * 0.12);
+    c.lineCap = 'round';
+    c.beginPath();
+    // 气管顶部到分叉点
+    c.moveTo(0, -R * 0.85);
+    c.lineTo(0, -R * 0.15);
+    c.stroke();
+    // 左右主支气管（短段斜向外）
+    c.lineWidth = Math.max(0.8, R * 0.09);
+    c.beginPath();
+    c.moveTo(0, -R * 0.15);
+    c.lineTo(-R * 0.35, R * 0.05);
+    c.moveTo(0, -R * 0.15);
+    c.lineTo(R * 0.35, R * 0.05);
+    c.stroke();
+    // ==== 肺叶：两瓣对称形（左右）====
+    // 每瓣用贝塞尔曲线勾一个"豆形"，外侧圆弧、内侧平直
+    const drawLobe = (sign) => {
+        // sign=-1 画左肺，sign=+1 画右肺
+        c.save();
+        c.scale(sign, 1);
+        // 描边稍暗一点
+        c.strokeStyle = 'rgba(90, 40, 55, 0.85)';
+        c.lineWidth = Math.max(1, R * 0.08);
+        c.fillStyle = lungColor;
+        c.beginPath();
+        // 从支气管接入点开始
+        c.moveTo(R * 0.15, -R * 0.05);
+        // 上顶：向外向上的圆弧（肺尖）
+        c.bezierCurveTo(R * 0.55, -R * 0.55, R * 0.95, -R * 0.15, R * 0.88, R * 0.25);
+        // 外下：外侧向下扩
+        c.bezierCurveTo(R * 0.85, R * 0.55, R * 0.55, R * 0.88, R * 0.30, R * 0.80);
+        // 底内：往里收回到内侧
+        c.bezierCurveTo(R * 0.10, R * 0.75, R * 0.05, R * 0.55, R * 0.10, R * 0.30);
+        // 内侧回到起点（直上）
+        c.lineTo(R * 0.15, -R * 0.05);
+        c.closePath();
+        c.fill();
+        c.stroke();
+        // 肺纹（内部淡色曲线，增加识别感）
+        c.strokeStyle = 'rgba(255, 210, 220, 0.35)';
+        c.lineWidth = Math.max(0.6, R * 0.04);
+        c.beginPath();
+        c.moveTo(R * 0.30, R * 0.10);
+        c.bezierCurveTo(R * 0.45, R * 0.25, R * 0.55, R * 0.40, R * 0.50, R * 0.60);
+        c.stroke();
+        c.restore();
+    };
+    drawLobe(-1);
+    drawLobe(+1);
+    // ==== 吐气阶段从气管顶部冒一个小白气泡（表示"正在吐气"）====
+    // exhale 阶段 lungVolume 从 1 → 0，用 (1 - lungVolume) 作为吐气进度 ep
+    // ep > 0.15 时才画（吐气刚开始的 15% 时间不画，避免一切换就弹）
+    if (phase === 'exhale') {
+        const ep = 1 - lungVolume; // 吐气进度 0~1
+        if (ep > 0.15) {
+            const puffAlpha = Math.min(1, ep * 1.4);
+            const puffR = R * 0.12 * (0.6 + ep * 0.8);
+            const puffY = -R * 0.95 - ep * R * 0.3;
+            c.fillStyle = `rgba(220, 240, 255, ${(0.65 * puffAlpha).toFixed(3)})`;
+            c.beginPath();
+            c.arc(0, puffY, puffR, 0, Math.PI * 2);
+            c.fill();
+        }
+    }
+    c.lineCap = 'butt';
+    c.restore();
+}
+// 深度仪表图标（极简的"两数值"风格）
+//
+// 视觉语义：
+//   上半 = 当前深度（大字）
+//   下半 = 最大可下潜深度（小字，灰色）
+//   两者中间一条短分隔线，像"分子 / 分母"
+//   超过极限：上半数字红色 + 闪烁，描边变红
+function drawDepthIcon(c, cx, cy, size, _time) {
+    const maze = state_1.state.mazeRescue;
+    const tile = maze ? (maze.mazeTileSize || 120) : 120;
+    const curDepth = maze ? Math.max(0, Math.floor(state_1.player.y / tile)) : 0;
+    const maxAllowed = maze ? (maze.maxDepthAllowed || 30) : 30;
+    const ratio = curDepth / Math.max(1, maxAllowed);
+    const overLimit = curDepth > maxAllowed;
+    const r = size / 2 - 2;
+    c.save();
+    // === 底圆（仪表盘背景）===
+    const baseColor = overLimit
+        ? 'rgba(60, 10, 10, 0.95)'
+        : (ratio > 0.85 ? 'rgba(40, 30, 15, 0.92)' : TapeDeckVisual_1.TAPE.ink);
+    c.fillStyle = baseColor;
+    (0, TapeDeckVisual_1.cutPanel)(c, cx - r, cy - r, r * 2, r * 2, 6);
+    c.fill();
+    // 描边（超限脉冲红）
+    if (overLimit) {
+        const pulse = 0.7 + 0.3 * Math.sin(Date.now() / 150);
+        c.strokeStyle = `rgba(255, 90, 90, ${pulse})`;
+        c.lineWidth = 1.8;
+    }
+    else {
+        c.strokeStyle = TapeDeckVisual_1.TAPE.paper;
+        c.lineWidth = 1.2;
+    }
+    (0, TapeDeckVisual_1.cutPanel)(c, cx - r, cy - r, r * 2, r * 2, 6);
+    c.stroke();
+    // === 上半：当前深度（大字）===
+    if (overLimit) {
+        const blink = 0.65 + 0.35 * Math.sin(Date.now() / 110);
+        c.fillStyle = `rgba(255, 110, 110, ${blink})`;
+    }
+    else if (ratio > 0.85) {
+        c.fillStyle = 'rgba(255, 220, 140, 1)';
+    }
+    else {
+        c.fillStyle = 'rgba(230, 245, 255, 1)';
+    }
+    c.font = 'bold 16px Arial';
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.fillText(String(curDepth), cx - r * 0.05, cy - r * 0.32);
+    // 单位 m
+    c.font = 'bold 8px Arial';
+    c.fillStyle = overLimit ? 'rgba(255, 180, 180, 0.95)' : 'rgba(200, 230, 245, 0.85)';
+    c.fillText('m', cx + r * 0.45, cy - r * 0.28);
+    // === 中间分隔线 ===
+    c.strokeStyle = 'rgba(180, 220, 240, 0.5)';
+    c.lineWidth = 1;
+    c.beginPath();
+    c.moveTo(cx - r * 0.55, cy + r * 0.05);
+    c.lineTo(cx + r * 0.55, cy + r * 0.05);
+    c.stroke();
+    // === 下半：最大深度（小字）===
+    c.fillStyle = overLimit ? 'rgba(255, 160, 160, 0.85)' : 'rgba(180, 215, 235, 0.8)';
+    c.font = 'bold 10px Arial';
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.fillText(maxAllowed + 'm', cx, cy + r * 0.42);
+    c.textAlign = 'left';
+    c.textBaseline = 'alphabetic';
+    c.restore();
+}
+// =============================================
+// 减压指示灯图标
+// ---------------------------------------------
+// 视觉分档：
+//   绿灯（level 0）：暗色底 + 中央小绿点，极低调
+//   黄灯（level 1）：暗色底 + 黄色大写 "DECO" + 半环亮度
+//   红灯（level 2~3）：红环脉冲 + "DECO" 红色 + 小三角警告
+//   正在减压（stop 存在）：
+//     底圆外围画一条蓝绿色 progress 环，按 stopProgress/stopHoldSec 顺时针填充
+//     中心显示当前档位深度数字（12/9/6/3）+ 小字 "m"
+//     如果玩家"在档内"（inHoldWindow），progress 环常亮+缓慢脉冲；
+//     如果偏离，progress 环变暗并闪"!"
+//   长按加速（boost）：
+//     progress 环色变亮黄 + ×5 小字叠加
+// =============================================
+function drawDecoIcon(c, cx, cy, size, _time) {
+    const rt = (0, DecompressionSystem_1.getDecoRuntime)();
+    const level = (0, DecompressionSystem_1.getDecoLevel)();
+    const stop = (0, DecompressionSystem_1.getCurrentStopInfo)();
+    const r = size / 2 - 2;
+    const now = Date.now();
+    c.save();
+    // ==== 底圆 ====
+    let bgColor;
+    if (level >= 3)
+        bgColor = 'rgba(60, 10, 20, 0.95)'; // 深红
+    else if (level === 2)
+        bgColor = 'rgba(55, 15, 15, 0.92)'; // 红
+    else if (level === 1)
+        bgColor = 'rgba(45, 35, 10, 0.90)'; // 黄
+    else
+        bgColor = 'rgba(10, 25, 30, 0.85)'; // 绿/暗
+    c.fillStyle = bgColor;
+    c.beginPath();
+    c.arc(cx, cy, r, 0, Math.PI * 2);
+    c.fill();
+    // ==== 边框 ====
+    let strokeColor;
+    let strokeW = 1.1;
+    if (level >= 2) {
+        // 红/深红：脉冲边框
+        const pulse = 0.65 + 0.35 * Math.sin(now / (level >= 3 ? 110 : 180));
+        strokeColor = `rgba(255, ${level >= 3 ? 60 : 100}, ${level >= 3 ? 80 : 100}, ${pulse})`;
+        strokeW = 1.8;
+    }
+    else if (level === 1) {
+        strokeColor = 'rgba(255, 210, 90, 0.75)';
+        strokeW = 1.3;
+    }
+    else {
+        strokeColor = 'rgba(120, 200, 180, 0.45)';
+    }
+    c.strokeStyle = strokeColor;
+    c.lineWidth = strokeW;
+    c.beginPath();
+    c.arc(cx, cy, r, 0, Math.PI * 2);
+    c.stroke();
+    // ==== 进度环（只在有减压任务时）====
+    if (stop) {
+        const cfg = config_1.CONFIG.deco;
+        const holdSec = cfg.stopHoldSec[stop.idx] || 3;
+        const p = Math.max(0, Math.min(1, stop.progress / Math.max(0.01, holdSec)));
+        const start = -Math.PI / 2;
+        const ringR = r - 3;
+        // 暗色轨道
+        c.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+        c.lineWidth = 3;
+        c.beginPath();
+        c.arc(cx, cy, ringR, 0, Math.PI * 2);
+        c.stroke();
+        // 进度弧
+        if (p > 0.002) {
+            // 颜色：boost 亮黄、inHoldWindow 蓝绿、偏离时灰色
+            let arcColor;
+            if (rt.boostActive && rt.inHoldWindow) {
+                arcColor = 'rgba(255, 220, 100, 0.98)';
+            }
+            else if (rt.inHoldWindow) {
+                arcColor = 'rgba(100, 255, 210, 0.95)';
+            }
+            else {
+                arcColor = 'rgba(160, 180, 190, 0.55)';
+            }
+            c.strokeStyle = arcColor;
+            c.lineWidth = 3;
+            c.lineCap = 'round';
+            c.beginPath();
+            c.arc(cx, cy, ringR, start, start + Math.PI * 2 * p);
+            c.stroke();
+            c.lineCap = 'butt';
+        }
+        // 在档内脉冲外晕
+        if (rt.inHoldWindow) {
+            const glow = 0.45 + 0.35 * Math.sin(now / 220);
+            c.globalAlpha = glow;
+            c.strokeStyle = rt.boostActive ? 'rgba(255, 220, 100, 0.5)' : 'rgba(100, 255, 210, 0.45)';
+            c.lineWidth = 5.5;
+            c.beginPath();
+            c.arc(cx, cy, ringR + 1.5, 0, Math.PI * 2);
+            c.stroke();
+            c.globalAlpha = 1;
+        }
+        // 中心文字：档位深度（12 / 9 / 6 / 3）
+        c.fillStyle = rt.inHoldWindow ? 'rgba(230, 255, 245, 1)' : 'rgba(220, 230, 240, 0.85)';
+        c.font = 'bold 16px Arial';
+        c.textAlign = 'center';
+        c.textBaseline = 'middle';
+        c.fillText(String(stop.depth), cx - 3, cy - 2);
+        c.font = 'bold 8px Arial';
+        c.fillStyle = rt.inHoldWindow ? 'rgba(200, 255, 230, 0.9)' : 'rgba(200, 215, 225, 0.8)';
+        c.fillText('m', cx + 8, cy + 1);
+        // 底部小字：剩余秒数 或 "×5"（boost 时）
+        if (rt.boostActive && rt.inHoldWindow) {
+            c.fillStyle = 'rgba(255, 230, 120, 1)';
+            c.font = 'bold 9px Arial';
+            c.fillText('×5', cx, cy + r * 0.55);
+        }
+        else {
+            const remain = Math.max(0, holdSec - stop.progress);
+            c.fillStyle = 'rgba(200, 220, 230, 0.85)';
+            c.font = 'bold 8px Arial';
+            c.fillText(remain.toFixed(1) + 's', cx, cy + r * 0.55);
+        }
+        c.textAlign = 'start';
+        c.textBaseline = 'alphabetic';
+    }
+    else {
+        // ==== 没有减压任务：根据 level 画静态提示 ====
+        if (level === 0) {
+            // 绿灯：中央极小绿点
+            c.fillStyle = 'rgba(120, 230, 180, 0.9)';
+            c.beginPath();
+            c.arc(cx, cy, 2.2, 0, Math.PI * 2);
+            c.fill();
+            // 暗色字 "N2"
+            c.fillStyle = 'rgba(150, 200, 190, 0.55)';
+            c.font = 'bold 9px Arial';
+            c.textAlign = 'center';
+            c.textBaseline = 'middle';
+            c.fillText('N₂', cx, cy + r * 0.52);
+            c.textAlign = 'start';
+            c.textBaseline = 'alphabetic';
+        }
+        else {
+            // 黄/红/深红：中间大字 "DECO" + 小三角
+            let textColor = 'rgba(255, 215, 110, 1)';
+            if (level >= 3) {
+                const blink = 0.6 + 0.4 * Math.sin(now / 130);
+                textColor = `rgba(255, 110, 120, ${blink})`;
+            }
+            else if (level === 2) {
+                textColor = 'rgba(255, 140, 120, 1)';
+            }
+            c.fillStyle = textColor;
+            c.font = 'bold 11px Arial';
+            c.textAlign = 'center';
+            c.textBaseline = 'middle';
+            c.fillText('DECO', cx, cy - 2);
+            // 警告三角（红及以上）
+            if (level >= 2) {
+                const triY = cy + r * 0.42;
+                const triSize = 5;
+                c.fillStyle = textColor;
+                c.beginPath();
+                c.moveTo(cx, triY - triSize);
+                c.lineTo(cx + triSize, triY + triSize * 0.6);
+                c.lineTo(cx - triSize, triY + triSize * 0.6);
+                c.closePath();
+                c.fill();
+                // 中间竖杠
+                c.strokeStyle = 'rgba(40, 10, 10, 0.9)';
+                c.lineWidth = 1.2;
+                c.beginPath();
+                c.moveTo(cx, triY - 1);
+                c.lineTo(cx, triY + 2);
+                c.stroke();
+            }
+            else {
+                // 黄色：底部氮负荷百分比
+                const cfg = config_1.CONFIG.deco;
+                const pct = Math.round((rt.nitrogenLoad / ((cfg === null || cfg === void 0 ? void 0 : cfg.thresholdCritical) || 1.5)) * 100);
+                c.fillStyle = 'rgba(255, 225, 150, 0.9)';
+                c.font = 'bold 8px Arial';
+                c.fillText(pct + '%', cx, cy + r * 0.52);
+            }
+            c.textAlign = 'start';
+            c.textBaseline = 'alphabetic';
+        }
+    }
+    c.restore();
+}
+// 手动/自动挡图标：圆形背景 + M/A 字母
+function drawDriveModeIcon(c, cx, cy, size, _time) {
+    const isManual = config_1.CONFIG.manualDrive.enabled;
+    const r = size / 2 - 2;
+    c.save();
+    c.fillStyle = TapeDeckVisual_1.TAPE.ink;
+    c.strokeStyle = isManual ? TapeDeckVisual_1.TAPE.orange : TapeDeckVisual_1.TAPE.mint;
+    c.lineWidth = 1.3;
+    (0, TapeDeckVisual_1.cutPanel)(c, cx - r, cy - r, r * 2, r * 2, 6);
+    c.fill();
+    c.stroke();
+    c.fillStyle = isManual ? TapeDeckVisual_1.TAPE.orange : TapeDeckVisual_1.TAPE.mint;
+    c.fillRect(cx - r + 4, cy - r + 4, 3, 8);
+    // 字母
+    c.fillStyle = 'rgba(255,255,255,0.96)';
+    c.font = 'bold 16px Arial';
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.fillText(isManual ? 'M' : 'A', cx, cy + 1);
+    c.textBaseline = 'alphabetic';
+    c.restore();
+}
+// 音频开关图标：调用 RenderAudioToggle 里已有的音符绘制
+function drawAudioIconWrapper(c, cx, cy, size, _time) {
+    (0, RenderAudioToggle_1.drawAudioIcon)(c, cx, cy, size);
+}
+// 防水随身听：与角色胸前共用同一画法、同一音频时间。
+function drawLifeDetectorIcon(c, cx, cy, size, _time) {
+    const v = (0, RescueTape_1.getRescueTapeVisual)();
+    (0, TapeDeckVisual_1.drawTapeDeck)(c, cx, cy, size, v);
+    const stripWidth = Math.min(144, Canvas_1.logicW - cx - size / 2 - 68);
+    if (stripWidth >= 90)
+        (0, TapeDeckVisual_1.drawTapeMixStrip)(c, cx + size / 2 + 7, cy - 26, stripWidth, v, state_1.state.audio.muted);
+    c.save();
+    c.fillStyle = TapeDeckVisual_1.TAPE.paper;
+    c.font = 'bold 7px Arial';
+    c.textAlign = 'center';
+    c.fillText(state_1.state.audio.muted ? 'MUTE' : v.fallback ? '双音' : `${v.level}/5 · MIX`, cx, cy + size * .46);
+    c.restore();
+}
+// GM 面板切换图标：橙色齿轮样式，打开时变亮并有轻微旋转
+// 旧的 GM 按钮是屏幕顶部中央的 "GM" 文字圆；迁入 HUD 栏后换一个工具型图标，避免和其他 HUD 项冲突
+function drawGMIcon(c, cx, cy, size, time) {
+    const open = (0, GMPanel_1.isGMOpen)();
+    const r = size / 2 - 2;
+    c.save();
+    // 底圆（打开时橙色，关闭时暗灰）
+    c.fillStyle = open ? 'rgba(255, 136, 0, 0.65)' : 'rgba(60, 60, 60, 0.55)';
+    c.beginPath();
+    c.arc(cx, cy, r, 0, Math.PI * 2);
+    c.fill();
+    // 外框
+    c.strokeStyle = open ? 'rgba(255, 180, 80, 0.7)' : 'rgba(180, 180, 180, 0.4)';
+    c.lineWidth = 1;
+    c.beginPath();
+    c.arc(cx, cy, r, 0, Math.PI * 2);
+    c.stroke();
+    // 齿轮主体
+    c.save();
+    c.translate(cx, cy);
+    // 打开时缓慢旋转
+    const rot = open ? (time * 0.4) : 0;
+    c.rotate(rot);
+    const teeth = 8;
+    const outerR = r * 0.70;
+    const innerR = r * 0.50;
+    const toothDepth = r * 0.16;
+    c.fillStyle = open ? 'rgba(255, 255, 255, 0.95)' : 'rgba(200, 200, 200, 0.85)';
+    c.beginPath();
+    for (let i = 0; i < teeth * 2; i++) {
+        const a = (i / (teeth * 2)) * Math.PI * 2;
+        const rad = i % 2 === 0 ? outerR + toothDepth : outerR;
+        const px = Math.cos(a) * rad;
+        const py = Math.sin(a) * rad;
+        if (i === 0)
+            c.moveTo(px, py);
+        else
+            c.lineTo(px, py);
+    }
+    c.closePath();
+    c.fill();
+    // 中心孔
+    c.globalCompositeOperation = 'destination-out';
+    c.beginPath();
+    c.arc(0, 0, innerR * 0.55, 0, Math.PI * 2);
+    c.fill();
+    c.globalCompositeOperation = 'source-over';
+    c.restore();
+    // 打开时底部显示 "ON" 小字
+    if (open) {
+        c.fillStyle = 'rgba(255, 255, 255, 0.85)';
+        c.font = 'bold 7px Arial';
+        c.textAlign = 'center';
+        c.textBaseline = 'middle';
+        c.fillText('ON', cx, cy + r * 0.78);
+    }
+    c.restore();
+}
+},"RenderAudioToggle":function(exports,require){"use strict";
+// 全局音频开关按钮（顶部 GM 按钮左侧）——— 已被 HUDTopLeft 接管，但保留 `drawAudioIcon`
+// 供 HUDTopLeft 直接调用（画在它给的位置上），本文件不再负责 hit-test 和自身位置管理
+// 兼容保留：旧的 drawAudioToggle / hitAudioButton / 位置常量（其他模块暂未迁移时兜底；
+// 实际 Render.ts 已停止调用 drawAudioToggle，左上角 HUD 管理器会调 drawAudioIcon 自己摆放）
+//
+// 视觉设计：
+// - 切角搪瓷控件，与深流随身听共享纸白/深墨色
+// - 音符保持稳定，节奏动效交给磁带本身
+// - 静音时：红色斜线屏蔽
+// - 开关切换通过 iconProgress(0~1) 平滑过渡
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.AUDIO_BTN_Y = exports.AUDIO_BTN_X = exports.AUDIO_BTN_RADIUS = void 0;
+exports.hitAudioButton = hitAudioButton;
+exports.toggleMuted = toggleMuted;
+exports.drawAudioIcon = drawAudioIcon;
+exports.drawAudioToggle = drawAudioToggle;
+const state_1 = require("../core/state");
+const config_1 = require("../core/config");
+const TapeDeckVisual_1 = require("./TapeDeckVisual");
+const AudioManager_1 = require("../audio/AudioManager");
+// 与 GM 按钮同规格（常量保留给老代码兜底，实际位置由 HUDTopLeft 管理）
+const GMConfig_1 = require("../gm/GMConfig");
+exports.AUDIO_BTN_RADIUS = GMConfig_1.BTN_RADIUS;
+// 位置已废弃（HUD 栏统一管理），保留常量避免其他模块 import 断裂
+exports.AUDIO_BTN_X = -999;
+exports.AUDIO_BTN_Y = -999;
+// 击中检测（已废弃；左上角HUD管理器统一接管）
+function hitAudioButton(_tx, _ty) {
+    return false;
+}
+// 导出给 HUDTopLeft 的 toggleMuted（避免外部直接依赖AudioManager）
+function toggleMuted() {
+    (0, AudioManager_1.toggleMuted)();
+}
+// 绘制音符图标到任意位置（左上角 HUD 管理器调用）
+// cx, cy 是图标中心；size 是图标直径
+function drawAudioIcon(c, cx, cy, size) {
+    const muted = state_1.state.audio.muted;
+    const iconProgress = state_1.state.audio.iconProgress; // 0=静音视觉，1=开启视觉
+    const radius = size / 2 - 2;
+    c.save();
+    // 底圆
+    c.globalAlpha = muted ? 0.55 : 0.85;
+    c.fillStyle = TapeDeckVisual_1.TAPE.ink;
+    (0, TapeDeckVisual_1.cutPanel)(c, cx - radius, cy - radius, radius * 2, radius * 2, 6);
+    c.fill();
+    c.strokeStyle = muted ? TapeDeckVisual_1.TAPE.muted : TapeDeckVisual_1.TAPE.paper;
+    c.lineWidth = 1.2;
+    c.stroke();
+    c.globalAlpha = 1;
+    // 圆内裁切
+    c.save();
+    c.beginPath();
+    c.arc(cx, cy, radius - 1, 0, Math.PI * 2);
+    c.clip();
+    c.save();
+    c.translate(cx, cy);
+    const s = radius / 18;
+    c.scale(s, s);
+    c.translate(-1.4, 1.5);
+    const iconColor = `rgba(255, 255, 255, ${(0.55 + 0.45 * iconProgress).toFixed(3)})`;
+    c.fillStyle = iconColor;
+    c.strokeStyle = iconColor;
+    c.lineCap = 'round';
+    c.lineJoin = 'round';
+    // 符头
+    c.beginPath();
+    c.ellipse(0, 4, 4.2, 3, 0, 0, Math.PI * 2);
+    c.fill();
+    // 符杆
+    c.lineWidth = 1.6;
+    c.beginPath();
+    c.moveTo(3.5, 4);
+    c.lineTo(3.5, -8);
+    c.stroke();
+    // 符旗
+    c.lineWidth = 1.8;
+    c.beginPath();
+    c.moveTo(3.5, -8);
+    c.quadraticCurveTo(8, -6, 7.5, -2.5);
+    c.stroke();
+    c.beginPath();
+    c.moveTo(3.5, -4.5);
+    c.quadraticCurveTo(7.5, -3, 7, 0);
+    c.stroke();
+    c.restore();
+    // 静音斜线
+    if (iconProgress < 0.99) {
+        c.save();
+        c.globalAlpha = 1 - iconProgress;
+        c.strokeStyle = '#ff7070';
+        c.lineWidth = 2.2;
+        c.lineCap = 'round';
+        c.beginPath();
+        const half = radius * 0.72;
+        c.moveTo(cx - half, cy - half);
+        c.lineTo(cx + half, cy + half);
+        c.stroke();
+        c.restore();
+    }
+    c.restore();
+    c.restore();
+    void config_1.CONFIG;
+}
+// 旧的 drawAudioToggle 保留为 no-op（不再在固定位置绘制，HUD 管理器接管）
+function drawAudioToggle(_ctx) {
+    // 已废弃。左上角 HUD 管理器负责绘制。
+}
+},"character":function(exports,require){"use strict";
+// 角色表现与交互：手动挡输入 / 潜水员动画 / 相机 / 音频
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.characterConfig = void 0;
+exports.characterConfig = {
+    // ===== 手动挡（搓屏移动）配置 =====
+    // 物理模型：推力沿输入方向施加，身体朝向被动跟随速度方向
+    manualDrive: {
+        enabled: false, // 是否启用手动挡模式（false=自动挡/摇杆，默认）；玩家可在 HUD 短按切换
+        // --- 输入行程参数 ---
+        effectiveDistance: 184, // 一次输入可持续生效的有效行程（像素）
+        minSwipeDist: 2, // 输入起效的最小位移（像素）
+        reverseDir: true, // 是否反转方向（true=推水方向与移动方向相反）
+        maxTouchPoints: 2, // 最大同时识别的触点数（支持双指交替搓）
+        // --- 推进参数 ---
+        thrustBase: 1.35, // 整段有效行程内的基础推进强度
+        thrustDistanceScale: 1.05, // 有效行程推进到后段时的额外推进增量
+        thrustSpeedScale: 0.06, // 输入速度（帧间位移像素）到额外推进的映射系数
+        thrustMax: 5.2, // 单帧推进强度上限
+        // --- 转向参数 ---
+        turnBase: 1.2, // 整段有效行程内的基础转向强度
+        turnSpeedScale: 0.05, // 输入速度到额外转向强度的映射系数
+        turnMax: 3.5, // 单帧转向强度上限（弧度系数）
+        backwardTurnScale: 1.15, // 后向输入折算为转向输入的权重
+        // --- 速度与阻力参数 ---
+        maxSpeed: 11, // 最大速度
+        dragForward: 0.975, // 前向水阻（沿身体朝向，流线型阻力小）
+        dragLateral: 0.9, // 侧向水阻（垂直于身体朝向，阻力大）
+        // --- 动作表现平滑参数 ---
+        kickProgressRate: 0.065, // 踢水进度单帧推进上限（限制动作过快）
+        kickRecoverRate: 0.028, // 输入结束后的踢水回收速度（形成慢后摇）
+        kickStrengthRise: 0.16, // 踢水力度抬升速度
+        kickStrengthDecay: 0.05, // 踢水力度衰减速度
+        // --- 鞘腿自动驱动参数（由输入加速度驱动，脑腿自动交替鞘）---
+        // kickDrive 是一个 0~1 的累积量：每帧输入推力向上累积，无输入时衰减
+        // 腔腿相位时钟按（legAutoFreqBase + kickDrive * legAutoFreqBoost）推进
+        kickDriveRise: 0.04, // 输入时 kickDrive 上升速度（0~1，越大越快达到最大）
+        kickDriveDecay: 0.012, // 无输入时 kickDrive 衰减速度（很慢，让鞘腿慢慢停下来）
+        // --- 身体朝向跟随参数 ---
+        bodyAlignRate: 0.06, // 身体朝向跟随速度方向的速率（0~1，越大越快对齐）
+        bodyAlignMinSpeed: 0.5, // 速度低于此值时身体不跟随（避免静止时抖动）
+        // --- 转向渐进动画参数 ---
+        // 目的：避免转向过于灵敏，玩家反向输入时先做掉头再移动
+        bigTurnThreshold: 1.5708, // 大掉头阈值（弧度，默认 π/2 = 90°），输入与身体夹角超过此值进入掉头阶段
+        bigTurnBlendWidth: 0.35, // 大掉头附近的软过渡宽度（弧度），避免硬切造成推进突然跳变
+        bigTurnAssist: 0.08, // 大掉头阶段每帧额外施加的朝向补偿速率（纯角度修正，不受搓速影响）
+        bigTurnThrustFactor: 0, // 大掉头阶段保留的推进系数（0=完全不推进只滑行，可调至 0.1~0.2 允许轻微爬行）
+        // --- 调试辅助线 ---
+        debugDraw: false, // 是否绘制辅助线（速度向量、身体朝向、输入方向、推力方向）
+    },
+    // ===== 角色表现（潜水员）配置 =====
+    diver: {
+        armIdleFrequency: 0.42, // 手臂待机摆动频率
+        armIdleAmplitude: 0.018, // 手臂待机摆动幅度（弧度）
+        armKickSwing: 0.2, // 手臂随单侧踢水的轻微摆动幅度
+        armTurnSwing: 1.0, // 手臂参与转向修正的摆幅
+        armCloseBySpeed: 0.42, // 速度升高时手臂向身体收拢的幅度
+        legKickFrequency: 0.58, // 无输入时的轻微滑行踢水频率
+        legKickAmplitude: 0.05, // 无输入时的轻微滑行踢水幅度
+        kickRecoverLength: 4.6, // 回收阶段的大腿后带量
+        kickDriveLength: 6.4, // 发力阶段的大腿前送量
+        kickBodyWave: 1.8, // 踢水时从身体传到腿部的扭动力度
+        finDriveLength: 8.6, // 脚蹼在发力阶段的额外后扫距离
+        finRecoverLength: 3.2, // 脚蹼在回收阶段的前收距离
+        turnLegOffset: 2.2, // 拐弯时腿部外摆偏移量
+        idleDriftSpeed: 0.32, // 漂浮待机摆动速度
+        finSpreadBase: 1.0, // 蛙鞋基础开合
+        finSpreadSwim: 0.55, // 轻微滑行时的额外开合
+        finSpreadStroke: 1.0, // 输入踢水期间的额外开合
+        finTurnSkew: 0.28, // 拐弯时蛙鞋的偏转量
+        // ---- 新版腿部造型与鞭状踢水参数 ----
+        thighLength: 6, // 大腿长度（髋到膝）
+        calfLength: 6, // 小腿长度（膝到踝）
+        thighWidthHip: 4.4, // 大腿根部宽度
+        thighWidthKnee: 4.2, // 大腿膝端宽度
+        calfWidthKnee: 3.8, // 小腿膝端宽度
+        calfWidthAnkle: 3.4, // 小腿踝端宽度（接脚蹼处）
+        kneeCapRadius: 0.5, // 膝盖关节小圆半径
+        // 鞭状踢水（相位从髋→膝→踝依次滞后）
+        kickPhaseLagKnee: 0.18, // 膝相对髋的相位滞后（0~1）
+        kickPhaseLagAnkle: 0.36, // 踝相对髋的相位滞后（0~1）
+        kickAmpHip: 1.4, // 髋关节侧向鞭摆幅度
+        kickAmpKnee: 3.2, // 膝关节侧向鞭摆幅度
+        kickAmpAnkle: 5.4, // 踝关节侧向鞭摆幅度
+        kickBaseSpread: 0, // 腿部基础张开（髋点外侧的自然站位）
+        finWhipAmp: 0.55, // 蛙鞋柔性反弹角度（踝→蛙鞋尾端的相位差驱动）
+        // 脚蹼剪影（现代开趾蛙鞋）
+        finShapeLength: 13.5, // 蛙鞋总长
+        finShapeRootWidth: 5, // 鞋套根部宽度
+        finShapeNeckWidth: 5.8, // 颈部收束宽度（鞋套与叶片交界）
+        finShapeBellyWidth: 8.8, // 叶片最宽处宽度
+        finShapeTipWidth: 7.6, // 叶片尖端宽度
+        finShapeRootRatio: 0.1, // 鞋套段占比
+        finShapeBellyRatio: 0.65, // 叶片最宽处位置占比
+        // ---- 自动鞘腿时钟（两腿同相位钟差π交替）----
+        legAutoFreqBase: 0.006, // 脚腿相位时钟在静止状态下的基础推进速度（弱惯性尾动；整体放慢一倍）
+        legAutoFreqBoost: 0.04, // kickDrive=1 时额外推进速度（实际频率 = base + drive*boost，整体放慢一倍）
+        legKickStopThreshold: 0.03, // kickDrive 低于此值时相位时钟缓慢停摆
+        // ---- 俯视 2D 模拟上下打水：腿前后伸缩 + 脚踼长度脉动 + 脚踼挥拍 ----
+        kickStretchAmp: 1, // 腿沿身体前后轴的伸缩幅度（踢到底时腿伸直，抓水时腿收）
+        finLengthPulse: 0.3, // 脚踼长度脉动比例（1.0 ± pulse 之间，踢到底时最长）
+        finSweepAmp: 3.1, // 脚踼沿身体前后轴的挥拍位移（踢到底时脚踼整体往后甸一段）
+        // ---- 全身动画：躯干波动相位时钟 ----
+        // 三种频率分量：idle（漂浮呼吸）/ forward（前进扭动）/ turn（转向紧张）
+        bodyWaveIdleFreq: 0.006, // idle 时相位时钟基础推进速度（常驻漂浮）
+        bodyWaveForwardFreq: 0.02, // 前进时随速度额外推进速度（speedNorm=1 时加此量）
+        bodyWaveTurnFreq: 0.008, // 转向时额外推进速度（|turnVisual|=1 时加此量）
+        bodyWaveIdleAmp: 0.28, // idle 时躯干波幅度基数（低幅常驻）
+        bodyWaveForwardAmp: 0.55, // 前进时躯干波幅度基数（随速度成比例）
+        bodyWaveTurnAmp: 1.1, // 转向时躯干波幅度基数（随 |turnVisual| 成比例）
+        // 波幅 → yaw（左右扭）/ roll（侧倾）/ compress（呼吸压缩）的映射系数
+        yawWaveFactor: 0.6, // 躯干波映射到 yaw 的系数
+        yawTurnFactor: 0.95, // turnVisual 直接映射到 yaw 的系数（转向侧扭）
+        rollWaveFactor: 0.08, // 躯干波映射到 roll 的系数（前进/idle 下的侧滚）
+        rollTurnFactor: 0.28, // turnVisual 映射到 roll 的系数（转向时明显侧倾，约 16°满量）
+        rollSquashFactor: 0.35, // roll 通过 Y 轴缩放模拟 3D 倾斜的强度（压扁量 = |roll|×此值）
+        rollSquashMax: 0.22, // Y 轴最大压扁比例（防止过度扁平）
+        compressWaveAmp: 0.035, // 躯干呼吸压缩幅度（二次谐波驱动）
+        // 手臂常驻漂摆与转向倾斜
+        armBodyWaveAmp: 0.14, // 手臂跟随躯干波的反相摆动幅度（idle + forward 都有）
+        armTurnLeanFactor: 0.22, // turnVisual 让两臂同向偏移的幅度（表现"掌舵"）
+        // 头部蛇形传导
+        bodyWaveHeadLead: 0.08, // 头部波相对身体波的相位领先量（0~0.2，越大头越早动）
+        headLeadFactor: 0.35, // 头部波幅系数（× bodySwayAmp → 头部 yaw 领先量）
+        headTurnLead: 1.1, // turnVisual 直接让头部额外偏移的系数（头先转）
+        headOffsetScale: 2.8, // 头部 yaw 换算成 Y 方向像素偏移的缩放系数
+        // idle 状态下腿部呼吸动作
+        legIdleAmpNorm: 0.08, // idle 时腿部保留的最低幅度（0=完全静止，越大呼吸感越强）
+        legIdleFreqFactor: 1.8, // idle 时相位时钟相对 legAutoFreqBase 的倍率（呼吸节奏）
+        bodyIdleDriftAmp: 0.45, // idle 时身体整体呼吸漂移像素（与躯干波同步）
+    },
+    // ===== 相机系统（弹簧臂 + 水中摇曳）配置 =====
+    camera: {
+        // 弹簧臂跟随参数
+        followStiffness: 0.06, // 跟随刚度（0~1，越大越紧跟，越小越松弛）
+        followDamping: 0.82, // 跟随阻尼（0~1，越大速度衰减越快）
+        lookAheadDistance: 35, // 前瞻距离（像素，相机会稍微偏向玩家前进方向）
+        lookAheadVelocityScale: 8, // 前瞻速度缩放（速度越快前瞻越远）
+        // 水中摇曳参数
+        swayAmplitude: 1.8, // 摇曳幅度（像素）
+        swayFrequencyA: 0.37, // 摇曳频率A（低频主摆动）
+        swayFrequencyB: 0.53, // 摇曳频率B（高频叠加，与A不成整数比避免重复）
+        // 模式切换
+        resetSnapSpeed: 0.3, // 模式切换时相机快速归位的速率
+        // 远近自适应缩放
+        adaptiveZoom: true, // 是否启用远近自适应缩放
+        azRayCount: 12, // 空间检测射线数量（均匀分布360°）
+        azMaxRayDist: 800, // 单条射线最大检测距离（像素）
+        azRayStep: 15, // 射线步进步长（像素，越小越精确但越耗性能）
+        azNarrowDist: 50, // 平均距离低于此值视为狭窄（像素）
+        azWideDist: 800, // 平均距离高于此值视为空旷（像素）
+        azZoomNarrow: 1.35, // 狭窄区域目标zoom（拉近）
+        azZoomWide: 0.80, // 空旷区域目标zoom（拉远）
+        azSmoothSpeed: 0.015, // zoom平滑过渡速度（越小越慢）
+        azUpdateInterval: 3, // 每隔多少帧更新一次射线检测（降低性能开销）
+    },
+    // ===== 音频系统配置 =====
+    // 说明：
+    // - 静音按钮并不真暂停 BGM，只把音量淡到 0，时间轴仍在推进；离开主菜单时才真正暂停
+    // - 淡入淡出通过每帧线性逼近 targetVolume 实现
+    audio: {
+        bgmVolume: 1, // BGM 目标音量（0~1）
+        sfxVolume: 0.8, // 一次性音效（SFX）目标音量（0~1），与 BGM 独立
+        fadeStep: 0.01, // 每帧音量变化步长（60fps 下约 1.7 秒淡入淡出到位）
+        animSpeed: 0.01, // 按钮音符旋转速度（弧度/帧，0.03 约每秒半圈）
+        iconFadeStep: 0.08, // 按钮图标在静音/开启之间切换的淡入淡出步长
+        // 云存储配置：音频放在微信小游戏云开发的云存储里，不占主包体
+        // 运行时会先用 wx.cloud.init() 初始化云开发，再用 getTempFileURL 把 FileID 换成临时 HTTPS URL
+        // 临时 URL 有效期 2 小时，URL 过期时（errCode=10002）会自动重新请求
+        cloud: {
+            enabled: true, // 是否启用云存储；关闭则回退到本地路径
+            envId: 'cloud1-d8gh6fpnh6d0928e8', // 云开发环境 ID
+            // 每条音频的 FileID 映射；key 必须与 AudioManager 的 AudioKey 对应
+            fileIDs: {
+                menuBGM: 'cloud://cloud1-d8gh6fpnh6d0928e8.636c-cloud1-d8gh6fpnh6d0928e8-1424920608/audio/Echoes_of_the_Sunken_Grotto_2026-04-22T150024.mp3',
+                diveSplash: 'cloud://cloud1-d8gh6fpnh6d0928e8.636c-cloud1-d8gh6fpnh6d0928e8-1424920608/audio/ElevenLabs_A_diver_jumps_into_the_.mp3',
+                breathLoop: 'cloud://cloud1-d8gh6fpnh6d0928e8.636c-cloud1-d8gh6fpnh6d0928e8-1424920608/audio/BreathBubble.mp3',
+                collisionRock: 'cloud://cloud1-d8gh6fpnh6d0928e8.636c-cloud1-d8gh6fpnh6d0928e8-1424920608/audio/HitRock.mp3',
+                collisionBreath: 'cloud://cloud1-d8gh6fpnh6d0928e8.636c-cloud1-d8gh6fpnh6d0928e8-1424920608/audio/BreathBubble.mp3',
+                // 结束潜水瞬间的弹射出水音效（蓄力→爆发→破水）
+                quickReturn: 'cloud://cloud1-d8gh6fpnh6d0928e8.636c-cloud1-d8gh6fpnh6d0928e8-1424920608/audio/QuickReturn.mp3',
+                // 岸上营地环境音：鸟语花香循环，仅在 mazeRescue 的 shore / resolved_idle 两个真正暴露在营地的 phase 激活
+                // 警情弹窗 / 救援成功 / 搜寻终止 等叙事页以及下潜中、菜单全部停
+                campAmbience: 'cloud://cloud1-d8gh6fpnh6d0928e8.636c-cloud1-d8gh6fpnh6d0928e8-1424920608/audio/CampBird.mp3',
+                // UI 主按钮（开始/确认/接受任务/救援/安装/下潜）：真实物理触感的柔钝 "哚" 声，无旋律无音高
+                uiPrimary: 'cloud://cloud1-d8gh6fpnh6d0928e8.636c-cloud1-d8gh6fpnh6d0928e8-1424920608/audio/MainBtn.mp3',
+                // UI 次按钮（取消/关闭/返回/Tab 切换/折叠）：更轻更短更干的 "嗒" 声
+                uiSecondary: 'cloud://cloud1-d8gh6fpnh6d0928e8.636c-cloud1-d8gh6fpnh6d0928e8-1424920608/audio/SubBtn.mp3',
+                // 拾取氧气瓶：高压气体嘶声 + 阀门机械咔哒（纯物理反馈，无旋律）
+                oxygenRefill: 'cloud://cloud1-d8gh6fpnh6d0928e8.636c-cloud1-d8gh6fpnh6d0928e8-1424920608/audio/GetO2.mp3',
+                // 被食人鱼咬死：湿润冲击 + 被掐断闷惨叫 + 水花翻腾 + 低频不祥嗡鸣
+                fishBiteDie: 'cloud://cloud1-d8gh6fpnh6d0928e8.636c-cloud1-d8gh6fpnh6d0928e8-1424920608/audio/FishBiteManDie.mp3',
+            },
+        },
+    },
+};
+},"gameplay":function(exports,require){"use strict";
+// 玩法相关子系统：标记 / 氧气瓶 / 呼吸 / 撞击反馈 / 玩家攻击 / 生命探知仪
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.gameplayConfig = void 0;
+exports.gameplayConfig = {
+    // ===== 标记系统配置 =====
+    marker: {
+        // 交互按钮（轮盘触发器）
+        btnRadius: 36, // 交互按钮半径
+        btnXRatio: 0.92, // 按钮X位置比例（右下角，getWheelBtnPos会自动clamp保证轮盘完整显示）
+        btnYRatio: 0.88, // 按钮Y位置比例（右下角）
+        // 轮盘
+        wheelOuterRadius: 100, // 轮盘外径
+        wheelInnerRadius: 24, // 轮盘内径（死区，松手取消）
+        wheelExpandDuration: 150, // 轮盘展开动画时长（ms）
+        wheelCollapseDuration: 100, // 轮盘收起动画时长（ms）
+        // 标记尺寸
+        wallSignWidth: 18, // 岩石标记牌面宽度
+        wallSignHeight: 14, // 岩石标记牌面高度
+        wallStakeLength: 10, // 岩石标记短杆长度
+        ropeTagWidth: 14, // 绳索标记标签宽度
+        ropeTagHeight: 11, // 绳索标记标签高度
+        ropeTagStrapLength: 5, // 绳索标记绑带长度
+        // 标记动画
+        placeAnimDuration: 20, // 放置动画帧数
+        removeAnimDuration: 15, // 拆除动画帧数
+        // 标记颜色
+        dangerColor: 'rgba(180, 40, 40, 0.9)', // 红叉牌面底色
+        dangerBorder: 'rgba(255, 80, 80, 0.6)', // 红叉边框
+        dangerStake: 'rgba(150, 50, 50, 0.8)', // 红叉短杆
+        unknownColor: 'rgba(180, 150, 40, 0.9)', // 黄问号牌面底色
+        unknownBorder: 'rgba(255, 220, 80, 0.6)', // 黄问号边框
+        unknownStake: 'rgba(150, 130, 50, 0.8)', // 黄问号短杆
+        safeColor: 'rgba(40, 150, 80, 0.9)', // 绿圈牌面底色
+        safeBorder: 'rgba(80, 255, 150, 0.6)', // 绿圈边框
+        safeStake: 'rgba(50, 130, 80, 0.8)', // 绿圈短杆
+        // 标记摆动
+        ropeTagSwaySpeed: 1.5, // 绳索标记摆动速度
+        ropeTagSwayAmplitude: 0.15, // 绳索标记摆动幅度（弧度）
+    },
+    // ===== 氧气瓶配置（迷宫模式，跨下潜持久，同 seed 已消耗不再刷新） =====
+    oxygenTank: {
+        // 生成：聚集点附近（主要来源）
+        denCountMin: 2, // 每个食人鱼聚落内最少刷几个
+        denCountMax: 4, // 每个食人鱼聚落内最多刷几个
+        denSearchRadiusRatio: 0.85, // 聚落半径内搜索岩石的比例
+        // 生成：全图散落（次要来源，给非战斗路线补给）
+        scatterCountMin: 3, // 聚落外全图最少散落几个
+        scatterCountMax: 6, // 聚落外全图最多散落几个
+        // 距离约束
+        minDistBetween: 300, // 任意两个氧气瓶之间的最小距离（像素）
+        minDistToSpawn: 600, // 离玩家出生点的最小距离（像素）
+        // 单瓶补给量
+        amountMin: 25, // 最低补充氧气百分点
+        amountMax: 35, // 最高补充氧气百分点
+        // 交互
+        pickRange: 90, // 进入多近可开始安装（像素）
+        installDuration: 1.2, // 按住多少秒完成安装
+        // 视觉
+        bodyScale: 1, // 瓶体缩放
+        breathSpeed: 0.05, // 呼吸发光推进速度（弧度/帧）
+    },
+    // ===== 呼吸系统（潜水员吐气气泡 + 呼吸音）=====
+    // 运行规则：
+    // - 呼吸是间歇的：吐气（exhale）→ 停顿（pause）→ 吐气 → 停顿 ...（不是一直吐）
+    // - 运动量越大：吐气越频繁 / 停顿越短 / 气泡数量越多 / 音量越大 / 播放速率略快
+    // - 气泡从潜水员嘴部位置喷出，随时间真实向上浮（-Y），带侧向摆动 + 变大 + 淡出
+    // - 仅在水下可操作阶段激活（迷宫 play / 主线 play），其他阶段静默
+    breath: {
+        enabled: true, // 总开关
+        // 运动量参考：当前速度除以此值得到 intensity（0~1）
+        refSpeed: 4.0, // 约对应手动挡满速
+        intensitySmooth: 0.08, // 运动量平滑系数（每帧向目标逼近）
+        // 静止（intensity=0）下的四相时长（秒）
+        //   放松态：呼吸慢而深，肺偏满（holdFull 最长 —— 常态下肺偏放松满态）
+        exhaleDurationStatic: 2.2, // 吐气时长
+        holdEmptyDurationStatic: 0.9, // 吐完保持（肺空）
+        inhaleDurationStatic: 1.9, // 吸气时长
+        holdFullDurationStatic: 0.6, // 吸完保持（肺满）—— 默认态最长
+        bubbleRateStatic: 5, // 吐气阶段气泡生成速率（粒/秒）
+        volumeStatic: 0.35, // 峰值音量（0~1,将被 sfxVolume 上限裁剪）
+        playbackRateStatic: 0.85, // 播放速率（0.5~2.0）
+        bubbleSizeStatic: 7, // 基础气泡半径（像素）
+        // 全速（intensity=1）下的四相时长（秒）
+        //   急促态：几乎连续呼吸，holdEmpty / holdFull 几乎为 0
+        exhaleDurationPeak: 0.5,
+        holdEmptyDurationPeak: 0.05,
+        inhaleDurationPeak: 0.4,
+        holdFullDurationPeak: 0.1,
+        bubbleRatePeak: 14,
+        volumePeak: 0.8,
+        playbackRatePeak: 1.2,
+        bubbleSizePeak: 9,
+        // ---- 兼容字段（老代码可能还读 pauseDuration*,保留以防回退）----
+        //   pauseDuration 语义等价于 holdEmptyDuration（旧两相位机"吐气→停顿"中的停顿）
+        pauseDurationStatic: 3.0,
+        pauseDurationPeak: 0.8,
+        // 嘴部位置：沿身体朝向前方偏移（像素，RenderDiver 头部直径约 13，取 22 是嘴部前端）
+        mouthOffsetForward: 22,
+        spawnJitter: 2, // 生成位置随机抖动半径（像素）
+        // 气泡物理
+        buoyancyMin: 0.45, // 向上速度下限（像素/帧）
+        buoyancyMax: 0.8, // 向上速度上限
+        sideInitSpeed: 0.4, // 侧向初速度幅度
+        wobbleFreqMin: 0.06, // 侧向摆动频率（弧度/帧）
+        wobbleFreqMax: 0.12,
+        wobbleAmpMin: 0.15, // 侧向摆动幅度（像素/帧）
+        wobbleAmpMax: 0.35,
+        // 寿命与消散
+        lifeMinSec: 2.5, // 单个气泡最短寿命（秒）
+        lifeMaxSec: 5, // 单个气泡最长寿命（秒）
+        despawnUpDist: 260, // 上升超过玩家这么远就加速淡出（避免远处残留）
+        // 粒子上限（避免极端情况下无限堆积）
+        maxBubbles: 180,
+        // 视觉
+        colorCore: 'rgba(220, 245, 255, 0.95)', // 气泡高光色
+        colorBody: 'rgba(180, 220, 240, 0.55)', // 气泡主体色
+        outlineAlpha: 0.45, // 边缘描边透明度
+        // ========== 呼吸急促度（breathRate 三分量）==========
+        // 总急促度 = baseline + movement*moveCoef + impact*impactCoef，clamp 到 [0,1]
+        // breathRate 同时决定：四相时长整体缩短（吐气变急）、每口吐气耗氧量增加、浮力波幅增强
+        rateBaseline: 0.0, // 静止基线
+        rateMoveCoef: 1.0, // 运动分量系数（= 归一化速度 × 此值）
+        rateImpactCoef: 1.0, // 撞击分量系数
+        rateRise: 0.15, // movement 上升速率（每帧向目标逼近）
+        rateFall: 0.02, // movement 下降速率（静止后慢慢平复，约 3s 降一半）
+        impactRecoverPerSec: 0.25, // 撞击急促度每秒线性衰减（0.8 → 约 3.2s 平复）
+        // ========== 阶梯式氧气消耗（每次 exhale → holdEmpty 切换瞬间扣一口）==========
+        o2PerBreathStatic: 0.4, // 静止时每口吐气扣氧（%）
+        o2PerBreathPeak: 2.0, // 全速时每口吐气扣氧（%）
+        o2IdleDrain: 0.005, // 呼吸系统未激活时的兜底恒量扣减（每帧 %）
+        // ========== 呼吸浮力（加速度模型，叠加到 player.vy）==========
+        // 肺空（lungVolume=0）→ 向下加速度（+Y）
+        // 肺满（lungVolume=1）→ 向上加速度（-Y）
+        // 每帧加速度 = buoyancyStrength × (1 + breathRate × buoyancyRateCoef) × (1 - 2*lungVolume)
+        // 配合 waterDrag 衰减后实际位移峰值约 ±2~3 像素，身体起伏晚半拍跟上呼吸
+        buoyancyEnabled: true, // 浮力总开关
+        buoyancyStrength: 0.02, // 每帧加速度峰值（像素/帧²）
+        buoyancyRateCoef: 0.6, // 急促度加成系数（breathRate=1 时额外 +60%）
+        buoyancyIndicatorEnabled: false, // 潜水员脚下浮力方向箭头（debug,默认关）
+        // ---- 兼容字段（老代码若读 pressure* / buoyancyAmp，回退到这里）----
+        pressureBaseline: 0.0,
+        pressureMoveCoef: 1.0,
+        pressureImpactCoef: 1.0,
+        pressureRise: 0.15,
+        pressureFall: 0.02,
+        buoyancyAmp: 0.08, // 等价于 buoyancyStrength
+        buoyancyPressureCoef: 0.6, // 等价于 buoyancyRateCoef
+        // ========== 肺图标动画 ==========
+        lungScaleIdle: 1.0, // 待机时肺的基础缩放
+        lungScaleInhale: 1.15, // 吸气阶段（= BreathSystem 的 pause）峰值缩放
+        lungScaleExhale: 0.85, // 吐气阶段（= BreathSystem 的 exhale）峰值缩放
+        lungColorHealthy: 'rgba(240,140,150,1)', // 氧气充足（> 50%）
+        lungColorMid: 'rgba(210,120,150,1)', // 氧气中等（25~50%）
+        lungColorLow: 'rgba(150,100,130,1)', // 氧气低（10~25%）
+        lungColorCritical: 'rgba(120,140,160,1)', // 氧气濒死（< 10%）
+        // ========== 氧气环放大 ==========
+        oxygenRingSizeMul: 1.5, // 氧气环相对其他 HUD 图标的尺寸倍数
+    },
+    // ===== 撞击岩石反馈系统 =====
+    // 运行规则（全线性映射，不分档）：
+    // - 碰撞瞬间读取撞击前的速度 |v|；若 |v| >= speedThreshold 判定为"撞"（低速擦蹭不算）
+    // - 强度 strength = clamp((|v| - speedThreshold) / speedRange, 0, 1)
+    // - 所有表现参数按 strength 线性插值到 Peak（音量、播放速率、气泡数、氧气损失）
+    // - 同一次撞击 cooldownMs 内不重复触发
+    collisionImpact: {
+        enabled: true,
+        speedThreshold: 2.0, // 触发阈值：撞击瞬间 |v| 小于此值视为擦蹭，不触发
+        speedRange: 5.0, // 强度映射范围：(|v| - threshold) / range 作为 0~1 强度
+        cooldownMs: 400, // 同一次撞击冷却（毫秒）
+        // 音效（复用 breathLoop 作一次性 SFX）
+        // 比呼吸音更闷更重：playbackRate 降到 0.55~0.75 区间（呼吸是 0.85~1.2）
+        volumeMin: 0.5, // 最小强度对应音量
+        volumeMax: 1.0, // 最大强度对应音量
+        playbackRateMin: 0.75, // 轻撞播放速率（比呼吸稍快，仍显钝重）
+        playbackRateMax: 0.55, // 重撞播放速率（更低沉更重）
+        // 气泡（接入 BreathSystem.spawnImpactBurst；和呼吸气泡同渲染管线但数量/大小/寿命不同）
+        impactBubbleCountMin: 5, // 轻撞气泡数（比呼吸一次吐气 5~14 粒多很多）
+        impactBubbleCountMax: 20, // 重撞气泡数（明显爆发感）
+        impactBubbleSizeMul: 1.6, // 气泡半径相对呼吸气泡的倍数（更大）
+        impactBubbleSpreadSpeed: 2.4, // 撞击点向外散射的初速度（像素/帧）
+        impactBubbleLifeMul: 0.55, // 寿命相对呼吸气泡的倍数（更短，爆发式消散）
+        // 氧气损失
+        o2LossMin: 0.8, // 轻撞氧气损失（%）
+        o2LossMax: 4.5, // 重撞氧气损失（%）
+    },
+    // ===== 深流随身听：距离驱动音乐配器；内部键名兼容旧版 =====
+    lifeDetector: {
+        enabled: true, // 总开关
+        music: {
+            enabled: true, // 原创「Signal Below」：底轨 + 五层累加节奏
+            variant: 'undertow', // GM 探知仪中切换 A/B/C，按需生成，避免常驻三套缓冲
+            eventCues: true, // 绑绳确认与死亡落音；入镜由主题展开反馈
+            cueVolume: 0.8,
+            volume: 0.78, // v2 固定总增益，保留满层混音余量
+            hysteresis: 0.03, // 每档边界两侧各 3% 缓冲，防止来回跳档
+        },
+        // 探知范围（以 npcRescueRange 为基准；音乐模式外圈回到底轨、内圈满层）
+        rangeMultiplier: 50, // 最大探知半径 = npcRescueRange × 此值
+        // 注意：上面 rangeMultiplier 实际解释为"以 npcRescueRange 为最内圈强度=1，乘 rangeMultiplier 得到最外圈强度=0"
+        // 节奏
+        gapMaxMs: 3000, // 最远处两组"嘀嘀"之间的间隔（ms）
+        gapMinMs: 80, // 最近处两组"嘀嘀"之间的间隔（ms，几乎连成一片）
+        // 一组内 #D 与 F 之间的间隔也需要渐进：远时两音间隔大（更像独立的双音），近时间隔小（更紧凑）
+        beepIntervalMaxMs: 150, // 远处两音间隔（ms）
+        beepIntervalMinMs: 80, // 近处两音间隔（ms）
+        curvePower: 0.6, // 节奏强度曲线指数（<1=远处变化慢、近处变化快；=1=线性）
+        // 音频参数
+        freqLow: 622.25, // #D5 频率 (Hz)
+        freqHigh: 698.46, // F5 频率 (Hz)
+        beepDuration: 0.12, // 单音时长（秒）
+        volume: 0.28, // 峰值音量 (0~1)
+        // HUD 显隐；下方雷达颜色/尺寸为旧配置兼容，新视觉见 TapeDeckVisual。
+        hudVisible: true,
+        hudXFromRight: 36, // HUD 雷达点距右边距（像素）
+        hudY: 48, // HUD 雷达点 Y 坐标
+        hudBaseRadius: 6, // 静态基础半径
+        hudPulseRadius: 14, // 脉冲峰值半径
+        hudColorIdle: 'rgba(120,200,220,0.55)', // 静态基础色（探知激活但未脉冲时）
+        hudColorPulse: 'rgba(180,255,230,1.0)', // 脉冲峰值色
+        hudRingColor: 'rgba(60,120,140,0.8)', // 外框圈色
+        // 胸前防水磁带机显隐；尺寸/颜色旧字段保留兼容。
+        ledOnDiver: true,
+        ledRadiusBase: 2, // LED 基础大小
+        ledRadiusPulse: 5, // 脉冲峰值大小
+        ledColorIdle: 'rgba(120,200,220,0.5)',
+        ledColorPulse: 'rgba(200,255,240,1.0)',
+    },
+    // ===== 玩家攻击（挥氧气瓶）配置 =====
+    attack: {
+        // 攻击范围
+        range: 90, // 攻击距离（像素），可调
+        angle: 120, // 攻击扇形角度（度），可调
+        // 攻击 CD
+        cooldown: 180, // 攻击冷却帧数（3s @ 60fps）
+        // 刀光动画
+        slashDuration: 28, // 刀光总持续帧数（含停留）
+        slashSwingDuration: 12, // 刀光挥动阶段帧数（加速减速）
+        slashLingerDuration: 16, // 刀光停留消散阶段帧数
+        slashArcCount: 6, // 弧形刀光层数
+        slashImpactShake: 12, // 击中时屏幕震动强度
+        // 按钮位置（屏幕右下角，与布线按钮错开）
+        btnRadius: 38, // 攻击按钮半径
+        btnXRatio: 0.82, // 按钮X位置比例
+        btnYRatio: 0.88, // 按钮Y位置比例（比布线按钮更靠下，避免重叠）
+    },
+    // ===== 场景图鉴物件（迷宫模式，跨下潜持久，同 seed 确定性生成） =====
+    // 规则：
+    // - 全部静态视觉，绝对不可交互（不显示轮盘按钮、不发光、不呼吸）
+    // - 玩家用手电光锥照到并靠近即算"发现"，不需要任何操作
+    // - 已发现数跨下潜累计，结算页显示"本次发现"，岸上显示图鉴进度
+    relic: {
+        // 生成
+        totalCount: 15, // 每张迷宫生成物件总数
+        onWallRatio: 0.5, // 贴墙占比（0~1），其余散落在岩石附近通路上
+        minDistBetween: 220, // 两两之间最小距离（像素）
+        minDistToSpawn: 400, // 离出生点最小距离（像素）
+        // 发现判定
+        discoverRadius: 110, // 发现半径（像素）
+        discoverFovDeg: 60, // 发现角度（度，玩家手电光锥内）
+    },
+    // ===== 撤离玩法（迷宫模式经济循环：水下捡战利品 → 撤离 → 卖货 → 升级装备） =====
+    // 详见 .codebuddy/rules/design/extraction/
+    extraction: {
+        enabled: true, // 主开关：关闭后所有撤离 UI 隐藏，迷宫模式回退现状
+        pickupRange: 180, // 玩家拾取战利品的距离（像素）
+        debugPickupOverlay: false, // 调试可视化：拾取范围圆圈 + Relic 距离标签（GM 面板可开关）
+    },
+    // ===== 减压停留系统（Decompression System） =====
+    //
+    // 设计灵感：Bühlmann ZH-L16 简化版（单隔室近似）。
+    //   - 玩家在深水区（>ingestDepth）吸氮 → nitrogenLoad 随时间累积
+    //   - 上浮到浅水区（<releaseDepth）后排氮 → 数值下降
+    //   - nitrogenLoad 超过阈值：出水前必须在 12/9/6/3m 四档停留窗口逐段停足时间
+    //   - 停留窗口：处于目标深度 ±tolerance 且 |vy| < speedMax，累计 holdSec 秒完成该档
+    //   - 未完成减压就触达水面：记 DCS 惩罚（O2 上限 -30% + 战利品折扣 + 可能附加 debuff）
+    //
+    // 为什么只做单值 nitrogenLoad 而不是 16 隔室：
+    //   - 游戏需要的是"有感且可教学"的节奏，不是医学级精度
+    //   - 单值配合 4 档停留已经足够制造"从底部一路慢慢停回水面"的感受
+    //
+    // 玩家入口：HUD 左上角"减压灯"图标（绿=免减压 / 黄=接近 / 红=必须减压 / 蓝绿环=正在停留）
+    //   短按：弹 tip 显示氮负荷 %、下一个停留档深度、剩余时间
+    //   长按：在正确深度停留时，时间流速 ×speedUpMul，但氧气消耗 ×speedUpO2Mul
+    deco: {
+        enabled: false, // 系统总开关
+        // ---- 氮气吸排速率 ----
+        // 每秒吸氮量 = ingestRatePerSec × max(0, depth - ingestDepth)
+        // depth 单位：米；nitrogenLoad 目标范围 [0, 1.5+]
+        // 数值选择：20m→1.0 需要约 (1.0 / (0.0028 × 10)) = 36 秒。即在 30m 泡 36s 就进红区
+        ingestDepth: 20, // 米：深于此值开始累积氮（真实潜水是 10m，但游戏用 20m 放过早期浅关）
+        ingestRatePerSec: 0.0028, // 每秒吸氮 = 系数 × (深度 - 阈值)，在 30m 约 +0.028/s
+        // 浅水排氮：depth < releaseDepth 时 nitrogenLoad -= releaseRatePerSec × dt
+        releaseDepth: 10, // 浅于此深度开始排氮
+        releaseRatePerSec: 0.06, // 静止排氮约 16 秒清空 1.0 的负荷
+        // 超深惩罚：深度 > maxDepthAllowed（装备极限）时，吸氮系数再乘以此倍率
+        overDepthRateMul: 2.0,
+        // ---- 阈值（决定减压灯颜色） ----
+        thresholdGreen: 0.6, // < 0.6：免减压（绿灯）
+        thresholdYellow: 1.0, // 0.6~1.0：黄灯，建议减压
+        thresholdRed: 1.3, // 1.0~1.3：红灯，强制减压
+        thresholdCritical: 1.5, // > 1.3：深红闪烁，DCS 严重级
+        // ---- 减压停留四档（从深到浅顺序执行）----
+        // 每档：目标深度 ± tolerance 米、玩家垂直速度 |vy| < speedMax、持续 holdSec 秒 = 完成
+        // 完成一档后 nitrogenLoad -= reduce[i]，减压灯进入下一档
+        // 数值：12/9/6/3m 分别停 3/5/8/12 秒，合计 28s 可做完最深档减压（对应现实约 28min 的重度 deco）
+        stopDepths: [12, 9, 6, 3], // 四档目标深度（米）
+        stopHoldSec: [3, 5, 8, 12], // 每档需要停留的秒数
+        stopReduce: [0.3, 0.35, 0.4, 0.45], // 每档完成减少的氮负荷（累计 1.5，能把深红清零）
+        depthTolerance: 1.5, // 允许偏离目标深度的米数（上下 1.5m 都算"在档内"）
+        holdSpeedMax: 0.8, // 判定"静止"的 |vy| 上限（像素/帧；moveSpeed=17 所以 0.8 很严格）
+        // ---- 起步减压档位：nitrogenLoad 多高以上，要从第几档开始？----
+        // 索引表达"nitrogenLoad < 阈值时从第 N 档开始"，深红从 12m 起；
+        // 黄灯（>=0.6 && <1.0）实质上只需要做 3m 一档（= "安全停留"），
+        // 红灯（>=1.0 && <1.3）做 6m+3m；
+        // 深红（>=1.3）做 9m+6m+3m；
+        // critical（>=1.5）做 12/9/6/3m 全四档
+        // 取值：[thresholdGreen, thresholdYellow, thresholdRed, thresholdCritical]
+        // 对应的起始档索引（从 stopDepths[idx] 开始做到末尾）：
+        startIdxByLevel: [3, 2, 1, 0], // 绿/黄/红/深红 起始档的 stopDepths 索引（-1=不需要任何档）
+        // ---- 长按加速 ----
+        speedUpMul: 5.0, // 长按时减压时间流速倍率
+        speedUpO2Mul: 3.0, // 长按时氧气消耗倍率（乘在 breath.o2PerBreath 上）
+        // ---- DCS 惩罚（跳过减压出水）----
+        // 触发条件：surfacing（finishMazeDive）时 nitrogenLoad > thresholdYellow（即已进黄灯且未做完减压）
+        // severity：
+        //   1 = nitrogenLoad < thresholdCritical（黄~红~深红之间）
+        //   2 = nitrogenLoad >= thresholdCritical
+        penalty: {
+            // O2Max 打折倍率：0.7 = -30%
+            o2MaxMulLv1: 0.70,
+            o2MaxMulLv2: 0.70,
+            // 持续多少次下潜（lv1=1 次 lv2=2 次）；每次 finishMazeDive 结束自动 -1，减到 0 清除
+            durationDivesLv1: 1,
+            durationDivesLv2: 2,
+            // 本次撤离战利品价值倍率（撤离失败本来就全损，所以仅在 retreat/rescued 成功撤离时生效）
+            lootMulLv1: 0.5,
+            lootMulLv2: 0.0,
+            // 屏幕视觉 debuff：岸上显示紫色指示带 + 文字（lv2 才启用）
+            showPurpleBadgeLv2: true,
+        },
+        // ---- UI ----
+        hudVisible: true, // 减压灯在 HUD 左上角显示
+    },
+    // ===== BCD 浮力背心（Buoyancy Control Device） =====
+    //
+    // 定位：BCD 是"粗调"，呼吸（breath.buoyancy*）是"微调"，两层叠加到 player.vy。
+    //
+    // 物理链（详见 src/logic/BCDSystem.ts 头注释）：
+    //   P    = 1 + depth / depthPerAtmMeters                     绝对压力（atm）
+    //   volL = gasNL / P                                        玻意耳定律
+    //   a_y  = baseSinkAccel - (volL + suitLiftSurfaceL / P) × liftAccelPerLiter
+    //
+    // 数值标定（waterDrag = 0.98 → 终端速度 = 加速度 / 0.02 = 50×a；
+    //           mazeTileSize = 120px = 1 米，所以 1 px/frame = 0.5 m/s）：
+    //   完全排空、水面     a=+0.0139 → 下沉 0.70 px/frame ≈ 0.35 m/s（正常快速下潜）
+    //   完全排空、30m      a=+0.0185 → 下沉 0.93 px/frame ≈ 0.46 m/s（湿衣被压扁，更沉）
+    //   充到显示满格、30m  a=-0.0120 → 上浮 0.60 px/frame ≈ 18 m/min（危险阈值）
+    //   充到容量上限、30m  a=-0.0303 → 上浮 1.50 px/frame ≈ 45 m/min（严重失控）
+    //
+    // 中性所需体积随深度上升（湿衣越深越不给力），UI 上的中性刻度线因此会动：
+    //   水面 1.14 L  →  30m 1.51 L
+    //
+    // 惩罚闭环：失控上浮时每秒往减压系统的 nitrogenLoad 追加 ascentNitrogenPerSec，
+    //           复用已有的 deco 锁定 / DCS 失败分支，不再新增失败类型。
+    bcd: {
+        enabled: true, // 系统总开关（关闭后 UI 隐藏、不产生任何浮力）
+        // ---- 物理 ----
+        depthPerAtmMeters: 10, // 每多少米增加 1 atm（真实海水约 10m）
+        capacityL: 4.0, // 气囊最大实际体积（升）；超过即触发溢流阀
+        displayMaxL: 2.5, // 气量表满格对应体积（大于此值条顶格 + 溢流警示）
+        baseSinkAccel: 0.050, // 配重+装备的恒定负浮力加速度（像素/帧²，>0 向下）
+        liftAccelPerLiter: 0.0322, // 每升气囊体积抵消多少下沉加速度
+        suitLiftSurfaceL: 0.5, // 湿衣在水面提供的等效浮力升数（随深度 /P 压缩）
+        // ---- 充排气速率（按实际体积流量，保证"按住 1 秒"手感与深度无关）----
+        inflateRateLPerSec: 0.5, // 充气：每秒 +0.5 L 实际体积
+        deflateRateLPerSec: 0.7, // 排气：比充气快（真实排气阀流量大于 LPI）
+        minBurstSec: 0.18, // 点按最小生效时长（short burst，轻点也给一小口气）
+        o2PerNL: 0.30, // 每标准升充气消耗的氧气值（深处充气自动更贵）
+        // ---- 失控告警 ----
+        ascentWarnSpeed: 0.55, // |vy| 超过此值且 BCD 正浮力 → 判失控上浮（px/帧）
+        descentWarnSpeed: 0.85, // 失控下沉阈值（px/帧）
+        warnAccelDeadzone: 0.002, // 净浮力绝对值小于此值视为"配平良好"，不判失控
+        warnRisePerSec: 1.6, // 告警强度上升速率（0→1 约 0.6 秒）
+        warnFallPerSec: 2.5, // 告警强度回落速率
+        ascentNitrogenPerSec: 0.05, // 失控上浮期间每秒额外累积的氮负荷
+        // ---- 入水初始气量 ----
+        // 'neutral' = 入水深度恰好中性（默认，友好且能立刻看到"下潜被压缩"）
+        // 'empty'   = 完全排空（硬核，入水就往下掉）
+        // 'full'    = 充满（最真实的水面姿态，必须先排气才下得去）
+        initialFillMode: 'neutral',
+        tutorialDepth: 12, // 首次下潜超过此深度弹一次教学文案（米）
+        // ---- 交互控件布局（屏幕右侧竖直 inflator）----
+        uiVisible: true, // 控件显隐（关掉后仍可由 GM/键盘驱动）
+        uiXFromRight: 44, // 控件竖轴距屏幕右边缘（像素）
+        uiCenterYRatio: 0.52, // 控件竖向中心占屏高比例
+        uiBtnRadius: 21, // 充/排气按钮半径
+        uiBtnGap: 120, // 按钮中心到量表中心的距离
+        uiGaugeW: 26, // 气量表宽度
+        uiGaugeH: 180, // 气量表高度
+        // ---- 排气气泡 ----
+        ventBubbleRate: 26, // 排气时每秒生成的气泡数
+        ventBubbleSizeMul: 0.85, // 相对呼吸气泡的尺寸倍数
+        ventOffsetBack: 8, // 排气阀位置：沿身体朝向往后偏移（像素）
+        ventOffsetSide: 7, // 排气阀位置：往身体侧向偏移（肩阀在左肩）
+        // ---- 音效（复用 collisionBreath = BreathBubble.mp3 作一次性嘶气声）----
+        sfxEnabled: true,
+        sfxIntervalMs: 260, // 持续按住时的嘶气声重复间隔
+        sfxInflateRate: 1.7, // 充气：更尖锐（高压小口径进气）
+        sfxInflateVolume: 0.32,
+        sfxDeflateRate: 1.25, // 排气：更闷更粗（肩阀大口径排水）
+        sfxDeflateVolume: 0.5,
+    },
+};
+}},cache={};
+const scene=document.getElementById('scene'),context=scene.getContext('2d');
+const state={screen:'mazeRescue',audio:{muted:false,iconProgress:1,animPhase:0},mazeRescue:{phase:'play',mazeTileSize:120,maxDepthAllowed:60,npcRescued:false}};
+const player={o2:84,o2Max:100,y:3360};let visual;
+const noop=()=>{},deco={nitrogenLoad:.12,boostActive:false,inHoldWindow:false};
+function load(name){const id=name.split('/').pop();
+ if(id==='AdaptiveScore')return SignalBelow;
+ if(id==='config')return {CONFIG:{...load('character').characterConfig,...load('gameplay').gameplayConfig}};
+ if(id==='state')return {state,player};
+ if(id==='Canvas')return {ctx:context,logicW:375,logicH:660};
+ if(id==='RescueTape')return {getRescueTapeVisual:()=>visual};
+ if(id==='RenderRelic')return {drawRelicIconAt:noop};
+ if(id==='AudioManager')return {playSFX:noop,toggleMuted:()=>{state.audio.muted=!state.audio.muted;state.audio.iconProgress=state.audio.muted?0:1}};
+ if(id==='GMConfig')return {BTN_RADIUS:20};
+ if(id==='GMPanel')return {toggleGMOpen:noop,isGMOpen:()=>false};
+ if(id==='Loadout')return {getActiveAirTanks:()=>[]};
+ if(id==='BreathSystem')return {getBreathPhaseAngle:()=>0,getBreathPhase:()=> 'inhale',getBreathPressure:()=>0,getLungVolume:()=>.5};
+ if(id==='DecompressionSystem')return {getDecoRuntime:()=>deco,getDecoLevel:()=>0,getCurrentStopInfo:()=>null,isDecompressionRequired:()=>false,isDecoLockActive:()=>false,setDecoBoost:noop,getCurrentDepthMeters:()=>28};
+ if(!factories[id])throw Error('Missing preview module: '+name);
+ if(!cache[id]){cache[id]={};factories[id](cache[id],load)}return cache[id];}
+window.DeepTape={...load('AdaptiveMusicVisuals'),...load('TapeDeckVisual'),...load('RenderDiver'),...load('HUDTopLeft'),
+ setVisual:v=>{visual=v},state,player};})();</script><script>
+const {SCORE,VARIANTS,WARM_LAYER_TRACKS,renderStemAsync,renderPhrasePickup,AdaptiveMusicEngine}=SignalBelow;
+const {sampleTapeVisual,drawTapeDeck,drawTapeSleeve,drawTapeRibbons,drawTapeMixStrip,drawDiver,drawHUDTopLeft,initMazeHUDTopLeft,cutPanel,TAPE}=DeepTape;
+const $=id=>document.getElementById(id),deck=$('deck').getContext('2d'),scene=$('scene').getContext('2d'),sleeve=$('sleeve').getContext('2d');
+let ctx,engine,loading=false,wantPlay=false,level=5,mood='found',tourStart=null,tourStage=-1,request=0;
+const cache={},levelButtons=[];
+for(const [id,v] of Object.entries(VARIANTS)){const o=document.createElement('option');o.value=id;o.textContent=v.title;$('variant').append(o)}
+for(let i=0;i<6;i++){const b=document.createElement('button');b.textContent=i===0?'底轨':'0'+i;b.onclick=()=>{endTour();choose(i,i===5?'found':mood==='return'?'search':mood)};$('levels').append(b);levelButtons.push(b)}
+function buttons(){levelButtons.forEach((b,i)=>b.setAttribute('aria-pressed',String(i===level)));document.querySelectorAll('[data-mood]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.mood===mood)))}
+function choose(n,m=mood){level=n;mood=m;buttons();if(engine&&wantPlay)engine.setLevel(level,mood==='return',mood)}
+document.querySelectorAll('[data-mood]').forEach(b=>b.onclick=()=>{endTour();choose(b.dataset.mood==='return'?0:b.dataset.mood==='found'?5:Math.min(level,4),b.dataset.mood)});
+function endTour(){tourStart=null;tourStage=-1;$('tour').setAttribute('aria-pressed','false')}
+function stop(){request++;wantPlay=false;endTour();if(engine)engine.stop(true);$('status').textContent='已停止 · 静态试装。'}
+async function play(){if(loading)return;wantPlay=true;const ticket=++request;loading=true;$('play').disabled=$('variant').disabled=true;
+ try{ctx=ctx||new(window.AudioContext||window.webkitAudioContext)();await ctx.resume();const id=$('variant').value;
+ if(!cache[id]){const buffers=[];for(const [i,track] of [...SCORE.stems,'bedFound','bedReturn',...WARM_LAYER_TRACKS].entries()){
+ $('status').textContent=`正在准备 ${VARIANTS[id].title} · ${i+1}/12 音轨…`;
+ const pcm=await renderStemAsync(track,id),buffer=ctx.createBuffer(1,pcm.length,SCORE.sampleRate);buffer.getChannelData(0).set(pcm);buffers.push(buffer);
+ if(ticket!==request)return;
+ }const pcm=renderPhrasePickup(),pickup=ctx.createBuffer(1,pcm.length,SCORE.sampleRate);pickup.getChannelData(0).set(pcm);cache[id]={buffers,pickup}}
+ if(ticket!==request||!wantPlay)return;if(engine)engine.dispose();const {buffers,pickup}=cache[id];engine=new AdaptiveMusicEngine(ctx,buffers.slice(0,6),buffers.slice(6,8),buffers.slice(8),pickup,id);engine.start();engine.setVolume(Number($('volume').value)/100);engine.setLevel(level,mood==='return',mood);$('status').textContent='播放中 · 画面直接读取实际音频输出时钟与乐谱。';
+ }catch(error){wantPlay=false;$('status').textContent='播放失败：'+error.message}finally{loading=false;$('play').disabled=$('variant').disabled=false}}
+$('play').onclick=()=>{endTour();play()};$('stop').onclick=stop;$('variant').onchange=()=>{stop();$('status').textContent='版本已切换 · 点击播放。'};
+$('tour').onclick=async()=>{if(tourStart!==null){endTour();return}choose(0,'search');if(!wantPlay||!engine)await play();if(!engine||!wantPlay)return;tourStart=engine.getClock().beats;tourStage=-1;$('tour').setAttribute('aria-pressed','true')};
+$('volume').oninput=()=>{if(engine)engine.setVolume(DeepTape.state.audio.muted?0:Number($('volume').value)/100)};
+function snapshot(){const slots=Array(12).fill(0),mix=SCORE.levelMixes[level];const indices=mood==='search'?[0,1,2,3,4,5]:[mood==='return'?7:6,8,9,3,10,11];indices.forEach((slot,i)=>slots[slot]=mix[i]);return {playing:true,level,requestedLevel:level,mood,requestedMood:mood,beats:8.012,beat:8,bar:2,beatPhase:.012,trackGains:slots,variant:$('variant').value}}
+const colors={suit:'#253f48',body:'#41616c',tank:'#dde3d2',mask:'#85a8ad',fin:'#ff754c',accent:'#f4e7c7',skin:'#dfb390'};
+function diver(c,x,y,scale,v,id){c.save();c.translate(x,y);c.scale(scale,scale);drawDiver(c,0,0,-.2,colors,{id,animTime:performance.now()/1000,hasTank:true,tankCount:1,vx:1.5,vy:0,autoSwim:true,tapeVisual:v});c.restore()}
+function field(v,t){scene.save();scene.scale(2,2);scene.fillStyle='#0a1720';scene.fillRect(0,0,375,660);
+ const glow=scene.createRadialGradient(240,280,15,230,300,300);glow.addColorStop(0,'#213e46');glow.addColorStop(1,'#0a1720');scene.fillStyle=glow;scene.fillRect(0,0,375,660);
+ scene.fillStyle='#12242d';scene.beginPath();scene.moveTo(0,0);[[105,0],[145,63],[127,160],[174,235],[135,310],[150,450],[93,520],[100,660],[0,660]].forEach(p=>scene.lineTo(...p));scene.closePath();scene.fill();
+ scene.fillStyle='#071119';scene.beginPath();scene.moveTo(375,0);[[315,0],[285,110],[319,180],[289,270],[330,380],[291,480],[320,660],[375,660]].forEach(p=>scene.lineTo(...p));scene.closePath();scene.fill();
+ scene.strokeStyle='#425b54';scene.lineWidth=1.1;scene.beginPath();scene.moveTo(210,0);scene.bezierCurveTo(290,100,110,190,223,300);scene.stroke();
+ scene.fillStyle='#73938f';for(let i=0;i<34;i++){const x=(i*93.7)%375,y=(i*41.3+t*6)%660;scene.globalAlpha=.12+(i%4)*.04;scene.fillRect(x,y,1,1)}scene.globalAlpha=1;
+ diver(scene,223,300,1.25,v,'field');
+ scene.fillStyle=TAPE.paper;scene.font='9px Arial';scene.textAlign='center';scene.fillText('28 / 60 m',240,71);
+ scene.font='bold 8px Arial';scene.fillStyle=TAPE.muted;scene.fillText('JACOB WELL / 01',230,620);
+ DeepTape.setVisual(v);drawHUDTopLeft(t);scene.restore()}
+function frame(){let clock=engine&&engine.getClock();if(tourStart!==null&&clock&&clock.playing){const stage=Math.floor((clock.beats-tourStart)/8);if(stage!==tourStage){tourStage=stage;const steps=[0,1,2,3,4,5,5,0];if(stage<steps.length)choose(steps[stage],stage===7?'return':stage>=5?'found':'search');else endTour()}}
+ const live=!!clock&&clock.playing;const v=sampleTapeVisual(live?clock:snapshot());
+ if(DeepTape.state.audio.muted){v.kick=v.snare=0;v.lanes.forEach(l=>l.hit=0)}if(engine)engine.setVolume(DeepTape.state.audio.muted?0:Number($('volume').value)/100);
+ deck.save();deck.scale(2,2);deck.clearRect(0,0,500,300);deck.fillStyle='#1a3039';cutPanel(deck,22,33,455,230,18);deck.fill();drawTapeDeck(deck,250,143,342,v);deck.fillStyle=TAPE.muted;deck.font='10px monospace';deck.textAlign='left';deck.fillText('NO. 001  /  RESCUE MIX',24,287);deck.restore();
+ sleeve.save();sleeve.scale(2,2);sleeve.clearRect(0,0,500,400);drawTapeSleeve(sleeve,28,24,444,v);sleeve.strokeStyle='#34444a';sleeve.beginPath();sleeve.moveTo(28,245);sleeve.lineTo(472,245);sleeve.stroke();diver(sleeve,280,315,3,v,'detail');sleeve.fillStyle=TAPE.muted;sleeve.font='10px Arial';sleeve.textAlign='left';sleeve.fillText('胸前挂扣 / 与 HUD 同一拍',28,373);sleeve.restore();
+ field(v,performance.now()/1000);$('deckState').textContent=live?`${v.level}/5 层 · 120 BPM · ${clock.entryWaitSeconds>.01?'入口 '+clock.entryWaitSeconds.toFixed(2)+'s':v.mood==='return'?'SIDE B':'SIDE A'}`:`静态试装 · 0${level} / 05`;
+ requestAnimationFrame(frame)}
+const pointer={active:false,x:0,y:0};function point(e){const r=$('scene').getBoundingClientRect();return [(e.clientX-r.left)*375/r.width,(e.clientY-r.top)*660/r.height]}
+$('scene').onpointerdown=e=>{const [x,y]=point(e);pointer.active=DeepTape.handleHUDTouchStart(1,x,y);if(pointer.active)$('scene').setPointerCapture(e.pointerId)};
+$('scene').onpointermove=e=>{if(pointer.active)DeepTape.handleHUDTouchMove(1,...point(e))};
+$('scene').onpointerup=$('scene').onpointercancel=e=>{if(pointer.active)DeepTape.handleHUDTouchEnd(1,...point(e));pointer.active=false};
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&wantPlay)stop()});
+initMazeHUDTopLeft();buttons();frame();
+</script></body></html>

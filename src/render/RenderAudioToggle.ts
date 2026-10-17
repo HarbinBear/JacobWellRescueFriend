@@ -4,13 +4,14 @@
 // 实际 Render.ts 已停止调用 drawAudioToggle，左上角 HUD 管理器会调 drawAudioIcon 自己摆放）
 //
 // 视觉设计：
-// - 所有动画内容都裁剪在底圆之内，绝不跑到圆外
-// - 开启时：一个音符图标在圆心原地匀速旋转
-// - 静音时：音符停止旋转 + 红色斜线屏蔽
+// - 切角搪瓷控件，与深流随身听共享纸白/深墨色
+// - 音符保持稳定，节奏动效交给磁带本身
+// - 静音时：红色斜线屏蔽
 // - 开关切换通过 iconProgress(0~1) 平滑过渡
 
 import { state } from '../core/state';
 import { CONFIG } from '../core/config';
+import { cutPanel, TAPE } from './TapeDeckVisual';
 import { toggleMuted as audioMgrToggleMuted } from '../audio/AudioManager';
 
 // 与 GM 按钮同规格（常量保留给老代码兜底，实际位置由 HUDTopLeft 管理）
@@ -36,18 +37,16 @@ export function toggleMuted(): void {
 export function drawAudioIcon(c: CanvasRenderingContext2D, cx: number, cy: number, size: number): void {
     const muted = state.audio.muted;
     const iconProgress = state.audio.iconProgress; // 0=静音视觉，1=开启视觉
-    const phase = state.audio.animPhase;
     const radius = size / 2 - 2;
 
     c.save();
 
     // 底圆
     c.globalAlpha = muted ? 0.55 : 0.85;
-    c.fillStyle = muted ? '#555' : '#2a6b8a';
-    c.beginPath();
-    c.arc(cx, cy, radius, 0, Math.PI * 2);
+    c.fillStyle = TAPE.ink;
+    cutPanel(c, cx - radius, cy - radius, radius * 2, radius * 2, 6);
     c.fill();
-    c.strokeStyle = 'rgba(255,255,255,0.85)';
+    c.strokeStyle = muted ? TAPE.muted : TAPE.paper;
     c.lineWidth = 1.2;
     c.stroke();
     c.globalAlpha = 1;
@@ -58,12 +57,8 @@ export function drawAudioIcon(c: CanvasRenderingContext2D, cx: number, cy: numbe
     c.arc(cx, cy, radius - 1, 0, Math.PI * 2);
     c.clip();
 
-    const normPhase = Math.atan2(Math.sin(phase), Math.cos(phase));
-    const rotation = normPhase * iconProgress;
-
     c.save();
     c.translate(cx, cy);
-    c.rotate(rotation);
     const s = radius / 18;
     c.scale(s, s);
     c.translate(-1.4, 1.5);

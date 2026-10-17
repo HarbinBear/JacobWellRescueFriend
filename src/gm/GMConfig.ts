@@ -335,7 +335,7 @@ export const TABS: GMTab[] = [
         ]
     },
     {
-        name: '探知仪',
+        name: '深流随身听',
         items: [
             { type: 'bool', label: '启用', path: 'lifeDetector.enabled' },
             { type: 'bool', label: '分层音乐', path: 'lifeDetector.music.enabled' },
@@ -355,7 +355,7 @@ export const TABS: GMTab[] = [
             { type: 'number', label: '单音时长s', path: 'lifeDetector.beepDuration', min: 0.04, max: 0.4, step: 0.01, precision: 2 },
             { type: 'number', label: '音量', path: 'lifeDetector.volume', min: 0, max: 1, step: 0.02, precision: 2 },
             { type: 'bool', label: 'HUD可见', path: 'lifeDetector.hudVisible' },
-            { type: 'bool', label: '角色LED', path: 'lifeDetector.ledOnDiver' },
+            { type: 'bool', label: '胸前随身听', path: 'lifeDetector.ledOnDiver' },
         ]
     },
     {

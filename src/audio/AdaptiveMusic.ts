@@ -87,7 +87,7 @@ async function prepare(): Promise<void> {
     const pcm = renderPhrasePickup();
     const pickup = ctx.createBuffer(1, pcm.length, SCORE.sampleRate);
     pickup.getChannelData(0).set(pcm);
-    engine = new AdaptiveMusicEngine(ctx, buffers.slice(0, 6), buffers.slice(6, 8), buffers.slice(8), pickup);
+    engine = new AdaptiveMusicEngine(ctx, buffers.slice(0, 6), buffers.slice(6, 8), buffers.slice(8), pickup, variant);
     loadedVariant = variant;
     selected = 0;
 }

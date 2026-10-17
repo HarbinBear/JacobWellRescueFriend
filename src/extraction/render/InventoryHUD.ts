@@ -12,6 +12,7 @@
 import { CONFIG } from '../../core/config';
 import { state } from '../../core/state';
 import { ctx } from '../../render/Canvas';
+import { cutPanel, TAPE } from '../../render/TapeDeckVisual';
 import { getBagOccupiedSlots } from '../logic/Inventory';
 import { ensureExtractionState } from '../core/ExtractionState';
 
@@ -104,19 +105,19 @@ export function drawInventoryHUD(): void {
         rrect(ctx, x - 3, y - 3, HUD_W + 6, HUD_H + 6, (HUD_H + 6) / 2);
         ctx.fill();
     }
-    ctx.fillStyle = 'rgba(15, 22, 32, 0.78)';
+    ctx.fillStyle = 'rgba(16,30,38,0.88)';
     ctx.beginPath();
-    rrect(ctx, x, y, HUD_W, HUD_H, HUD_H / 2);
+    cutPanel(ctx, x, y, HUD_W, HUD_H, 6);
     ctx.fill();
 
     // 描边（容量越满颜色越暖）
-    let strokeColor = 'rgba(140, 170, 200, 0.45)';
+    let strokeColor = TAPE.muted;
     if (used >= slotN) strokeColor = 'rgba(255, 200, 100, 0.95)';
     else if (fillRatio >= 0.75) strokeColor = 'rgba(220, 200, 130, 0.7)';
     ctx.strokeStyle = strokeColor;
     ctx.lineWidth = 1.4;
     ctx.beginPath();
-    rrect(ctx, x, y, HUD_W, HUD_H, HUD_H / 2);
+    cutPanel(ctx, x, y, HUD_W, HUD_H, 6);
     ctx.stroke();
 
     // 内部填充进度条（背景层）
@@ -128,8 +129,8 @@ export function drawInventoryHUD(): void {
             grad.addColorStop(0, 'rgba(255, 180, 70, 0.35)');
             grad.addColorStop(1, 'rgba(255, 200, 100, 0.45)');
         } else {
-            grad.addColorStop(0, 'rgba(120, 180, 220, 0.28)');
-            grad.addColorStop(1, 'rgba(160, 210, 240, 0.38)');
+            grad.addColorStop(0, 'rgba(129,227,206,0.18)');
+            grad.addColorStop(1, 'rgba(129,227,206,0.3)');
         }
         ctx.fillStyle = grad;
         ctx.beginPath();
@@ -138,7 +139,7 @@ export function drawInventoryHUD(): void {
     }
 
     // 文字 "🎒 N / M"
-    const textColor = used >= slotN ? 'rgba(255, 230, 160, 0.98)' : 'rgba(220, 235, 250, 0.92)';
+    const textColor = used >= slotN ? 'rgba(255, 230, 160, 0.98)' : TAPE.paper;
     ctx.fillStyle = textColor;
     ctx.font = 'bold 12px "PingFang SC", Arial';
     ctx.textAlign = 'left';

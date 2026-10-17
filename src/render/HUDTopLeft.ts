@@ -1,7 +1,7 @@
 // 左上角 HUD 统一管理器
 //
 // 设计目标：
-// - 所有左上角的HUD元素（氧气环、手动挡切换、音频开关、生命探知仪）统一由此管理
+// - 所有左上角的HUD元素（氧气环、手动挡切换、音频开关、深流随身听）统一由此管理
 // - 统一的布局：顶部起点固定，每个元素之间有统一间距，竖向排列
 // - 统一的交互：每个图标都支持"短按=主操作+弹tip"、可选"长按=展开详情"
 // - 统一的入场动效：左侧滑入+淡入
@@ -25,9 +25,10 @@
 
 import { CONFIG } from '../core/config';
 import { state, player } from '../core/state';
-import { ctx } from './Canvas';
+import { ctx, logicW, logicH } from './Canvas';
+import { drawTapeDeck, drawTapeSleeve, drawTapeMixStrip, cutPanel, TAPE } from './TapeDeckVisual';
+import { getRescueTapeVisual } from './RescueTape';
 import { drawAudioIcon, toggleMuted as audioToggleMuted } from './RenderAudioToggle';
-import { getLifeDetectorRuntime } from '../logic/LifeDetector';
 import { toggleGMOpen, isGMOpen } from '../gm/GMPanel';
 import { getBreathPhaseAngle, getBreathPhase, getBreathPressure, getLungVolume } from '../logic/BreathSystem';
 import { playSFX } from '../audio/AudioManager';
@@ -138,7 +139,7 @@ function getVisibleSlots(): HUDSlot[] {
     let prevHalf = 0; // 上一项的半径，用于给不同尺寸图标之间留出正确间距
     for (const item of hudItems) {
         if (item.visible && !item.visible()) continue;
-        const sizeHere = item.id === 'oxygen' ? HUD_ITEM_SIZE * oxygenSizeMul : HUD_ITEM_SIZE;
+        const sizeHere = item.id === 'oxygen' ? HUD_ITEM_SIZE * oxygenSizeMul : item.id === 'lifeDetector' ? 56 : HUD_ITEM_SIZE;
         const halfHere = sizeHere / 2;
         if (slots.length === 0) {
             // 第一个项以固定起点为中心（但若它被放大，起点往下挪让它离顶部有合理留白）
@@ -264,6 +265,15 @@ function fireShortTap(slot: HUDSlot): void {
 
 // 绘制整个左上角HUD（每帧由迷宫HUD调用）
 export function drawHUDTopLeft(time: number): void {
+    // A stationary finger must open the sleeve too; touchmove is not guaranteed.
+    for (const track of activeTouches.values()) {
+        const slot = findSlotById(track.itemId);
+        if (!track.longFired && slot && slot.item.supportsLongPress && Date.now() - track.startTime >= HUD_LONG_PRESS_MS) {
+            track.longFired = true;
+            currentTip.itemId = null;
+            if (slot.item.onLongHoldStart) slot.item.onLongHoldStart();
+        }
+    }
     // 入场动效
     if (hudEntryTimer < HUD_ENTRY_FRAMES) hudEntryTimer++;
     const entry = hudEntryTimer / HUD_ENTRY_FRAMES;
@@ -280,6 +290,11 @@ export function drawHUDTopLeft(time: number): void {
     // 先绘制所有图标（不带长按附加面板）
     for (const slot of slots) {
         slot.item.iconDraw(ctx, slot.cx, slot.cy, slot.size, time);
+        if (slot.item.id !== 'lifeDetector') {
+            const captions: { [id: string]: string } = { oxygen: 'AIR', depth: 'DEPTH', deco: 'DECO', driveMode: 'DRIVE', audio: 'SOUND', gm: 'TOOLS' };
+            ctx.save(); ctx.font = 'bold 7px Arial'; ctx.textAlign = 'center';
+            ctx.fillStyle = TAPE.paper; ctx.fillText(captions[slot.item.id] || '', slot.cx, slot.cy + slot.size / 2 + 9); ctx.restore();
+        }
     }
 
     ctx.restore();
@@ -326,16 +341,16 @@ function drawTip(): void {
     ctx.save();
     ctx.globalAlpha = tipAlpha;
     // 背景
-    ctx.fillStyle = 'rgba(8, 20, 35, 0.92)';
-    drawRRect(ctx, panelX, panelY, panelW, panelH, 8);
+    ctx.fillStyle = TAPE.ink;
+    cutPanel(ctx, panelX, panelY, panelW, panelH, 6);
     ctx.fill();
     // 细边
-    ctx.strokeStyle = 'rgba(120, 180, 220, 0.35)';
+    ctx.strokeStyle = TAPE.orange;
     ctx.lineWidth = 0.6;
-    drawRRect(ctx, panelX, panelY, panelW, panelH, 8);
+    cutPanel(ctx, panelX, panelY, panelW, panelH, 6);
     ctx.stroke();
     // 文字
-    ctx.fillStyle = 'rgba(230, 245, 255, 0.96)';
+    ctx.fillStyle = TAPE.paper;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
     ctx.font = '12px Arial';
@@ -490,7 +505,7 @@ export function initMazeHUDTopLeft(): void {
         },
     });
 
-    // 4. 生命探知仪（短按弹tip）
+    // 4. 深流随身听：短按提示，按住展开磁带封套。
     registerHUDItem({
         id: 'lifeDetector',
         visible: () => {
@@ -498,15 +513,20 @@ export function initMazeHUDTopLeft(): void {
             return !!(cfg && cfg.enabled && cfg.hudVisible);
         },
         iconDraw: drawLifeDetectorIcon,
-        supportsLongPress: false,
+        supportsLongPress: true,
+        longHoldDraw: (c, cx, cy, _size, progress) => {
+            c.save(); c.globalAlpha *= progress;
+            const w = Math.min(248, logicW - 24);
+            drawTapeSleeve(c, Math.min(cx + 38, logicW - w - 12), Math.max(64, Math.min(cy - 98, logicH - 208)), w, getRescueTapeVisual());
+            c.restore();
+        },
         onShortTap: () => { /* 只弹tip */ },
         tipText: () => {
-            const rt = getLifeDetectorRuntime();
-            const maze = state.mazeRescue;
-            if (maze && maze.npcRescued) return '生命探知仪\n状态：已完成救援';
-            if (!rt.active) return '生命探知仪\n状态：未检测到目标';
-            const pct = Math.round(rt.currentIntensity * 100);
-            return `生命探知仪\n信号强度：${pct}%\n越近节奏越快`;
+            const v = getRescueTapeVisual();
+            if (state.audio.muted) return '深流随身听 · 已静音\n点上方音量键恢复声音\n按住磁带可看分层节奏';
+            if (v.fallback) return '深流随身听 · 双音模式\n按住查看节奏';
+            if (!v.playing) return '深流随身听 · 磁带就绪\n带上音乐，下潜\n按住查看分层节奏';
+            return `深流随身听 · ${v.mood === 'return' ? '一起回去' : v.mood === 'found' ? '就在这里' : '向深处去'}\n${v.level}/5 层 · 越靠近，音乐越丰盛\n按住查看分层节奏`;
         },
     });
 
@@ -573,9 +593,9 @@ function drawOxygenIcon(c: CanvasRenderingContext2D, cx: number, cy: number, siz
     const ringW = 3.5;
 
     // 氧气颜色（按总比率）
-    const o2Color = o2Ratio > 0.5 ? 'rgba(80,210,255,0.95)' :
+    const o2Color = o2Ratio > 0.5 ? TAPE.mint :
                     o2Ratio > 0.25 ? 'rgba(255,200,80,0.95)' : 'rgba(255,80,80,0.95)';
-    const o2ColorDim = o2Ratio > 0.5 ? 'rgba(80,210,255,0.18)' :
+    const o2ColorDim = o2Ratio > 0.5 ? 'rgba(129,227,206,0.18)' :
                        o2Ratio > 0.25 ? 'rgba(255,200,80,0.18)' : 'rgba(255,80,80,0.18)';
 
     c.save();
@@ -820,10 +840,9 @@ function drawDepthIcon(c: CanvasRenderingContext2D, cx: number, cy: number, size
     // === 底圆（仪表盘背景）===
     const baseColor = overLimit
         ? 'rgba(60, 10, 10, 0.95)'
-        : (ratio > 0.85 ? 'rgba(40, 30, 15, 0.92)' : 'rgba(8, 22, 36, 0.92)');
+        : (ratio > 0.85 ? 'rgba(40, 30, 15, 0.92)' : TAPE.ink);
     c.fillStyle = baseColor;
-    c.beginPath();
-    c.arc(cx, cy, r, 0, Math.PI * 2);
+    cutPanel(c, cx - r, cy - r, r * 2, r * 2, 6);
     c.fill();
 
     // 描边（超限脉冲红）
@@ -832,11 +851,10 @@ function drawDepthIcon(c: CanvasRenderingContext2D, cx: number, cy: number, size
         c.strokeStyle = `rgba(255, 90, 90, ${pulse})`;
         c.lineWidth = 1.8;
     } else {
-        c.strokeStyle = 'rgba(140, 200, 240, 0.55)';
+        c.strokeStyle = TAPE.paper;
         c.lineWidth = 1.2;
     }
-    c.beginPath();
-    c.arc(cx, cy, r, 0, Math.PI * 2);
+    cutPanel(c, cx - r, cy - r, r * 2, r * 2, 6);
     c.stroke();
 
     // === 上半：当前深度（大字）===
@@ -1073,17 +1091,10 @@ function drawDriveModeIcon(c: CanvasRenderingContext2D, cx: number, cy: number, 
     const r = size / 2 - 2;
 
     c.save();
-    // 底圆（按状态着色）
-    c.fillStyle = isManual ? 'rgba(240,120,50,0.78)' : 'rgba(60,200,120,0.68)';
-    c.beginPath();
-    c.arc(cx, cy, r, 0, Math.PI * 2);
-    c.fill();
-    // 外框
-    c.strokeStyle = isManual ? 'rgba(255,160,80,0.55)' : 'rgba(80,220,140,0.45)';
-    c.lineWidth = 1;
-    c.beginPath();
-    c.arc(cx, cy, r, 0, Math.PI * 2);
-    c.stroke();
+    c.fillStyle = TAPE.ink;
+    c.strokeStyle = isManual ? TAPE.orange : TAPE.mint;
+    c.lineWidth = 1.3; cutPanel(c, cx - r, cy - r, r * 2, r * 2, 6); c.fill(); c.stroke();
+    c.fillStyle = isManual ? TAPE.orange : TAPE.mint; c.fillRect(cx - r + 4, cy - r + 4, 3, 8);
     // 字母
     c.fillStyle = 'rgba(255,255,255,0.96)';
     c.font = 'bold 16px Arial';
@@ -1099,135 +1110,14 @@ function drawAudioIconWrapper(c: CanvasRenderingContext2D, cx: number, cy: numbe
     drawAudioIcon(c, cx, cy, size);
 }
 
-// 生命探知仪图标：同心圆脉冲波纹设计
-// 视觉语义：仪表盘底 + 中心信号源点 + 每次"嘀"响时从中心向外扩散一圈波纹
-// 波纹队列化：每次检测到脉冲触发（pulseT 从低跳到 1 的上升沿），push 一个新波纹
-// 波纹自身会随时间扩张半径 + 淡出透明度，淡出后自动从队列移除
-//
-// 为什么这样设计：
-// - 信号越近，"嘀"响越密集 → 波纹队列里同时存在的波纹也越多 → 视觉上环越密
-// - 静默时只有中心一个暗点，画面非常干净
-// - 没有任何持续旋转的元素，不会产生"狂转"的视觉噪音
-
-interface DetectorWave {
-    birth: number;   // 出生时间戳（ms）
-    life: number;    // 波纹持续时长（ms）
-    strength: number; // 诞生时的强度（0~1），决定初始不透明度
-}
-const detectorWaves: DetectorWave[] = [];
-let lastDetectorPulse = 0;  // 上一帧的 pulseT，用于检测上升沿
-
+// 防水随身听：与角色胸前共用同一画法、同一音频时间。
 function drawLifeDetectorIcon(c: CanvasRenderingContext2D, cx: number, cy: number, size: number, _time: number): void {
-    const cfg = (CONFIG as any).lifeDetector;
-    const rt = getLifeDetectorRuntime();
-    const r = size / 2 - 2;
-    const now = Date.now();
-
-    // === 波纹触发检测（上升沿：上一帧<0.5 本帧>=0.95 视为一次新脉冲） ===
-    if (rt.active && lastDetectorPulse < 0.5 && rt.pulseT >= 0.95) {
-        // 波纹寿命：信号越强，扩散越快（寿命越短）；保证密集脉冲时视觉追得上
-        const life = 360 + (1 - rt.currentIntensity) * 420;  // 360ms ~ 780ms
-        detectorWaves.push({ birth: now, life, strength: 0.5 + rt.currentIntensity * 0.5 });
-        // 限制同时存在的波纹数量，防止极近时波纹堆积过多
-        if (detectorWaves.length > 6) detectorWaves.shift();
-    }
-    lastDetectorPulse = rt.pulseT;
-
-    // 清理已淡出的波纹
-    for (let i = detectorWaves.length - 1; i >= 0; i--) {
-        if (now - detectorWaves[i].birth > detectorWaves[i].life) {
-            detectorWaves.splice(i, 1);
-        }
-    }
-
-    c.save();
-
-    // === 底圆（深色仪表盘） ===
-    const grd = c.createRadialGradient(cx, cy, 0, cx, cy, r);
-    grd.addColorStop(0, 'rgba(20, 50, 60, 0.92)');
-    grd.addColorStop(1, 'rgba(5, 15, 22, 0.88)');
-    c.fillStyle = grd;
-    c.beginPath();
-    c.arc(cx, cy, r, 0, Math.PI * 2);
-    c.fill();
-
-    // === 外环（仪表边框） ===
-    c.strokeStyle = 'rgba(120, 200, 220, 0.6)';
-    c.lineWidth = 1.2;
-    c.beginPath();
-    c.arc(cx, cy, r, 0, Math.PI * 2);
-    c.stroke();
-
-    // === 刻度点（12 个小圆点替代原来的刻度线，更像仪表表盘） ===
-    c.fillStyle = 'rgba(80, 160, 180, 0.45)';
-    for (let i = 0; i < 12; i++) {
-        const a = i * Math.PI / 6;
-        const px = cx + Math.cos(a) * (r - 3);
-        const py = cy + Math.sin(a) * (r - 3);
-        c.beginPath();
-        c.arc(px, py, 0.7, 0, Math.PI * 2);
-        c.fill();
-    }
-
-    // === 同心圆波纹（核心视觉） ===
-    // 裁剪在仪表内部，防止波纹画到外环外
-    c.save();
-    c.beginPath();
-    c.arc(cx, cy, r - 1, 0, Math.PI * 2);
-    c.clip();
-
-    const maxWaveR = r - 2;
-    for (const w of detectorWaves) {
-        const age = now - w.birth;
-        const t = Math.min(1, Math.max(0, age / w.life));  // 0=刚诞生  1=即将消失
-        const waveR = 2 + t * (maxWaveR - 2);
-        // 透明度：先涨后落（正弦峰），但总体受 strength 控制
-        const fade = Math.sin(t * Math.PI) * w.strength;
-        if (fade <= 0.02) continue;
-        // 波纹主体（亮青绿色细线）
-        c.strokeStyle = `rgba(160, 255, 220, ${(0.75 * fade).toFixed(3)})`;
-        c.lineWidth = 1.2;
-        c.beginPath();
-        c.arc(cx, cy, waveR, 0, Math.PI * 2);
-        c.stroke();
-        // 内部柔和辉光（让波纹更像"有厚度的光环"）
-        c.strokeStyle = `rgba(140, 230, 200, ${(0.25 * fade).toFixed(3)})`;
-        c.lineWidth = 2.6;
-        c.stroke();
-    }
-    c.restore();
-
-    // === 中心信号源 ===
-    // 激活时亮青绿色；脉冲瞬间放大；静默时暗蓝灰色
-    const pulseT = Math.max(0, Math.min(1, rt.pulseT));
-    if (rt.active) {
-        const coreR = 2.2 + pulseT * 2.4 + rt.currentIntensity * 1.4;
-        // 辉光
-        const coreGlow = c.createRadialGradient(cx, cy, 0, cx, cy, coreR * 2.4);
-        coreGlow.addColorStop(0, `rgba(200, 255, 240, ${(0.55 * (0.4 + 0.6 * pulseT)).toFixed(3)})`);
-        coreGlow.addColorStop(1, 'rgba(200, 255, 240, 0)');
-        c.fillStyle = coreGlow;
-        c.beginPath();
-        c.arc(cx, cy, coreR * 2.4, 0, Math.PI * 2);
-        c.fill();
-        // 核心点
-        c.fillStyle = cfg && cfg.hudColorPulse ? cfg.hudColorPulse : 'rgba(200, 255, 240, 1.0)';
-        c.beginPath();
-        c.arc(cx, cy, coreR, 0, Math.PI * 2);
-        c.fill();
-    } else {
-        // 静默：中心一个暗点 + 一圈静态瞄准圈，暗示仪器在待机
-        c.strokeStyle = 'rgba(80, 140, 160, 0.35)';
-        c.lineWidth = 0.6;
-        c.beginPath();
-        c.arc(cx, cy, r * 0.45, 0, Math.PI * 2);
-        c.stroke();
-        c.fillStyle = 'rgba(100, 170, 190, 0.45)';
-        c.beginPath();
-        c.arc(cx, cy, 1.6, 0, Math.PI * 2);
-        c.fill();
-    }
-
+    const v = getRescueTapeVisual();
+    drawTapeDeck(c, cx, cy, size, v);
+    const stripWidth = Math.min(144, logicW - cx - size / 2 - 68);
+    if (stripWidth >= 90) drawTapeMixStrip(c, cx + size / 2 + 7, cy - 26, stripWidth, v, state.audio.muted);
+    c.save(); c.fillStyle = TAPE.paper; c.font = 'bold 7px Arial'; c.textAlign = 'center';
+    c.fillText(state.audio.muted ? 'MUTE' : v.fallback ? '双音' : `${v.level}/5 · MIX`, cx, cy + size * .46);
     c.restore();
 }
 

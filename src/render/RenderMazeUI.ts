@@ -3,6 +3,7 @@ import { state, player } from '../core/state';
 import { ctx, logicW, logicH } from './Canvas';
 import { drawOxygenScreenGlow } from './RenderOxygenTank';
 import { drawHUDTopLeft, initMazeHUDTopLeft } from './HUDTopLeft';
+import { cutPanel, TAPE } from './TapeDeckVisual';
 // BCD 浮力背心：水下 inflator 控件 + 失控告警层
 import { drawBCDController, drawBCDWarnOverlay } from './RenderBCD';
 // 撤离玩法 UI 模块（独立于现有 mazeUI 子目录，与撤离系统所有代码同处一个独立树下）
@@ -820,18 +821,18 @@ function drawDepthBanner(maze: any, cw: number, ch: number): void {
         bgColor = 'rgba(80, 50, 10, 0.88)';
         strokeColor = 'rgba(255, 200, 100, 0.85)';
     } else {
-        bgColor = 'rgba(15, 30, 50, 0.85)';
-        strokeColor = 'rgba(140, 200, 240, 0.55)';
+        bgColor = 'rgba(16,30,38,0.9)';
+        strokeColor = TAPE.paper;
     }
 
     ctx.fillStyle = bgColor;
     ctx.beginPath();
-    rrect(ctx, bannerX, bannerY, bannerW, bannerH, 13);
+    cutPanel(ctx, bannerX, bannerY, bannerW, bannerH, 6);
     ctx.fill();
     ctx.strokeStyle = strokeColor;
     ctx.lineWidth = overLimit ? 1.6 : 1.1;
     ctx.beginPath();
-    rrect(ctx, bannerX, bannerY, bannerW, bannerH, 13);
+    cutPanel(ctx, bannerX, bannerY, bannerW, bannerH, 6);
     ctx.stroke();
 
     // 文字："深度 30 / 60m"

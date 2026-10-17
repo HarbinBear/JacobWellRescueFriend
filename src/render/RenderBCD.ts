@@ -39,6 +39,7 @@
 // =============================================
 
 import { CONFIG } from '../core/config';
+import { cutPanel, TAPE } from './TapeDeckVisual';
 import { state } from '../core/state';
 import { ctx } from './Canvas';
 import { getBCDRuntime, getBCDGaugeInfo } from '../logic/BCDSystem';
@@ -157,14 +158,14 @@ export function drawBCDController(time: number): void {
         const padY = L.inflateY - L.btnR - 8;
         const padW = L.gaugeW + 18;
         const padH = (L.deflateY + L.btnR + 8) - padY;
-        ctx.fillStyle = 'rgba(8, 18, 28, 0.5)';
-        rrectPath(ctx, padX, padY, padW, padH, 16);
+        ctx.fillStyle = 'rgba(16,30,38,0.75)';
+        cutPanel(ctx, padX, padY, padW, padH, 7);
         ctx.fill();
         ctx.strokeStyle = trimmed
             ? `rgba(110, 235, 220, ${0.35 + 0.3 * pulse})`
-            : 'rgba(110, 165, 195, 0.28)';
+            : TAPE.muted;
         ctx.lineWidth = trimmed ? 1.4 : 0.9;
-        rrectPath(ctx, padX, padY, padW, padH, 16);
+        cutPanel(ctx, padX, padY, padW, padH, 7);
         ctx.stroke();
     }
 
@@ -176,7 +177,7 @@ export function drawBCDController(time: number): void {
     drawDeflateBtn(L, rt.deflating, g.volumeL <= 0.001, time);
 
     // ---------- 深度压力小标（告诉玩家"现在几个大气压"，玻意耳的自变量）----------
-    ctx.fillStyle = 'rgba(150, 195, 220, 0.7)';
+    ctx.fillStyle = TAPE.paper;
     ctx.font = '9px Arial';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';

@@ -11,6 +11,8 @@
     "maze:inspect": "node scripts/inspectMaze.js",
     "audio:build": "node scripts/buildAdaptiveAudio.js",
     "audio:check": "node scripts/checkAdaptiveAudio.js && node scripts/checkAdaptiveGameplay.js",
+    "visuals:build": "node scripts/buildTapePreview.js",
+    "visuals:check": "node scripts/checkTapeVisuals.js",
     "platform:check": "node scripts/checkWindowMetrics.js"
   },
   "devDependencies": {

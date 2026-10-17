@@ -1,9 +1,11 @@
-import { SCORE, MusicMood, PHRASE_BEATS, DISCOVERY_CROSSFADE, RETURN_CROSSFADE, musicTransition, planDiscoveryEntry, PICKUP_GAIN } from './AdaptiveScore';
+import { SCORE, MusicMood, VariantName, DEFAULT_VARIANT, PHRASE_BEATS, DISCOVERY_CROSSFADE, RETURN_CROSSFADE, musicTransition, planDiscoveryEntry, PICKUP_GAIN } from './AdaptiveScore';
 
 export interface MusicClock {
     playing: boolean; level: number; requestedLevel: number;
     beat: number; bar: number; beatPhase: number; subdivisionPhase: number;
     pulse: number; bpm: number; entryWaitSeconds: number; mood: MusicMood; requestedMood: MusicMood;
+    /** Audible transport, never integrated by the render loop. */
+    beats: number; seconds: number; outputTime: number; trackGains: number[]; variant: VariantName;
 }
 
 // 所有 BufferSource 同一音频时间启动、始终循环。切档只操作 Gain，不重启文件。
@@ -21,7 +23,8 @@ export class AdaptiveMusicEngine {
     private pickup: { source: any; gain: any } | null = null;
     private masterTarget = -1;
     private stoppedAt = 0;
-    constructor(private ctx: any, private buffers: any[], private themes: any[] = [], private warmLayers: any[] = [], private pickupBuffer?: any) {
+    private visualTimeline: { at: number; level: number; mood: MusicMood }[] = [];
+    constructor(private ctx: any, private buffers: any[], private themes: any[] = [], private warmLayers: any[] = [], private pickupBuffer?: any, private variant: VariantName = DEFAULT_VARIANT) {
         if (buffers.length !== SCORE.stems.length || (themes.length !== 0 && themes.length !== 2) || (warmLayers.length !== 0 && (warmLayers.length !== 4 || themes.length !== 2)) || [...buffers, ...themes, ...warmLayers].some(b => Math.abs(b.duration - SCORE.duration) > 1 / SCORE.sampleRate)) {
             throw new Error('音乐必须有六轨，可选两条主题变体；均为16秒循环');
         }
@@ -40,6 +43,7 @@ export class AdaptiveMusicEngine {
         this.pending = null;
         this.stoppedAt = 0;
         this.envelopes = [];
+        this.visualTimeline = [{ at: this.epoch, level: 0, mood: 'search' }];
         [...this.buffers, ...this.themes, ...this.warmLayers].forEach((buffer, i) => {
             const source = this.ctx.createBufferSource(), gain = this.ctx.createGain();
             source.buffer = buffer;
@@ -123,7 +127,11 @@ export class AdaptiveMusicEngine {
             const fade = target === 5 && (i === 5 || i === 11) ? plan.fadeSeconds : recoloring ? (nextMood === 'return' ? RETURN_CROSSFADE : DISCOVERY_CROSSFADE) : plan.fadeSeconds;
             p.linearRampToValueAtTime(nextMix[i], at + fade);
             envelopes.push({ from, to: nextMix[i], start: at, end: at + fade });
-            this.envelopes[i] = envelopes;
+            // Retain the short audible past: currentTime can lead the speaker by a buffer.
+            const history = this.envelopes[i].filter(e => e.start < now && e.end > now - 1).map(e => ({
+                ...e, to: e.end > now ? current : e.to, end: Math.min(e.end, now),
+            }));
+            this.envelopes[i] = [...history, ...envelopes];
         }
         if (target === 5 && this.level < 5 && this.pickupBuffer && at - now >= 0.12) {
             const source = this.ctx.createBufferSource(), gain = this.ctx.createGain();
@@ -143,6 +151,9 @@ export class AdaptiveMusicEngine {
             };
         }
         this.pending = { level: target, mood: nextMood, at };
+        this.visualTimeline = this.visualTimeline.filter(e => e.at <= now);
+        this.visualTimeline.push({ at, level: target, mood: nextMood });
+        if (this.visualTimeline.length > 16) this.visualTimeline.shift();
     }
 
     private cancelPickup(): void {
@@ -197,16 +208,45 @@ export class AdaptiveMusicEngine {
 
     hasSources(): boolean { this.flush(); return this.sources.length > 0; }
 
+    private audibleTime(): number {
+        // Browser output timestamp includes the hardware path; WeChat implementations
+        // without it use their reported output/base latency, never an invented delay.
+        if (this.ctx.getOutputTimestamp && typeof performance !== 'undefined') {
+            try {
+                const stamp = this.ctx.getOutputTimestamp();
+                if (stamp && stamp.contextTime > 0 && stamp.performanceTime > 0) {
+                    const age = (performance.now() - stamp.performanceTime) / 1000;
+                    if (age >= 0 && age < 0.25) return Math.min(this.ctx.currentTime, Math.max(0, stamp.contextTime + age));
+                }
+            } catch (_) { /* Some WeChat contexts expose an unsupported method. */ }
+        }
+        const latency = this.ctx.outputLatency || this.ctx.baseLatency || 0;
+        return Math.max(0, this.ctx.currentTime - (Number.isFinite(latency) ? Math.max(0, latency) : 0));
+    }
+
     getClock(): MusicClock {
         this.flush();
-        const playing = this.sources.length > 0 && !this.stoppedAt && this.ctx.currentTime >= this.epoch;
-        const beats = playing ? (this.ctx.currentTime - this.epoch) * SCORE.bpm / 60 : 0;
-        const divisions = SCORE.pulseDivisions[this.level];
+        const outputTime = this.audibleTime();
+        const playing = this.sources.length > 0 && !this.stoppedAt && outputTime >= this.epoch && this.ctx.state !== 'suspended' && this.ctx.state !== 'closed';
+        const seconds = playing ? outputTime - this.epoch : 0;
+        const beats = seconds * SCORE.bpm / 60;
+        let level = 0, mood: MusicMood = 'search';
+        for (const event of this.visualTimeline) if (event.at <= outputTime) { level = event.level; mood = event.mood; }
+        const trackGains = this.envelopes.map(events => {
+            let value = events.length ? events[0].from : 0;
+            for (const e of events) {
+                if (outputTime < e.start) break;
+                const t = e.end > e.start ? Math.max(0, Math.min(1, (outputTime - e.start) / (e.end - e.start))) : 1;
+                value = e.from + (e.to - e.from) * t;
+            }
+            return playing ? value : 0;
+        });
+        const divisions = SCORE.pulseDivisions[level];
         const phase = (beats * divisions) % 1;
-        return { playing, level: this.level, requestedLevel: this.requested,
+        return { playing, level, requestedLevel: this.requested, beats, seconds, outputTime, trackGains, variant: this.variant,
             beat: Math.floor(beats), bar: Math.floor(beats / 4) % SCORE.bars,
             beatPhase: beats % 1, subdivisionPhase: phase,
-            pulse: playing && this.level > 0 ? Math.exp(-phase * 9) : 0, bpm: SCORE.bpm, entryWaitSeconds: this.pending ? Math.max(0, this.pending.at - this.ctx.currentTime) : 0, mood: this.mood, requestedMood: this.requestedMood };
+            pulse: playing && level > 0 ? Math.exp(-phase * 9) : 0, bpm: SCORE.bpm, entryWaitSeconds: this.pending ? Math.max(0, this.pending.at - outputTime) : 0, mood, requestedMood: this.requestedMood };
     }
 
     dispose(): void { this.stop(true); this.master.disconnect(); }

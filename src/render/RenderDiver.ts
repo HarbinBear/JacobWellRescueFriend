@@ -1,4 +1,6 @@
 import { CONFIG } from '../core/config';
+import { TapeVisual } from '../audio/AdaptiveMusicVisuals';
+import { drawTapeDeck } from './TapeDeckVisual';
 import { drawRelicIconAt } from './RenderRelic';
 import type { RelicKind } from '../logic/Relic';
 
@@ -13,6 +15,7 @@ type DiverColors = {
 };
 
 type DiverMotion = {
+    tapeVisual?: TapeVisual;
     animTime?: number;
     hasTank?: boolean;
     /**
@@ -1257,6 +1260,10 @@ export function drawDiver(
         regX = rightWristX;
         regY = rightWristY;
     }
+
+    // A small clipped waterproof cassette rides the right chest strap, inside
+    // the same body transform as the diver (including roll and drift).
+    if (motion.tapeVisual) drawTapeDeck(renderCtx, 3, 8, 14, motion.tapeVisual, true);
 
     // 头部：加入蛇形传导偏移（头先转、身后跟）
     // headYawLead 是沿身体 y 轴的微小偏移，让头颈看起来像先扭动

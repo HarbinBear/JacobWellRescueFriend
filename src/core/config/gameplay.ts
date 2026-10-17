@@ -207,7 +207,7 @@ export const gameplayConfig = {
         o2LossMax: 4.5,                 // 重撞氧气损失（%）
     },
 
-    // ===== 生命探知仪：距离驱动离散音乐层；不支持 Web Audio 时回退双音探测 =====
+    // ===== 深流随身听：距离驱动音乐配器；内部键名兼容旧版 =====
     lifeDetector: {
         enabled: true,              // 总开关
         music: {
@@ -233,7 +233,7 @@ export const gameplayConfig = {
         freqHigh: 698.46,           // F5 频率 (Hz)
         beepDuration: 0.12,         // 单音时长（秒）
         volume: 0.28,               // 峰值音量 (0~1)
-        // HUD 视觉（右上角脉冲雷达点）
+        // HUD 显隐；下方雷达颜色/尺寸为旧配置兼容，新视觉见 TapeDeckVisual。
         hudVisible: true,
         hudXFromRight: 36,          // HUD 雷达点距右边距（像素）
         hudY: 48,                   // HUD 雷达点 Y 坐标
@@ -242,7 +242,7 @@ export const gameplayConfig = {
         hudColorIdle: 'rgba(120,200,220,0.55)',    // 静态基础色（探知激活但未脉冲时）
         hudColorPulse: 'rgba(180,255,230,1.0)',    // 脉冲峰值色
         hudRingColor: 'rgba(60,120,140,0.8)',      // 外框圈色
-        // 角色身上 LED 闪光
+        // 胸前防水磁带机显隐；尺寸/颜色旧字段保留兼容。
         ledOnDiver: true,
         ledRadiusBase: 2,           // LED 基础大小
         ledRadiusPulse: 5,          // 脉冲峰值大小
