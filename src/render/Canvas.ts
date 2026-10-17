@@ -1,12 +1,12 @@
 import { CONFIG } from '../core/config';
+import { getWindowMetrics } from '../core/WindowMetrics';
 
 // Create canvas
 export const canvas = wx.createCanvas();
 export const ctx = canvas.getContext('2d');
 
 // 高清适配：使用设备像素比，解决文字和图形模糊问题
-const sysInfo = wx.getSystemInfoSync();
-export const dpr = sysInfo.pixelRatio || 2;
+export const dpr = getWindowMetrics().pixelRatio;
 
 // 画布物理尺寸 = 逻辑尺寸 × 设备像素比
 canvas.width = CONFIG.screenWidth * dpr;

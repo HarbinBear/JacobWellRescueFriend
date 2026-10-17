@@ -22,3 +22,6 @@ pnpm-debug.log*
 
 # 设计阶段的 AI 草图（不进版本库；定稿图会拷到 images/）
 .codebuddy/rules/design/**/art-drafts/
+
+# 用户提供的参考录音只用于本地分析
+/design/adaptive-audio/reference-study/reference-analysis.wav

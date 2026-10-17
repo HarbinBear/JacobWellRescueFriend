@@ -337,6 +337,9 @@ export const TABS: GMTab[] = [
         name: '探知仪',
         items: [
             { type: 'bool', label: '启用', path: 'lifeDetector.enabled' },
+            { type: 'bool', label: '分层音乐', path: 'lifeDetector.music.enabled' },
+            { type: 'number', label: '音乐音量', path: 'lifeDetector.music.volume', min: 0, max: 1, step: 0.02, precision: 2 },
+            { type: 'number', label: '分档缓冲', path: 'lifeDetector.music.hysteresis', min: 0, max: 0.09, step: 0.01, precision: 2 },
             { type: 'number', label: '范围倍数', path: 'lifeDetector.rangeMultiplier', min: 1, max: 8, step: 0.5, precision: 1 },
             { type: 'number', label: '最远间隔ms', path: 'lifeDetector.gapMaxMs', min: 400, max: 3000, step: 50 },
             { type: 'number', label: '最近间隔ms', path: 'lifeDetector.gapMinMs', min: 40, max: 400, step: 10 },

@@ -1,12 +1,12 @@
 // 生命探知仪（Life Detector）：
-// 玩家身上携带一个"盖革计数器"式的声纳仪器，检测到被救援者（NPC）在一定距离范围内时，
-// 按距离远近以不同节奏播放 D# + F 双音"嘀嘀"声，同时驱动 HUD 脉冲点与角色 LED 闪烁。
+// 检测被救援者（NPC）距离，驱动六档累加音乐；Web Audio 不可用时回退 D# + F 双音。
+// 原有 HUD 和 LED 继续使用 pulseT；音乐模式下脉冲来自同一音频时钟。
 //
 // 设计原则：
 // - 只在迷宫模式（mazeRescue）启用
-// - 玩家已发现 NPC（npcFound）或 NPC 已被救起（npcRescued）后自动关闭
+// - 发现 NPC 后继续响应，绑绳救起（npcRescued）后关闭探测节奏
 // - 只提示距离，不提示方向（方向由 NPC 自身的呼救表现负责）
-// - 节奏映射：最远处约 1.4s 响一次"嘀嘀"，最近时约 80ms 响一次，指数曲线让逼近感更强
+// - 音乐使用线性距离分档；以下间隔与双音运行态仅供旧探测音回退使用
 //
 // 运行态：
 // - nextGroupAt：下一次播放"嘀嘀"组的时间戳（ms）
@@ -17,6 +17,7 @@
 import { CONFIG } from '../core/config';
 import { state, player } from '../core/state';
 import { playSonarLow, playSonarHigh } from '../audio/LifeDetectorSynth';
+import { isAdaptiveMusicReady, getAdaptiveMusicClock, resetAdaptiveMusic } from '../audio/AdaptiveMusic';
 
 // 运行态（模块级单例；整局游戏共享）
 interface DetectorRuntime {
@@ -101,6 +102,16 @@ export function updateLifeDetector(): void {
     runtime.currentIntensity = tCurve;
     runtime.active = true;
 
+    if (cfg.music.enabled && isAdaptiveMusicReady()) {
+        runtime.currentIntensity = t; // 音乐使用线性距离分档，不沿用旧探测音的指数间隔
+        runtime.pendingHighAt = 0;
+        runtime.nextGroupAt = 0;
+        const clock = getAdaptiveMusicClock();
+        runtime.pulseT = clock ? clock.pulse : 0;
+        runtime.pulseIsHigh = !!clock && clock.level >= 4;
+        return;
+    }
+
     // 节奏映射：组间隔从 gapMaxMs 降到 gapMinMs；两音间隔从 beepIntervalMaxMs 降到 beepIntervalMinMs
     const gapMax = cfg.gapMaxMs || 1400;
     const gapMin = cfg.gapMinMs || 80;
@@ -135,6 +146,7 @@ export function updateLifeDetector(): void {
 
 // 重置运行态（模式切换、下潜重置时调用）
 export function resetLifeDetector(): void {
+    resetAdaptiveMusic();
     runtime.active = false;
     runtime.currentIntensity = 0;
     runtime.distance = 0;

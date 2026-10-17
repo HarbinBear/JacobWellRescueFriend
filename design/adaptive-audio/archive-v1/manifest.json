@@ -1,0 +1,65 @@
+{
+  "title": "Signal Below",
+  "bpm": 120,
+  "beatsPerBar": 4,
+  "bars": 8,
+  "sampleRate": 24000,
+  "duration": 16,
+  "stems": [
+    {
+      "id": "bed",
+      "label": "旋律与水下和声",
+      "file": "stems/bed.wav"
+    },
+    {
+      "id": "beacon",
+      "label": "稀疏信标 · 30/min",
+      "file": "stems/beacon.wav"
+    },
+    {
+      "id": "bass",
+      "label": "低音脉冲 · 60/min",
+      "file": "stems/bass.wav"
+    },
+    {
+      "id": "drums",
+      "label": "推进鼓组 · 120/min",
+      "file": "stems/drums.wav"
+    },
+    {
+      "id": "arp",
+      "label": "八分琶音 · 240/min",
+      "file": "stems/arp.wav"
+    },
+    {
+      "id": "spark",
+      "label": "十六分细拍 · 480/min",
+      "file": "stems/spark.wav"
+    }
+  ],
+  "labels": [
+    "旋律与水下和声",
+    "稀疏信标 · 30/min",
+    "低音脉冲 · 60/min",
+    "推进鼓组 · 120/min",
+    "八分琶音 · 240/min",
+    "十六分细拍 · 480/min"
+  ],
+  "key": "E minor",
+  "channels": 1,
+  "bitDepth": 16,
+  "loopSamples": 384000,
+  "masterGain": 0.68,
+  "demoStages": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    4,
+    2,
+    0
+  ],
+  "demoStageSeconds": 8
+}

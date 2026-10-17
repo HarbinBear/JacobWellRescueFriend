@@ -1,0 +1,473 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Signal Below III · 第五轨前景对比</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#09131d;color:#dfebef;font:16px/1.7 system-ui,sans-serif}
+main{max-width:950px;margin:50px auto;padding:0 26px 60px}small{color:#9bc9d9;letter-spacing:.15em}h1{font-size:48px;letter-spacing:-.04em;margin:12px 0}
+h2{font-size:23px;margin:0 0 8px}p{color:#b1bdca}section{border:1px solid #304252;border-radius:16px;padding:24px;margin-top:24px;background:#132331}
+button,select{border:1px solid #506575;background:#203d50;color:#e2eff8;padding:11px 17px;border-radius:9px;font:inherit;margin:6px 5px 6px 0}
+button{cursor:pointer}button.active,button.primary{background:#dcb888;color:#192734;border-color:#dcb888}button:disabled{opacity:.5;cursor:wait}
+input[type=range]{width:100%;accent-color:#dcb888}label{display:block;margin:12px 0}output{font-variant-numeric:tabular-nums;color:#e4c69d}a{color:#e4c69d}
+.tracks,.comparisons{display:grid;grid-template-columns:1fr 1fr;gap:14px}.comparisons{grid-template-columns:1fr 1fr 1fr}
+.track,.comparison{padding:16px;border:1px solid #354856;border-radius:10px;font-size:14px}.comparison p{min-height:72px}.comparison label{font-size:13px;color:#d4bd9f;margin-top:22px}
+audio{width:100%;height:34px;margin:6px 0 12px}.note{font-size:14px}
+@media(max-width:750px){main{margin-top:28px}h1{font-size:36px}.tracks,.comparisons{grid-template-columns:1fr}.comparison p{min-height:0}}
+</style>
+<main><small>JACOB WELL / AUDIO STUDY 03</small><h1>Signal Below III</h1>
+<p>电子弦乐主题，从深处的微光到发现目标时的激动。<br>五层主要音型密度：30 → 60 → 120 → 240 → <strong>1200 次/分钟</strong>。第五层为有音高的十连音疾奏。</p>
+<section><h2>第五轨前景对比</h2><p>同一段乐句：前 8 秒四级，中间 8 秒旧五级，最后 8 秒强化后的五级。新版抬高音区、突出起音，并让底轨和第四轨退后。</p>
+<audio controls preload="none" src="reference-study/four-old-five-new-five.wav"></audio>
+<p class="note">每段从相同乐句起点开始，便于比较；没有统一段落响度，保留加层的动态差异。参考录音只做客观信号分析，没有将其分离或采样进新音乐。</p></section>
+<section><h2>先比较三个方向</h2><p>每版都有 12 秒最高档、16 秒纯底轨和 56 秒递进试听。四级在 0:32 进入，五级在 0:40 进入。</p><div id="comparisons" class="comparisons"></div></section>
+<section><h2>实时切档与距离试听</h2><label>选择版本 <select id="variant"></select></label><p id="description"></p>
+<button id="play" class="primary">开始试听</button><button id="stop">停止</button><button id="tour">自动接近</button>
+<p id="status" role="status">首次播放会生成该版本的六条独立音轨。</p><div id="levels"></div>
+<label>距离强度 <output id="intensity">0%</output><input id="distance" type="range" min="0" max="100" value="0"></label>
+<label>音量 <input id="volume" type="range" min="0" max="100" value="78"></label>
+<p>当前 <output id="clock">底轨</output></p></section>
+<section><h2>当前版本的独立音轨</h2><p class="note">原始相对电平。同步叠加请使用上方实时播放器。</p><div class="tracks" id="tracks"></div></section>
+<p class="note">120 BPM 为共同音乐时钟；1200 次/分钟指最高层音型的起音密度。旧版保留在 archive-v1 文件夹。</p>
+</main><script>(function(){const factories={"AdaptiveScore":function(exports,require){"use strict";
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.SCORE = exports.DEFAULT_VARIANT = exports.VARIANTS = void 0;
+exports.notesFor = notesFor;
+exports.renderStem = renderStem;
+exports.renderStemAsync = renderStemAsync;
+exports.selectMusicLevel = selectMusicLevel;
+// Signal Below v3：第五层上移八度、突出中高频起音，并通过 levelMixes 站到前景。
+exports.VARIANTS = {
+    undertow: { title: 'A · 深流', description: '幽暗弦乐与压迫脉冲，靠近后转为强推进的电子弦乐。',
+        transpose: 0, leadGain: 0.17, driveGain: 0.14, rushGain: 0.34, bassGain: 0.25, style: 0 },
+    flare: { title: 'B · 微光奔涌', description: '更长、更向上舒展的弦乐旋律，发现目标时突出激动和希望。',
+        transpose: 2, leadGain: 0.19, driveGain: 0.15, rushGain: 0.34, bassGain: 0.23, style: 1 },
+    pursuit: { title: 'C · 最后航线', description: '低弦短句、切分低音与碎拍，四五级突出争分夺秒的救援冲刺。',
+        transpose: -2, leadGain: 0.18, driveGain: 0.16, rushGain: 0.36, bassGain: 0.27, style: 2 },
+};
+exports.DEFAULT_VARIANT = 'undertow';
+exports.SCORE = {
+    title: 'Signal Below III', bpm: 120, beatsPerBar: 4, bars: 8,
+    sampleRate: 24000, duration: 16, masterGain: 0.78,
+    pulseDivisions: [0, 0.25, 0.5, 1, 2, 10],
+    // 五级重新编排前景：底轨/第四轨让位，保留低频驱动，不只是整体加音量。
+    levelMixes: [
+        [1, 0, 0, 0, 0, 0], [1, 1, 0, 0, 0, 0], [1, 1, 1, 0, 0, 0],
+        [1, 1, 1, 1, 0, 0], [1, 1, 1, 1, 1, 0], [0.72, 0.78, 0.9, 1, 0.55, 1],
+    ],
+    stems: ['bed', 'beacon', 'bass', 'drums', 'arp', 'spark'],
+    labels: ['电子弦乐主题', '深处信标 · 30/min', '低弦与低音 · 60/min',
+        '重鼓推进 · 120/min', '弦乐疾行 · 240/min', '前景疾奏 · 1200/min'],
+};
+const TAU = Math.PI * 2;
+const roots = [38, 34, 43, 33]; // Dm(add9) / Bbmaj7 / Gm / A7；属和弦保留渴望与张力。
+const chords = [[50, 53, 57, 64], [46, 50, 53, 57], [43, 50, 53, 58], [45, 52, 55, 61]];
+// 相对 D4 的主题旋律；三版的节奏、旋律轮廓与鼓型各不相同。
+const melodies = [
+    [[0, 12, 1.5], [1.5, 7, 0.5], [2, 10, 1], [3, 12, 1]], [[0, 15, 2], [2, 14, 1], [3, 12, 1]],
+    [[0, 12, 1.5], [1.5, 10, 0.5], [2, 8, 2]], [[0, 7, 2], [2, 3, 1], [3, 7, 1]],
+    [[0, 8, 1], [1, 12, 1], [2, 15, 2]], [[0, 17, 1.5], [1.5, 15, 0.5], [2, 12, 2]],
+    [[0, 14, 2], [2, 11, 1], [3, 9, 1]], [[0, 11, 1], [1, 14, 1], [2, 11, 1], [3, 7, 1]],
+];
+const risingMelody = [
+    [[0, 7, 1], [1, 10, 1], [2, 12, 2]], [[0, 14, 1], [1, 15, 3]],
+    [[0, 15, 2], [2, 12, 1], [3, 10, 1]], [[0, 8, 3], [3, 7, 1]],
+    [[0, 8, 1], [1, 12, 1], [2, 15, 1], [3, 17, 1]], [[0, 20, 2], [2, 19, 1], [3, 17, 1]],
+    [[0, 14, 1], [1, 11, 1], [2, 7, 2]], [[0, 11, 2], [2, 14, 1], [3, 19, 1]],
+];
+const urgentMelody = [
+    [[0, 0, 1.5], [1.5, 7, 0.5], [2, 12, 1], [3, 10, 1]], [[0, 12, 1], [1, 14, 0.5], [1.5, 15, 1], [2.5, 14, 1.5]],
+    [[0, 8, 1.5], [1.5, 12, 0.5], [2, 15, 1], [3, 12, 1]], [[0, 10, 1], [1, 8, 1], [2, 7, 2]],
+    [[0, 3, 0.75], [0.75, 8, 0.75], [1.5, 12, 0.5], [2, 15, 2]], [[0, 17, 1], [1, 15, 1], [2, 12, 1], [3, 8, 1]],
+    [[0, 7, 1.5], [1.5, 11, 0.5], [2, 14, 1], [3, 11, 1]], [[0, 14, 1], [1, 11, 1], [2, 7, 1], [3, 11, 1]],
+];
+function notesFor(stem, variant = exports.DEFAULT_VARIANT) {
+    const notes = [], cfg = exports.VARIANTS[variant];
+    const add = (beat, midi, length, amp, voice) => notes.push({ beat, midi: midi + cfg.transpose, length, amp, voice });
+    for (let bar = 0; bar < exports.SCORE.bars; bar++) {
+        const b = bar * 4, c = Math.floor(bar / 2), chord = chords[c], root = roots[c];
+        if (stem === 'bed') {
+            if (bar % 2 === 0) {
+                chord.forEach((n, i) => add(b, n, 8, i === 0 ? 0.048 : 0.034, 'strings'));
+                add(b, root + 12, 8, 0.055, 'cello');
+            }
+            const melody = cfg.style === 1 ? risingMelody : cfg.style === 2 ? urgentMelody : melodies;
+            melody[bar].forEach(([at, pitch, length]) => add(b + at, 62 + pitch, length, cfg.leadGain * (at === 0 ? 1 : 0.88), 'lead'));
+        }
+        else if (stem === 'beacon') {
+            add(b, chord[0] + 12, 1.6, 0.17, 'sonar');
+            add(b + 0.22, root + 12, 0.65, 0.07, 'sonar');
+        }
+        else if (stem === 'bass') {
+            for (let i = 0; i < 2; i++) {
+                add(b + i * 2, root, 1.5, cfg.bassGain * (i ? 0.9 : 1), 'bass');
+                add(b + i * 2, root + 12, 1.2, 0.09, 'cello');
+            }
+        }
+        else if (stem === 'drums') {
+            const kicks = cfg.style === 2 ? [0, 1.5, 2, 2.75] : [0, 1, 2, 3];
+            kicks.forEach(i => add(b + i, 0, 0.65, 0.39, 'kick'));
+            [1, 3].forEach(i => add(b + i, 0, 0.4, cfg.style === 2 ? 0.25 : 0.2, 'snare'));
+            [0.5, 1.5, 2.5, 3.5].forEach(i => add(b + i, 0, 0.13, 0.065, 'hat'));
+        }
+        else if (stem === 'arp') {
+            const order = cfg.style === 1 ? [0, 1, 2, 3, 2, 3, 2, 1] : [0, 2, 1, 2, 0, 3, 2, 1];
+            order.forEach((n, i) => {
+                add(b + i / 2, chord[n] + 12, 0.36, cfg.driveGain * (i % 2 ? 0.82 : 1), 'drive');
+                add(b + i / 2, root + 12, 0.3, 0.075, 'bass');
+            });
+            if (bar % 2 === 0)
+                [chord[0] + 24, chord[2] + 12].forEach(n => add(b, n, 8, 0.037, 'strings'));
+            for (let i = 0; i < 8; i++)
+                add(b + i / 2 + 0.25, 0, 0.18, 0.06, 'hat');
+            if (bar % 2)
+                [2.75, 3.5, 3.75].forEach(i => add(b + i, 0, 0.22, 0.1, 'snare'));
+        }
+        else {
+            // 1200 次/min 的有音高疾奏；五音分组重复两次，重音锚定四拍结构。
+            const order = cfg.style === 1 ? [0, 1, 2, 3, 2] : cfg.style === 2 ? [2, 0, 1, 3, 1] : [0, 2, 1, 3, 2];
+            for (let i = 0; i < 40; i++) {
+                const accent = i % 10 === 0 ? 1.1 : i % 5 === 0 ? 0.98 : 0.8;
+                add(b + i / 10, chord[order[i % 5]] + 24, 0.074, cfg.rushGain * accent, 'rush');
+            }
+            for (let i = 0; i < 32; i++)
+                add(b + i / 8, 0, 0.07, i % 4 ? 0.025 : 0.05, 'hat');
+            const kicks = cfg.style === 2 ? [0.5, 1, 2.5, 3, 3.5] : [0.5, 1.5, 2.5, 3.5];
+            kicks.forEach(i => add(b + i, 0, 0.4, 0.22, 'kick'));
+            [1.75, 3.75].forEach(i => add(b + i, 0, 0.16, 0.085, 'snare'));
+        }
+    }
+    return notes;
+}
+function stringWave(phase, t, freq, lead, rate) {
+    const vibrato = lead ? Math.sin(TAU * 5.3 * t) * Math.min(1, t / 0.22) * freq * 0.00065 : 0;
+    let sum = 0;
+    for (let h = 1; h <= (lead ? 7 : 5); h++) {
+        if (freq * h > rate * 0.45)
+            break;
+        const weight = Math.exp(-h / (lead ? 4.5 : 2.8)) / h;
+        sum += weight * (Math.sin(phase * h + vibrato * h) * 0.62
+            + Math.sin(phase * h * 1.003 + 0.4) * 0.19
+            + Math.sin(phase * h * 0.997 - 0.4) * 0.19);
+    }
+    return sum;
+}
+function* renderChunks(stem, rate, out, variant) {
+    const notes = notesFor(stem, variant), beatSeconds = 60 / exports.SCORE.bpm;
+    for (let n = 0; n < notes.length; n++) {
+        const note = notes[n], start = Math.round(note.beat * beatSeconds * rate);
+        const freq = 440 * Math.pow(2, (note.midi - 69) / 12), duration = note.length * beatSeconds;
+        const sustained = note.voice === 'strings' || note.voice === 'lead' || note.voice === 'cello';
+        const tail = note.voice === 'strings' ? 0.7 : note.voice === 'lead' ? 0.24 : note.voice === 'rush' ? 0.012 : sustained ? 0.18 : 0.07;
+        const total = duration + tail;
+        let seed = (n + 1) * 7187, prevNoise = 0;
+        for (let i = 0; i < Math.ceil(total * rate); i++) {
+            const t = i / rate, phase = TAU * freq * t;
+            seed = (Math.imul(seed, 1664525) + 1013904223) | 0;
+            const noise = (seed >>> 0) / 2147483648 - 1;
+            let v = 0;
+            if (note.voice === 'strings' || note.voice === 'lead') {
+                const lead = note.voice === 'lead';
+                const attack = Math.min(1, t / (lead ? 0.045 : 0.32));
+                const end = t > duration ? Math.max(0, 1 - (t - duration) / tail) : 1;
+                const swell = lead ? 0.92 + 0.08 * Math.sin(t * 3) : 0.8 + 0.2 * Math.min(1, t / 1.6);
+                v = stringWave(phase, t, freq, lead, rate) * attack * end * swell;
+            }
+            else if (note.voice === 'cello') {
+                const env = Math.min(1, t / 0.035) * Math.min(1, Math.max(0, (total - t) / 0.2));
+                v = env * (Math.sin(phase) * 0.65 + Math.sin(phase * 2.002) * 0.24
+                    + Math.sin(phase * 3) * 0.13 + Math.sin(phase * 4) * 0.06);
+            }
+            else if (note.voice === 'sonar') {
+                v = Math.min(1, t / 0.006) * Math.exp(-t * 5) *
+                    (Math.sin(phase + Math.sin(phase * 0.5) * Math.exp(-t * 8) * 1.1) * 0.8
+                        + Math.sin(phase * 2) * 0.12);
+            }
+            else if (note.voice === 'bass') {
+                const env = Math.min(1, t / 0.006) * Math.exp(-t * 5.2);
+                v = Math.tanh((Math.sin(phase) * 0.85 + Math.sin(phase * 2) * 0.24
+                    + Math.sin(phase * 3) * 0.12) * 1.7) * env;
+            }
+            else if (note.voice === 'kick') {
+                const p = TAU * (46 * t + 110 * (1 - Math.exp(-t * 34)) / 34);
+                v = Math.min(1, t / 0.0015) * (Math.tanh(Math.sin(p) * 1.8) * Math.exp(-t * 13)
+                    + noise * Math.exp(-t * 180) * 0.19);
+            }
+            else if (note.voice === 'snare') {
+                v = Math.min(1, t / 0.001) * ((noise - prevNoise * 0.4) * 0.75 * Math.exp(-t * 24)
+                    + Math.sin(TAU * 185 * t) * Math.exp(-t * 30) * 0.35);
+            }
+            else if (note.voice === 'hat') {
+                v = (noise - prevNoise) * 0.5 * Math.exp(-t * (duration > 0.07 ? 35 : 95))
+                    * Math.min(1, t / 0.001);
+            }
+            else if (note.voice === 'rush') {
+                // 前景金属/锯齿疾奏：突出二至五次泛音，缩短每次发声以保留 50ms 间隔。
+                // 不用 tanh 产生不可控的超奈奎斯特泛音；逐谐波截断。
+                let tone = 0;
+                const weights = [0.28, 0.48, 0.37, 0.24, 0.13, 0.07];
+                for (let h = 1; h <= weights.length; h++) {
+                    if (freq * h > rate * 0.44)
+                        break;
+                    tone += weights[h - 1] * (Math.sin(phase * h) * 0.8
+                        + Math.sin(phase * h * 1.004) * 0.2);
+                }
+                const env = Math.min(1, t / 0.0008) * Math.exp(-t * 52);
+                v = tone * env + (noise - prevNoise) * 0.12 * Math.exp(-t * 420) * Math.min(1, t / 0.0006);
+            }
+            else {
+                const env = Math.min(1, t / 0.002) * Math.exp(-t * 13);
+                v = Math.tanh((Math.sin(phase) + 0.48 * Math.sin(phase * 2.001)
+                    + 0.29 * Math.sin(phase * 3) + 0.16 * Math.sin(phase * 4)
+                    + 0.09 * Math.sin(phase * 5)) * 1.25) * env;
+            }
+            prevNoise = noise;
+            const beatPhase = ((start + i) / rate / beatSeconds) % 1;
+            const duck = stem === 'arp' ? 0.65 + 0.35 * Math.min(1, beatPhase * 7) : 1;
+            const release = Math.min(1, Math.max(0, (total - t) / (note.voice === 'rush' ? 0.006 : 0.01)));
+            const value = v * note.amp * duck * release;
+            out[(start + i) % out.length] += value;
+            if (note.voice === 'lead' || note.voice === 'strings' || note.voice === 'drive' || note.voice === 'rush') {
+                const wet = sustained ? 0.13 : note.voice === 'rush' ? 0.025 : 0.12;
+                out[(start + i + Math.round(rate * 0.125)) % out.length] += value * wet;
+                out[(start + i + Math.round(rate * 0.375)) % out.length] += value * wet * 0.7;
+                out[(start + i + Math.round(rate * 0.625)) % out.length] += value * wet * 0.4;
+            }
+            if (i % 2048 === 2047)
+                yield;
+        }
+    }
+}
+function renderStem(stem, rate = exports.SCORE.sampleRate, variant = exports.DEFAULT_VARIANT) {
+    const out = new Float32Array(Math.round(rate * exports.SCORE.duration));
+    const chunks = renderChunks(stem, rate, out, variant);
+    while (!chunks.next().done) { /* 离线导出 */ }
+    return out;
+}
+function renderStemAsync(stem_1) {
+    return __awaiter(this, arguments, void 0, function* (stem, variant = exports.DEFAULT_VARIANT) {
+        const out = new Float32Array(exports.SCORE.sampleRate * exports.SCORE.duration);
+        const chunks = renderChunks(stem, exports.SCORE.sampleRate, out, variant);
+        let done = false;
+        while (!done) {
+            const deadline = Date.now() + 5;
+            do {
+                done = !!chunks.next().done;
+            } while (!done && Date.now() < deadline);
+            if (!done)
+                yield new Promise(resolve => setTimeout(resolve, 0));
+        }
+        return out;
+    });
+}
+function selectMusicLevel(intensity, previous, hysteresis = 0.03) {
+    if (!Number.isFinite(intensity) || intensity < 0)
+        return 0;
+    const x = Math.max(0, Math.min(1, intensity));
+    let level = Math.max(1, Math.min(5, previous || 1));
+    while (level < 5 && x >= level / 5 + hysteresis)
+        level++;
+    while (level > 1 && x < (level - 1) / 5 - hysteresis)
+        level--;
+    return level;
+}
+},"AdaptiveMusicEngine":function(exports,require){"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.AdaptiveMusicEngine = void 0;
+const AdaptiveScore_1 = require("./AdaptiveScore");
+// 所有 BufferSource 同一音频时间启动、始终循环。切档只操作 Gain，不重启文件。
+class AdaptiveMusicEngine {
+    constructor(ctx, buffers) {
+        this.ctx = ctx;
+        this.buffers = buffers;
+        this.sources = [];
+        this.gains = [];
+        this.epoch = 0;
+        this.level = 0;
+        this.requested = 0;
+        this.pending = null;
+        this.masterTarget = -1;
+        this.stoppedAt = 0;
+        if (buffers.length !== AdaptiveScore_1.SCORE.stems.length || buffers.some(b => Math.abs(b.duration - AdaptiveScore_1.SCORE.duration) > 1 / AdaptiveScore_1.SCORE.sampleRate)) {
+            throw new Error('音乐必须为六条相同长度的 16 秒循环');
+        }
+        this.master = ctx.createGain();
+        this.master.gain.value = 0;
+        this.master.connect(ctx.destination);
+    }
+    start() {
+        this.flush();
+        if (this.stoppedAt)
+            this.releaseSources();
+        if (this.sources.length)
+            return;
+        this.epoch = this.ctx.currentTime + 0.06;
+        this.level = this.requested = 0;
+        this.pending = null;
+        this.stoppedAt = 0;
+        this.buffers.forEach(buffer => {
+            const source = this.ctx.createBufferSource(), gain = this.ctx.createGain();
+            source.buffer = buffer;
+            source.loop = true;
+            source.loopStart = 0;
+            source.loopEnd = AdaptiveScore_1.SCORE.duration;
+            gain.gain.value = 0;
+            source.connect(gain);
+            gain.connect(this.master);
+            this.sources.push(source);
+            this.gains.push(gain);
+        });
+        this.gains[0].gain.setValueAtTime(0, this.epoch);
+        this.gains[0].gain.linearRampToValueAtTime(1, this.epoch + 0.5);
+        this.sources.forEach(source => source.start(this.epoch));
+    }
+    setVolume(value) {
+        const target = Math.max(0, Math.min(1, value));
+        if (target === this.masterTarget)
+            return;
+        const now = this.ctx.currentTime;
+        const p = this.master.gain;
+        p.cancelScheduledValues(now);
+        p.setValueAtTime(p.value, now);
+        p.linearRampToValueAtTime(target, now + 0.04);
+        this.masterTarget = target;
+    }
+    setLevel(value) {
+        this.flush();
+        const target = Math.max(0, Math.min(5, Math.round(value)));
+        // 已排入下拍的切换先完成；新的请求合并，避免边界抖动重复重写自动化。
+        this.requested = target;
+        if (!this.sources.length || this.pending || target === this.level || this.stoppedAt)
+            return;
+        const beat = 60 / AdaptiveScore_1.SCORE.bpm, now = this.ctx.currentTime;
+        const at = this.epoch + Math.max(0, Math.ceil((now + 0.025 - this.epoch) / beat)) * beat;
+        const previousMix = AdaptiveScore_1.SCORE.levelMixes[this.level], nextMix = AdaptiveScore_1.SCORE.levelMixes[target];
+        for (let i = 0; i < this.gains.length; i++) {
+            if (previousMix[i] === nextMix[i])
+                continue;
+            const p = this.gains[i].gain;
+            p.cancelScheduledValues(at);
+            if (i === 0 && at <= this.epoch + 0.000001) {
+                // 用户直接从五级起播时仍保留底轨淡入，避免覆盖 start() 的起音包络。
+                p.setValueAtTime(0, at);
+                p.linearRampToValueAtTime(nextMix[i], at + 0.5);
+                continue;
+            }
+            p.setValueAtTime(previousMix[i], at);
+            p.linearRampToValueAtTime(nextMix[i], at + 0.09);
+        }
+        this.pending = { level: target, at };
+    }
+    flush() {
+        if (this.pending && this.ctx.currentTime >= this.pending.at) {
+            this.level = this.pending.level;
+            this.pending = null;
+        }
+        if (this.stoppedAt && this.ctx.currentTime >= this.stoppedAt)
+            this.releaseSources();
+    }
+    stop(immediate = false) {
+        if (!this.sources.length || (this.stoppedAt && !immediate))
+            return;
+        this.setVolume(0);
+        this.stoppedAt = this.ctx.currentTime + (immediate ? 0 : 0.06);
+        // 即使游戏下一帧不再执行，也由音频时钟停止。
+        this.sources.forEach(source => { try {
+            source.stop(this.stoppedAt);
+        }
+        catch (_) { /* 已停止 */ } });
+        if (immediate)
+            this.releaseSources();
+    }
+    releaseSources() {
+        this.sources.forEach(s => { try {
+            s.disconnect();
+        }
+        catch (_) { /* 已释放 */ } });
+        this.gains.forEach(g => g.disconnect());
+        this.sources = [];
+        this.gains = [];
+        this.pending = null;
+        this.level = this.requested = 0;
+        this.stoppedAt = 0;
+    }
+    getClock() {
+        this.flush();
+        const playing = this.sources.length > 0 && !this.stoppedAt && this.ctx.currentTime >= this.epoch;
+        const beats = playing ? (this.ctx.currentTime - this.epoch) * AdaptiveScore_1.SCORE.bpm / 60 : 0;
+        const divisions = AdaptiveScore_1.SCORE.pulseDivisions[this.level];
+        const phase = (beats * divisions) % 1;
+        return { playing, level: this.level, requestedLevel: this.requested,
+            beat: Math.floor(beats), bar: Math.floor(beats / 4) % AdaptiveScore_1.SCORE.bars,
+            beatPhase: beats % 1, subdivisionPhase: phase,
+            pulse: playing && this.level > 0 ? Math.exp(-phase * 9) : 0, bpm: AdaptiveScore_1.SCORE.bpm };
+    }
+    dispose() { this.stop(true); this.master.disconnect(); }
+}
+exports.AdaptiveMusicEngine = AdaptiveMusicEngine;
+}};const cache={};
+        function load(name){name=name.replace('./','');if(!cache[name]){const e={};cache[name]=e;factories[name](e,load);}return cache[name];}
+        window.SignalBelow={...load('AdaptiveScore'),...load('AdaptiveMusicEngine')};})();</script><script>
+const {SCORE,VARIANTS,DEFAULT_VARIANT,renderStemAsync,AdaptiveMusicEngine,selectMusicLevel}=SignalBelow;
+const $=id=>document.getElementById(id),cache={};
+let ctx,engine,engineVariant,level=0,tourTimer=null,tourStep=0,loading=false,wantPlay=false;
+const buttons=[],trackAudios=[];
+function makeAudio(src,parent){const audio=document.createElement('audio');audio.controls=true;audio.preload='none';audio.src=src;parent.append(audio);return audio}
+for(const [id,cfg] of Object.entries(VARIANTS)){
+ const option=document.createElement('option');option.value=id;option.textContent=cfg.title;$('variant').append(option);
+ const card=document.createElement('div');card.className='comparison';
+ const name=document.createElement('h2');name.textContent=cfg.title;card.append(name);
+ const desc=document.createElement('p');desc.textContent=cfg.description;card.append(desc);
+ for(const [file,label] of [['four-to-five','四级 → 新五级 · 16 秒'],['fifth-solo','第五轨单独试听 · 8 秒'],['climax','最高档 · 12 秒'],['theme','弦乐底轨 · 16 秒'],['demo','逐层递进 · 56 秒']]){
+  const caption=document.createElement('label');caption.textContent=label;card.append(caption);makeAudio(`${id}/${file}.wav`,card);
+ }$('comparisons').append(card);
+}
+for(let i=0;i<6;i++){
+ const b=document.createElement('button');b.textContent=i===0?'底轨':`${i} 级`;b.onclick=()=>{clearTour();choose(i)};$('levels').append(b);buttons.push(b);
+ const track=document.createElement('div');track.className='track';
+ const name=document.createElement('div');name.textContent=SCORE.labels[i];track.append(name);
+ trackAudios.push(makeAudio('',track));$('tracks').append(track);
+}
+function choose(n){level=n;buttons.forEach((b,i)=>b.classList.toggle('active',i===n));if(engine)engine.setLevel(n)}
+function clearTour(){if(tourTimer)clearInterval(tourTimer);tourTimer=null;$('tour').textContent='自动接近'}
+function stop(){clearTour();wantPlay=false;if(engine)engine.stop();$('status').textContent='已停止。'}
+function updateVariant(){stop();const id=$('variant').value;$('description').textContent=VARIANTS[id].description;
+ trackAudios.forEach((audio,i)=>{audio.pause();audio.src=`${id}/stems/${SCORE.stems[i]}.wav`});
+ if(engine){engine.dispose();engine=null;engineVariant=null}choose(0);
+}
+$('variant').value=DEFAULT_VARIANT;$('variant').onchange=updateVariant;
+$('play').onclick=async()=>{
+ if(loading)return;loading=true;wantPlay=true;$('play').disabled=$('variant').disabled=true;
+ try{
+ document.querySelectorAll('audio').forEach(audio=>audio.pause());
+ ctx=ctx||new(window.AudioContext||window.webkitAudioContext)();await ctx.resume();
+ const id=$('variant').value;
+ if(!cache[id]){const buffers=[];for(let i=0;i<6;i++){
+  $('status').textContent=`正在合成 ${VARIANTS[id].title} · 音轨 ${i+1}/6…`;
+  const pcm=await renderStemAsync(SCORE.stems[i],id),buffer=ctx.createBuffer(1,pcm.length,SCORE.sampleRate);buffer.getChannelData(0).set(pcm);buffers.push(buffer);
+ }cache[id]=buffers;}
+ if(!engine||engineVariant!==id){if(engine)engine.dispose();engine=new AdaptiveMusicEngine(ctx,cache[id]);engineVariant=id;}
+ if(wantPlay){engine.start();engine.setVolume(Number($('volume').value)/100);engine.setLevel(level);$('status').textContent='播放中。下一拍切档；五级每秒 20 次有音高疾奏。'}
+ else $('status').textContent='音轨已就绪，已停止。';
+ }catch(err){$('status').textContent='播放失败：'+err.message}finally{loading=false;$('play').disabled=$('variant').disabled=false}
+};
+$('stop').onclick=()=>{stop();document.querySelectorAll('audio').forEach(audio=>audio.pause())};
+$('distance').oninput=()=>{clearTour();const x=Number($('distance').value)/100;$('intensity').textContent=Math.round(x*100)+'%';choose(selectMusicLevel(x,level))};
+$('volume').oninput=()=>{if(engine)engine.setVolume(Number($('volume').value)/100)};
+$('tour').onclick=()=>{if(tourTimer){clearTour();return}if(!engine||!engine.getClock().playing){$('status').textContent='请先开始试听。';return}
+ const stages=[0,1,2,3,4,5,5];tourStep=0;choose(0);$('tour').textContent='结束自动演示';
+ tourTimer=setInterval(()=>{tourStep++;if(tourStep>=stages.length){clearTour();return}choose(stages[tourStep])},8000);
+};
+document.querySelectorAll('audio').forEach(audio=>audio.addEventListener('play',()=>{
+ stop();document.querySelectorAll('audio').forEach(other=>{if(other!==audio)other.pause()});
+}));
+function frame(){if(engine){engine.setLevel(level);const c=engine.getClock();$('clock').textContent=c.playing?`${c.level} 级 · 第 ${c.bar+1} 小节 · ${SCORE.pulseDivisions[c.level]*SCORE.bpm} 次/分钟`:'已停止'}requestAnimationFrame(frame)}
+updateVariant();frame();
+</script></html>

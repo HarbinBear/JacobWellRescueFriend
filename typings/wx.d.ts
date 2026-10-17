@@ -1,6 +1,14 @@
 // 微信小游戏 wx API 类型声明
 
 declare namespace wx {
+    interface WindowInfo {
+        windowWidth: number;
+        windowHeight: number;
+        screenWidth: number;
+        screenHeight: number;
+        pixelRatio: number;
+    }
+
     interface SystemInfo {
         windowWidth: number;
         windowHeight: number;
@@ -72,6 +80,7 @@ declare namespace wx {
     }
 
     function getSystemInfoSync(): SystemInfo;
+    function getWindowInfo(): WindowInfo;
     function createCanvas(): Canvas;
     function createImage(): Image;
 

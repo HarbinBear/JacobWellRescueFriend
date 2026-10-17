@@ -6,6 +6,8 @@ import { ensureHomeAssetsRegistered } from './src/story/HomeRoom';
 import { state } from './src/core/state';
 import { initInput } from './src/core/input';
 import { initAudio, updateAudio, updateSFXLoops, updateAmbience, playAmbience, stopAmbience } from './src/audio/AudioManager';
+import { updateAdaptiveMusic } from './src/audio/AdaptiveMusic';
+import { getLifeDetectorRuntime } from './src/logic/LifeDetector';
 import { perfFrameBegin, perfFrameEnd, profileBegin, profileEnd } from './src/debug/PerfHUD';
 import { initQualityManager, onFrame as qualityOnFrame } from './src/render/QualityManager';
 // 撤离玩法：启动时加载经济存档（若无存档则初始化为新手起步状态）
@@ -73,6 +75,7 @@ function gameLoop() {
     profileBegin('updateMaze');    updateMaze();     profileEnd('updateMaze');
     profileBegin('updateHome');    updateHome();     profileEnd('updateHome');
     profileBegin('updateAudio');   updateAudio();    profileEnd('updateAudio');
+    updateAdaptiveMusic(getLifeDetectorRuntime());
     profileBegin('updateSFXLoops');updateSFXLoops(); profileEnd('updateSFXLoops');
     // 岸上营地环境音（鸟鸣）由 phase 驱动：只在 mazeRescue 的 shore / resolved_idle 两个真正暴露在营地的 phase 激活
     // briefing / resolved / abandoned 三个叙事弹窗以及下潜中、菜单全部停（弹窗自带声音由叙事层另做）

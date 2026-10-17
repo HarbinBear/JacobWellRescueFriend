@@ -1,0 +1,371 @@
+{
+  "limitations": [
+    "参考为手机录制的完整混音，含录音设备染色，不能据此分离或认定第五轨。",
+    "本分析是信号测量，不是主观试听；调制峰不等同于 BPM 或某乐器的起音率。"
+  ],
+  "reference": {
+    "duration_seconds": 13.673,
+    "rms_dbfs": -40.3,
+    "peak_dbfs": -23.24,
+    "band_energy_percent": {
+      "30-150Hz": 1.01,
+      "150-500Hz": 36.87,
+      "500-1800Hz": 43.58,
+      "1800-6000Hz": 14.53,
+      "6000-10000Hz": 4.0
+    },
+    "modulation": {
+      "150-500Hz": {
+        "depth": 0.501,
+        "peaks_5_to_40Hz": [
+          {
+            "hz": 6.45,
+            "relative_power": 0.0762
+          },
+          {
+            "hz": 5.28,
+            "relative_power": 0.0425
+          },
+          {
+            "hz": 7.69,
+            "relative_power": 0.0198
+          },
+          {
+            "hz": 10.8,
+            "relative_power": 0.0144
+          },
+          {
+            "hz": 8.78,
+            "relative_power": 0.0092
+          }
+        ]
+      },
+      "500-1800Hz": {
+        "depth": 0.512,
+        "peaks_5_to_40Hz": [
+          {
+            "hz": 5.52,
+            "relative_power": 0.0676
+          },
+          {
+            "hz": 8.31,
+            "relative_power": 0.0292
+          },
+          {
+            "hz": 7.23,
+            "relative_power": 0.0276
+          },
+          {
+            "hz": 12.9,
+            "relative_power": 0.0078
+          },
+          {
+            "hz": 10.8,
+            "relative_power": 0.0074
+          }
+        ]
+      },
+      "1800-6000Hz": {
+        "depth": 0.752,
+        "peaks_5_to_40Hz": [
+          {
+            "hz": 17.25,
+            "relative_power": 0.1147
+          },
+          {
+            "hz": 5.36,
+            "relative_power": 0.0812
+          },
+          {
+            "hz": 7.54,
+            "relative_power": 0.0232
+          },
+          {
+            "hz": 9.71,
+            "relative_power": 0.0221
+          },
+          {
+            "hz": 6.45,
+            "relative_power": 0.0193
+          }
+        ]
+      }
+    }
+  },
+  "undertow": {
+    "full_mix": {
+      "duration_seconds": 16.0,
+      "rms_dbfs": -17.32,
+      "peak_dbfs": -3.25,
+      "band_energy_percent": {
+        "30-150Hz": 45.37,
+        "150-500Hz": 42.88,
+        "500-1800Hz": 10.61,
+        "1800-6000Hz": 0.7,
+        "6000-10000Hz": 0.44
+      },
+      "modulation": {
+        "150-500Hz": {
+          "depth": 0.519,
+          "peaks_5_to_40Hz": [
+            {
+              "hz": 8.03,
+              "relative_power": 0.1177
+            },
+            {
+              "hz": 11.97,
+              "relative_power": 0.0659
+            },
+            {
+              "hz": 20.0,
+              "relative_power": 0.06
+            },
+            {
+              "hz": 5.0,
+              "relative_power": 0.0397
+            },
+            {
+              "hz": 5.99,
+              "relative_power": 0.0251
+            }
+          ]
+        },
+        "500-1800Hz": {
+          "depth": 0.406,
+          "peaks_5_to_40Hz": [
+            {
+              "hz": 7.96,
+              "relative_power": 0.1121
+            },
+            {
+              "hz": 5.99,
+              "relative_power": 0.0661
+            },
+            {
+              "hz": 20.0,
+              "relative_power": 0.0384
+            },
+            {
+              "hz": 5.13,
+              "relative_power": 0.0239
+            },
+            {
+              "hz": 11.97,
+              "relative_power": 0.016
+            }
+          ]
+        },
+        "1800-6000Hz": {
+          "depth": 0.411,
+          "peaks_5_to_40Hz": [
+            {
+              "hz": 8.03,
+              "relative_power": 0.1297
+            },
+            {
+              "hz": 5.0,
+              "relative_power": 0.0943
+            },
+            {
+              "hz": 15.99,
+              "relative_power": 0.0355
+            },
+            {
+              "hz": 24.01,
+              "relative_power": 0.0193
+            },
+            {
+              "hz": 31.97,
+              "relative_power": 0.0178
+            }
+          ]
+        }
+      }
+    },
+    "fifth_vs_other_tracks_db": -9.07
+  },
+  "flare": {
+    "full_mix": {
+      "duration_seconds": 16.0,
+      "rms_dbfs": -17.48,
+      "peak_dbfs": -2.51,
+      "band_energy_percent": {
+        "30-150Hz": 38.81,
+        "150-500Hz": 38.68,
+        "500-1800Hz": 20.53,
+        "1800-6000Hz": 1.52,
+        "6000-10000Hz": 0.46
+      },
+      "modulation": {
+        "150-500Hz": {
+          "depth": 0.534,
+          "peaks_5_to_40Hz": [
+            {
+              "hz": 8.03,
+              "relative_power": 0.1529
+            },
+            {
+              "hz": 11.97,
+              "relative_power": 0.0835
+            },
+            {
+              "hz": 20.0,
+              "relative_power": 0.0317
+            },
+            {
+              "hz": 24.01,
+              "relative_power": 0.0285
+            },
+            {
+              "hz": 5.99,
+              "relative_power": 0.0279
+            }
+          ]
+        },
+        "500-1800Hz": {
+          "depth": 0.36,
+          "peaks_5_to_40Hz": [
+            {
+              "hz": 8.03,
+              "relative_power": 0.1237
+            },
+            {
+              "hz": 5.99,
+              "relative_power": 0.0609
+            },
+            {
+              "hz": 5.0,
+              "relative_power": 0.0282
+            },
+            {
+              "hz": 20.0,
+              "relative_power": 0.0215
+            },
+            {
+              "hz": 10.0,
+              "relative_power": 0.0188
+            }
+          ]
+        },
+        "1800-6000Hz": {
+          "depth": 0.374,
+          "peaks_5_to_40Hz": [
+            {
+              "hz": 8.03,
+              "relative_power": 0.116
+            },
+            {
+              "hz": 5.0,
+              "relative_power": 0.0417
+            },
+            {
+              "hz": 6.05,
+              "relative_power": 0.0268
+            },
+            {
+              "hz": 15.99,
+              "relative_power": 0.0234
+            },
+            {
+              "hz": 24.01,
+              "relative_power": 0.0175
+            }
+          ]
+        }
+      }
+    },
+    "fifth_vs_other_tracks_db": -9.2
+  },
+  "pursuit": {
+    "full_mix": {
+      "duration_seconds": 16.0,
+      "rms_dbfs": -17.67,
+      "peak_dbfs": -1.88,
+      "band_energy_percent": {
+        "30-150Hz": 43.31,
+        "150-500Hz": 43.1,
+        "500-1800Hz": 12.02,
+        "1800-6000Hz": 0.91,
+        "6000-10000Hz": 0.66
+      },
+      "modulation": {
+        "150-500Hz": {
+          "depth": 0.506,
+          "peaks_5_to_40Hz": [
+            {
+              "hz": 7.96,
+              "relative_power": 0.1105
+            },
+            {
+              "hz": 20.0,
+              "relative_power": 0.0478
+            },
+            {
+              "hz": 11.97,
+              "relative_power": 0.044
+            },
+            {
+              "hz": 15.99,
+              "relative_power": 0.0351
+            },
+            {
+              "hz": 5.99,
+              "relative_power": 0.0299
+            }
+          ]
+        },
+        "500-1800Hz": {
+          "depth": 0.424,
+          "peaks_5_to_40Hz": [
+            {
+              "hz": 8.03,
+              "relative_power": 0.0924
+            },
+            {
+              "hz": 5.0,
+              "relative_power": 0.0561
+            },
+            {
+              "hz": 20.0,
+              "relative_power": 0.0398
+            },
+            {
+              "hz": 5.99,
+              "relative_power": 0.0348
+            },
+            {
+              "hz": 15.99,
+              "relative_power": 0.0276
+            }
+          ]
+        },
+        "1800-6000Hz": {
+          "depth": 0.508,
+          "peaks_5_to_40Hz": [
+            {
+              "hz": 8.03,
+              "relative_power": 0.1538
+            },
+            {
+              "hz": 5.0,
+              "relative_power": 0.0953
+            },
+            {
+              "hz": 5.99,
+              "relative_power": 0.0436
+            },
+            {
+              "hz": 15.99,
+              "relative_power": 0.0262
+            },
+            {
+              "hz": 10.99,
+              "relative_power": 0.0179
+            }
+          ]
+        }
+      }
+    },
+    "fifth_vs_other_tracks_db": -8.4
+  }
+}

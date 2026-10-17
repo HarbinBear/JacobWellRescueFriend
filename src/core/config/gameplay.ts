@@ -207,14 +207,16 @@ export const gameplayConfig = {
         o2LossMax: 4.5,                 // 重撞氧气损失（%）
     },
 
-    // ===== 生命探知仪（迷宫模式未发现 NPC 时，以盖革式"嘀嘀"提示距离）=====
-    // 玩家身上携带一个声纳仪器，检测到 NPC 在探知范围内就开始播放两音节拍（#D + F）
-    // 越靠近 NPC，两音组之间的间隔越短，同时 HUD 脉冲点与角色 LED 闪烁越快
-    // npcFound 或 npcRescued 后自动关闭
+    // ===== 生命探知仪：距离驱动离散音乐层；不支持 Web Audio 时回退双音探测 =====
     lifeDetector: {
         enabled: true,              // 总开关
-        // 探知范围（以 npcRescueRange 为基准的倍数；外圈=静默，内圈=最快节奏）
-        rangeMultiplier: 50,         // 最大探知半径 = npcRescueRange × 此值（默认 80 × 4 = 320 像素 ——见下：实际是 320 再乘）
+        music: {
+            enabled: true,          // 原创「Signal Below」：底轨 + 五层累加节奏
+            volume: 0.78,           // v2 固定总增益，保留满层混音余量
+            hysteresis: 0.03,       // 每档边界两侧各 3% 缓冲，防止来回跳档
+        },
+        // 探知范围（以 npcRescueRange 为基准；音乐模式外圈回到底轨、内圈满层）
+        rangeMultiplier: 50,         // 最大探知半径 = npcRescueRange × 此值
         // 注意：上面 rangeMultiplier 实际解释为"以 npcRescueRange 为最内圈强度=1，乘 rangeMultiplier 得到最外圈强度=0"
         // 节奏
         gapMaxMs: 3000,             // 最远处两组"嘀嘀"之间的间隔（ms）

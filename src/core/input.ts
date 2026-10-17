@@ -1,4 +1,5 @@
 import { CONFIG } from './config';
+import { warmUpAdaptiveMusic } from '../audio/AdaptiveMusic';
 import { state, input, touches, player } from './state';
 import { createFishEnemy, triggerPlayerAttack, findSafeSpawnPosition } from '../logic/FishEnemy';
 import { DEBUG_FISH_BTN, ATTACK_BTN, FLASHLIGHT_BTN } from '../render/RenderUI';
@@ -251,6 +252,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
         // 手动挡键盘：不再需要 prevKeys 和脉冲产生逻辑，updateKeyInput 已处理
 
         window.addEventListener('keydown', (e) => {
+            warmUpAdaptiveMusic();
             if(state.screen === 'menu') {
                 if(e.code === 'Space') {
                     if(!state.transition.active) {
@@ -294,6 +296,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
     }
 
     wx.onTouchStart((res) => {
+        warmUpAdaptiveMusic();
         // GM 面板优先消费触摸事件（面板本身或 HUD 栏的 GM 齿轮按钮）
         const gmTouch = res.touches[res.touches.length - 1];
         if (gmTouch && handleGMTouchStart(gmTouch.clientX, gmTouch.clientY)) {

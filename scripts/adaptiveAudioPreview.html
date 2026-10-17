@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Signal Below III · 第五轨前景对比</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#09131d;color:#dfebef;font:16px/1.7 system-ui,sans-serif}
+main{max-width:950px;margin:50px auto;padding:0 26px 60px}small{color:#9bc9d9;letter-spacing:.15em}h1{font-size:48px;letter-spacing:-.04em;margin:12px 0}
+h2{font-size:23px;margin:0 0 8px}p{color:#b1bdca}section{border:1px solid #304252;border-radius:16px;padding:24px;margin-top:24px;background:#132331}
+button,select{border:1px solid #506575;background:#203d50;color:#e2eff8;padding:11px 17px;border-radius:9px;font:inherit;margin:6px 5px 6px 0}
+button{cursor:pointer}button.active,button.primary{background:#dcb888;color:#192734;border-color:#dcb888}button:disabled{opacity:.5;cursor:wait}
+input[type=range]{width:100%;accent-color:#dcb888}label{display:block;margin:12px 0}output{font-variant-numeric:tabular-nums;color:#e4c69d}a{color:#e4c69d}
+.tracks,.comparisons{display:grid;grid-template-columns:1fr 1fr;gap:14px}.comparisons{grid-template-columns:1fr 1fr 1fr}
+.track,.comparison{padding:16px;border:1px solid #354856;border-radius:10px;font-size:14px}.comparison p{min-height:72px}.comparison label{font-size:13px;color:#d4bd9f;margin-top:22px}
+audio{width:100%;height:34px;margin:6px 0 12px}.note{font-size:14px}
+@media(max-width:750px){main{margin-top:28px}h1{font-size:36px}.tracks,.comparisons{grid-template-columns:1fr}.comparison p{min-height:0}}
+</style>
+<main><small>JACOB WELL / AUDIO STUDY 03</small><h1>Signal Below III</h1>
+<p>电子弦乐主题，从深处的微光到发现目标时的激动。<br>五层主要音型密度：30 → 60 → 120 → 240 → <strong>1200 次/分钟</strong>。第五层为有音高的十连音疾奏。</p>
+<section><h2>第五轨前景对比</h2><p>同一段乐句：前 8 秒四级，中间 8 秒旧五级，最后 8 秒强化后的五级。新版抬高音区、突出起音，并让底轨和第四轨退后。</p>
+<audio controls preload="none" src="reference-study/four-old-five-new-five.wav"></audio>
+<p class="note">每段从相同乐句起点开始，便于比较；没有统一段落响度，保留加层的动态差异。参考录音只做客观信号分析，没有将其分离或采样进新音乐。</p></section>
+<section><h2>先比较三个方向</h2><p>每版都有 12 秒最高档、16 秒纯底轨和 56 秒递进试听。四级在 0:32 进入，五级在 0:40 进入。</p><div id="comparisons" class="comparisons"></div></section>
+<section><h2>实时切档与距离试听</h2><label>选择版本 <select id="variant"></select></label><p id="description"></p>
+<button id="play" class="primary">开始试听</button><button id="stop">停止</button><button id="tour">自动接近</button>
+<p id="status" role="status">首次播放会生成该版本的六条独立音轨。</p><div id="levels"></div>
+<label>距离强度 <output id="intensity">0%</output><input id="distance" type="range" min="0" max="100" value="0"></label>
+<label>音量 <input id="volume" type="range" min="0" max="100" value="78"></label>
+<p>当前 <output id="clock">底轨</output></p></section>
+<section><h2>当前版本的独立音轨</h2><p class="note">原始相对电平。同步叠加请使用上方实时播放器。</p><div class="tracks" id="tracks"></div></section>
+<p class="note">120 BPM 为共同音乐时钟；1200 次/分钟指最高层音型的起音密度。旧版保留在 archive-v1 文件夹。</p>
+</main><script>/* AUDIO_BUNDLE */</script><script>
+const {SCORE,VARIANTS,DEFAULT_VARIANT,renderStemAsync,AdaptiveMusicEngine,selectMusicLevel}=SignalBelow;
+const $=id=>document.getElementById(id),cache={};
+let ctx,engine,engineVariant,level=0,tourTimer=null,tourStep=0,loading=false,wantPlay=false;
+const buttons=[],trackAudios=[];
+function makeAudio(src,parent){const audio=document.createElement('audio');audio.controls=true;audio.preload='none';audio.src=src;parent.append(audio);return audio}
+for(const [id,cfg] of Object.entries(VARIANTS)){
+ const option=document.createElement('option');option.value=id;option.textContent=cfg.title;$('variant').append(option);
+ const card=document.createElement('div');card.className='comparison';
+ const name=document.createElement('h2');name.textContent=cfg.title;card.append(name);
+ const desc=document.createElement('p');desc.textContent=cfg.description;card.append(desc);
+ for(const [file,label] of [['four-to-five','四级 → 新五级 · 16 秒'],['fifth-solo','第五轨单独试听 · 8 秒'],['climax','最高档 · 12 秒'],['theme','弦乐底轨 · 16 秒'],['demo','逐层递进 · 56 秒']]){
+  const caption=document.createElement('label');caption.textContent=label;card.append(caption);makeAudio(`${id}/${file}.wav`,card);
+ }$('comparisons').append(card);
+}
+for(let i=0;i<6;i++){
+ const b=document.createElement('button');b.textContent=i===0?'底轨':`${i} 级`;b.onclick=()=>{clearTour();choose(i)};$('levels').append(b);buttons.push(b);
+ const track=document.createElement('div');track.className='track';
+ const name=document.createElement('div');name.textContent=SCORE.labels[i];track.append(name);
+ trackAudios.push(makeAudio('',track));$('tracks').append(track);
+}
+function choose(n){level=n;buttons.forEach((b,i)=>b.classList.toggle('active',i===n));if(engine)engine.setLevel(n)}
+function clearTour(){if(tourTimer)clearInterval(tourTimer);tourTimer=null;$('tour').textContent='自动接近'}
+function stop(){clearTour();wantPlay=false;if(engine)engine.stop();$('status').textContent='已停止。'}
+function updateVariant(){stop();const id=$('variant').value;$('description').textContent=VARIANTS[id].description;
+ trackAudios.forEach((audio,i)=>{audio.pause();audio.src=`${id}/stems/${SCORE.stems[i]}.wav`});
+ if(engine){engine.dispose();engine=null;engineVariant=null}choose(0);
+}
+$('variant').value=DEFAULT_VARIANT;$('variant').onchange=updateVariant;
+$('play').onclick=async()=>{
+ if(loading)return;loading=true;wantPlay=true;$('play').disabled=$('variant').disabled=true;
+ try{
+ document.querySelectorAll('audio').forEach(audio=>audio.pause());
+ ctx=ctx||new(window.AudioContext||window.webkitAudioContext)();await ctx.resume();
+ const id=$('variant').value;
+ if(!cache[id]){const buffers=[];for(let i=0;i<6;i++){
+  $('status').textContent=`正在合成 ${VARIANTS[id].title} · 音轨 ${i+1}/6…`;
+  const pcm=await renderStemAsync(SCORE.stems[i],id),buffer=ctx.createBuffer(1,pcm.length,SCORE.sampleRate);buffer.getChannelData(0).set(pcm);buffers.push(buffer);
+ }cache[id]=buffers;}
+ if(!engine||engineVariant!==id){if(engine)engine.dispose();engine=new AdaptiveMusicEngine(ctx,cache[id]);engineVariant=id;}
+ if(wantPlay){engine.start();engine.setVolume(Number($('volume').value)/100);engine.setLevel(level);$('status').textContent='播放中。下一拍切档；五级每秒 20 次有音高疾奏。'}
+ else $('status').textContent='音轨已就绪，已停止。';
+ }catch(err){$('status').textContent='播放失败：'+err.message}finally{loading=false;$('play').disabled=$('variant').disabled=false}
+};
+$('stop').onclick=()=>{stop();document.querySelectorAll('audio').forEach(audio=>audio.pause())};
+$('distance').oninput=()=>{clearTour();const x=Number($('distance').value)/100;$('intensity').textContent=Math.round(x*100)+'%';choose(selectMusicLevel(x,level))};
+$('volume').oninput=()=>{if(engine)engine.setVolume(Number($('volume').value)/100)};
+$('tour').onclick=()=>{if(tourTimer){clearTour();return}if(!engine||!engine.getClock().playing){$('status').textContent='请先开始试听。';return}
+ const stages=[0,1,2,3,4,5,5];tourStep=0;choose(0);$('tour').textContent='结束自动演示';
+ tourTimer=setInterval(()=>{tourStep++;if(tourStep>=stages.length){clearTour();return}choose(stages[tourStep])},8000);
+};
+document.querySelectorAll('audio').forEach(audio=>audio.addEventListener('play',()=>{
+ stop();document.querySelectorAll('audio').forEach(other=>{if(other!==audio)other.pause()});
+}));
+function frame(){if(engine){engine.setLevel(level);const c=engine.getClock();$('clock').textContent=c.playing?`${c.level} 级 · 第 ${c.bar+1} 小节 · ${SCORE.pulseDivisions[c.level]*SCORE.bpm} 次/分钟`:'已停止'}requestAnimationFrame(frame)}
+updateVariant();frame();
+</script></html>

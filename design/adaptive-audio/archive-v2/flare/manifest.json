@@ -1,0 +1,79 @@
+{
+  "title": "B · 微光奔涌",
+  "bpm": 120,
+  "beatsPerBar": 4,
+  "bars": 8,
+  "sampleRate": 24000,
+  "duration": 16,
+  "masterGain": 0.78,
+  "pulseDivisions": [
+    0,
+    0.25,
+    0.5,
+    1,
+    2,
+    10
+  ],
+  "stems": [
+    {
+      "id": "bed",
+      "label": "电子弦乐主题",
+      "file": "stems/bed.wav"
+    },
+    {
+      "id": "beacon",
+      "label": "深处信标 · 30/min",
+      "file": "stems/beacon.wav"
+    },
+    {
+      "id": "bass",
+      "label": "低弦与低音 · 60/min",
+      "file": "stems/bass.wav"
+    },
+    {
+      "id": "drums",
+      "label": "重鼓推进 · 120/min",
+      "file": "stems/drums.wav"
+    },
+    {
+      "id": "arp",
+      "label": "弦乐疾行 · 240/min",
+      "file": "stems/arp.wav"
+    },
+    {
+      "id": "spark",
+      "label": "十连音奔涌 · 1200/min",
+      "file": "stems/spark.wav"
+    }
+  ],
+  "labels": [
+    "电子弦乐主题",
+    "深处信标 · 30/min",
+    "低弦与低音 · 60/min",
+    "重鼓推进 · 120/min",
+    "弦乐疾行 · 240/min",
+    "十连音奔涌 · 1200/min"
+  ],
+  "variant": "flare",
+  "description": "更长、更向上舒展的弦乐旋律，发现目标时突出激动和希望。",
+  "transpose": 2,
+  "leadGain": 0.19,
+  "driveGain": 0.15,
+  "rushGain": 0.12,
+  "bassGain": 0.23,
+  "style": 1,
+  "key": "E minor",
+  "channels": 1,
+  "bitDepth": 16,
+  "loopSamples": 384000,
+  "demoStages": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    5
+  ],
+  "demoStageSeconds": 8
+}

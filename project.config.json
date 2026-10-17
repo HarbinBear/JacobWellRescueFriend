@@ -1,19 +1,34 @@
 {
   "description": "项目配置文件",
   "packOptions": {
-    "ignore": [],
+    "ignore": [
+      { "type": "folder", "value": ".codebuddy" },
+      { "type": "folder", "value": ".git" },
+      { "type": "folder", "value": "node_modules" },
+      { "type": "folder", "value": "dist" },
+      { "type": "folder", "value": "scripts" },
+      { "type": "folder", "value": "typings" },
+      { "type": "folder", "value": "design" },
+      { "type": "folder", "value": "code" },
+      { "type": "file", "value": "README.md" },
+      { "type": "file", "value": "ToDo.md" },
+      { "type": "file", "value": "package-lock.json" },
+      { "type": "file", "value": "tsconfig.json" },
+      { "type": "file", "value": ".DS_Store" },
+      { "type": "file", "value": ".gitignore" }
+    ],
     "include": []
   },
   "setting": {
     "urlCheck": true,
     "es6": true,
     "postcss": true,
-    "minified": false,
+    "minified": true,
     "newFeature": true,
     "autoCompile": true,
     "compileWorklet": false,
     "uglifyFileName": false,
-    "uploadWithSourceMap": true,
+    "uploadWithSourceMap": false,
     "enhance": true,
     "packNpmManually": false,
     "packNpmRelationList": [],

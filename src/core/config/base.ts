@@ -1,7 +1,9 @@
 // 基础运行参数：版本 / 画布 / 调试 / 菜单解锁 / 基础移动 / 地图 / 氧气 / 光照 / 泥沙 / 绳索 / 第三关关键点 / 第三关恐怖事件
 // 从 config/index.ts 按需展开合并进 CONFIG。
 
-const systemInfo = wx.getSystemInfoSync();
+import { getWindowMetrics } from '../WindowMetrics';
+
+const systemInfo = getWindowMetrics();
 
 export const baseConfig = {
     // 版本信息
