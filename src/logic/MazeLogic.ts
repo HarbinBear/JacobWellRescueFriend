@@ -1,4 +1,5 @@
 import { updateRescueLink } from './RescueLink';
+import { updateRescueTow } from './RescueTow';
 import { CONFIG } from '../core/config';
 import { state, player, particles, input, touches } from '../core/state';
 import { generateMazeMap } from '../world/map';
@@ -430,6 +431,9 @@ export function startMazeDive(diveType: string) {
     maze.tapePlaybackStarted = false;
     maze.tapeNowPlayingAt = 0;
     maze.npcEncounterNoteAt = 0;
+    maze.npcStunned = false;
+    maze.npcStunnedAt = 0;
+    maze.rescueRagdoll = null;
     maze.npcSecuredAt = 0;
     input.move = 0;
     input.speedUp = false;
@@ -1090,6 +1094,7 @@ export function updateMaze() {
     }
 
     // --- 玩家移动 ---
+    // 敲晕和绑绳时仍正常移动、受浮力影响，由玩家自行保持接触距离。
     if (processManualDrive()) {
         // 手动挡模式：脉冲已处理
     } else {
@@ -1196,56 +1201,8 @@ export function updateMaze() {
 
     // --- NPC 更新 ---
     if (state.npc.active) {
-        if (maze.npcRescued) {
-            // ===== 救援中：柔性跟随 + 绳索最大距离约束（D方案） =====
-            const dx = player.x - state.npc.x;
-            const dy = player.y - state.npc.y;
-            const dist = Math.hypot(dx, dy);
-            const ideal = CONFIG.maze.npcTetherIdealDist;
-            const maxD = CONFIG.maze.npcTetherMaxDist;
-            const vMin = CONFIG.maze.npcFollowSpeedMin;
-            const vMax = CONFIG.maze.npcFollowSpeedMax;
-
-            if (dist > ideal * 0.6) {
-                // 距离越远追得越快：在 ideal ~ maxD 间用平滑系数映射到 vMin ~ vMax
-                const tRaw = (dist - ideal) / Math.max(1, (maxD - ideal));
-                const tClamp = Math.max(0, Math.min(1, tRaw));
-                // smoothstep
-                const tSmooth = tClamp * tClamp * (3 - 2 * tClamp);
-                const npcSpeed = vMin + (vMax - vMin) * tSmooth;
-                state.npc.vx = (dx / dist) * npcSpeed;
-                state.npc.vy = (dy / dist) * npcSpeed;
-                state.npc.x += state.npc.vx;
-                state.npc.y += state.npc.vy;
-            } else {
-                // 近距离轻微漂浮，避免贴脸抖动
-                state.npc.vx *= 0.85;
-                state.npc.vy *= 0.85;
-                state.npc.x += state.npc.vx;
-                state.npc.y += state.npc.vy;
-            }
-
-            // 距离超过最大值 → 玩家被绳索拖慢（回拉玩家位置）
-            if (dist > maxD) {
-                const over = dist - maxD;
-                const pull = CONFIG.maze.npcTetherPullFactor;
-                // 将玩家朝 NPC 方向拉回 over*pull 像素
-                const pullLen = over * pull;
-                player.x -= (dx / dist) * pullLen;
-                player.y -= (dy / dist) * pullLen;
-                // 同时轻微衰减玩家速度的远离分量，表现为"绳索崩紧"
-                const vDot = player.vx * (dx / dist) + player.vy * (dy / dist);
-                if (vDot > 0) {
-                    // vDot>0 表示玩家正远离 NPC
-                    const damp = 1 - pull * 0.8;
-                    player.vx -= (dx / dist) * vDot * (1 - damp);
-                    player.vy -= (dy / dist) * vDot * (1 - damp);
-                }
-            }
-
-            if (Math.abs(state.npc.vx) > 0.1 || Math.abs(state.npc.vy) > 0.1) {
-                state.npc.angle = Math.atan2(state.npc.vy, state.npc.vx);
-            }
+        if (maze.npcStunned) {
+            updateRescueTow();
         } else {
             // ===== 未被救：静止漂动 + 朝向玩家 + 呼救表现 =====
             if (Math.random() < 0.05) {

@@ -136,14 +136,15 @@ export function updateAdaptiveMusic(detector: { active: boolean; currentIntensit
         if (!playing) { engine.stop(false, maze && maze.phase === 'failed' ? 0.06 : 0.35); engine.getClock(); selected = 0; return; }
         engine.start();
         // 救起后/范围外回到底轨，底轨整个下潜持续存在。
-        const detecting = detector.active && state.npc && state.npc.active && !maze.npcRescued;
+        const calm = !!(maze.npcRescued || maze.npcStunned);
+        const detecting = detector.active && state.npc && state.npc.active && !calm;
         const entrySeconds = rescueTargetEntrySeconds();
-        const enteringFrame = !hidden && !maze.npcRescued && Number.isFinite(entrySeconds);
+        const enteringFrame = !hidden && !calm && Number.isFinite(entrySeconds);
         // 实际入镜后的120ms短保持消除屏幕边缘抖动；预判失效则立即撤销，避免画外误高潮。
-        const frameHeld = !maze.npcRescued && ctx.currentTime - lastVisibleAt < 0.12;
-        selected = selectRescueMusicLevel(detecting ? detector.currentIntensity : -1, selected, !!visible || enteringFrame || frameHeld, cfg.music.hysteresis);
-        const mood = maze.npcRescued ? 'return' : encountered || enteringFrame ? 'found' : 'search';
-        engine.setLevel(selected, !!maze.npcRescued, mood, enteringFrame ? entrySeconds : undefined);
+        const frameHeld = !calm && ctx.currentTime - lastVisibleAt < 0.12;
+        selected = calm ? 0 : selectRescueMusicLevel(detecting ? detector.currentIntensity : -1, selected, !!visible || enteringFrame || frameHeld, cfg.music.hysteresis);
+        const mood = calm ? 'return' : encountered || enteringFrame ? 'found' : 'search';
+        engine.setLevel(selected, calm, mood, enteringFrame ? entrySeconds : undefined);
         engine.setVolume(state.audio.muted ? 0 : cfg.music.volume * CONFIG.audio.bgmVolume * musicCueDuck(ctx.currentTime - cueStartedAt));
     } catch (err) {
         failed = true;

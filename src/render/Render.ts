@@ -457,7 +457,7 @@ export function draw() {
 
     // One audible-time sample drives both people and the cassette.
     const tapeVisual = isMazeMode && CONFIG.lifeDetector.enabled && state.mazeRescue.phase === 'play' ? getRescueTapeVisual() : undefined;
-    const targetDance = isMazeMode && !state.mazeRescue.npcRescued ? sampleRescueDance(tapeVisual) : undefined;
+    const targetDance = isMazeMode && !state.mazeRescue.npcRescued && !state.mazeRescue.npcStunned ? sampleRescueDance(tapeVisual) : undefined;
 
     // Maze target is rendered once after darkness; other modes keep world lighting.
     if (!isMazeMode) drawRescueTarget(ctx, tapeVisual);
@@ -501,11 +501,15 @@ export function draw() {
         bcdVenting: isBCDVenting(),
         tapeVisual: CONFIG.lifeDetector.ledOnDiver ? tapeVisual : undefined,
         resonanceVisual: tapeVisual,
+        rescueStrike: isMazeMode && state.mazeRescue.npcRescueHolding && !state.mazeRescue.npcStunned
+            ? Math.min(1, (Date.now() - state.mazeRescue.npcRescueHoldStart) / (CONFIG.maze.npcStunHoldDuration * 1000))
+            : isMazeMode && state.mazeRescue.npcStunnedAt && Date.now() - state.mazeRescue.npcStunnedAt < 240
+                ? 1 - (Date.now() - state.mazeRescue.npcStunnedAt) / 240 : 0,
     });
 
 
     // --- 绘制 NPC 呼救表现（气泡、挥手、闪光圈，仅迷宫未被救时）---
-    if (!targetDance) drawNPCDistressWorld(ctx);
+    if (!targetDance && !(isMazeMode && state.mazeRescue.npcStunned)) drawNPCDistressWorld(ctx);
 
     profileEnd('draw.diver');
     profileBegin('draw.dustDark');

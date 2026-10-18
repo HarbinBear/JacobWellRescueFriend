@@ -18,7 +18,7 @@ import { CONFIG } from '../core/config';
 import { state } from '../core/state';
 
 type AudioKey = 'menuBGM';
-type SFXKey = 'diveSplash' | 'collisionRock' | 'collisionBreath' | 'quickReturn' | 'uiPrimary' | 'uiSecondary' | 'oxygenRefill' | 'fishBiteDie';
+type SFXKey = 'diveSplash' | 'collisionRock' | 'collisionBreath' | 'quickReturn' | 'uiPrimary' | 'uiSecondary' | 'oxygenRefill' | 'fishBiteDie' | 'rescueBonk';
 // SFX-Loop：常驻循环、可实时调整音量与播放速率（呼吸气泡等）
 type SFXLoopKey = 'breathLoop';
 // Ambience：常驻低音量环境音（鸟鸣、流水等），独立于 BGM 与 SFX，由 phase 驱动开关
@@ -95,6 +95,10 @@ const ENTRIES: Record<AudioKey, AudioEntry> = {
 
 // SFX 清单（一次性音效）
 const SFX_ENTRIES: Record<SFXKey, SFXEntry> = {
+    rescueBonk: {
+        path: 'audio/rescue-bonk.wav', ctx: null, srcReady: false,
+        urlResolving: false, pendingPlay: false,
+    },
     diveSplash: {
         path: 'audio/ElevenLabs_A_diver_jumps_into_the_.mp3',
         ctx: null,

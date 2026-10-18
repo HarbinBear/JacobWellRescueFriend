@@ -113,6 +113,10 @@ async function check() {
     assert.equal(music.getAdaptiveMusicClock().requestedLevel, 4, '持续出镜撤掉五级');
     visible = true; tick();
     assert.equal(music.getAdaptiveMusicClock().requestedMood, 'found', '入镜后主题状态保持');
+    state.mazeRescue.npcStunned = true; tick(); tick();
+    assert.equal(music.getAdaptiveMusicClock().requestedLevel, 0, '敲晕时已停舞，入镜保持也不能再次推高音乐');
+    assert.equal(music.getAdaptiveMusicClock().requestedMood, 'return');
+    assert.equal(cues('secured').length, 0, '敲晕不能提前播放绑绳成功声');
     state.mazeRescue.npcRescued = true; visible = false; tick(); tick();
     assert.equal(cues('secured').length, 1);
     assert.equal(music.getAdaptiveMusicClock().requestedLevel, 0);
@@ -126,7 +130,7 @@ async function check() {
     state.audio.muted = true; tick();
     assert.equal(cues('death')[0].stopped, ctx.currentTime, '静音立即停止事件尾音');
     state.audio.muted = false;
-    music.resetAdaptiveMusic(); state.mazeRescue.phase = 'play'; state.mazeRescue.npcRescued = false; tick();
+    music.resetAdaptiveMusic(); state.mazeRescue.phase = 'play'; state.mazeRescue.npcRescued = false; state.mazeRescue.npcStunned = false; tick();
     ctx.currentTime += 1; tick();
     CONFIG.lifeDetector.music.variant = 'flare'; tick();
     CONFIG.lifeDetector.music.variant = 'pursuit'; tick();

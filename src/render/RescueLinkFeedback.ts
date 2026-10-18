@@ -4,7 +4,7 @@ import { ctx, logicW, logicH } from './Canvas';
 import { cutPanel, TAPE } from './TapeDeckVisual';
 
 /** Read the interaction itself, so cancelling cannot leave an animated false success. */
-export function getRescueLinkFeedback(now = Date.now()): { mode: 'ready' | 'holding' | 'secured'; progress: number; alpha: number } | null {
+export function getRescueLinkFeedback(now = Date.now()): { mode: 'stun_ready' | 'stun_holding' | 'stunned' | 'ready' | 'holding' | 'secured'; progress: number; alpha: number } | null {
     const maze = state.mazeRescue;
     if (!maze || maze.phase !== 'play' || !state.npc.active) return null;
     if (maze.npcRescued) {
@@ -13,6 +13,13 @@ export function getRescueLinkFeedback(now = Date.now()): { mode: 'ready' | 'hold
             ? { mode: 'secured', progress: 1, alpha: Math.min(1, (4 - age) / .7) } : null;
     }
     if (Math.hypot(player.x - state.npc.x, player.y - state.npc.y) >= CONFIG.maze.npcRescueRange) return null;
+    if (!maze.npcStunned) {
+        return { mode: maze.npcRescueHolding ? 'stun_holding' : 'stun_ready',
+            progress: maze.npcRescueHolding ? Math.max(0, Math.min(1, (now - maze.npcRescueHoldStart) / (1000 * CONFIG.maze.npcStunHoldDuration))) : 0, alpha: .95 };
+    }
+    if (!maze.npcRescueHolding && now - (maze.npcStunnedAt || 0) < 1400) {
+        return { mode: 'stunned', progress: 1, alpha: 1 };
+    }
     return maze.npcRescueHolding
         ? { mode: 'holding', progress: Math.max(0, Math.min(1, (now - maze.npcRescueHoldStart) / (1000 * CONFIG.maze.npcRescueHoldDuration))), alpha: 1 }
         : { mode: 'ready', progress: 0, alpha: .9 };
@@ -48,21 +55,37 @@ export function drawRescueLinkFeedback(): void {
     // Attach to the person, above or below their silhouette, never at the old toast position.
     const w = 156, h = feedback.mode === 'secured' ? 72 : 61;
     const x = Math.max(87, Math.min(logicW - w - 57, nx - w / 2));
-    const y = Math.max(110, Math.min(logicH - 130, ny > logicH - 210 ? ny - 118 : ny + 72));
+    const y = Math.max(110, Math.min(logicH - 220, ny > logicH - 210 ? ny - 118 : ny + 72));
     const locked = feedback.mode === 'secured';
     ctx.save(); ctx.globalAlpha *= feedback.alpha;
     ctx.fillStyle = locked ? TAPE.paper : 'rgba(18,30,31,.94)'; cutPanel(ctx, x, y, w, h, 7); ctx.fill();
     ctx.fillStyle = '#b9452e'; ctx.fillRect(x, y + 8, 3, h - 16);
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.font = 'bold 12px "PingFang SC", Arial'; ctx.fillStyle = locked ? TAPE.ink : TAPE.paper;
-    ctx.fillText(locked ? '接住你了。' : feedback.mode === 'holding' ? '别松手' : '按住他 · 接上安全绳', x + w / 2, y + 15);
+    const stunning = feedback.mode === 'stun_ready' || feedback.mode === 'stun_holding';
+    const holding = feedback.mode === 'holding' || feedback.mode === 'stun_holding';
+    const titles = { stun_ready: '按住他 · 先敲晕', stun_holding: '先让舞池暂停一下',
+        stunned: '咚。暂停成功。', ready: '再按住他 · 扣紧安全绳', holding: '扣紧了再松手', secured: '好，打包带走。' };
+    ctx.fillText(titles[feedback.mode], x + w / 2, y + 15);
     ctx.save();
     if (locked) { ctx.fillStyle = TAPE.ink; cutPanel(ctx, x + 12, y + 29, w - 24, 27, 3); ctx.fill(); }
-    clasp(x + w / 2, y + 41, feedback.progress, locked); ctx.restore();
+    if (stunning) {
+        // A small gloved fist winds back and travels into a comic spark.
+        const fx = x + w / 2 - 22 + feedback.progress * 27;
+        ctx.fillStyle = '#d1c2a1'; cutPanel(ctx, fx - 9, y + 32, 18, 13, 3); ctx.fill();
+        ctx.strokeStyle = '#8f7257'; ctx.lineWidth = 1;
+        for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.moveTo(fx - 5 + i * 4, y + 32); ctx.lineTo(fx - 5 + i * 4, y + 37); ctx.stroke(); }
+        ctx.fillStyle = TAPE.paper; ctx.font = '9px "PingFang SC", Arial';
+        ctx.fillText('短蓄力 · 松手可取消', x + w / 2, y + 53);
+    } else if (feedback.mode === 'stunned') {
+        ctx.fillStyle = TAPE.paper; ctx.font = '10px "PingFang SC", Arial';
+        ctx.fillText('松手，再按住绑绳', x + w / 2, y + 41);
+    } else clasp(x + w / 2, y + 41, feedback.progress, locked);
+    ctx.restore();
     if (locked) {
         ctx.fillStyle = '#6c705e'; ctx.font = '9px "PingFang SC", Arial';
-        ctx.fillText('安全绳已扣紧  /  一起回去', x + w / 2, y + 63);
-    } else if (feedback.mode === 'holding') {
+        ctx.fillText('安全绳已扣紧  /  拖他回去', x + w / 2, y + 63);
+    } else if (holding) {
         ctx.fillStyle = '#b9452e'; ctx.fillRect(x + 12, y + h - 4, (w - 24) * feedback.progress, 2);
     }
     ctx.restore();

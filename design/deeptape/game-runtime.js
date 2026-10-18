@@ -422,14 +422,15 @@ function updateAdaptiveMusic(detector) {
         }
         engine.start();
         // 救起后/范围外回到底轨，底轨整个下潜持续存在。
-        const detecting = detector.active && state_1.state.npc && state_1.state.npc.active && !maze.npcRescued;
+        const calm = !!(maze.npcRescued || maze.npcStunned);
+        const detecting = detector.active && state_1.state.npc && state_1.state.npc.active && !calm;
         const entrySeconds = (0, NPCPerception_1.rescueTargetEntrySeconds)();
-        const enteringFrame = !hidden && !maze.npcRescued && Number.isFinite(entrySeconds);
+        const enteringFrame = !hidden && !calm && Number.isFinite(entrySeconds);
         // 实际入镜后的120ms短保持消除屏幕边缘抖动；预判失效则立即撤销，避免画外误高潮。
-        const frameHeld = !maze.npcRescued && ctx.currentTime - lastVisibleAt < 0.12;
-        selected = (0, AdaptiveScore_1.selectRescueMusicLevel)(detecting ? detector.currentIntensity : -1, selected, !!visible || enteringFrame || frameHeld, cfg.music.hysteresis);
-        const mood = maze.npcRescued ? 'return' : encountered || enteringFrame ? 'found' : 'search';
-        engine.setLevel(selected, !!maze.npcRescued, mood, enteringFrame ? entrySeconds : undefined);
+        const frameHeld = !calm && ctx.currentTime - lastVisibleAt < 0.12;
+        selected = calm ? 0 : (0, AdaptiveScore_1.selectRescueMusicLevel)(detecting ? detector.currentIntensity : -1, selected, !!visible || enteringFrame || frameHeld, cfg.music.hysteresis);
+        const mood = calm ? 'return' : encountered || enteringFrame ? 'found' : 'search';
+        engine.setLevel(selected, calm, mood, enteringFrame ? entrySeconds : undefined);
         engine.setVolume(state_1.state.audio.muted ? 0 : cfg.music.volume * config_1.CONFIG.audio.bgmVolume * (0, AdaptiveCues_1.musicCueDuck)(ctx.currentTime - cueStartedAt));
     }
     catch (err) {
@@ -1212,6 +1213,10 @@ const ENTRIES = {
 };
 // SFX 清单（一次性音效）
 const SFX_ENTRIES = {
+    rescueBonk: {
+        path: 'audio/rescue-bonk.wav', ctx: null, srcReady: false,
+        urlResolving: false, pendingPlay: false,
+    },
     diveSplash: {
         path: 'audio/ElevenLabs_A_diver_jumps_into_the_.mp3',
         ctx: null,
@@ -3429,6 +3434,7 @@ exports.modesConfig = {
         npcMinDistRatio: 0.55, // NPC离出发点的最小距离占地图对角线比例
         npcRescueRange: 80, // 靠近NPC多近触发救援交互（像素）
         npcRescueHoldDuration: 0.8, // 长按多少秒完成绑绳（秒）
+        npcStunHoldDuration: 0.55, // 短蓄力敲晕；松手后才能开始绑绳
         npcFollowSpeed: 3.2, // NPC基础跟随速度（跟随阶段兜底值）
         // === NPC 跟随距离约束（绑绳后，D方案：柔性加速+超距拖慢玩家）===
         npcTetherIdealDist: 70, // 理想跟随距离（像素，NPC在此距离舒适漂移）
@@ -3699,11 +3705,12 @@ const _homeTouchStartY = {};
 const _homeTouchMoved = {};
 // 主菜单按钮 → 行为
 function handleMenuButton(id, onMaze, onMazeDive) {
+    var _a;
     switch (id) {
         case 'dive':
             if (onMaze && onMazeDive) {
                 onMaze();
-                onMazeDive('scout');
+                onMazeDive(((_a = state_1.state.mazeRescue) === null || _a === void 0 ? void 0 : _a.npcFound) ? 'rescue' : 'scout');
             }
             return;
         case 'continue':
@@ -4185,10 +4192,10 @@ function initInput(onReset, onArena, onMaze, onMazeReplay, onMazeDive, onReturnT
                     continue;
                 }
             }
-            // 迷宫模式：检测救援长按（靠近NPC时，仅正式救援下潜）
+            // 靠近后先短蓄力敲晕，松手后再次按住绑绳。
             if (state_1.state.screen === 'mazeRescue' && state_1.state.mazeRescue && state_1.state.mazeRescue.phase === 'play') {
                 const maze = state_1.state.mazeRescue;
-                // 救援绑绳（发现NPC后即可绑绳，不区分下潜类型）
+                // 两阶段共用角色触摸区，完成敲晕不会自动接着绑绳。
                 if (!maze.npcRescued && state_1.state.npc.active && mazeRescueTouchId === null) {
                     const zoom = state_1.state.camera ? state_1.state.camera.zoom : 1;
                     const camX = state_1.state.camera ? state_1.state.camera.x + state_1.state.camera.swayX : state_1.player.x;
@@ -4198,6 +4205,8 @@ function initInput(onReset, onArena, onMaze, onMazeReplay, onMazeDive, onReturnT
                     const screenDist = Math.hypot(t.clientX - npcScreenX, t.clientY - npcScreenY);
                     const worldDist = Math.hypot(state_1.player.x - state_1.state.npc.x, state_1.player.y - state_1.state.npc.y);
                     if (screenDist < 60 && worldDist < config_1.CONFIG.maze.npcRescueRange) {
+                        if (maze.npcStunned && Date.now() - (maze.npcStunnedAt || 0) < 450)
+                            continue;
                         mazeRescueTouchId = t.identifier;
                         maze.npcRescueHolding = true;
                         maze.npcRescueHoldStart = Date.now();
@@ -16616,7 +16625,7 @@ function updateLifeDetector() {
     const shouldDetect = state_1.state.screen === 'mazeRescue'
         && maze.phase === 'play'
         && state_1.state.npc && state_1.state.npc.active
-        && !maze.npcRescued;
+        && !maze.npcRescued && !maze.npcStunned;
     if (!shouldDetect) {
         runtime.active = false;
         runtime.pendingHighAt = 0;
@@ -17910,6 +17919,7 @@ exports.stayInResolvedCase = stayInResolvedCase;
 exports.goHome = goHome;
 exports.updateMaze = updateMaze;
 const RescueLink_1 = require("./RescueLink");
+const RescueTow_1 = require("./RescueTow");
 const config_1 = require("../core/config");
 const state_1 = require("../core/state");
 const map_1 = require("../world/map");
@@ -17955,6 +17965,17 @@ function padLeft(s, width, ch) {
 function buildCaseNumberFromSeed(seed) {
     const n = padLeft(((seed >>> 0) % 1000000).toString(), 6, '0');
     return 'JWR-' + n;
+}
+// 读档只恢复案件进度；每次入场和下潜都从洞口出发。
+function placePlayerAtMazeEntrance(maze) {
+    const wallThick = config_1.CONFIG.maze.wallThickness || 5;
+    state_1.player.x = maze.exitX;
+    state_1.player.y = (wallThick + 1) * maze.mazeTileSize + maze.mazeTileSize / 2;
+    state_1.player.vx = 0;
+    state_1.player.vy = 0;
+    state_1.player.angle = Math.PI / 2;
+    state_1.player.targetAngle = Math.PI / 2;
+    state_1.input.targetAngle = Math.PI / 2;
 }
 // =============================================
 // 迷宫多次下潜闭环：初始化
@@ -18006,6 +18027,8 @@ function resetMazeLogic() {
             vx: 0, vy: 0,
             swayX: 0, swayY: 0, swayTime: 0,
         };
+        placePlayerAtMazeEntrance(state_1.state.mazeRescue);
+        (0, CameraLogic_1.snapCameraToPlayer)();
         // 读档后重建食人鱼聚集点 + 骷髅（P4：fishDens 不进存档，由派生 seed 确定性重建）
         // 必须在 state.mazeRescue 挂好之后调用，因为 generateFishDens 会读 mazeWalls / mazeMap / mazeRows / mazeCols
         if (state_1.state.mazeRescue.seed != null) {
@@ -18255,13 +18278,7 @@ function resetMazeLogic() {
     state_1.state.npc.distressHalos = [];
     state_1.state.npc.distressHaloTimer = 0;
     // 玩家放在出口位置（岸上阶段不显示，但预设好）
-    state_1.player.x = mazeData.exitX;
-    // 使用边缘厚度计算安全出生Y（在洞口内侧）
-    const wallThick = config_1.CONFIG.maze.wallThickness || 5;
-    state_1.player.y = (wallThick + 1) * mazeData.mazeTileSize + mazeData.mazeTileSize / 2;
-    state_1.player.angle = Math.PI / 2;
-    state_1.player.targetAngle = Math.PI / 2;
-    state_1.input.targetAngle = Math.PI / 2;
+    placePlayerAtMazeEntrance(mazeData);
     // 相机归位到迷宫出生点
     (0, CameraLogic_1.snapCameraToPlayer)();
     // 切换到迷宫模式
@@ -18296,15 +18313,39 @@ function startMazeDive(diveType) {
     maze.tapePlaybackStarted = false;
     maze.tapeNowPlayingAt = 0;
     maze.npcEncounterNoteAt = 0;
+    maze.npcStunned = false;
+    maze.npcStunnedAt = 0;
+    maze.rescueRagdoll = null;
     maze.npcSecuredAt = 0;
     state_1.input.move = 0;
     state_1.input.speedUp = false;
     state_1.touches.joystickId = null;
-    if (state_1.state.manualDrive)
-        state_1.state.manualDrive.activeTouches = {};
+    state_1.touches.start = { x: 0, y: 0 };
+    state_1.touches.curr = { x: 0, y: 0 };
+    state_1.state.manualDrive = {
+        activeTouches: {}, nextStrokeSide: -1, lastInputAngle: Math.PI / 2, hasInput: false,
+        leftKickProgress: 0, rightKickProgress: 0, leftKickStrength: 0, rightKickStrength: 0,
+        leftTurnProgress: 0, rightTurnProgress: 0, leftTurnStrength: 0, rightTurnStrength: 0,
+        forwardVisual: 0, turnVisual: 0, kickDrive: 0,
+    };
+    if (state_1.state.msgTimer)
+        clearTimeout(state_1.state.msgTimer);
+    state_1.state.msgTimer = null;
     state_1.state.alertMsg = '';
     maze.divingInTimer = 0;
     maze._hudEntryTimer = 0;
+    maze._hudDetailOpen = 0;
+    maze._hudDetailHolding = false;
+    maze._retreatDetailOpen = 0;
+    maze._retreatDetailHolding = false;
+    maze._driveToggleOpen = 0;
+    maze._driveToggleHolding = false;
+    maze._driveSwitchTip = 0;
+    maze.shoreMapOpen = false;
+    maze.codexOpen = false;
+    maze.codexSelectedKind = null;
+    maze._decoBlockedRescuedWarned = false;
+    maze._decoBlockedRescuedSince = 0;
     // 初始化入水气泡转场：完全照搬剧情模式 state.transition 的气泡公式
     // 剧情模式做法：200 个气泡随机撒在全屏，速度方向为"从屏幕中心指向自己位置"
     // 这样气泡整体呈持续向外飘散的背景流动感，超出屏幕后回绕
@@ -18341,21 +18382,21 @@ function startMazeDive(diveType) {
     state_1.player.o2 = 100;
     state_1.player.o2Max = 100;
     state_1.player.silt = 0;
-    state_1.player.vx = 0;
-    state_1.player.vy = 0;
-    // 玩家从出口（顶部）出发
-    state_1.player.x = maze.exitX;
-    // 使用边缘厚度计算安全出生Y（在洞口内侧）
-    const wallThick = config_1.CONFIG.maze.wallThickness || 5;
-    state_1.player.y = (wallThick + 1) * maze.mazeTileSize + maze.mazeTileSize / 2;
-    state_1.player.angle = Math.PI / 2;
-    state_1.player.targetAngle = Math.PI / 2;
-    state_1.input.targetAngle = Math.PI / 2;
+    placePlayerAtMazeEntrance(maze);
+    state_1.player.animTime = 0;
+    state_1.player.carryItemAnim.active = false;
+    state_1.player.carryItemAnim.timer = 0;
+    state_1.player.carryItemAnim.itemKind = '';
+    state_1.player.welcomeArmsAnim.active = false;
+    state_1.player.welcomeArmsAnim.timer = 0;
     state_1.particles.length = 0;
     state_1.state.splashes = [];
     state_1.state.fishBite = null;
+    state_1.state.flashlightOn = true;
+    state_1.state.playerAttack = { active: false, timer: 0, cooldownTimer: 0, angle: 0 };
     state_1.state.fx.redOverlay = 0;
     state_1.state.fx.shake = 0;
+    maze.oxygenFeedback = (0, OxygenTank_1.createOxygenFeedback)();
     // 生成迷宫食人鱼（按聚集点分布，每个聚集点 denFishCountMin~denFishCountMax 条）
     state_1.state.fishEnemies = [];
     if (config_1.CONFIG.maze.fishEnabled && maze.fishDens && maze.fishDens.length > 0) {
@@ -18378,6 +18419,8 @@ function startMazeDive(diveType) {
         }
     }
     // 相机归位到下潜出生点
+    state_1.state.camera.zoom = 1;
+    state_1.state.camera.targetZoom = 1;
     (0, CameraLogic_1.snapCameraToPlayer)();
     // 重置 BCD 浮力背心运行态。
     // 必须放在 player.y 被写成出生深度之后：initialFillMode='neutral' 要按入水深度
@@ -18391,10 +18434,8 @@ function startMazeDive(diveType) {
     maze.npcRescueHolding = false;
     maze.npcRescueHoldStart = 0;
     maze.npcRescueTouchId = null;
-    // 正式救援时重置NPC跟随状态
-    if (diveType === 'rescue') {
-        maze.npcRescued = false;
-    }
+    // 绑绳只属于本次下潜，包括主菜单直接启动的 scout。
+    maze.npcRescued = false;
     // 激活NPC
     state_1.state.npc.active = true;
     state_1.state.npc.x = maze.npcInitX;
@@ -18905,6 +18946,7 @@ function updateMaze() {
         (0, BCDSystem_1.releaseBCDControls)();
     }
     // --- 玩家移动 ---
+    // 敲晕和绑绳时仍正常移动、受浮力影响，由玩家自行保持接触距离。
     if ((0, ManualDrive_1.processManualDrive)()) {
         // 手动挡模式：脉冲已处理
     }
@@ -19009,54 +19051,8 @@ function updateMaze() {
     }
     // --- NPC 更新 ---
     if (state_1.state.npc.active) {
-        if (maze.npcRescued) {
-            // ===== 救援中：柔性跟随 + 绳索最大距离约束（D方案） =====
-            const dx = state_1.player.x - state_1.state.npc.x;
-            const dy = state_1.player.y - state_1.state.npc.y;
-            const dist = Math.hypot(dx, dy);
-            const ideal = config_1.CONFIG.maze.npcTetherIdealDist;
-            const maxD = config_1.CONFIG.maze.npcTetherMaxDist;
-            const vMin = config_1.CONFIG.maze.npcFollowSpeedMin;
-            const vMax = config_1.CONFIG.maze.npcFollowSpeedMax;
-            if (dist > ideal * 0.6) {
-                // 距离越远追得越快：在 ideal ~ maxD 间用平滑系数映射到 vMin ~ vMax
-                const tRaw = (dist - ideal) / Math.max(1, (maxD - ideal));
-                const tClamp = Math.max(0, Math.min(1, tRaw));
-                // smoothstep
-                const tSmooth = tClamp * tClamp * (3 - 2 * tClamp);
-                const npcSpeed = vMin + (vMax - vMin) * tSmooth;
-                state_1.state.npc.vx = (dx / dist) * npcSpeed;
-                state_1.state.npc.vy = (dy / dist) * npcSpeed;
-                state_1.state.npc.x += state_1.state.npc.vx;
-                state_1.state.npc.y += state_1.state.npc.vy;
-            }
-            else {
-                // 近距离轻微漂浮，避免贴脸抖动
-                state_1.state.npc.vx *= 0.85;
-                state_1.state.npc.vy *= 0.85;
-                state_1.state.npc.x += state_1.state.npc.vx;
-                state_1.state.npc.y += state_1.state.npc.vy;
-            }
-            // 距离超过最大值 → 玩家被绳索拖慢（回拉玩家位置）
-            if (dist > maxD) {
-                const over = dist - maxD;
-                const pull = config_1.CONFIG.maze.npcTetherPullFactor;
-                // 将玩家朝 NPC 方向拉回 over*pull 像素
-                const pullLen = over * pull;
-                state_1.player.x -= (dx / dist) * pullLen;
-                state_1.player.y -= (dy / dist) * pullLen;
-                // 同时轻微衰减玩家速度的远离分量，表现为"绳索崩紧"
-                const vDot = state_1.player.vx * (dx / dist) + state_1.player.vy * (dy / dist);
-                if (vDot > 0) {
-                    // vDot>0 表示玩家正远离 NPC
-                    const damp = 1 - pull * 0.8;
-                    state_1.player.vx -= (dx / dist) * vDot * (1 - damp);
-                    state_1.player.vy -= (dy / dist) * vDot * (1 - damp);
-                }
-            }
-            if (Math.abs(state_1.state.npc.vx) > 0.1 || Math.abs(state_1.state.npc.vy) > 0.1) {
-                state_1.state.npc.angle = Math.atan2(state_1.state.npc.vy, state_1.state.npc.vx);
-            }
+        if (maze.npcStunned) {
+            (0, RescueTow_1.updateRescueTow)();
         }
         else {
             // ===== 未被救：静止漂动 + 朝向玩家 + 呼救表现 =====
@@ -19132,10 +19128,12 @@ function updateMaze() {
         }
         // 人物身体进入当前画面即标记发现，与音乐共用入镜条件
         if ((0, NPCPerception_1.isRescueTargetVisible)()) {
-            maze.npcFound = true;
-            if (!maze.npcStateObserved) {
-                maze.npcStateObserved = true;
+            // 台词时间戳不进存档，每次下潜重置，同次再次入镜不重播。
+            if (!maze.npcEncounterNoteAt) {
                 maze.npcEncounterNoteAt = Date.now();
+            }
+            if (!maze.npcFound) {
+                maze.npcFound = true;
                 (0, MazeSave_1.saveMazeProgress)();
             }
         }
@@ -19625,7 +19623,8 @@ function saveMazeProgress() {
             // 不该跨 session 存的运行时杂项
             k === 'playerPath' ||
             k === 'divingInBubbles' || k === 'tapeEntryStartedAt' || k === 'tapeIntroTimer' ||
-            k === 'tapePlaybackStarted' || k === 'tapeNowPlayingAt' || k === 'npcEncounterNoteAt' || k === 'npcSecuredAt') {
+            k === 'tapePlaybackStarted' || k === 'tapeNowPlayingAt' || k === 'npcEncounterNoteAt' || k === 'npcSecuredAt' ||
+            k === 'npcStateObserved' || k === 'npcStunned' || k === 'npcStunnedAt' || k === 'rescueRagdoll') {
             continue;
         }
         rest[k] = maze[k];
@@ -19796,6 +19795,9 @@ function loadMazeProgress() {
     maze.npcRescueHolding = false;
     maze.npcRescueHoldStart = 0;
     maze.npcRescueTouchId = null;
+    maze.npcStunned = false;
+    maze.npcStunnedAt = 0;
+    maze.rescueRagdoll = null;
     maze._hudDetailOpen = 0;
     maze._hudDetailHolding = false;
     maze._retreatDetailOpen = 0;
@@ -19830,13 +19832,8 @@ function loadMazeProgress() {
     state_1.state.rope.ropes = restoredRopes;
     // 恢复标记
     state_1.state.markers = Array.isArray(data.markers) ? data.markers : [];
-    // 恢复玩家关键状态
-    if (data.playerPos) {
-        state_1.player.x = data.playerPos.x;
-        state_1.player.y = data.playerPos.y;
-        state_1.player.angle = data.playerPos.angle;
-        state_1.player.o2 = data.playerPos.o2;
-    }
+    // 玩家位置和氧气属于单次下潜，不从旧档恢复（可能是死亡位置 / 零氧气）。
+    // MazeLogic 在进入营地和启动下潜时统一归位并应用本次装备。
     console.log('[MazeSave] 存档恢复成功（v3 种子），seed=' + (mazeData.seed >>> 0) +
         '，已完成 ' + (maze.diveCount || 0) + ' 次下潜，活绳子 ' + restoredRopes.length + ' 条');
     return true;
@@ -21282,7 +21279,9 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.updateRescueLink = updateRescueLink;
 const config_1 = require("../core/config");
 const state_1 = require("../core/state");
-/** Commit the clasp only while the same uninterrupted hold is still in reach. */
+const RescueRagdoll_1 = require("./RescueRagdoll");
+const AudioManager_1 = require("../audio/AudioManager");
+/** Stun or clasp only while the same uninterrupted hold is still in reach. */
 function updateRescueLink(now = Date.now()) {
     const maze = state_1.state.mazeRescue;
     if (!maze || maze.phase !== 'play' || maze.npcRescued || !state_1.state.npc.active || !maze.npcRescueHolding)
@@ -21293,13 +21292,182 @@ function updateRescueLink(now = Date.now()) {
         maze.npcRescueTouchId = null;
         return;
     }
-    if (now - maze.npcRescueHoldStart < config_1.CONFIG.maze.npcRescueHoldDuration * 1000)
+    const stunned = !!maze.npcStunned;
+    const duration = stunned ? config_1.CONFIG.maze.npcRescueHoldDuration : config_1.CONFIG.maze.npcStunHoldDuration;
+    if (now - maze.npcRescueHoldStart < duration * 1000)
         return;
-    maze.npcRescued = true;
     maze.npcRescueHolding = false;
+    maze.npcRescueHoldStart = 0;
     maze.npcRescueTouchId = null;
+    if (!stunned) {
+        maze.npcStunned = true;
+        maze.npcStunnedAt = now;
+        maze.rescueRagdoll = (0, RescueRagdoll_1.createRescueRagdoll)(state_1.state.npc.vx, state_1.state.npc.vy);
+        state_1.state.npc.state = 'limp';
+        const dx = state_1.state.npc.x - state_1.player.x, dy = state_1.state.npc.y - state_1.player.y;
+        const dist = Math.hypot(dx, dy) || 1;
+        state_1.state.npc.vx += dx / dist * .9;
+        state_1.state.npc.vy += dy / dist * .9;
+        state_1.state.npc.distressActive = false;
+        state_1.state.npc.distressBubbles = [];
+        state_1.state.npc.distressHalos = [];
+        // Dedicated, locally bundled cartoon bonk; still works with music off.
+        (0, AudioManager_1.playSFX)('rescueBonk', { volume: .8 });
+        return;
+    }
+    maze.npcRescued = true;
     maze.npcSecuredAt = now;
-    state_1.state.npc.state = 'follow';
+    state_1.state.npc.state = 'limp';
+}
+},"/src/logic/RescueRagdoll":function(exports,require){"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.createRescueRagdoll = createRescueRagdoll;
+exports.stepRescueRagdoll = stepRescueRagdoll;
+exports.getRescueLimpPose = getRescueLimpPose;
+const rests = [-2.25, -2.9, 2.1, 2.8, -2.85, -2.35, 2.75, 2.3, .48];
+const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+function createRescueRagdoll(vx = 0, vy = 0) {
+    return { bodyVelocity: 2.4, lastVx: vx, lastVy: vy,
+        joints: rests.map((angle, i) => ({ angle, velocity: (i % 2 ? -1 : 1) * (i === 8 ? 5 : 3) })) };
+}
+function stepRescueRagdoll(r, angle, vx, vy, towAngle, dt = 1 / 60) {
+    const step = clamp(dt, 0, 1 / 30);
+    const ax = clamp((vx - r.lastVx) * 60, -180, 180);
+    const ay = clamp((vy - r.lastVy) * 60, -180, 180);
+    r.lastVx = vx;
+    r.lastVy = vy;
+    // The torso lags the rope direction. An untethered body slowly lists sideways.
+    const target = towAngle == null ? Math.PI / 2 + .45 : towAngle;
+    const torque = wrap(target - angle) * (towAngle == null ? .9 : 4.2);
+    r.bodyVelocity += (torque - r.bodyVelocity * 2.8) * step;
+    r.bodyVelocity = clamp(r.bodyVelocity, -5, 5);
+    angle = wrap(angle + r.bodyVelocity * step);
+    const cos = Math.cos(angle), sin = Math.sin(angle);
+    const localAx = ax * cos + ay * sin, localAy = -ax * sin + ay * cos;
+    const flowAngle = Math.atan2(vy, vx) + Math.PI - angle;
+    const speed = Math.min(8, Math.hypot(vx, vy));
+    r.joints.forEach((j, i) => {
+        const distal = i === 1 || i === 3 || i === 5 || i === 7;
+        const rest = rests[i];
+        const inertia = (localAx * Math.sin(j.angle) - localAy * Math.cos(j.angle)) * (distal ? .085 : .055);
+        const drag = Math.sin(flowAngle - j.angle) * speed * (i === 8 ? .35 : 1.6);
+        const gravity = Math.cos(angle + j.angle) * (i === 8 ? 1.1 : 1.8);
+        const parent = distal ? r.joints[i - 1].velocity * -.7 : -r.bodyVelocity * 1.4;
+        const stiffness = i === 8 ? 6 : distal ? 2.4 : 3.8;
+        j.velocity += (wrap(rest - j.angle) * stiffness + inertia + drag + gravity + parent - j.velocity * 2.6) * step;
+        j.velocity = clamp(j.velocity, -8, 8);
+        j.angle += j.velocity * step;
+        const limit = i === 8 ? .65 : distal ? 1.15 : .9;
+        if (Math.abs(j.angle - rest) > limit) {
+            j.angle = rest + Math.sign(j.angle - rest) * limit;
+            j.velocity *= -.18;
+        }
+    });
+    return angle;
+}
+function getRescueLimpPose(r) {
+    const a = r.joints.map(j => j.angle);
+    return { lu: a[0], ll: a[1], ru: a[2], rl: a[3],
+        leftThigh: a[4], leftShin: a[5], rightThigh: a[6], rightShin: a[7], head: a[8] };
+}
+},"/src/logic/RescueTow":function(exports,require){"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.updateRescueTow = updateRescueTow;
+const config_1 = require("../core/config");
+const state_1 = require("../core/state");
+const Collision_1 = require("./Collision");
+const RescueRagdoll_1 = require("./RescueRagdoll");
+function canMove(x, y, tx, ty) {
+    const maze = state_1.state.mazeRescue;
+    if (!maze)
+        return false;
+    const steps = Math.max(1, Math.ceil(Math.hypot(tx - x, ty - y) / 6));
+    for (let i = 1; i <= steps; i++) {
+        if ((0, Collision_1.checkMazeCollision)(x + (tx - x) * i / steps, y + (ty - y) * i / steps, maze))
+            return false;
+    }
+    return true;
+}
+function updateRescueTow() {
+    const maze = state_1.state.mazeRescue, npc = state_1.state.npc;
+    if (!maze || !maze.npcStunned || !npc.active)
+        return;
+    const r = maze.rescueRagdoll || (maze.rescueRagdoll = (0, RescueRagdoll_1.createRescueRagdoll)(npc.vx, npc.vy));
+    let dx = state_1.player.x - npc.x, dy = state_1.player.y - npc.y, dist = Math.hypot(dx, dy);
+    const rest = config_1.CONFIG.maze.npcTetherIdealDist;
+    let towAngle = null;
+    if (maze.npcRescued && dist > rest) {
+        // A slack rope cannot push or propel him. Stretch alone accelerates him.
+        const force = Math.min(1.6, (dist - rest) * .013);
+        npc.vx += dx / dist * force;
+        npc.vy += dy / dist * force;
+        towAngle = Math.atan2(dy, dx);
+    }
+    npc.vx *= .955;
+    npc.vy *= .955;
+    const speed = Math.hypot(npc.vx, npc.vy);
+    if (speed > 11) {
+        npc.vx *= 11 / speed;
+        npc.vy *= 11 / speed;
+    }
+    if (!(0, Collision_1.checkMazeCollision)(npc.x + npc.vx, npc.y, maze))
+        npc.x += npc.vx;
+    else {
+        npc.vx *= -.22;
+        r.bodyVelocity += .6;
+    }
+    if (!(0, Collision_1.checkMazeCollision)(npc.x, npc.y + npc.vy, maze))
+        npc.y += npc.vy;
+    else {
+        npc.vy *= -.22;
+        r.bodyVelocity -= .6;
+    }
+    dx = state_1.player.x - npc.x;
+    dy = state_1.player.y - npc.y;
+    dist = Math.hypot(dx, dy);
+    if (maze.npcRescued && dist < 44) {
+        // Soft body contact while the rope is slack: don't pile both silhouettes
+        // into one figure after stopping or reversing direction.
+        const nx = dist > .001 ? -dx / dist : -Math.cos(state_1.player.angle);
+        const ny = dist > .001 ? -dy / dist : -Math.sin(state_1.player.angle);
+        const x = npc.x + nx * (44 - dist), y = npc.y + ny * (44 - dist);
+        if (canMove(npc.x, npc.y, x, y)) {
+            npc.x = x;
+            npc.y = y;
+            npc.vx += nx * .12;
+            npc.vy += ny * .12;
+        }
+        dx = state_1.player.x - npc.x;
+        dy = state_1.player.y - npc.y;
+        dist = Math.hypot(dx, dy);
+    }
+    const max = config_1.CONFIG.maze.npcTetherMaxDist;
+    if (maze.npcRescued && dist > max) {
+        // Split the hard rope correction by mass. If rock blocks the casualty,
+        // the diver bears the correction instead of teleporting him through it.
+        const over = dist - max, nx = dx / dist, ny = dy / dist;
+        let npcCorrection = over * .78;
+        const x = npc.x + nx * npcCorrection, y = npc.y + ny * npcCorrection;
+        if (canMove(npc.x, npc.y, x, y)) {
+            npc.x = x;
+            npc.y = y;
+        }
+        else
+            npcCorrection = 0;
+        const pull = over - npcCorrection;
+        const px = state_1.player.x - nx * pull, py = state_1.player.y - ny * pull;
+        if (canMove(state_1.player.x, state_1.player.y, px, py)) {
+            state_1.player.x = px;
+            state_1.player.y = py;
+        }
+        const away = state_1.player.vx * nx + state_1.player.vy * ny;
+        if (away > 0) {
+            state_1.player.vx -= nx * away * .35;
+            state_1.player.vy -= ny * away * .35;
+        }
+    }
+    npc.angle = (0, RescueRagdoll_1.stepRescueRagdoll)(r, npc.angle, npc.vx, npc.vy, towAngle);
 }
 },"/src/logic/Rope":function(exports,require){"use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
@@ -23973,7 +24141,7 @@ function draw() {
     // --- 绘制角色 ---
     // One audible-time sample drives both people and the cassette.
     const tapeVisual = isMazeMode && config_1.CONFIG.lifeDetector.enabled && state_1.state.mazeRescue.phase === 'play' ? (0, RescueTape_1.getRescueTapeVisual)() : undefined;
-    const targetDance = isMazeMode && !state_1.state.mazeRescue.npcRescued ? (0, RescueDance_1.sampleRescueDance)(tapeVisual) : undefined;
+    const targetDance = isMazeMode && !state_1.state.mazeRescue.npcRescued && !state_1.state.mazeRescue.npcStunned ? (0, RescueDance_1.sampleRescueDance)(tapeVisual) : undefined;
     // Maze target is rendered once after darkness; other modes keep world lighting.
     if (!isMazeMode)
         (0, RenderRescueTarget_1.drawRescueTarget)(Canvas_1.ctx, tapeVisual);
@@ -24016,9 +24184,13 @@ function draw() {
         bcdVenting: (0, BCDSystem_1.isBCDVenting)(),
         tapeVisual: config_1.CONFIG.lifeDetector.ledOnDiver ? tapeVisual : undefined,
         resonanceVisual: tapeVisual,
+        rescueStrike: isMazeMode && state_1.state.mazeRescue.npcRescueHolding && !state_1.state.mazeRescue.npcStunned
+            ? Math.min(1, (Date.now() - state_1.state.mazeRescue.npcRescueHoldStart) / (config_1.CONFIG.maze.npcStunHoldDuration * 1000))
+            : isMazeMode && state_1.state.mazeRescue.npcStunnedAt && Date.now() - state_1.state.mazeRescue.npcStunnedAt < 240
+                ? 1 - (Date.now() - state_1.state.mazeRescue.npcStunnedAt) / 240 : 0,
     });
     // --- 绘制 NPC 呼救表现（气泡、挥手、闪光圈，仅迷宫未被救时）---
-    if (!targetDance)
+    if (!targetDance && !(isMazeMode && state_1.state.mazeRescue.npcStunned))
         (0, RenderRescueRope_1.drawNPCDistressWorld)(Canvas_1.ctx);
     (0, PerfHUD_1.profileEnd)('draw.diver');
     (0, PerfHUD_1.profileBegin)('draw.dustDark');
@@ -25423,7 +25595,7 @@ function drawRegulatorAndHose(renderCtx, regX, regY, hoseAnchorX, hoseAnchorY, r
     renderCtx.fill();
     renderCtx.restore();
 }
-function drawLegAndFin(renderCtx, hipX, hipY, side, legPhase, ampNorm, turnProgress, turnStrength, bodyYaw, colors, danceBend = 0) {
+function drawLegAndFin(renderCtx, hipX, hipY, side, legPhase, ampNorm, turnProgress, turnStrength, bodyYaw, colors, danceBend = 0, limp) {
     const cfg = config_1.CONFIG.diver;
     // ===== 相位波形：俯视 2D 模拟上下打水 =====
     // 一条腿的完整鞭打周期为 legPhase ∈ [0,1)：
@@ -25461,15 +25633,15 @@ function drawLegAndFin(renderCtx, hipX, hipY, side, legPhase, ampNorm, turnProgr
     const kneeForward = -(cfg.thighLength + thighStretch) * (1 - danceBend * .46);
     // 侧向：只有转向修正 + 静态基础张开（side * kickBaseSpread 当前为 0）
     const kneeLateral = side * (cfg.kickBaseSpread + danceBend * 8) + turnOffset * 0.7;
-    const kneePX = hipPX + kneeForward;
-    const kneePY = hipPY + kneeLateral;
+    const kneePX = hipPX + (limp ? Math.cos(limp.thigh) * cfg.thighLength : kneeForward);
+    const kneePY = hipPY + (limp ? Math.sin(limp.thigh) * cfg.thighLength : kneeLateral);
     // 小腿：沿 -x 延伸，叠加更强的鞭状伸缩（纯前后运动）
     const calfStretch = ankleWave * cfg.kickStretchAmp * 0.8;
     const ankleForward = -(cfg.calfLength + calfStretch) * (1 - danceBend * .32);
     // 侧向：只保留转向修正（衰减到 0.25，膝盖侧向的延续）
     const ankleLateral = turnOffset * 0.25 - side * danceBend * 4;
-    const anklePX = kneePX + ankleForward;
-    const anklePY = kneePY + ankleLateral;
+    const anklePX = kneePX + (limp ? Math.cos(limp.shin) * cfg.calfLength : ankleForward);
+    const anklePY = kneePY + (limp ? Math.sin(limp.shin) * cfg.calfLength : ankleLateral);
     // ===== 绘制大腿 =====
     drawTaperedLimb(renderCtx, hipPX, hipPY, kneePX, kneePY, cfg.thighWidthHip, cfg.thighWidthKnee, colors.suit, '#1c262c');
     // ===== 绘制小腿 =====
@@ -25735,13 +25907,14 @@ function drawDiver(renderCtx, x, y, angle, colors = null, motion = {}) {
     const resonanceVisual = motion.resonanceVisual || motion.tapeVisual;
     const resonance = (0, TapeResonance_1.sampleTapeBody)(resonanceVisual, motion.resonanceEcho);
     const dance = motion.dancePose;
+    const limp = motion.limpPose;
     const time = (_a = motion.animTime) !== null && _a !== void 0 ? _a : Date.now() / 150;
     // tankCount 优先：传 0/1/2 直接生效；不传则按 hasTank 推（true→1, false→0）
     const tankCount = motion.tankCount != null
         ? Math.max(0, Math.min(2, motion.tankCount | 0))
         : (motion.hasTank !== false ? 1 : 0);
-    const vx = (_b = motion.vx) !== null && _b !== void 0 ? _b : 0;
-    const vy = (_c = motion.vy) !== null && _c !== void 0 ? _c : 0;
+    const vx = limp ? 0 : (_b = motion.vx) !== null && _b !== void 0 ? _b : 0;
+    const vy = limp ? 0 : (_c = motion.vy) !== null && _c !== void 0 ? _c : 0;
     const speed = Math.hypot(vx, vy);
     const idleBlend = clamp(1 - speed / 1.2, 0, 1);
     const swimBlend = clamp(speed / 3.5, 0, 1);
@@ -25898,18 +26071,19 @@ function drawDiver(renderCtx, x, y, angle, colors = null, motion = {}) {
     const leftArmTargetLower = leftArmTargetUpper + 0.18;
     const rightArmTargetUpper = Math.PI - 0.95 - welcomeBreath;
     const rightArmTargetLower = rightArmTargetUpper - 0.18;
-    const leftArmUpper = dance ? dance.lu : leftArmUpperBase + (leftArmTargetUpper - leftArmUpperBase) * welcomeBlend;
-    const leftArmLower = dance ? dance.ll : leftArmLowerBase + (leftArmTargetLower - leftArmLowerBase) * welcomeBlend;
-    const rightArmUpper = dance ? dance.ru : rightArmUpperBase + (rightArmTargetUpper - rightArmUpperBase) * welcomeBlend;
-    const rightArmLower = dance ? dance.rl : rightArmLowerBase + (rightArmTargetLower - rightArmLowerBase) * welcomeBlend;
+    const strike = motion.rescueStrike || 0;
+    const leftArmUpper = limp ? limp.lu : dance ? dance.lu : leftArmUpperBase + (leftArmTargetUpper - leftArmUpperBase) * welcomeBlend;
+    const leftArmLower = limp ? limp.ll : dance ? dance.ll : leftArmLowerBase + (leftArmTargetLower - leftArmLowerBase) * welcomeBlend;
+    const rightArmUpper = limp ? limp.ru : strike ? -1.8 + strike * 2.1 : dance ? dance.ru : rightArmUpperBase + (rightArmTargetUpper - rightArmUpperBase) * welcomeBlend;
+    const rightArmLower = limp ? limp.rl : strike ? -.9 + strike * .9 : dance ? dance.rl : rightArmLowerBase + (rightArmTargetLower - rightArmLowerBase) * welcomeBlend;
     renderCtx.save();
-    renderCtx.translate(x + (dance ? dance.sway : driftX), y + (dance ? dance.bounce : driftY));
-    renderCtx.rotate(angle + (dance ? dance.roll : bodyRoll + resonance.roll));
+    renderCtx.translate(x + (limp ? 0 : dance ? dance.sway : driftX), y + (limp ? 0 : dance ? dance.bounce : driftY));
+    renderCtx.rotate(angle + (limp ? 0 : dance ? dance.roll : bodyRoll + resonance.roll));
     renderCtx.translate(0, -resonance.lift);
     renderCtx.scale(resonance.scaleX, resonance.scaleY);
     // 用 Y 轴压缩模拟 3D 侧倾（roll）：bodyRoll 越大身体越"侧过去"，Y 方向被压扁
     // rollSquash 是额外的 Y 缩放因子，最多 cfg.rollSquashMax 的压缩量
-    const rollSquash = 1 - Math.abs(bodyRoll) * cfg.rollSquashFactor;
+    const rollSquash = limp ? 1 : 1 - Math.abs(bodyRoll) * cfg.rollSquashFactor;
     const rollSquashClamped = Math.max(1 - cfg.rollSquashMax, rollSquash);
     renderCtx.scale(1, rollSquashClamped);
     // ===== 腿部相位时钟：完全由速度 + kickDrive boost 自驱（渲染侧自持） =====
@@ -25948,11 +26122,11 @@ function drawDiver(renderCtx, x, y, angle, colors = null, motion = {}) {
         clock.phase = (clock.phase + effectiveFreq) % 1;
     }
     const legPhaseVal = dance ? dance.legPhase : clock.phase;
-    drawLegAndFin(renderCtx, -8.2, -4.2, -1, legPhaseVal, ampNorm, leftTurnProgress, leftTurnStrength, bodyYaw, c, dance ? dance.leftBend : 0);
+    drawLegAndFin(renderCtx, -8.2, -4.2, -1, legPhaseVal, limp ? 0 : ampNorm, leftTurnProgress, leftTurnStrength, limp ? 0 : bodyYaw, c, dance ? dance.leftBend : 0, limp ? { thigh: limp.leftThigh, shin: limp.leftShin } : undefined);
     // 右腿相位 +0.5，实现左右交替鞭打
-    drawLegAndFin(renderCtx, -8.2, 4.2, 1, (legPhaseVal + 0.5) % 1, ampNorm, rightTurnProgress, rightTurnStrength, bodyYaw, c, dance ? dance.rightBend : 0);
+    drawLegAndFin(renderCtx, -8.2, 4.2, 1, (legPhaseVal + 0.5) % 1, limp ? 0 : ampNorm, rightTurnProgress, rightTurnStrength, limp ? 0 : bodyYaw, c, dance ? dance.rightBend : 0, limp ? { thigh: limp.rightThigh, shin: limp.rightShin } : undefined);
     renderCtx.save();
-    renderCtx.scale(dance ? dance.compress : torsoCompress, 1);
+    renderCtx.scale(limp ? 1 : dance ? dance.compress : torsoCompress, 1);
     // BCD 浮力背心气囊：画在躯干之下，让躯干"坐"在气囊上，形成外包一层软壳的层次
     drawBCDBladder(renderCtx, (_r = motion.bcdInflation) !== null && _r !== void 0 ? _r : 0, motion.bcdVenting === true, bodyYaw);
     const bodyGradient = renderCtx.createLinearGradient(10, 0, -16, 0);
@@ -26034,7 +26208,7 @@ function drawDiver(renderCtx, x, y, angle, colors = null, motion = {}) {
     // 局部坐标：+x 为角色朝向、+y 为右侧
     const ra = motion.regulatorAnim;
     const regActive = !!(ra && ra.active && ra.duration > 0);
-    const headY = headYawLead * cfg.headOffsetScale;
+    const headY = limp ? 0 : headYawLead * cfg.headOffsetScale;
     const mouthX = 21.0; // 嘴部（头球前沿）局部 x
     const mouthY = headY; // 嘴部局部 y（跟着头一起微动）
     let handBlend = 0; // 0=走原右手动画，1=完全接管为"抓气嘴"姿态
@@ -26255,10 +26429,27 @@ function drawDiver(renderCtx, x, y, angle, colors = null, motion = {}) {
         (0, TapeDeckVisual_1.drawTapeDeck)(renderCtx, 3, 9, 22, motion.tapeVisual, true);
     // 头部：加入蛇形传导偏移（头先转、身后跟）
     // headYawLead 是沿身体 y 轴的微小偏移，让头颈看起来像先扭动
+    renderCtx.save();
+    if (limp) {
+        renderCtx.translate(10, 0);
+        renderCtx.rotate(limp.head);
+        renderCtx.translate(-10, 0);
+    }
     renderCtx.fillStyle = c.suit;
     renderCtx.beginPath();
     renderCtx.arc(15.8, headY, 6.5, 0, Math.PI * 2);
     renderCtx.fill();
+    if (limp) {
+        renderCtx.strokeStyle = c.mask;
+        renderCtx.lineWidth = 1.2;
+        renderCtx.beginPath();
+        renderCtx.moveTo(17, -3);
+        renderCtx.lineTo(19.5, -1.5);
+        renderCtx.moveTo(17, 3);
+        renderCtx.lineTo(19.5, 1.5);
+        renderCtx.stroke();
+    }
+    renderCtx.restore();
     // --- 气嘴 + 软管（在头之后绘制，压在最上层） ---
     if (regActive && regVisible) {
         // 气嘴朝向：让咬嘴口指向嘴部（让视觉上"对着嘴"的阶段 C/D 很自然）
@@ -32782,13 +32973,16 @@ exports.drawRescueTarget = drawRescueTarget;
 const state_1 = require("../core/state");
 const RenderDiver_1 = require("./RenderDiver");
 const RescueDance_1 = require("./RescueDance");
+const RescueRagdoll_1 = require("../logic/RescueRagdoll");
 /** A readable warm figure after the darkness pass, not a light cast onto the cave.
  * The exact same body and pose render once per frame, even outside the flashlight. */
 function drawRescueTarget(c, visual) {
     const npc = state_1.state.npc;
     if (!npc || !npc.active)
         return;
-    const dance = state_1.state.mazeRescue && !state_1.state.mazeRescue.npcRescued ? (0, RescueDance_1.sampleRescueDance)(visual) : undefined;
+    const maze = state_1.state.mazeRescue;
+    const limp = (maze === null || maze === void 0 ? void 0 : maze.npcStunned) && maze.rescueRagdoll ? (0, RescueRagdoll_1.getRescueLimpPose)(maze.rescueRagdoll) : undefined;
+    const dance = maze && !maze.npcRescued && !maze.npcStunned ? (0, RescueDance_1.sampleRescueDance)(visual) : undefined;
     c.save();
     c.globalAlpha *= .94;
     (0, RenderDiver_1.drawDiver)(c, npc.x, npc.y, dance ? -Math.PI / 2 : npc.angle, {
@@ -32796,8 +32990,40 @@ function drawRescueTarget(c, visual) {
         mask: '#d8d9b8', fin: '#a57c56', accent: '#e0c491', skin: '#d4b595',
     }, {
         animTime: visual ? visual.beats / 2 : Date.now() / 150,
-        hasTank: true, vx: npc.vx, vy: npc.vy, id: 'npc', dancePose: dance,
+        hasTank: true, vx: npc.vx, vy: npc.vy, id: 'npc', dancePose: dance, limpPose: limp,
     });
+    if ((maze === null || maze === void 0 ? void 0 : maze.npcStunnedAt) && maze.phase === 'play') {
+        const age = (Date.now() - maze.npcStunnedAt) / 1000;
+        if (age >= 0 && age < 1.6) {
+            c.globalAlpha *= Math.min(1, (1.6 - age) * 2);
+            for (let i = 0; i < 3; i++) {
+                const a = age * 6 + i * Math.PI * 2 / 3;
+                const x = npc.x + Math.cos(a) * 23, y = npc.y - 29 + Math.sin(a) * 7;
+                c.save();
+                c.translate(x, y);
+                c.rotate(a * .5);
+                c.fillStyle = '#efd790';
+                c.beginPath();
+                for (let j = 0; j < 8; j++) {
+                    const r = j % 2 ? 1.6 : 4.5, t = j * Math.PI / 4;
+                    if (j === 0)
+                        c.moveTo(Math.cos(t) * r, Math.sin(t) * r);
+                    else
+                        c.lineTo(Math.cos(t) * r, Math.sin(t) * r);
+                }
+                c.closePath();
+                c.fill();
+                c.restore();
+            }
+            if (age < .3) {
+                c.strokeStyle = '#efd790';
+                c.lineWidth = 1.5;
+                c.beginPath();
+                c.arc(npc.x, npc.y, 10 + age * 90, 0, Math.PI * 2);
+                c.stroke();
+            }
+        }
+    }
     c.restore();
 }
 },"/src/render/RenderRope":function(exports,require){"use strict";
@@ -33849,7 +34075,7 @@ function sampleRescueDance(v) {
 }
 },"/src/render/RescueEncounterNote":function(exports,require){"use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.RESCUE_ENCOUNTER_LINES = void 0;
+exports.RESCUE_STUN_LINES = exports.RESCUE_ENCOUNTER_LINES = void 0;
 exports.drawRescueEncounterNote = drawRescueEncounterNote;
 const state_1 = require("../core/state");
 const Canvas_1 = require("./Canvas");
@@ -33859,13 +34085,20 @@ exports.RESCUE_ENCOUNTER_LINES = [
     '还以为自己在舞池里……',
     '先带他上去。',
 ];
+exports.RESCUE_STUN_LINES = ['……先暂停一下。', '这回不蹦了。'];
 /** Quiet, actor-attached speech. No journal, speaker label or source reveal. */
 function drawRescueEncounterNote() {
     const maze = state_1.state.mazeRescue;
-    if (!maze || maze.phase !== 'play' || !maze.npcEncounterNoteAt)
+    if (!maze || maze.phase !== 'play')
         return;
-    const age = (Date.now() - maze.npcEncounterNoteAt) / 1000;
-    if (age < 0 || age >= 8.4 || maze.npcRescued || maze.npcRescueHolding)
+    const lines = maze.npcStunned ? exports.RESCUE_STUN_LINES : exports.RESCUE_ENCOUNTER_LINES;
+    const startedAt = maze.npcStunned ? maze.npcStunnedAt : maze.npcEncounterNoteAt;
+    if (!startedAt)
+        return;
+    const age = (Date.now() - startedAt) / 1000;
+    if (age < .3 && maze.npcStunned)
+        return;
+    if (age < 0 || age >= lines.length * 2.8 || maze.npcRescued || maze.npcRescueHolding)
         return;
     const index = Math.floor(age / 2.8), local = age % 2.8;
     const alpha = Math.max(0, Math.min(.9, local / .25, (2.8 - local) / .4));
@@ -33905,7 +34138,7 @@ function drawRescueEncounterNote() {
     Canvas_1.ctx.textBaseline = 'middle';
     Canvas_1.ctx.font = '12px "PingFang SC", Arial';
     Canvas_1.ctx.fillStyle = TapeDeckVisual_1.TAPE.paper;
-    Canvas_1.ctx.fillText(exports.RESCUE_ENCOUNTER_LINES[index], x + 11, y + 15, width - 22);
+    Canvas_1.ctx.fillText(lines[index], x + 11, y + 15, width - 22);
     Canvas_1.ctx.restore();
 }
 },"/src/render/RescueLinkFeedback":function(exports,require){"use strict";
@@ -33928,6 +34161,13 @@ function getRescueLinkFeedback(now = Date.now()) {
     }
     if (Math.hypot(state_1.player.x - state_1.state.npc.x, state_1.player.y - state_1.state.npc.y) >= config_1.CONFIG.maze.npcRescueRange)
         return null;
+    if (!maze.npcStunned) {
+        return { mode: maze.npcRescueHolding ? 'stun_holding' : 'stun_ready',
+            progress: maze.npcRescueHolding ? Math.max(0, Math.min(1, (now - maze.npcRescueHoldStart) / (1000 * config_1.CONFIG.maze.npcStunHoldDuration))) : 0, alpha: .95 };
+    }
+    if (!maze.npcRescueHolding && now - (maze.npcStunnedAt || 0) < 1400) {
+        return { mode: 'stunned', progress: 1, alpha: 1 };
+    }
     return maze.npcRescueHolding
         ? { mode: 'holding', progress: Math.max(0, Math.min(1, (now - maze.npcRescueHoldStart) / (1000 * config_1.CONFIG.maze.npcRescueHoldDuration))), alpha: 1 }
         : { mode: 'ready', progress: 0, alpha: .9 };
@@ -33982,7 +34222,7 @@ function drawRescueLinkFeedback() {
     // Attach to the person, above or below their silhouette, never at the old toast position.
     const w = 156, h = feedback.mode === 'secured' ? 72 : 61;
     const x = Math.max(87, Math.min(Canvas_1.logicW - w - 57, nx - w / 2));
-    const y = Math.max(110, Math.min(Canvas_1.logicH - 130, ny > Canvas_1.logicH - 210 ? ny - 118 : ny + 72));
+    const y = Math.max(110, Math.min(Canvas_1.logicH - 220, ny > Canvas_1.logicH - 210 ? ny - 118 : ny + 72));
     const locked = feedback.mode === 'secured';
     Canvas_1.ctx.save();
     Canvas_1.ctx.globalAlpha *= feedback.alpha;
@@ -33995,21 +34235,49 @@ function drawRescueLinkFeedback() {
     Canvas_1.ctx.textBaseline = 'middle';
     Canvas_1.ctx.font = 'bold 12px "PingFang SC", Arial';
     Canvas_1.ctx.fillStyle = locked ? TapeDeckVisual_1.TAPE.ink : TapeDeckVisual_1.TAPE.paper;
-    Canvas_1.ctx.fillText(locked ? '接住你了。' : feedback.mode === 'holding' ? '别松手' : '按住他 · 接上安全绳', x + w / 2, y + 15);
+    const stunning = feedback.mode === 'stun_ready' || feedback.mode === 'stun_holding';
+    const holding = feedback.mode === 'holding' || feedback.mode === 'stun_holding';
+    const titles = { stun_ready: '按住他 · 先敲晕', stun_holding: '先让舞池暂停一下',
+        stunned: '咚。暂停成功。', ready: '再按住他 · 扣紧安全绳', holding: '扣紧了再松手', secured: '好，打包带走。' };
+    Canvas_1.ctx.fillText(titles[feedback.mode], x + w / 2, y + 15);
     Canvas_1.ctx.save();
     if (locked) {
         Canvas_1.ctx.fillStyle = TapeDeckVisual_1.TAPE.ink;
         (0, TapeDeckVisual_1.cutPanel)(Canvas_1.ctx, x + 12, y + 29, w - 24, 27, 3);
         Canvas_1.ctx.fill();
     }
-    clasp(x + w / 2, y + 41, feedback.progress, locked);
+    if (stunning) {
+        // A small gloved fist winds back and travels into a comic spark.
+        const fx = x + w / 2 - 22 + feedback.progress * 27;
+        Canvas_1.ctx.fillStyle = '#d1c2a1';
+        (0, TapeDeckVisual_1.cutPanel)(Canvas_1.ctx, fx - 9, y + 32, 18, 13, 3);
+        Canvas_1.ctx.fill();
+        Canvas_1.ctx.strokeStyle = '#8f7257';
+        Canvas_1.ctx.lineWidth = 1;
+        for (let i = 0; i < 3; i++) {
+            Canvas_1.ctx.beginPath();
+            Canvas_1.ctx.moveTo(fx - 5 + i * 4, y + 32);
+            Canvas_1.ctx.lineTo(fx - 5 + i * 4, y + 37);
+            Canvas_1.ctx.stroke();
+        }
+        Canvas_1.ctx.fillStyle = TapeDeckVisual_1.TAPE.paper;
+        Canvas_1.ctx.font = '9px "PingFang SC", Arial';
+        Canvas_1.ctx.fillText('短蓄力 · 松手可取消', x + w / 2, y + 53);
+    }
+    else if (feedback.mode === 'stunned') {
+        Canvas_1.ctx.fillStyle = TapeDeckVisual_1.TAPE.paper;
+        Canvas_1.ctx.font = '10px "PingFang SC", Arial';
+        Canvas_1.ctx.fillText('松手，再按住绑绳', x + w / 2, y + 41);
+    }
+    else
+        clasp(x + w / 2, y + 41, feedback.progress, locked);
     Canvas_1.ctx.restore();
     if (locked) {
         Canvas_1.ctx.fillStyle = '#6c705e';
         Canvas_1.ctx.font = '9px "PingFang SC", Arial';
-        Canvas_1.ctx.fillText('安全绳已扣紧  /  一起回去', x + w / 2, y + 63);
+        Canvas_1.ctx.fillText('安全绳已扣紧  /  拖他回去', x + w / 2, y + 63);
     }
-    else if (feedback.mode === 'holding') {
+    else if (holding) {
         Canvas_1.ctx.fillStyle = '#b9452e';
         Canvas_1.ctx.fillRect(x + 12, y + h - 4, (w - 24) * feedback.progress, 2);
     }

@@ -65,7 +65,7 @@ export function updateLifeDetector(): void {
     const shouldDetect = state.screen === 'mazeRescue'
         && maze.phase === 'play'
         && state.npc && state.npc.active
-        && !maze.npcRescued;
+        && !maze.npcRescued && !maze.npcStunned;
 
     if (!shouldDetect) {
         runtime.active = false;

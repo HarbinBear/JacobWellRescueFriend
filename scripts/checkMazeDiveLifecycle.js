@@ -8,6 +8,7 @@ const cache = new Map(), storage = new Map();
 const noop = () => 0;
 const idleSystems = new Proxy({}, { get: () => noop });
 let visible = false, now = 1000000;
+let breathBuoyancy = 0, bcdBuoyancy = 0;
 const overrides = {
     'core/SaveStorage': {
         saveJSON: (key, data) => { storage.set(key, JSON.parse(JSON.stringify(data))); return true; },
@@ -22,7 +23,7 @@ const overrides = {
     },
     'story/HomeScene': idleSystems,
     'logic/Particle': idleSystems,
-    'logic/BreathSystem': idleSystems,
+    'logic/BreathSystem': new Proxy({ computeBuoyancyOffset: () => breathBuoyancy }, { get: (o, key) => o[key] || noop }),
     'logic/Rope': idleSystems,
     'logic/ManualDrive': idleSystems,
     'logic/CollisionImpact': idleSystems,
@@ -34,7 +35,7 @@ const overrides = {
     'logic/LifeDetector': idleSystems,
     'logic/NPCPerception': { isRescueTargetVisible: () => visible },
     'logic/DecompressionSystem': idleSystems,
-    'logic/BCDSystem': idleSystems,
+    'logic/BCDSystem': new Proxy({ computeBCDBuoyancyAccel: () => bcdBuoyancy }, { get: (o, key) => o[key] || noop }),
     'extraction': { onExtractionDiveStart: noop, updateCarryItemAnim: noop },
 };
 function compile(file, requireModule) {
@@ -105,6 +106,8 @@ try {
     state.camera.zoom = 2; state.camera.targetZoom = 2;
     player.welcomeArmsAnim.active = true;
     maze.npcRescueHolding = true; maze.retreatHolding = true;
+    maze.npcStunned = true; maze.npcStunnedAt = now;
+    maze.rescueRagdoll = { joints: [] };
     maze.npcEncounterNoteAt = now - 9000;
     maze._decoBlockedRescuedWarned = true;
     maze._decoBlockedRescuedSince = now - 9000;
@@ -125,6 +128,8 @@ try {
     assert.equal(player.welcomeArmsAnim.active, false);
     assert.equal(maze.npcRescueHolding, false); assert.equal(maze.retreatHolding, false);
     assert.equal(maze.npcEncounterNoteAt, 0);
+    assert.equal(maze.npcStunned, false); assert.equal(maze.npcStunnedAt, 0);
+    assert.equal(maze.rescueRagdoll, null);
     assert.equal(maze._decoBlockedRescuedWarned, false);
     assert.equal(maze._decoBlockedRescuedSince, 0);
     assert.equal(maze.shoreMapOpen, false); assert.equal(maze.codexOpen, false);
@@ -182,6 +187,55 @@ try {
     assert.equal(state.mazeRescue.phase, 'tape_rewind');
     assert.equal(state.mazeRescue.npcRescued, false);
     assert.equal(player.x, spawn.x); assert.equal(player.y, spawn.y);
+    // Real touch handlers: cancel a short wind-up, stun, release, then bind.
+    const casualty = state.mazeRescue;
+    casualty.phase = 'play';
+    player.x = state.npc.x - 35; player.y = state.npc.y;
+    state.camera.x = state.npc.x; state.camera.y = state.npc.y;
+    state.camera.swayX = state.camera.swayY = 0;
+    const contact = { identifier: 91, clientX: CONFIG.screenWidth / 2, clientY: CONFIG.screenHeight / 2 };
+    const press = () => handlers.start({ touches: [contact], changedTouches: [contact] });
+    const release = () => handlers.end({ touches: [], changedTouches: [contact] });
+    const link = load('logic/RescueLink');
+    press(); player.vx = 9; player.vy = -9;
+    const contactX = player.x, contactY = player.y;
+    breathBuoyancy = .35; bcdBuoyancy = .65;
+    input.move = 0; input.speedUp = true;
+    state.manualDrive.activeTouches[92] = {};
+    now += 200; logic.updateMaze();
+    assert.notEqual(player.x, contactX, 'Stun hold preserves inertia');
+    assert.notEqual(player.y, contactY, 'Stun hold does not pin the diver');
+    assert(Math.abs(player.vy - (-9 * CONFIG.waterDrag + breathBuoyancy + bcdBuoyancy)) < 1e-9, 'Both buoyancy systems remain active during the stun hold');
+    assert.equal(input.speedUp, true); assert(92 in state.manualDrive.activeTouches, 'Holding the casualty preserves other movement controls');
+    breathBuoyancy = bcdBuoyancy = 0;
+    release();
+    assert.equal(casualty.npcStunned, false, 'Releasing a short hold cancels the bonk');
+    press(); now += 560; link.updateRescueLink();
+    assert.equal(casualty.npcStunned, true); assert.equal(casualty.npcRescued, false);
+    now += 2000; link.updateRescueLink();
+    assert.equal(casualty.npcRescued, false, 'The same press cannot automatically bind after stunning');
+    release(); press();
+    player.vx = player.vy = 0;
+    const bindingY = player.y;
+    breathBuoyancy = .35; bcdBuoyancy = .65;
+    now += 200; logic.updateMaze();
+    assert.equal(player.y, bindingY + 1, 'Binding hold also preserves breath and BCD buoyancy');
+    assert.equal(casualty.npcRescued, false);
+    // Drifting away cancels the hold, even when its timer would have completed.
+    player.x = state.npc.x + CONFIG.maze.npcRescueRange + 1;
+    now += 810; link.updateRescueLink(); release();
+    assert.equal(casualty.npcRescueHolding, false); assert.equal(casualty.npcRescued, false);
+    breathBuoyancy = bcdBuoyancy = 0;
+    player.x = state.npc.x - 35; player.y = state.npc.y;
+    state.camera.x = state.npc.x; state.camera.y = state.npc.y;
+    state.camera.swayX = state.camera.swayY = 0;
+    press(); now += 810; link.updateRescueLink(); release();
+    assert.equal(casualty.npcRescued, true); assert.equal(state.npc.state, 'limp');
+    save.saveMazeProgress();
+    const savedRest = storage.get(save.MAZE_SAVE_KEY).packed.rest;
+    for (const field of ['npcStunned', 'npcStunnedAt', 'rescueRagdoll']) assert(!(field in savedRest));
+    logic.startMazeDive('scout');
+    assert.equal(casualty.npcStunned, false); assert.equal(casualty.rescueRagdoll, null);
     console.log('通过：旧档死亡坐标归位、绑绳后重新下潜无回拉、操作/反馈状态清理、同次发现不重复台词、下次首次发现重播、案件进度保留、主菜单一键下潜触摸流程。');
 } finally {
     Date.now = originalNow;

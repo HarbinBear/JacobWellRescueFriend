@@ -1,4 +1,5 @@
 import { CONFIG } from './config';
+import type { RescueRagdollState } from '../logic/RescueRagdoll';
 export const state = {
     screen: 'menu', // menu, progressSelect, mazeRescue, home_evening, dream（旧 play/win/lose/ending/fishArena 已废弃；fishArena 仍可由 GM 强制进入）
     // 主菜单"开始新游戏"确认框开关（运行时，不进存档）
@@ -206,6 +207,9 @@ export const state = {
 
         // === NPC 救援交互 ===
         npcRescued: boolean;    // NPC是否已被绑绳（跟随中）
+        npcStunned?: boolean; // 本次下潜已敲晕；先敲晕，再松手重新按住绑绳
+        npcStunnedAt?: number;
+        rescueRagdoll?: RescueRagdollState | null; // 单次下潜物理关节，不进存档
         npcRescueHolding: boolean;  // 是否正在长按救援
         npcRescueHoldStart: number; // 长按开始时间戳
         npcRescueTouchId: number | null; // 救援长按触点ID

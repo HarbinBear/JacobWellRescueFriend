@@ -110,6 +110,7 @@ export const modesConfig = {
         npcMinDistRatio: 0.55,      // NPC离出发点的最小距离占地图对角线比例
         npcRescueRange: 80,         // 靠近NPC多近触发救援交互（像素）
         npcRescueHoldDuration: 0.8, // 长按多少秒完成绑绳（秒）
+        npcStunHoldDuration: 0.55, // 短蓄力敲晕；松手后才能开始绑绳
         npcFollowSpeed: 3.2,        // NPC基础跟随速度（跟随阶段兜底值）
 
         // === NPC 跟随距离约束（绑绳后，D方案：柔性加速+超距拖慢玩家）===

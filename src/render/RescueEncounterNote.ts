@@ -7,13 +7,18 @@ export const RESCUE_ENCOUNTER_LINES = [
     '还以为自己在舞池里……',
     '先带他上去。',
 ];
+export const RESCUE_STUN_LINES = ['……先暂停一下。', '这回不蹦了。'];
 
 /** Quiet, actor-attached speech. No journal, speaker label or source reveal. */
 export function drawRescueEncounterNote(): void {
     const maze = state.mazeRescue;
-    if (!maze || maze.phase !== 'play' || !maze.npcEncounterNoteAt) return;
-    const age = (Date.now() - maze.npcEncounterNoteAt) / 1000;
-    if (age < 0 || age >= 8.4 || maze.npcRescued || maze.npcRescueHolding) return;
+    if (!maze || maze.phase !== 'play') return;
+    const lines = maze.npcStunned ? RESCUE_STUN_LINES : RESCUE_ENCOUNTER_LINES;
+    const startedAt = maze.npcStunned ? maze.npcStunnedAt : maze.npcEncounterNoteAt;
+    if (!startedAt) return;
+    const age = (Date.now() - startedAt) / 1000;
+    if (age < .3 && maze.npcStunned) return;
+    if (age < 0 || age >= lines.length * 2.8 || maze.npcRescued || maze.npcRescueHolding) return;
     const index = Math.floor(age / 2.8), local = age % 2.8;
     const alpha = Math.max(0, Math.min(.9, local / .25, (2.8 - local) / .4));
     const camera = state.camera;
@@ -38,6 +43,6 @@ export function drawRescueEncounterNote(): void {
     ctx.lineTo(tailX + 8, edgeY); ctx.closePath(); ctx.fill();
     ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
     ctx.font = '12px "PingFang SC", Arial'; ctx.fillStyle = TAPE.paper;
-    ctx.fillText(RESCUE_ENCOUNTER_LINES[index], x + 11, y + 15, width - 22);
+    ctx.fillText(lines[index], x + 11, y + 15, width - 22);
     ctx.restore();
 }

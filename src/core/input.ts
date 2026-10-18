@@ -576,10 +576,10 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                 }
             }
 
-            // 迷宫模式：检测救援长按（靠近NPC时，仅正式救援下潜）
+            // 靠近后先短蓄力敲晕，松手后再次按住绑绳。
             if (state.screen === 'mazeRescue' && state.mazeRescue && state.mazeRescue.phase === 'play') {
                 const maze = state.mazeRescue;
-                // 救援绑绳（发现NPC后即可绑绳，不区分下潜类型）
+                // 两阶段共用角色触摸区，完成敲晕不会自动接着绑绳。
                 if (!maze.npcRescued && state.npc.active && mazeRescueTouchId === null) {
                     const zoom = state.camera ? state.camera.zoom : 1;
                     const camX = state.camera ? state.camera.x + state.camera.swayX : player.x;
@@ -589,6 +589,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                     const screenDist = Math.hypot(t.clientX - npcScreenX, t.clientY - npcScreenY);
                     const worldDist = Math.hypot(player.x - state.npc.x, player.y - state.npc.y);
                     if (screenDist < 60 && worldDist < CONFIG.maze.npcRescueRange) {
+                        if (maze.npcStunned && Date.now() - (maze.npcStunnedAt || 0) < 450) continue;
                         mazeRescueTouchId = t.identifier;
                         maze.npcRescueHolding = true;
                         maze.npcRescueHoldStart = Date.now();

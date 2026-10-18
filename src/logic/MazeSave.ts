@@ -380,7 +380,7 @@ export function saveMazeProgress(): boolean {
             k === 'playerPath' ||
             k === 'divingInBubbles' || k === 'tapeEntryStartedAt' || k === 'tapeIntroTimer' ||
             k === 'tapePlaybackStarted' || k === 'tapeNowPlayingAt' || k === 'npcEncounterNoteAt' || k === 'npcSecuredAt' ||
-            k === 'npcStateObserved') { // 旧版本的案件级台词标记已废弃
+            k === 'npcStateObserved' || k === 'npcStunned' || k === 'npcStunnedAt' || k === 'rescueRagdoll') {
             continue;
         }
         rest[k] = maze[k];
@@ -554,6 +554,9 @@ export function loadMazeProgress(): boolean {
     maze.npcRescueHolding = false;
     maze.npcRescueHoldStart = 0;
     maze.npcRescueTouchId = null;
+    maze.npcStunned = false;
+    maze.npcStunnedAt = 0;
+    maze.rescueRagdoll = null;
     maze._hudDetailOpen = 0;
     maze._hudDetailHolding = false;
     maze._retreatDetailOpen = 0;

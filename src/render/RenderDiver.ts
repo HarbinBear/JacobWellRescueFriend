@@ -1,4 +1,5 @@
 import { RescueDancePose } from './RescueDance';
+import type { RescueLimpPose } from '../logic/RescueRagdoll';
 import { CONFIG } from '../core/config';
 import { TapeVisual } from '../audio/AdaptiveMusicVisuals';
 import { drawTapeDeck } from './TapeDeckVisual';
@@ -18,6 +19,8 @@ type DiverColors = {
 
 type DiverMotion = {
     dancePose?: RescueDancePose;
+    limpPose?: RescueLimpPose;
+    rescueStrike?: number;
     tapeVisual?: TapeVisual;
     resonanceVisual?: TapeVisual;
     resonanceEcho?: boolean;
@@ -306,6 +309,7 @@ function drawLegAndFin(
     bodyYaw: number,
     colors: DiverColors,
     danceBend = 0,
+    limp?: { thigh: number; shin: number },
 ) {
     const cfg = CONFIG.diver;
 
@@ -351,16 +355,16 @@ function drawLegAndFin(
     const kneeForward = -(cfg.thighLength + thighStretch) * (1 - danceBend * .46);
     // 侧向：只有转向修正 + 静态基础张开（side * kickBaseSpread 当前为 0）
     const kneeLateral = side * (cfg.kickBaseSpread + danceBend * 8) + turnOffset * 0.7;
-    const kneePX = hipPX + kneeForward;
-    const kneePY = hipPY + kneeLateral;
+    const kneePX = hipPX + (limp ? Math.cos(limp.thigh) * cfg.thighLength : kneeForward);
+    const kneePY = hipPY + (limp ? Math.sin(limp.thigh) * cfg.thighLength : kneeLateral);
 
     // 小腿：沿 -x 延伸，叠加更强的鞭状伸缩（纯前后运动）
     const calfStretch = ankleWave * cfg.kickStretchAmp * 0.8;
     const ankleForward = -(cfg.calfLength + calfStretch) * (1 - danceBend * .32);
     // 侧向：只保留转向修正（衰减到 0.25，膝盖侧向的延续）
     const ankleLateral = turnOffset * 0.25 - side * danceBend * 4;
-    const anklePX = kneePX + ankleForward;
-    const anklePY = kneePY + ankleLateral;
+    const anklePX = kneePX + (limp ? Math.cos(limp.shin) * cfg.calfLength : ankleForward);
+    const anklePY = kneePY + (limp ? Math.sin(limp.shin) * cfg.calfLength : ankleLateral);
 
     // ===== 绘制大腿 =====
     drawTaperedLimb(renderCtx, hipPX, hipPY, kneePX, kneePY,
@@ -721,13 +725,14 @@ export function drawDiver(
     const resonanceVisual = motion.resonanceVisual || motion.tapeVisual;
     const resonance = sampleTapeBody(resonanceVisual, motion.resonanceEcho);
     const dance = motion.dancePose;
+    const limp = motion.limpPose;
     const time = motion.animTime ?? Date.now() / 150;
     // tankCount 优先：传 0/1/2 直接生效；不传则按 hasTank 推（true→1, false→0）
     const tankCount = motion.tankCount != null
         ? Math.max(0, Math.min(2, motion.tankCount | 0))
         : (motion.hasTank !== false ? 1 : 0);
-    const vx = motion.vx ?? 0;
-    const vy = motion.vy ?? 0;
+    const vx = limp ? 0 : motion.vx ?? 0;
+    const vy = limp ? 0 : motion.vy ?? 0;
     const speed = Math.hypot(vx, vy);
     const idleBlend = clamp(1 - speed / 1.2, 0, 1);
     const swimBlend = clamp(speed / 3.5, 0, 1);
@@ -902,19 +907,20 @@ export function drawDiver(
     const rightArmTargetUpper = Math.PI - 0.95 - welcomeBreath;
     const rightArmTargetLower = rightArmTargetUpper - 0.18;
 
-    const leftArmUpper = dance ? dance.lu :  leftArmUpperBase  + (leftArmTargetUpper  - leftArmUpperBase)  * welcomeBlend;
-    const leftArmLower = dance ? dance.ll :  leftArmLowerBase  + (leftArmTargetLower  - leftArmLowerBase)  * welcomeBlend;
-    const rightArmUpper = dance ? dance.ru :  rightArmUpperBase + (rightArmTargetUpper - rightArmUpperBase) * welcomeBlend;
-    const rightArmLower = dance ? dance.rl :  rightArmLowerBase + (rightArmTargetLower - rightArmLowerBase) * welcomeBlend;
+    const strike = motion.rescueStrike || 0;
+    const leftArmUpper = limp ? limp.lu : dance ? dance.lu : leftArmUpperBase + (leftArmTargetUpper - leftArmUpperBase) * welcomeBlend;
+    const leftArmLower = limp ? limp.ll : dance ? dance.ll : leftArmLowerBase + (leftArmTargetLower - leftArmLowerBase) * welcomeBlend;
+    const rightArmUpper = limp ? limp.ru : strike ? -1.8 + strike * 2.1 : dance ? dance.ru : rightArmUpperBase + (rightArmTargetUpper - rightArmUpperBase) * welcomeBlend;
+    const rightArmLower = limp ? limp.rl : strike ? -.9 + strike * .9 : dance ? dance.rl : rightArmLowerBase + (rightArmTargetLower - rightArmLowerBase) * welcomeBlend;
 
     renderCtx.save();
-    renderCtx.translate(x + (dance ? dance.sway : driftX), y + (dance ? dance.bounce : driftY));
-    renderCtx.rotate(angle + (dance ? dance.roll : bodyRoll + resonance.roll));
+    renderCtx.translate(x + (limp ? 0 : dance ? dance.sway : driftX), y + (limp ? 0 : dance ? dance.bounce : driftY));
+    renderCtx.rotate(angle + (limp ? 0 : dance ? dance.roll : bodyRoll + resonance.roll));
     renderCtx.translate(0, -resonance.lift);
     renderCtx.scale(resonance.scaleX, resonance.scaleY);
     // 用 Y 轴压缩模拟 3D 侧倾（roll）：bodyRoll 越大身体越"侧过去"，Y 方向被压扁
     // rollSquash 是额外的 Y 缩放因子，最多 cfg.rollSquashMax 的压缩量
-    const rollSquash = 1 - Math.abs(bodyRoll) * cfg.rollSquashFactor;
+    const rollSquash = limp ? 1 : 1 - Math.abs(bodyRoll) * cfg.rollSquashFactor;
     const rollSquashClamped = Math.max(1 - cfg.rollSquashMax, rollSquash);
     renderCtx.scale(1, rollSquashClamped);
 
@@ -955,12 +961,14 @@ export function drawDiver(
     }
     const legPhaseVal = dance ? dance.legPhase : clock.phase;
 
-    drawLegAndFin(renderCtx, -8.2, -4.2, -1, legPhaseVal, ampNorm, leftTurnProgress, leftTurnStrength, bodyYaw, c, dance ? dance.leftBend : 0);
+    drawLegAndFin(renderCtx, -8.2, -4.2, -1, legPhaseVal, limp ? 0 : ampNorm, leftTurnProgress, leftTurnStrength, limp ? 0 : bodyYaw, c, dance ? dance.leftBend : 0,
+        limp ? { thigh: limp.leftThigh, shin: limp.leftShin } : undefined);
     // 右腿相位 +0.5，实现左右交替鞭打
-    drawLegAndFin(renderCtx, -8.2, 4.2, 1, (legPhaseVal + 0.5) % 1, ampNorm, rightTurnProgress, rightTurnStrength, bodyYaw, c, dance ? dance.rightBend : 0);
+    drawLegAndFin(renderCtx, -8.2, 4.2, 1, (legPhaseVal + 0.5) % 1, limp ? 0 : ampNorm, rightTurnProgress, rightTurnStrength, limp ? 0 : bodyYaw, c, dance ? dance.rightBend : 0,
+        limp ? { thigh: limp.rightThigh, shin: limp.rightShin } : undefined);
 
     renderCtx.save();
-    renderCtx.scale(dance ? dance.compress : torsoCompress, 1);
+    renderCtx.scale(limp ? 1 : dance ? dance.compress : torsoCompress, 1);
 
     // BCD 浮力背心气囊：画在躯干之下，让躯干"坐"在气囊上，形成外包一层软壳的层次
     drawBCDBladder(renderCtx, motion.bcdInflation ?? 0, motion.bcdVenting === true, bodyYaw);
@@ -1049,7 +1057,7 @@ export function drawDiver(
     // 局部坐标：+x 为角色朝向、+y 为右侧
     const ra = motion.regulatorAnim;
     const regActive = !!(ra && ra.active && ra.duration > 0);
-    const headY = headYawLead * cfg.headOffsetScale;
+    const headY = limp ? 0 : headYawLead * cfg.headOffsetScale;
     const mouthX = 21.0;            // 嘴部（头球前沿）局部 x
     const mouthY = headY;           // 嘴部局部 y（跟着头一起微动）
 
@@ -1281,10 +1289,18 @@ export function drawDiver(
 
     // 头部：加入蛇形传导偏移（头先转、身后跟）
     // headYawLead 是沿身体 y 轴的微小偏移，让头颈看起来像先扭动
+    renderCtx.save();
+    if (limp) { renderCtx.translate(10, 0); renderCtx.rotate(limp.head); renderCtx.translate(-10, 0); }
     renderCtx.fillStyle = c.suit;
     renderCtx.beginPath();
     renderCtx.arc(15.8, headY, 6.5, 0, Math.PI * 2);
     renderCtx.fill();
+    if (limp) {
+        renderCtx.strokeStyle = c.mask; renderCtx.lineWidth = 1.2;
+        renderCtx.beginPath(); renderCtx.moveTo(17, -3); renderCtx.lineTo(19.5, -1.5);
+        renderCtx.moveTo(17, 3); renderCtx.lineTo(19.5, 1.5); renderCtx.stroke();
+    }
+    renderCtx.restore();
 
     // --- 气嘴 + 软管（在头之后绘制，压在最上层） ---
     if (regActive && regVisible) {
