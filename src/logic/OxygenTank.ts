@@ -2,15 +2,15 @@
 //
 // 设计目标（一句话概括）：玩家在迷宫里能拾起氧气瓶、按住安装到自己身上，
 // 收获明显的视觉与氧气反馈；氧气瓶全部贴在岩石表面，食人鱼聚落周围大概率刷新；
-// 同一个 seed 内已消耗过的氧气瓶永久不再出现。
+// 每次下潜重新补齐所有氧气瓶，同一张地图始终刷新在原来的位置。
 //
 // 关键约束：
 // - 氧气瓶的位置、总数、每瓶补给量全部由"主 seed 派生子 seed"确定性生成，
 //   保证同一张迷宫地图读档 / 好友分享时视觉一致。
 // - 刷新点全部落在岩石表面外缘（参考 FishEnemy.ts 的骷髅放置算法：沿"岩石中心→
 //   目标朝向"的方向平移 w.r * 0.9），绝不会悬浮在通道里或嵌在岩石内部。
-// - 已消耗的氧气瓶用 Set<number>（id 基于 seed + 序号）记录，随 mazeRescue 一起存档。
-// - 跨下潜持久：同一张地图多次下潜共享同一份 oxygenTanks 与 consumedTankIds。
+// - 同次下潜已消耗的氧气瓶不可重复拾取；消耗 ID 不进存档。
+// - 每次下潜按同一 seed 重建，清空消耗、安装进度和拾取反馈。
 
 import { CONFIG } from '../core/config';
 import { state, player } from '../core/state';
@@ -53,7 +53,7 @@ export interface OxygenTank {
     wallY: number;
     normalAngle: number;       // 岩石→瓶体法线角度（瓶体朝向按此旋转）
     amount: number;            // 补给量（0~100 的数值），由 seed 决定
-    consumed: boolean;         // 是否已被消耗（运行时标志；存档走 consumedTankIds）
+    consumed: boolean;         // 本次下潜是否已被消耗，不跨下潜保留
     // 交互运行态
     holdProgress: number;      // 按住进度（0~1）
     isBeingInstalled: boolean; // 是否正在被安装（与轮盘扇区状态联动）
@@ -365,15 +365,6 @@ function tryPlaceOnWall(
 }
 
 // =============================================
-// 应用已消耗 ID（读档时剔除）
-// =============================================
-export function applyConsumedTankIds(tanks: OxygenTank[], consumedIds: number[]): OxygenTank[] {
-    if (!consumedIds || consumedIds.length === 0) return tanks;
-    const set = new Set(consumedIds);
-    return tanks.filter(t => !set.has(t.id));
-}
-
-// =============================================
 // 视觉反馈运行态初始化
 // =============================================
 export function createOxygenFeedback(): OxygenFeedback {
@@ -588,7 +579,7 @@ function completeInstall(t: OxygenTank, fb: OxygenFeedback) {
     // 拾取音效：高压气体嘶声 + 阀门机械咔哒
     // 前剪 0.2s，跳过音频开头的拖尾静音/淡入段，让触发感更直接
     playSFX('oxygenRefill', { startTime: 0.2 });
-    // 写入 consumedTankIds，方便存档持久化
+    // 记录本次下潜已消耗的瓶子；下一次下潜清空。
     const maze = state.mazeRescue;
     if (maze) {
         if (!Array.isArray(maze.consumedTankIds)) maze.consumedTankIds = [];
@@ -632,9 +623,9 @@ function spawnBubbleBurst(fb: OxygenFeedback, cx: number, cy: number, count: num
 
 // =============================================
 // 对外：为迷宫生成完整氧气瓶数据（带派生 seed 包装）
-// 由 MazeLogic 在新建地图 / 读档两个分支都调用
+// 由 MazeLogic 在新建地图 / 读档 / 每次下潜时调用
 // =============================================
-export function buildOxygenTanksForMaze(mainSeed: number, consumedIds: number[] | undefined): OxygenTank[] {
+export function buildOxygenTanksForMaze(mainSeed: number): OxygenTank[] {
     const subSeed = ((mainSeed >>> 0) ^ 0xCAFEBABE) >>> 0;
     setActiveSeededRandom(subSeed);
     let list: OxygenTank[] = [];
@@ -642,11 +633,6 @@ export function buildOxygenTanksForMaze(mainSeed: number, consumedIds: number[] 
         list = generateOxygenTanks();
     } finally {
         clearActiveSeededRandom();
-    }
-    // 剔除已消耗的
-    if (consumedIds && consumedIds.length > 0) {
-        const set = new Set(consumedIds);
-        for (const t of list) if (set.has(t.id)) t.consumed = true;
     }
     return list;
 }

@@ -2949,7 +2949,7 @@ exports.gameplayConfig = {
         ropeTagSwaySpeed: 1.5, // 绳索标记摆动速度
         ropeTagSwayAmplitude: 0.15, // 绳索标记摆动幅度（弧度）
     },
-    // ===== 氧气瓶配置（迷宫模式，跨下潜持久，同 seed 已消耗不再刷新） =====
+    // ===== 氧气瓶配置（迷宫模式，每次下潜按同 seed 在原位全量刷新） =====
     oxygenTank: {
         // 生成：聚集点附近（主要来源）
         denCountMin: 2, // 每个食人鱼聚落内最少刷几个
@@ -18041,10 +18041,9 @@ function resetMazeLogic() {
                 (0, SeededRandom_1.clearActiveSeededRandom)();
             }
             // 氧气瓶：fishDens 出来之后再重建（氧气瓶依赖聚落位置）
-            // 消耗过的瓶子由 consumedTankIds 控制（已从存档进入 mazeRescue）
-            state_1.state.mazeRescue.oxygenTanks = (0, OxygenTank_1.buildOxygenTanksForMaze)(state_1.state.mazeRescue.seed, state_1.state.mazeRescue.consumedTankIds || []);
-            if (!Array.isArray(state_1.state.mazeRescue.consumedTankIds))
-                state_1.state.mazeRescue.consumedTankIds = [];
+            // 读档回到岸上，不继承上次下潜的气瓶消耗。
+            state_1.state.mazeRescue.consumedTankIds = [];
+            state_1.state.mazeRescue.oxygenTanks = (0, OxygenTank_1.buildOxygenTanksForMaze)(state_1.state.mazeRescue.seed);
             state_1.state.mazeRescue.oxygenFeedback = (0, OxygenTank_1.createOxygenFeedback)();
             // 图鉴物件：从主 seed 派生 ^0x5EED1CE0 确定性重建
             // discoveredRelicIds / codexKinds 从存档读取（若老存档缺失字段则兼底空数组）
@@ -18254,7 +18253,7 @@ function resetMazeLogic() {
     }
     // 氧气瓶：新地图新 seed，consumedTankIds 清空，全量生成
     state_1.state.mazeRescue.consumedTankIds = [];
-    state_1.state.mazeRescue.oxygenTanks = (0, OxygenTank_1.buildOxygenTanksForMaze)(mazeData.seed, []);
+    state_1.state.mazeRescue.oxygenTanks = (0, OxygenTank_1.buildOxygenTanksForMaze)(mazeData.seed);
     state_1.state.mazeRescue.oxygenFeedback = (0, OxygenTank_1.createOxygenFeedback)();
     // 图鉴物件：新地图新 seed，discoveredRelicIds 清空，按主 seed 派生生成
     // codexKinds 是"总图鉴"跨关累计，使用前面保存的 preservedCodexKinds 恢复
@@ -18396,6 +18395,9 @@ function startMazeDive(diveType) {
     state_1.state.playerAttack = { active: false, timer: 0, cooldownTimer: 0, angle: 0 };
     state_1.state.fx.redOverlay = 0;
     state_1.state.fx.shake = 0;
+    // 每次下潜补齐全部气瓶；同一 seed 保持位置、数量、补给量和外观一致。
+    maze.consumedTankIds = [];
+    maze.oxygenTanks = (0, OxygenTank_1.buildOxygenTanksForMaze)(maze.seed);
     maze.oxygenFeedback = (0, OxygenTank_1.createOxygenFeedback)();
     // 生成迷宫食人鱼（按聚集点分布，每个聚集点 denFishCountMin~denFishCountMax 条）
     state_1.state.fishEnemies = [];
@@ -19611,8 +19613,8 @@ function saveMazeProgress() {
             k === 'spawnX' || k === 'spawnY' ||
             // 骷髅 / 聚集点也能从 seed 重建（MazeLogic 里用派生 seed 包住 generateFishDens）
             k === 'fishDens' ||
-            // 氧气瓶列表从 seed + consumedTankIds 重建（consumedTankIds 会保留在 rest 里）
-            k === 'oxygenTanks' ||
+            // 气瓶每次下潜按 seed 全量刷新，单次消耗不跨下潜保存。
+            k === 'oxygenTanks' || k === 'consumedTankIds' ||
             // 氧气拾取的运行态反馈（飞瓶、气泡、跳字、屏幕辉光）不跨 session 保留
             k === 'oxygenFeedback' ||
             // 图鉴物件列表从主 seed 派生重建，discoveredRelicIds 随 rest 自动保留
@@ -19737,10 +19739,9 @@ function loadMazeProgress() {
     // fishDens 留空占位；MazeLogic.resetMazeLogic 的读档分支会用派生 seed 重建一次
     maze.fishDens = [];
     // 氧气瓶：占位，由 MazeLogic.resetMazeLogic 的读档分支用派生 seed 重建一次；
-    // consumedTankIds 从 rest 里来（若 rest 没给就兜底成空数组）
+    // 忽略旧档的消耗 ID，下一次下潜全部补齐。
     maze.oxygenTanks = [];
-    if (!Array.isArray(maze.consumedTankIds))
-        maze.consumedTankIds = [];
+    maze.consumedTankIds = [];
     maze.oxygenFeedback = null; // 视觉反馈运行态，读档后由 MazeLogic 重建
     // 图鉴物件：占位，由 MazeLogic.resetMazeLogic 的读档分支用派生 seed 重建
     maze.relics = [];
@@ -19898,18 +19899,17 @@ function rescueTargetEntrySeconds(maxSeconds = 1.1) {
 //
 // 设计目标（一句话概括）：玩家在迷宫里能拾起氧气瓶、按住安装到自己身上，
 // 收获明显的视觉与氧气反馈；氧气瓶全部贴在岩石表面，食人鱼聚落周围大概率刷新；
-// 同一个 seed 内已消耗过的氧气瓶永久不再出现。
+// 每次下潜重新补齐所有氧气瓶，同一张地图始终刷新在原来的位置。
 //
 // 关键约束：
 // - 氧气瓶的位置、总数、每瓶补给量全部由"主 seed 派生子 seed"确定性生成，
 //   保证同一张迷宫地图读档 / 好友分享时视觉一致。
 // - 刷新点全部落在岩石表面外缘（参考 FishEnemy.ts 的骷髅放置算法：沿"岩石中心→
 //   目标朝向"的方向平移 w.r * 0.9），绝不会悬浮在通道里或嵌在岩石内部。
-// - 已消耗的氧气瓶用 Set<number>（id 基于 seed + 序号）记录，随 mazeRescue 一起存档。
-// - 跨下潜持久：同一张地图多次下潜共享同一份 oxygenTanks 与 consumedTankIds。
+// - 同次下潜已消耗的氧气瓶不可重复拾取；消耗 ID 不进存档。
+// - 每次下潜按同一 seed 重建，清空消耗、安装进度和拾取反馈。
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.generateOxygenTanks = generateOxygenTanks;
-exports.applyConsumedTankIds = applyConsumedTankIds;
 exports.createOxygenFeedback = createOxygenFeedback;
 exports.findNearbyOxygenTank = findNearbyOxygenTank;
 exports.startInstallTank = startInstallTank;
@@ -20184,15 +20184,6 @@ function tryPlaceOnWall(w, refX, refY, existing, minDistBetween, minDistToSpawn,
     return null;
 }
 // =============================================
-// 应用已消耗 ID（读档时剔除）
-// =============================================
-function applyConsumedTankIds(tanks, consumedIds) {
-    if (!consumedIds || consumedIds.length === 0)
-        return tanks;
-    const set = new Set(consumedIds);
-    return tanks.filter(t => !set.has(t.id));
-}
-// =============================================
 // 视觉反馈运行态初始化
 // =============================================
 function createOxygenFeedback() {
@@ -20413,7 +20404,7 @@ function completeInstall(t, fb) {
     // 拾取音效：高压气体嘶声 + 阀门机械咔哒
     // 前剪 0.2s，跳过音频开头的拖尾静音/淡入段，让触发感更直接
     (0, AudioManager_1.playSFX)('oxygenRefill', { startTime: 0.2 });
-    // 写入 consumedTankIds，方便存档持久化
+    // 记录本次下潜已消耗的瓶子；下一次下潜清空。
     const maze = state_1.state.mazeRescue;
     if (maze) {
         if (!Array.isArray(maze.consumedTankIds))
@@ -20456,9 +20447,9 @@ function spawnBubbleBurst(fb, cx, cy, count) {
 }
 // =============================================
 // 对外：为迷宫生成完整氧气瓶数据（带派生 seed 包装）
-// 由 MazeLogic 在新建地图 / 读档两个分支都调用
+// 由 MazeLogic 在新建地图 / 读档 / 每次下潜时调用
 // =============================================
-function buildOxygenTanksForMaze(mainSeed, consumedIds) {
+function buildOxygenTanksForMaze(mainSeed) {
     const subSeed = ((mainSeed >>> 0) ^ 0xCAFEBABE) >>> 0;
     (0, SeededRandom_1.setActiveSeededRandom)(subSeed);
     let list = [];
@@ -20467,13 +20458,6 @@ function buildOxygenTanksForMaze(mainSeed, consumedIds) {
     }
     finally {
         (0, SeededRandom_1.clearActiveSeededRandom)();
-    }
-    // 剔除已消耗的
-    if (consumedIds && consumedIds.length > 0) {
-        const set = new Set(consumedIds);
-        for (const t of list)
-            if (set.has(t.id))
-                t.consumed = true;
     }
     return list;
 }

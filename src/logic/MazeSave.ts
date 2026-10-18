@@ -367,8 +367,8 @@ export function saveMazeProgress(): boolean {
             k === 'spawnX' || k === 'spawnY' ||
             // 骷髅 / 聚集点也能从 seed 重建（MazeLogic 里用派生 seed 包住 generateFishDens）
             k === 'fishDens' ||
-            // 氧气瓶列表从 seed + consumedTankIds 重建（consumedTankIds 会保留在 rest 里）
-            k === 'oxygenTanks' ||
+            // 气瓶每次下潜按 seed 全量刷新，单次消耗不跨下潜保存。
+            k === 'oxygenTanks' || k === 'consumedTankIds' ||
             // 氧气拾取的运行态反馈（飞瓶、气泡、跳字、屏幕辉光）不跨 session 保留
             k === 'oxygenFeedback' ||
             // 图鉴物件列表从主 seed 派生重建，discoveredRelicIds 随 rest 自动保留
@@ -497,9 +497,9 @@ export function loadMazeProgress(): boolean {
     // fishDens 留空占位；MazeLogic.resetMazeLogic 的读档分支会用派生 seed 重建一次
     maze.fishDens = [];
     // 氧气瓶：占位，由 MazeLogic.resetMazeLogic 的读档分支用派生 seed 重建一次；
-    // consumedTankIds 从 rest 里来（若 rest 没给就兜底成空数组）
+    // 忽略旧档的消耗 ID，下一次下潜全部补齐。
     maze.oxygenTanks = [];
-    if (!Array.isArray(maze.consumedTankIds)) maze.consumedTankIds = [];
+    maze.consumedTankIds = [];
     maze.oxygenFeedback = null; // 视觉反馈运行态，读档后由 MazeLogic 重建
     // 图鉴物件：占位，由 MazeLogic.resetMazeLogic 的读档分支用派生 seed 重建
     maze.relics = [];

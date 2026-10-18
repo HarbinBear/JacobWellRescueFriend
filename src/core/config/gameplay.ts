@@ -37,7 +37,7 @@ export const gameplayConfig = {
         ropeTagSwayAmplitude: 0.15, // 绳索标记摆动幅度（弧度）
     },
 
-    // ===== 氧气瓶配置（迷宫模式，跨下潜持久，同 seed 已消耗不再刷新） =====
+    // ===== 氧气瓶配置（迷宫模式，每次下潜按同 seed 在原位全量刷新） =====
     oxygenTank: {
         // 生成：聚集点附近（主要来源）
         denCountMin: 2,                 // 每个食人鱼聚落内最少刷几个

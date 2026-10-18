@@ -336,7 +336,7 @@ export const state = {
 
         // === 氧气瓶（由主 seed 派生子 seed 确定性生成，贴在岩石表面） ===
         // oxygenTanks：当前活跃（未消耗）与已消耗混合的完整列表；consumed 字段标记单瓶
-        // consumedTankIds：已消耗瓶的 id 列表，进存档；换 seed 时清空
+        // consumedTankIds：本次下潜已消耗瓶的 id 列表，不进存档；每次下潜清空
         // oxygenFeedback：拾取视觉反馈运行态（飞瓶、气泡爆发、屏幕辉光、跳字），不进存档
         oxygenTanks: any[];
         consumedTankIds: number[];

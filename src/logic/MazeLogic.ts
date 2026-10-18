@@ -140,12 +140,9 @@ export function resetMazeLogic() {
             }
 
             // 氧气瓶：fishDens 出来之后再重建（氧气瓶依赖聚落位置）
-            // 消耗过的瓶子由 consumedTankIds 控制（已从存档进入 mazeRescue）
-            state.mazeRescue.oxygenTanks = buildOxygenTanksForMaze(
-                state.mazeRescue.seed,
-                state.mazeRescue.consumedTankIds || []
-            );
-            if (!Array.isArray(state.mazeRescue.consumedTankIds)) state.mazeRescue.consumedTankIds = [];
+            // 读档回到岸上，不继承上次下潜的气瓶消耗。
+            state.mazeRescue.consumedTankIds = [];
+            state.mazeRescue.oxygenTanks = buildOxygenTanksForMaze(state.mazeRescue.seed);
             state.mazeRescue.oxygenFeedback = createOxygenFeedback();
 
             // 图鉴物件：从主 seed 派生 ^0x5EED1CE0 确定性重建
@@ -359,7 +356,7 @@ export function resetMazeLogic() {
 
     // 氧气瓶：新地图新 seed，consumedTankIds 清空，全量生成
     state.mazeRescue.consumedTankIds = [];
-    state.mazeRescue.oxygenTanks = buildOxygenTanksForMaze(mazeData.seed, []);
+    state.mazeRescue.oxygenTanks = buildOxygenTanksForMaze(mazeData.seed);
     state.mazeRescue.oxygenFeedback = createOxygenFeedback();
 
     // 图鉴物件：新地图新 seed，discoveredRelicIds 清空，按主 seed 派生生成
@@ -515,6 +512,9 @@ export function startMazeDive(diveType: string) {
     state.playerAttack = { active: false, timer: 0, cooldownTimer: 0, angle: 0 };
     state.fx.redOverlay = 0;
     state.fx.shake = 0;
+    // 每次下潜补齐全部气瓶；同一 seed 保持位置、数量、补给量和外观一致。
+    maze.consumedTankIds = [];
+    maze.oxygenTanks = buildOxygenTanksForMaze(maze.seed);
     maze.oxygenFeedback = createOxygenFeedback();
 
     // 生成迷宫食人鱼（按聚集点分布，每个聚集点 denFishCountMin~denFishCountMax 条）

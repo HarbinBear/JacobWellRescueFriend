@@ -30,7 +30,6 @@ const overrides = {
     'logic/Collision': { checkMazeCollision: () => false },
     'logic/Marker': idleSystems,
     'logic/FishEnemy': { generateFishDens: () => [], updateAllFishEnemies: noop },
-    'logic/OxygenTank': { buildOxygenTanksForMaze: () => [], createOxygenFeedback: () => ({}), updateOxygenTanks: noop },
     'logic/Relic': { buildRelicsForMaze: () => [], resetRelicDiscoveryForDive: noop, updateRelicDiscovery: noop },
     'logic/LifeDetector': idleSystems,
     'logic/NPCPerception': { isRescueTargetVisible: () => visible },
@@ -236,7 +235,35 @@ try {
     for (const field of ['npcStunned', 'npcStunnedAt', 'rescueRagdoll']) assert(!(field in savedRest));
     logic.startMazeDive('scout');
     assert.equal(casualty.npcStunned, false); assert.equal(casualty.rescueRagdoll, null);
+    // Consume a real generated tank, then verify both same-session and saved-case restocks.
+    const oxygen = load('logic/OxygenTank');
+    const expectedTanks = JSON.parse(JSON.stringify(casualty.oxygenTanks));
+    assert(expectedTanks.length > 1, 'Seed fixture generates oxygen supplies');
+    const tank = casualty.oxygenTanks[0];
+    player.x = tank.x; player.y = tank.y; player.o2 = 30;
+    assert(oxygen.startInstallTank(tank.id));
+    for (let i = 0; i <= Math.ceil(CONFIG.oxygenTank.installDuration * 60); i++) oxygen.updateOxygenTanks();
+    assert.equal(tank.consumed, true);
+    assert.equal(oxygen.startInstallTank(tank.id), false, 'Cannot reuse a tank in the same dive');
+    assert.deepEqual(casualty.consumedTankIds, [tank.id]);
+    casualty.oxygenTanks[1].holdProgress = .5;
+    casualty.oxygenTanks[1].isBeingInstalled = true;
+    logic.returnToShore();
+    logic.startMazeDive('scout');
+    assert.deepEqual(casualty.oxygenTanks, expectedTanks, 'Next dive restores every original tank and clears installation progress');
+    assert.deepEqual(casualty.consumedTankIds, []);
+    assert.deepEqual(casualty.oxygenFeedback.flyingTanks, []);
+    assert.equal(casualty.oxygenFeedback.floatText, null);
+    assert(oxygen.startInstallTank(tank.id), 'The same tank can be collected again next dive');
+    save.saveMazeProgress();
+    const packedRest = storage.get(save.MAZE_SAVE_KEY).packed.rest;
+    assert(!('consumedTankIds' in packedRest), 'Per-dive tank consumption is not persisted');
+    packedRest.consumedTankIds = expectedTanks.map(t => t.id); // Legacy save: all tanks depleted.
+    logic.resetMazeLogic();
+    assert.deepEqual(state.mazeRescue.oxygenTanks, expectedTanks, 'Legacy depleted tanks also respawn in their original places');
+    assert.deepEqual(state.mazeRescue.consumedTankIds, []);
     console.log('通过：旧档死亡坐标归位、绑绳后重新下潜无回拉、操作/反馈状态清理、同次发现不重复台词、下次首次发现重播、案件进度保留、主菜单一键下潜触摸流程。');
+    console.log('通过：同次下潜气瓶只用一次、下次原位全量刷新、安装进度和反馈清理、旧档消耗记录兼容。');
 } finally {
     Date.now = originalNow;
     delete global.wx;
