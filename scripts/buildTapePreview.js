@@ -7,6 +7,7 @@ const { browserBundle } = require('./adaptiveAudioModules');
 const modules = {
     AdaptiveMusicVisuals: 'audio/AdaptiveMusicVisuals', TapeDeckVisual: 'render/TapeDeckVisual',
     TapeResonance: 'render/TapeResonance',
+    RescueDance: 'render/RescueDance', PaperCassette: 'render/PaperCassette', TapeEntry: 'render/TapeEntry',
     RenderDiver: 'render/RenderDiver', HUDTopLeft: 'render/HUDTopLeft', RenderAudioToggle: 'render/RenderAudioToggle',
     character: 'core/config/character', gameplay: 'core/config/gameplay',
 };
@@ -22,6 +23,7 @@ const player={o2:84,o2Max:100,y:3360};let visual;
 const noop=()=>{},deco={nitrogenLoad:.12,boostActive:false,inHoldWindow:false};
 function load(name){const id=name.split('/').pop();
  if(id==='AdaptiveScore')return SignalBelow;
+ if(id==='AdaptiveMusic')return {getAdaptiveMusicClock:()=>null,getAdaptiveMusicPreparation:()=>({status:'ready',progress:1})};
  if(id==='config')return {CONFIG:{...load('character').characterConfig,...load('gameplay').gameplayConfig}};
  if(id==='state')return {state,player};
  if(id==='Canvas')return {ctx:context,logicW:375,logicH:660};
@@ -35,7 +37,7 @@ function load(name){const id=name.split('/').pop();
  if(id==='DecompressionSystem')return {getDecoRuntime:()=>deco,getDecoLevel:()=>0,getCurrentStopInfo:()=>null,isDecompressionRequired:()=>false,isDecoLockActive:()=>false,setDecoBoost:noop,getCurrentDepthMeters:()=>28};
  if(!factories[id])throw Error('Missing preview module: '+name);
  if(!cache[id]){cache[id]={};factories[id](cache[id],load)}return cache[id];}
-window.DeepTape={...load('AdaptiveMusicVisuals'),...load('TapeDeckVisual'),...load('TapeResonance'),...load('RenderDiver'),...load('HUDTopLeft'),
+window.DeepTape={...load('AdaptiveMusicVisuals'),...load('TapeDeckVisual'),...load('TapeResonance'),...load('RescueDance'),...load('RenderDiver'),...load('HUDTopLeft'),
  setVisual:v=>{visual=v},state,player};})();`;
 const output = path.join(__dirname, '../design/deeptape');
 fs.mkdirSync(output, { recursive: true });

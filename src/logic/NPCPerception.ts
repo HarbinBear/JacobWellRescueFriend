@@ -7,7 +7,9 @@ function framing(): { x: number; y: number; vx: number; vy: number; halfX: numbe
     const camera = state.camera, zoom = Math.max(0.01, camera.zoom), window = getWindowMetrics();
     return { x: npc.x - camera.x - camera.swayX, y: npc.y - camera.y - camera.swayY,
         vx: ((npc.vx || 0) - (camera.vx || 0)) * 60, vy: ((npc.vy || 0) - (camera.vy || 0)) * 60,
-        halfX: window.windowWidth / (2 * zoom) + 16, halfY: window.windowHeight / (2 * zoom) + 16 };
+        // Include the raised hand, bent fins and lateral dance step, so discovery
+        // music is scheduled as the body enters rather than waiting for its centre.
+        halfX: window.windowWidth / (2 * zoom) + 32, halfY: window.windowHeight / (2 * zoom) + 56 };
 }
 
 // 游戏发现仍以实际视口为准；保留未来单帧查询供其他调用方使用。

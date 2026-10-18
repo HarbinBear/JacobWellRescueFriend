@@ -20,7 +20,8 @@ function rrect(c: any, x: number, y: number, w: number, h: number, r: number) {
 // =====================================================================
 // 主菜单（新主线《唐老师的救援》）
 //
-// 4 项布局：继续游戏 / 剧情进度 / 新游戏 / 设置
+// 5 项布局：直接下潜 / 继续游戏 / 剧情进度 / 新游戏 / 设置
+//   - 直接下潜：保留本案进度，初始化后同一次输入中启动倒带，不显示营地
 //   - 继续游戏：直接进迷宫救援营地（旧存档继续）
 //   - 剧情进度：进入 progressSelect 屏，可重玩任意已解锁的晚（沙盒模式）
 //   - 新游戏：清存档重开（弹确认框）
@@ -32,7 +33,7 @@ function rrect(c: any, x: number, y: number, w: number, h: number, r: number) {
 // 新游戏确认框由 state._menuConfirmNewGame 状态切换。
 // =====================================================================
 
-export type MenuButtonId = 'continue' | 'progress' | 'newGame' | 'settings';
+export type MenuButtonId = 'dive' | 'continue' | 'progress' | 'newGame' | 'settings';
 
 interface MenuButtonRect {
     id: MenuButtonId;
@@ -51,25 +52,29 @@ export function getMenuButtonRects(): MenuButtonRect[] {
     const hasProgress = (story2.nightIndex || 0) > 0 || story2.knownNights.length > 0;
 
     const btnW = 220;
-    const btnH = 52;
-    const gap = 14;
-    const groupTop = ch * 0.50;
+    const btnH = Math.min(52, Math.max(40, (ch * .56 - 60) / 5));
+    const gap = 10;
+    const groupTop = ch * 0.42;
 
     return [
         {
+            id: 'dive', x: cw / 2 - btnW / 2, y: groupTop,
+            w: btnW, h: btnH, label: '一键下潜',
+            enabled: true, primary: true,
+        },
+        {
             id: 'continue',
             x: cw / 2 - btnW / 2,
-            y: groupTop,
+            y: groupTop + (btnH + gap),
             w: btnW, h: btnH,
             label: '继续游戏',
-            subLabel: hasProgress ? `第 ${Math.max(1, story2.nightIndex)} 晚` : '从第 1 晚开始',
+            subLabel: hasProgress ? `营地 · 第 ${Math.max(1, story2.nightIndex)} 晚` : '营地与准备',
             enabled: true,
-            primary: true,
         },
         {
             id: 'progress',
             x: cw / 2 - btnW / 2,
-            y: groupTop + (btnH + gap),
+            y: groupTop + (btnH + gap) * 2,
             w: btnW, h: btnH,
             label: '剧情进度',
             subLabel: hasProgress ? `已解锁 ${story2.knownNights.length} 晚` : '暂无解锁',
@@ -78,7 +83,7 @@ export function getMenuButtonRects(): MenuButtonRect[] {
         {
             id: 'newGame',
             x: cw / 2 - btnW / 2,
-            y: groupTop + (btnH + gap) * 2,
+            y: groupTop + (btnH + gap) * 3,
             w: btnW, h: btnH,
             label: '新游戏',
             subLabel: hasProgress ? '清空进度，从头开始' : '',
@@ -87,7 +92,7 @@ export function getMenuButtonRects(): MenuButtonRect[] {
         {
             id: 'settings',
             x: cw / 2 - btnW / 2,
-            y: groupTop + (btnH + gap) * 3,
+            y: groupTop + (btnH + gap) * 4,
             w: btnW, h: btnH,
             label: '设置',
             subLabel: '音频 · 画质 · GM',

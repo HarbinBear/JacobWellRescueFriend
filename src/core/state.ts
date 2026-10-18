@@ -197,7 +197,7 @@ export const state = {
     // 迷宫纯享版模式状态（多次下潜闭环）
     mazeRescue: null as null | {
         // === 阶段控制 ===
-        phase: string;          // 'shore'（岸上）| 'play'（水下游戏中）| 'surfacing'（成功撤离上浮中）| 'failed'（撤离失败转场）| 'debrief'（返岸结算）| 'rescued'（救援成功）
+        phase: string;          // shore / tape_rewind / diving_in / tape_play / play / surfacing / failed / debrief / rescued
         diveType: string;       // 'scout'（侦察）| 'rescue'（正式救援）
         resultTimer: number;    // 结算页计时（帧）
         surfacingReason: string; // 上浮原因：'retreat'（主动撤离）| 'o2'（氧气耗尽）| 'rescued'（救援成功）
@@ -223,6 +223,12 @@ export const state = {
         shoreScrollY: number;       // 岸上页面滚动偏移
         divingInTimer: number;      // 入水动效计时（帧）
         divingInBubbles: any[];     // 入水气泡转场列表（每次 startMazeDive 重建）
+        tapeEntryStartedAt?: number;
+        tapeIntroTimer?: number;
+        tapePlaybackStarted?: boolean;
+        tapeNowPlayingAt?: number;
+        npcStateObserved?: boolean; // 本案第一次看见异常舞步后标记，跟随案件进度保存
+        npcEncounterNoteAt?: number;
         _hudEntryTimer: number;     // HUD入场动效计时（帧）
         _hudDetailOpen: number;     // HUD详情展开进度（0~1，0=收起，1=展开）
         _hudDetailHolding: boolean; // HUD详情是否正在按住

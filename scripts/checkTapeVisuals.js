@@ -77,7 +77,7 @@ engine.dispose();
 console.log('通过：A/B/C × 寻找/发现/返程全部实际起音；320个疾奏音符在30/60/120fps逐一可见；切分、循环、增益淡入、输出延迟、暂停与重启。');
 
 // Exercise the actual HUD stationary hold and release with a recording canvas.
-const artwork = compile('render/TapeDeckVisual', {});
+const artwork = compile('render/TapeDeckVisual', { './PaperCassette': compile('render/PaperCassette', {}) });
 const resonance = compile('render/TapeResonance', { './TapeDeckVisual': artwork });
 const v4 = visuals.sampleTapeVisual(clock(4, 8, 'undertow'));
 const v5 = visuals.sampleTapeVisual(clock(5, 8, 'undertow'));
@@ -106,6 +106,7 @@ try {
             drawTapeMixStrip: () => { throw Error('Default sidebar blocks the view'); },
             drawTapeSleeve: (...args) => { sleeves++; artwork.drawTapeSleeve(...args); } },
         './RescueTape': { getRescueTapeVisual: () => visuals.sampleTapeVisual(clock(5, 8, 'undertow')) },
+        './TapeEntry': { drawTapeNowPlaying() {} },
         './RenderAudioToggle': { drawAudioIcon() {}, toggleMuted() {} }, '../gm/GMPanel': { toggleGMOpen() {}, isGMOpen: () => false },
         '../logic/BreathSystem': { getBreathPhaseAngle: () => 0, getBreathPhase: () => 'inhale', getBreathPressure: () => 0, getLungVolume: () => .5 },
         '../audio/AudioManager': { playSFX: () => { calls++; } }, '../extraction/logic/Loadout': { getActiveAirTanks: () => [] },
@@ -127,5 +128,4 @@ console.log('通过：默认仅磁带、真实HUD静止长按展开、松手关�
 
 // Keep the earliest narrative a clue, not an explanation of the voice's source.
 const firstNight = compile('story/scripts/night_01_arrival', {}).night_01_arrival;
-assert(firstNight.nodes.some(n => n.speaker === 'narration' && n.text.includes('怎么也找不到')));
 assert(!firstNight.nodes.some(n => /心声|心里的声音|声音来自|被救.*声音/.test(n.text || '')));

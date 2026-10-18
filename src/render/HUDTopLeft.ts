@@ -28,6 +28,7 @@ import { state, player } from '../core/state';
 import { ctx, logicW, logicH } from './Canvas';
 import { drawTapeDeck, drawTapeSleeve, cutPanel, TAPE } from './TapeDeckVisual';
 import { getRescueTapeVisual } from './RescueTape';
+import { drawTapeNowPlaying } from './TapeEntry';
 import { drawAudioIcon, toggleMuted as audioToggleMuted } from './RenderAudioToggle';
 import { toggleGMOpen, isGMOpen } from '../gm/GMPanel';
 import { getBreathPhaseAngle, getBreathPhase, getBreathPressure, getLungVolume } from '../logic/BreathSystem';
@@ -290,6 +291,7 @@ export function drawHUDTopLeft(time: number): void {
     // 先绘制所有图标（不带长按附加面板）
     for (const slot of slots) {
         slot.item.iconDraw(ctx, slot.cx, slot.cy, slot.size, time);
+        if (slot.item.id === 'lifeDetector') drawTapeNowPlaying(ctx, slot.cx + slot.size / 2 + 12, slot.cy - 23);
         if (slot.item.id !== 'lifeDetector') {
             const captions: { [id: string]: string } = { oxygen: 'AIR', depth: 'DEPTH', deco: 'DECO', driveMode: 'DRIVE', audio: 'SOUND', gm: 'TOOLS' };
             ctx.save(); ctx.font = 'bold 7px Arial'; ctx.textAlign = 'center';
@@ -526,7 +528,7 @@ export function initMazeHUDTopLeft(): void {
             if (state.audio.muted) return '深流随身听 · 已静音\n点上方音量键恢复声音\n按住磁带可看分层节奏';
             if (v.fallback) return '深流随身听 · 双音模式\n按住查看节奏';
             if (!v.playing) return '深流随身听 · 磁带就绪\n带上音乐，下潜\n按住查看分层节奏';
-            return `深流随身听 · ${v.mood === 'return' ? '一起回去' : v.mood === 'found' ? '就在这里' : '向深处去'}\n${v.level}/5 层 · 越靠近，音乐越丰盛\n按住查看分层节奏`;
+            return `深流随身听 · ${v.mood === 'return' ? 'B 面' : 'A 面'}\n${v.level}/5 层 · 120 BPM\n按住查看分层节奏`;
         },
     });
 

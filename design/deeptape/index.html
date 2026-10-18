@@ -12,8 +12,8 @@ main{max-width:1180px;margin:auto;padding:32px 36px 60px}nav{display:flex;justif
 @media(max-width:800px){main{padding:22px 18px 40px}.hero{grid-template-columns:1fr;gap:20px;margin-top:26px}h1{font-size:78px}.intro{max-width:100%}.transport,.study{grid-template-columns:1fr}.study{gap:26px}.scene{margin:auto;width:100%}.device{max-width:560px}.rules{gap:15px}nav{font-size:9px}.tag{margin-top:0}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
 </style></head><body><main>
-<nav><span>JACOB WELL / FIELD MIX 02</span><a href="../adaptive-audio/listen.html">音乐拆轨试听 ↗</a></nav>
-<div class="hero"><div><span class="eyebrow">把深处，听成一首歌。</span><h1>DEEP<br><em>TAPE.</em></h1><h2>深流随身听</h2><p class="intro">一台挂在胸前的防水磁带机。<br>旧贴纸上写着：听不清，就再近一点。</p><span class="tag">WATERPROOF / SIDE A → SIDE B</span></div>
+<nav><span>JACOB WELL / FIELD MIX 03</span><a href="game.html">▶ 实装游戏：主界面直接下潜</a><a href="../adaptive-audio/listen.html">音乐拆轨试听 ↗</a></nav>
+<div class="hero"><div><span class="eyebrow">把深处，听成一首歌。</span><h1>DEEP<br><em>TAPE.</em></h1><h2>深流随身听</h2><p class="intro">一台挂在胸前的旧防水磁带机。</p><span class="tag">WATERPROOF / SIDE A → SIDE B</span></div>
 <div class="device"><canvas id="deck" width="1000" height="600" aria-label="防水磁带机实时节拍动画"></canvas><footer><span>ORIGINAL GAME ART / LIVE SCORE</span><b id="deckState">静态试装 · 05 / 05</b></footer></div></div>
 <div class="transport"><div><span class="label">01 / PRESS PLAY</span><div class="row"><button class="primary" id="play">▶ 播放音乐</button><button id="stop">■ 停止</button><button id="tour" aria-pressed="false">完整旅程</button></div><div class="volume"><label for="variant">MIX</label><select id="variant" aria-label="音乐版本"></select><label for="volume">VOL</label><input id="volume" type="range" min="0" max="100" value="65" aria-label="音量"></div></div>
 <div><span class="label">02 / FIVE LAYERS, ONE TAPE</span><div class="row levels" id="levels" role="group" aria-label="音乐层数"></div><div class="row" id="moods" role="group" aria-label="旅程状态"><button data-mood="search" aria-pressed="false">向深处去</button><button data-mood="found" aria-pressed="true">就在这里</button><button data-mood="return" aria-pressed="false">一起回去</button></div></div></div>
@@ -868,12 +868,12 @@ exports.cutPanel = cutPanel;
 exports.drawTapeDeck = drawTapeDeck;
 exports.drawTapeRibbons = drawTapeRibbons;
 exports.drawTapeSleeve = drawTapeSleeve;
+const PaperCassette_1 = require("./PaperCassette");
 // Small, code-native artwork: the exact same cassette is worn by the diver and
 // drawn in the HUD, detail sleeve, and review page. No image loading or particles.
 exports.TAPE = { ink: '#101e26', paper: '#f4e7c7', orange: '#ff754c', lime: '#d7ee74', mint: '#81e3ce', muted: '#738e92' };
 // A worn owner's note, not an explanation of where the music comes from.
 exports.TAPE_NOTE = '听不清，就再近一点。';
-const TAU = Math.PI * 2;
 function tapeAccent(v) { return v.mood === 'return' ? exports.TAPE.mint : v.mood === 'found' ? exports.TAPE.lime : exports.TAPE.orange; }
 function cutPanel(c, x, y, w, h, cut = 6) {
     c.beginPath();
@@ -885,101 +885,37 @@ function cutPanel(c, x, y, w, h, cut = 6) {
     c.lineTo(x, y + cut);
     c.closePath();
 }
-function reel(c, x, angle, hit) {
-    c.save();
-    c.translate(x, 0);
-    c.rotate(angle);
-    c.fillStyle = exports.TAPE.paper;
-    c.beginPath();
-    c.arc(0, 0, 6 + hit * .5, 0, TAU);
-    c.fill();
-    c.fillStyle = exports.TAPE.ink;
-    c.beginPath();
-    c.arc(0, 0, 2.2, 0, TAU);
-    c.fill();
-    c.strokeStyle = exports.TAPE.ink;
-    c.lineWidth = 1.6;
-    for (let i = 0; i < 3; i++) {
-        const a = i * TAU / 3;
-        c.beginPath();
-        c.moveTo(Math.cos(a) * 3.6, Math.sin(a) * 3.6);
-        c.lineTo(Math.cos(a) * 5.2, Math.sin(a) * 5.2);
-        c.stroke();
-    }
-    c.restore();
-}
-/** width is the total footprint, including the rhythmic outline. */
+/** The same physical cassette at HUD, worn and loading sizes. */
 function drawTapeDeck(c, x, y, width, v, worn = false) {
-    const accent = tapeAccent(v), kick = v.kick;
     c.save();
     c.translate(x, y);
-    c.scale(width / 66, width / 66);
-    // The shell punches on actual kick onsets; the 20 Hz rush stays in its ribbon.
-    c.rotate(worn ? -.12 : -.045 - kick * .025);
-    c.translate(0, -kick * 1.3);
+    c.rotate(worn ? -.12 : -.045 - v.kick * .025);
+    c.translate(0, -v.kick * width / 50);
     if (worn) {
-        c.strokeStyle = exports.TAPE.paper;
-        c.lineWidth = 1.8;
-        c.beginPath();
-        c.moveTo(-20, -10);
-        c.quadraticCurveTo(-31, -21, -23, -30);
-        c.stroke();
         c.fillStyle = '#273e47';
-        c.fillRect(-25, -24, 4, 48);
+        c.fillRect(-width * .12, -width * .55, width * .14, width * 1.1);
     }
-    c.fillStyle = 'rgba(0,0,0,.35)';
-    cutPanel(c, -28, -19, 59, 44, 5);
-    c.fill();
-    c.fillStyle = exports.TAPE.ink;
-    c.strokeStyle = accent;
-    c.lineWidth = 1.4;
-    cutPanel(c, -29, -22, 58, 44, 5);
-    c.fill();
-    c.stroke();
-    // Orange enamel, paper label, little waterproof latch.
-    c.fillStyle = accent;
-    cutPanel(c, -26, -19, 52, 13, 3);
-    c.fill();
-    c.fillStyle = exports.TAPE.ink;
-    c.font = 'bold 6px Arial';
-    c.textAlign = 'left';
-    c.textBaseline = 'middle';
-    c.fillText('DEEPTAPE', -22, -12);
-    c.fillText(v.mood === 'return' ? 'B' : 'A', 19, -12);
-    c.fillStyle = '#253a42';
-    cutPanel(c, -24, -3, 48, 16, 3);
-    c.fill();
-    c.strokeStyle = exports.TAPE.muted;
-    c.lineWidth = 1;
-    c.beginPath();
-    c.moveTo(-15, 5);
-    c.lineTo(15, 5);
-    c.stroke();
+    (0, PaperCassette_1.drawPaperCassette)(c, 0, 0, width, {
+        mode: v.playing ? 'play' : 'stop', progress: .65,
+        seconds: v.beats / 2, side: v.mood === 'return' ? 'B' : 'A',
+    }, 0);
+    // Beat markers stay inside the lower shell. They never change its label or shape.
     c.save();
-    c.translate(0, 5);
-    reel(c, -14, v.beats * Math.PI / 2, v.lanes[2].hit);
-    reel(c, 14, v.beats * Math.PI / 2 + .5, v.lanes[2].hit);
-    c.restore();
-    // Five separate layer windows: fast notes advance a location, not a white strobe.
+    c.scale(width / 560, width / 560);
+    c.translate(-280, -177.5);
+    const alpha = c.globalAlpha;
     for (let i = 1; i <= 5; i++) {
         const lane = v.lanes[i];
-        c.globalAlpha *= .25 + lane.gain * .75;
-        c.fillStyle = i === 5 ? exports.TAPE.lime : exports.TAPE.paper;
-        c.fillRect(-21 + (i - 1) * 9, 16 - lane.hit * 3, 6, 2 + lane.hit * 3);
-        c.globalAlpha /= .25 + lane.gain * .75;
+        c.globalAlpha = alpha * (.3 + .7 * lane.gain);
+        c.fillStyle = exports.TAPE.paper;
+        c.fillRect(158 + (i - 1) * 50, 286 - lane.hit * 5, 24, 7 + lane.hit * 5);
     }
     if (v.lanes[5].gain > .01) {
-        const head = ((v.lanes[5].step % 10) + 10) % 10;
-        c.fillStyle = exports.TAPE.lime;
-        c.fillRect(-24 + head * 4.9, -5, 4, 2);
+        c.globalAlpha = alpha * .9;
+        c.fillStyle = '#b9452e';
+        c.fillRect(235 + ((v.lanes[5].step % 10 + 10) % 10) * 8, 175, 7, 5);
     }
-    c.fillStyle = exports.TAPE.paper;
-    c.fillRect(29, -10, 2, 8);
-    if (!v.playing) {
-        c.fillStyle = exports.TAPE.muted;
-        c.fillRect(-2, 2, 1.5, 6);
-        c.fillRect(1, 2, 1.5, 6);
-    }
+    c.restore();
     c.restore();
 }
 /** Five event ribbons. At 1200/min each note owns a distinct moving cell. */
@@ -1024,13 +960,13 @@ function drawTapeSleeve(c, x, y, w, v) {
     drawTapeDeck(c, w - 40, 26, 45, v);
     c.fillStyle = tapeAccent(v);
     c.font = 'bold 11px Arial';
-    c.fillText(v.fallback ? '双音模式' : !v.playing ? '磁带就绪' : v.mood === 'return' ? 'B 面 / 一起回去' : v.mood === 'found' ? 'A 面 / 就在这里' : 'A 面 / 向深处去', 14, 58);
+    c.fillText(v.fallback ? '双音模式' : !v.playing ? '磁带就绪' : v.mood === 'return' ? 'B 面 / PLAY' : 'A 面 / PLAY', 14, 58);
     drawTapeRibbons(c, 66, 77, w - 80, 17, v);
     c.font = '9px Arial';
     ['微光', '低流', '重鼓', '疾行', '奔涌'].forEach((label, i) => { c.fillStyle = v.lanes[i + 1].gain > .01 ? exports.TAPE.paper : exports.TAPE.muted; c.fillText('0' + (i + 1) + ' ' + label, 14, 85 + i * 17); });
     c.fillStyle = exports.TAPE.muted;
     c.font = '10px Arial';
-    c.fillText(v.playing ? `${v.level}/5 层  ·  120 BPM  ·  ${v.bar + 1}/8 小节` : '带上音乐，下潜。', 14, 180);
+    c.fillText(v.playing ? `${v.level}/5 层  ·  120 BPM  ·  ${v.bar + 1}/8 小节` : 'STOP / SIDE A', 14, 180);
     c.save();
     c.translate(14, 197);
     c.rotate(-.025);
@@ -1078,6 +1014,372 @@ function drawTapeChestAccent(c, v, echo = false) {
     c.beginPath();
     c.ellipse(6, 0, 2.2 + r.kick * 1.4, 1.3 + r.kick, -.2, 0, TAU);
     c.fill();
+    c.restore();
+}
+},"RescueDance":function(exports,require){"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.sampleRescueDance = sampleRescueDance;
+const poses = [
+    [-.45, -.45, 2, -2.4], [-.72, -.24, 2.2, -2.35],
+    [-2, 2.4, .45, .45], [-2.2, 2.35, .72, .24],
+    [-.82, .36, .82, -.36], [-1.2, -.18, .4, -.12],
+    [-2.35, -1.1, 2.35, 1.1], [-2, 2.4, .45, .45],
+];
+const clamp = (n) => Math.max(0, Math.min(1, n));
+/** Continuous eight-beat choreography, including while the target is offscreen.
+ * Pose phase comes from audible audio time. Kick/snare use the exact score onsets. */
+function sampleRescueDance(v) {
+    if (!v || !v.playing || v.fallback)
+        return undefined;
+    const b = v.beats, cycle = ((b % 8) + 8) % 8, i = Math.floor(cycle);
+    const t = clamp((cycle - i) / .28), ease = t * t * (3 - 2 * t);
+    const a = poses[i], next = poses[(i + 1) % 8];
+    const p = a.map((n, j) => n + (next[j] - n) * ease);
+    const weight = Math.sin(b * Math.PI / 2), step = Math.sin(b * Math.PI);
+    const kick = clamp(v.kick * 1.35), snare = clamp(v.snare * 1.4);
+    return {
+        lu: p[0] - .24 * snare, ll: p[1] - .32 * snare,
+        ru: p[2] + .24 * snare, rl: p[3] + .32 * snare,
+        sway: 7.5 * weight, roll: .16 * weight + .06 * snare * Math.sign(weight || 1),
+        bounce: 5 * kick - 4.5 * snare - 2.4 * Math.sin(Math.PI * (b % 1)),
+        compress: 1 - .115 * kick + .045 * snare, legPhase: (b * .5) % 1,
+        leftBend: clamp(.18 + .62 * Math.max(0, step) + .3 * kick),
+        rightBend: clamp(.18 + .62 * Math.max(0, -step) + .3 * kick),
+    };
+}
+},"PaperCassette":function(exports,require){"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.drawPaperCassette = drawPaperCassette;
+function panel(c, x, y, w, h, r, fill, stroke) {
+    c.beginPath();
+    c.moveTo(x + r, y);
+    c.lineTo(x + w - r, y);
+    c.arcTo(x + w, y, x + w, y + r, r);
+    c.lineTo(x + w, y + h - r);
+    c.arcTo(x + w, y + h, x + w - r, y + h, r);
+    c.lineTo(x + r, y + h);
+    c.arcTo(x, y + h, x, y + h - r, r);
+    c.lineTo(x, y + r);
+    c.arcTo(x, y, x + r, y, r);
+    c.closePath();
+    c.fillStyle = fill;
+    c.fill();
+    if (stroke) {
+        c.strokeStyle = stroke;
+        c.lineWidth = 1;
+        c.stroke();
+    }
+}
+function circle(c, x, y, r, fill) {
+    c.beginPath();
+    c.arc(x, y, r, 0, Math.PI * 2);
+    c.fillStyle = fill;
+    c.fill();
+}
+function screw(c, x, y) {
+    circle(c, x, y, 6, '#0c0f0d');
+    circle(c, x, y, 4, '#6b6a5e');
+    c.beginPath();
+    c.moveTo(x - 2.4, y - 2.4);
+    c.lineTo(x + 2.4, y + 2.4);
+    c.strokeStyle = '#181c19';
+    c.lineWidth = 1.6;
+    c.stroke();
+}
+function spool(c, x, r, angle) {
+    const pack = c.createRadialGradient(x, 179, 15, x, 179, r);
+    pack.addColorStop(0, '#1b1b18');
+    pack.addColorStop(.5, '#3b3024');
+    pack.addColorStop(1, '#514332');
+    circle(c, x, 179, r, pack);
+    c.save();
+    c.translate(x, 179);
+    c.rotate(angle);
+    const hub = c.createRadialGradient(0, 0, 0, 0, 0, 29);
+    hub.addColorStop(0, '#f3ead7');
+    hub.addColorStop(.72, '#cec5ae');
+    hub.addColorStop(1, '#928b79');
+    circle(c, 0, 0, 29, hub);
+    circle(c, 0, 0, 23, '#b3ad9a');
+    c.fillStyle = '#242722';
+    for (let i = 0; i < 6; i++) {
+        c.save();
+        c.rotate(i * Math.PI / 3);
+        panel(c, -5, -23, 10, 14, 2, '#242722');
+        c.restore();
+    }
+    circle(c, 0, 0, 11, '#242722');
+    circle(c, 0, 0, 8, '#151b18');
+    c.restore();
+}
+function drawPaperCassette(c, x, y, width, transport, angle = -.075) {
+    c.save();
+    c.translate(x, y);
+    c.rotate(angle);
+    c.scale(width / 560, width / 560);
+    c.translate(-280, -177.5);
+    const compact = width < 120;
+    const rotation = transport.mode === 'rewind' ? -transport.seconds * 23 : transport.mode === 'play' ? transport.seconds * 1.8 : 0;
+    // One object at every size: same outline, paper label, red stripe and reel layout.
+    // Tiny worn/HUD versions omit gradients and fine print, rather than changing design.
+    if (compact) {
+        panel(c, 10, 9, 540, 327, 19, '#222622', '#999a81');
+        panel(c, 31, 35, 498, 224, 9, '#e0d6b9');
+        c.fillStyle = '#b9452e';
+        c.fillRect(32, 93, 496, 21);
+        c.fillRect(32, 120, 496, 3);
+        panel(c, 61, 132, 438, 94, 45, '#20281f');
+        for (const reelX of [159, 401]) {
+            circle(c, reelX, 179, 36, '#a6a087');
+            c.save();
+            c.translate(reelX, 179);
+            c.rotate(rotation);
+            circle(c, 0, 0, 12, '#222a20');
+            c.strokeStyle = '#222a20';
+            c.lineWidth = 8;
+            for (let i = 0; i < 3; i++) {
+                c.rotate(Math.PI * 2 / 3);
+                c.beginPath();
+                c.moveTo(15, 0);
+                c.lineTo(29, 0);
+                c.stroke();
+            }
+            c.restore();
+        }
+        c.fillStyle = '#343b2e';
+        c.beginPath();
+        c.moveTo(144, 277);
+        c.lineTo(416, 277);
+        c.lineTo(442, 321);
+        c.lineTo(118, 321);
+        c.closePath();
+        c.fill();
+        c.textAlign = 'left';
+        c.textBaseline = 'middle';
+        c.font = 'bold 30px Arial';
+        c.fillStyle = '#35412f';
+        c.fillText(transport.side || 'A', 51, 65);
+        if (width >= 40) {
+            c.font = 'bold 23px Arial';
+            c.fillText('DEEPTAPE', 104, 65);
+            c.textAlign = 'right';
+            c.fillText('C60', 508, 65);
+        }
+        c.restore();
+        return;
+    }
+    c.shadowColor = 'rgba(12,24,14,.28)';
+    c.shadowBlur = 25;
+    c.shadowOffsetY = 16;
+    panel(c, 10, 9, 540, 327, 19, '#171b17');
+    c.shadowBlur = 0;
+    c.shadowOffsetY = 0;
+    const shell = c.createLinearGradient(0, 9, 0, 336);
+    shell.addColorStop(0, '#3b3a37');
+    shell.addColorStop(.24, '#272725');
+    shell.addColorStop(1, '#161715');
+    panel(c, 16, 15, 528, 315, 15, shell, '#59594e');
+    panel(c, 27, 31, 506, 233, 11, '#0b0e0c');
+    const paper = c.createLinearGradient(0, 35, 0, 259);
+    paper.addColorStop(0, '#eee5cc');
+    paper.addColorStop(1, '#d7cdb3');
+    panel(c, 31, 35, 498, 224, 9, paper);
+    c.textBaseline = 'alphabetic';
+    c.textAlign = 'left';
+    c.fillStyle = '#292d24';
+    c.font = 'bold 27px Arial';
+    c.fillText(transport.side || 'A', 51, 70);
+    c.font = 'bold 21px Arial';
+    c.fillText('DEEPTAPE / 01', 104, 70);
+    c.font = 'bold 21px Arial';
+    c.fillText('C60', 461, 66);
+    c.strokeStyle = '#797c68';
+    c.lineWidth = .6;
+    c.beginPath();
+    c.moveTo(85, 47);
+    c.lineTo(85, 79);
+    c.moveTo(100, 77);
+    c.lineTo(431, 77);
+    c.stroke();
+    c.fillStyle = '#b9452e';
+    c.fillRect(32, 93, 496, 21);
+    c.fillRect(32, 118, 496, 1.4);
+    c.fillRect(32, 122, 496, 1.4);
+    c.fillStyle = '#f0dfc0';
+    c.font = '9px Arial';
+    c.fillText('NORMAL POSITION / TYPE I', 51, 107);
+    c.textAlign = 'right';
+    c.fillText('LOW NOISE', 508, 107);
+    panel(c, 61, 132, 438, 94, 45, '#171d18', '#8a8978');
+    const p = Math.max(0, Math.min(1, transport.progress));
+    const left = Math.sqrt(31 * 31 + (46 * 46 - 31 * 31) * p), right = Math.sqrt(46 * 46 + (31 * 31 - 46 * 46) * p);
+    spool(c, 159, left, rotation * 40 / left);
+    spool(c, 401, right, rotation * 40 / right);
+    c.strokeStyle = '#796447';
+    c.lineWidth = 1.8;
+    c.beginPath();
+    c.moveTo(160, 219);
+    c.lineTo(401, 219);
+    c.stroke();
+    panel(c, 229, 153, 102, 52, 5, '#272e25', '#626754');
+    c.strokeStyle = '#a79f83';
+    c.lineWidth = 1;
+    c.beginPath();
+    c.moveTo(243, 179);
+    c.lineTo(317, 179);
+    for (let i = 0; i < 5; i++) {
+        const px = 252 + i * 14;
+        c.moveTo(px, i === 2 ? 167 : 172);
+        c.lineTo(px, i === 2 ? 191 : 186);
+    }
+    c.stroke();
+    const glass = c.createLinearGradient(0, 133, 0, 225);
+    glass.addColorStop(0, 'rgba(193,183,163,.14)');
+    glass.addColorStop(.45, 'rgba(27,29,26,.4)');
+    glass.addColorStop(1, 'rgba(172,166,147,.11)');
+    panel(c, 62, 133, 436, 92, 45, glass);
+    c.textAlign = 'left';
+    c.fillStyle = '#4c5143';
+    c.font = '8.5px Arial';
+    c.fillText('DEEPTAPE / STEREO CASSETTE', 52, 247);
+    for (let i = 0; i < 16; i++)
+        c.fillRect(445 + i * 3.5, 235, i % 3 + 1, 13);
+    c.beginPath();
+    c.moveTo(144, 277);
+    c.lineTo(416, 277);
+    c.lineTo(442, 321);
+    c.lineTo(118, 321);
+    c.closePath();
+    c.fillStyle = '#30322c';
+    c.fill();
+    c.strokeStyle = '#68695a';
+    c.stroke();
+    circle(c, 177, 300, 9, '#0f1511');
+    circle(c, 383, 300, 9, '#0f1511');
+    panel(c, 252, 297, 56, 16, 3, '#101610', '#505747');
+    panel(c, 265, 302, 30, 5, 1, '#4a493b');
+    for (const pos of [[29, 27], [531, 27], [29, 316], [531, 316], [280, 277]])
+        screw(c, pos[0], pos[1]);
+    // The player presses a physical transport key; its depression precedes music.
+    const press = transport.press || 0;
+    panel(c, 213, 324 + press * 3, 134, 18 - press * 3, 3, press > .5 ? '#a54a32' : '#8c8c78', '#20261d');
+    c.fillStyle = '#1c281d';
+    c.font = 'bold 9px Arial';
+    c.textAlign = 'center';
+    c.fillText('▶  PLAY', 280, 337);
+    c.restore();
+}
+},"TapeEntry":function(exports,require){"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.TAPE_TRACK_TITLE = void 0;
+exports.getTapeEntryButtons = getTapeEntryButtons;
+exports.drawTapeRewind = drawTapeRewind;
+exports.drawTapePlayIntro = drawTapePlayIntro;
+exports.drawTapeNowPlaying = drawTapeNowPlaying;
+const Canvas_1 = require("./Canvas");
+const state_1 = require("../core/state");
+const AdaptiveMusic_1 = require("../audio/AdaptiveMusic");
+const PaperCassette_1 = require("./PaperCassette");
+const TapeDeckVisual_1 = require("./TapeDeckVisual");
+exports.TAPE_TRACK_TITLE = '夜航';
+function getTapeEntryButtons() {
+    const prep = (0, AdaptiveMusic_1.getAdaptiveMusicPreparation)();
+    const blocked = prep.status === 'error' || prep.status === 'locked';
+    return {
+        retry: { x: Canvas_1.logicW / 2 - 102, y: Canvas_1.logicH * .79, w: 204, h: 42, enabled: blocked },
+        back: { x: Canvas_1.logicW / 2 - 84, y: Canvas_1.logicH * .89, w: 168, h: 36, enabled: state_1.state.mazeRescue && (state_1.state.mazeRescue.phase === 'tape_rewind' || blocked) },
+    };
+}
+function text(s, x, y, font, color, align = 'center') {
+    Canvas_1.ctx.font = font;
+    Canvas_1.ctx.fillStyle = color;
+    Canvas_1.ctx.textAlign = align;
+    Canvas_1.ctx.textBaseline = 'middle';
+    Canvas_1.ctx.fillText(s, x, y);
+}
+function recovery() {
+    const buttons = getTapeEntryButtons(), prep = (0, AdaptiveMusic_1.getAdaptiveMusicPreparation)();
+    if (buttons.retry.enabled) {
+        Canvas_1.ctx.fillStyle = '#a7412c';
+        (0, TapeDeckVisual_1.cutPanel)(Canvas_1.ctx, buttons.retry.x, buttons.retry.y, buttons.retry.w, buttons.retry.h, 3);
+        Canvas_1.ctx.fill();
+        text(prep.status === 'locked' ? '轻点，唤醒随身听' : '重新倒带', Canvas_1.logicW / 2, buttons.retry.y + 21, '13px Arial', '#eee6cf');
+    }
+    if (buttons.back.enabled)
+        text('返回主界面', Canvas_1.logicW / 2, buttons.back.y + 18, '11px Arial', '#697361');
+}
+function drawTapeRewind() {
+    const maze = state_1.state.mazeRescue, prep = (0, AdaptiveMusic_1.getAdaptiveMusicPreparation)();
+    const secs = Math.max(0, (Date.now() - (maze.tapeEntryStartedAt || Date.now())) / 1000);
+    // This is tape transport position, not a made-up network percentage. Even a
+    // cached tape completes its short physical rewind gesture before entering water.
+    const transportProgress = Math.min(prep.progress, secs / .7);
+    const bg = Canvas_1.ctx.createRadialGradient(Canvas_1.logicW / 2, Canvas_1.logicH * .47, 20, Canvas_1.logicW / 2, Canvas_1.logicH * .47, Canvas_1.logicH * .8);
+    bg.addColorStop(0, '#ddd8c9');
+    bg.addColorStop(1, '#c4c4b3');
+    Canvas_1.ctx.fillStyle = bg;
+    Canvas_1.ctx.fillRect(0, 0, Canvas_1.logicW, Canvas_1.logicH);
+    text('DEEPTAPE  /  SIDE A', Canvas_1.logicW / 2, Canvas_1.logicH * .18, '10px Arial', '#69715e');
+    (0, PaperCassette_1.drawPaperCassette)(Canvas_1.ctx, Canvas_1.logicW / 2, Canvas_1.logicH * .46, Math.min(410, Canvas_1.logicW * .86), {
+        mode: prep.status === 'loading' || (prep.status === 'ready' && transportProgress < 1) ? 'rewind' : 'stop', progress: transportProgress, seconds: secs,
+    });
+    const counter = '00:' + ('0' + Math.ceil((1 - transportProgress) * 16)).slice(-2);
+    text('◀◀  REWIND', Canvas_1.logicW / 2 - 48, Canvas_1.logicH * .67, '10px monospace', '#69715e');
+    text(counter, Canvas_1.logicW / 2 + 72, Canvas_1.logicH * .67, '19px monospace', '#384d39');
+    if (prep.status === 'error' || prep.status === 'locked')
+        text(prep.status === 'error' ? '音频准备失败' : '等待音频解锁', Canvas_1.logicW / 2, Canvas_1.logicH * .73, '11px Arial', '#6a705d');
+    recovery();
+}
+/** Underwater transport close-up. No center-screen story toast. */
+function drawTapePlayIntro() {
+    var _a;
+    const maze = state_1.state.mazeRescue, frame = maze.tapeIntroTimer || 0;
+    const prep = (0, AdaptiveMusic_1.getAdaptiveMusicPreparation)();
+    const enter = Math.min(1, frame / 18), leave = Math.max(0, Math.min(1, (frame - 44) / 20));
+    Canvas_1.ctx.save();
+    Canvas_1.ctx.globalAlpha *= 1 - leave;
+    Canvas_1.ctx.fillStyle = 'rgba(6,20,22,.36)';
+    Canvas_1.ctx.fillRect(0, 0, Canvas_1.logicW, Canvas_1.logicH);
+    const cy = Canvas_1.logicH * .68 + (1 - enter) * 90;
+    (0, PaperCassette_1.drawPaperCassette)(Canvas_1.ctx, Canvas_1.logicW / 2, cy, Math.min(350, Canvas_1.logicW * .75), {
+        mode: maze.tapePlaybackStarted ? 'play' : 'stop', progress: 1,
+        seconds: ((_a = (0, AdaptiveMusic_1.getAdaptiveMusicClock)()) === null || _a === void 0 ? void 0 : _a.seconds) || 0, press: Math.max(0, Math.min(1, (frame - 18) / 12)),
+    }, -.035 * (1 - enter));
+    text(maze.tapePlaybackStarted ? '▶  PLAY  /  SIDE A' : 'SIDE A  /  PRESS PLAY', Canvas_1.logicW / 2, cy - Math.min(350, Canvas_1.logicW * .75) * .38, '10px monospace', TapeDeckVisual_1.TAPE.paper);
+    Canvas_1.ctx.restore();
+    if (prep.status === 'error' || prep.status === 'locked') {
+        Canvas_1.ctx.save();
+        Canvas_1.ctx.fillStyle = '#d5d2c1';
+        Canvas_1.ctx.fillRect(0, Canvas_1.logicH * .75, Canvas_1.logicW, Canvas_1.logicH * .25);
+        recovery();
+        Canvas_1.ctx.restore();
+    }
+}
+/** A short paper label alongside the cassette slot; fully disappears after 4.2s. */
+function drawTapeNowPlaying(c, x, y) {
+    const at = state_1.state.mazeRescue && state_1.state.mazeRescue.tapeNowPlayingAt;
+    if (!at)
+        return;
+    const age = (Date.now() - at) / 1000;
+    if (age < 0 || age > 4.2)
+        return;
+    const alpha = Math.min(1, age / .25, (4.2 - age) / .7);
+    c.save();
+    c.globalAlpha *= alpha;
+    c.translate(x - (1 - alpha) * 16, y);
+    c.fillStyle = '#ded6bc';
+    (0, TapeDeckVisual_1.cutPanel)(c, 0, 0, 166, 47, 3);
+    c.fill();
+    c.fillStyle = '#b3452d';
+    c.fillRect(0, 0, 3, 47);
+    c.textAlign = 'left';
+    c.textBaseline = 'middle';
+    c.fillStyle = '#7d654e';
+    c.font = '8px monospace';
+    c.fillText('▶  NOW PLAYING  /  SIDE A', 12, 12);
+    c.fillStyle = '#384537';
+    c.font = '14px "Kaiti SC", STKaiti, serif';
+    c.fillText(exports.TAPE_TRACK_TITLE, 12, 31);
     c.restore();
 }
 },"RenderDiver":function(exports,require){"use strict";
@@ -1247,7 +1549,7 @@ function drawRegulatorAndHose(renderCtx, regX, regY, hoseAnchorX, hoseAnchorY, r
     renderCtx.fill();
     renderCtx.restore();
 }
-function drawLegAndFin(renderCtx, hipX, hipY, side, legPhase, ampNorm, turnProgress, turnStrength, bodyYaw, colors) {
+function drawLegAndFin(renderCtx, hipX, hipY, side, legPhase, ampNorm, turnProgress, turnStrength, bodyYaw, colors, danceBend = 0) {
     const cfg = config_1.CONFIG.diver;
     // ===== 相位波形：俯视 2D 模拟上下打水 =====
     // 一条腿的完整鞭打周期为 legPhase ∈ [0,1)：
@@ -1282,16 +1584,16 @@ function drawLegAndFin(renderCtx, hipX, hipY, side, legPhase, ampNorm, turnProgr
     const hipPY = hipY + bodyYaw * 0.3 + turnOffset * 0.2;
     // 大腿：沿 -x 延伸，长度随 kneeWave 伸缩（纯前后运动）
     const thighStretch = kneeWave * cfg.kickStretchAmp * 0.6;
-    const kneeForward = -(cfg.thighLength + thighStretch);
+    const kneeForward = -(cfg.thighLength + thighStretch) * (1 - danceBend * .46);
     // 侧向：只有转向修正 + 静态基础张开（side * kickBaseSpread 当前为 0）
-    const kneeLateral = side * cfg.kickBaseSpread + turnOffset * 0.7;
+    const kneeLateral = side * (cfg.kickBaseSpread + danceBend * 8) + turnOffset * 0.7;
     const kneePX = hipPX + kneeForward;
     const kneePY = hipPY + kneeLateral;
     // 小腿：沿 -x 延伸，叠加更强的鞭状伸缩（纯前后运动）
     const calfStretch = ankleWave * cfg.kickStretchAmp * 0.8;
-    const ankleForward = -(cfg.calfLength + calfStretch);
+    const ankleForward = -(cfg.calfLength + calfStretch) * (1 - danceBend * .32);
     // 侧向：只保留转向修正（衰减到 0.25，膝盖侧向的延续）
-    const ankleLateral = turnOffset * 0.25;
+    const ankleLateral = turnOffset * 0.25 - side * danceBend * 4;
     const anklePX = kneePX + ankleForward;
     const anklePY = kneePY + ankleLateral;
     // ===== 绘制大腿 =====
@@ -1558,6 +1860,7 @@ function drawDiver(renderCtx, x, y, angle, colors = null, motion = {}) {
     const cfg = config_1.CONFIG.diver;
     const resonanceVisual = motion.resonanceVisual || motion.tapeVisual;
     const resonance = (0, TapeResonance_1.sampleTapeBody)(resonanceVisual, motion.resonanceEcho);
+    const dance = motion.dancePose;
     const time = (_a = motion.animTime) !== null && _a !== void 0 ? _a : Date.now() / 150;
     // tankCount 优先：传 0/1/2 直接生效；不传则按 hasTank 推（true→1, false→0）
     const tankCount = motion.tankCount != null
@@ -1721,13 +2024,13 @@ function drawDiver(renderCtx, x, y, angle, colors = null, motion = {}) {
     const leftArmTargetLower = leftArmTargetUpper + 0.18;
     const rightArmTargetUpper = Math.PI - 0.95 - welcomeBreath;
     const rightArmTargetLower = rightArmTargetUpper - 0.18;
-    const leftArmUpper = leftArmUpperBase + (leftArmTargetUpper - leftArmUpperBase) * welcomeBlend;
-    const leftArmLower = leftArmLowerBase + (leftArmTargetLower - leftArmLowerBase) * welcomeBlend;
-    const rightArmUpper = rightArmUpperBase + (rightArmTargetUpper - rightArmUpperBase) * welcomeBlend;
-    const rightArmLower = rightArmLowerBase + (rightArmTargetLower - rightArmLowerBase) * welcomeBlend;
+    const leftArmUpper = dance ? dance.lu : leftArmUpperBase + (leftArmTargetUpper - leftArmUpperBase) * welcomeBlend;
+    const leftArmLower = dance ? dance.ll : leftArmLowerBase + (leftArmTargetLower - leftArmLowerBase) * welcomeBlend;
+    const rightArmUpper = dance ? dance.ru : rightArmUpperBase + (rightArmTargetUpper - rightArmUpperBase) * welcomeBlend;
+    const rightArmLower = dance ? dance.rl : rightArmLowerBase + (rightArmTargetLower - rightArmLowerBase) * welcomeBlend;
     renderCtx.save();
-    renderCtx.translate(x + driftX, y + driftY);
-    renderCtx.rotate(angle + bodyRoll + resonance.roll);
+    renderCtx.translate(x + (dance ? dance.sway : driftX), y + (dance ? dance.bounce : driftY));
+    renderCtx.rotate(angle + (dance ? dance.roll : bodyRoll + resonance.roll));
     renderCtx.translate(0, -resonance.lift);
     renderCtx.scale(resonance.scaleX, resonance.scaleY);
     // 用 Y 轴压缩模拟 3D 侧倾（roll）：bodyRoll 越大身体越"侧过去"，Y 方向被压扁
@@ -1770,12 +2073,12 @@ function drawDiver(renderCtx, x, y, angle, colors = null, motion = {}) {
             : freq;
         clock.phase = (clock.phase + effectiveFreq) % 1;
     }
-    const legPhaseVal = clock.phase;
-    drawLegAndFin(renderCtx, -8.2, -4.2, -1, legPhaseVal, ampNorm, leftTurnProgress, leftTurnStrength, bodyYaw, c);
+    const legPhaseVal = dance ? dance.legPhase : clock.phase;
+    drawLegAndFin(renderCtx, -8.2, -4.2, -1, legPhaseVal, ampNorm, leftTurnProgress, leftTurnStrength, bodyYaw, c, dance ? dance.leftBend : 0);
     // 右腿相位 +0.5，实现左右交替鞭打
-    drawLegAndFin(renderCtx, -8.2, 4.2, 1, (legPhaseVal + 0.5) % 1, ampNorm, rightTurnProgress, rightTurnStrength, bodyYaw, c);
+    drawLegAndFin(renderCtx, -8.2, 4.2, 1, (legPhaseVal + 0.5) % 1, ampNorm, rightTurnProgress, rightTurnStrength, bodyYaw, c, dance ? dance.rightBend : 0);
     renderCtx.save();
-    renderCtx.scale(torsoCompress, 1);
+    renderCtx.scale(dance ? dance.compress : torsoCompress, 1);
     // BCD 浮力背心气囊：画在躯干之下，让躯干"坐"在气囊上，形成外包一层软壳的层次
     drawBCDBladder(renderCtx, (_r = motion.bcdInflation) !== null && _r !== void 0 ? _r : 0, motion.bcdVenting === true, bodyYaw);
     const bodyGradient = renderCtx.createLinearGradient(10, 0, -16, 0);
@@ -2268,6 +2571,7 @@ const state_1 = require("../core/state");
 const Canvas_1 = require("./Canvas");
 const TapeDeckVisual_1 = require("./TapeDeckVisual");
 const RescueTape_1 = require("./RescueTape");
+const TapeEntry_1 = require("./TapeEntry");
 const RenderAudioToggle_1 = require("./RenderAudioToggle");
 const GMPanel_1 = require("../gm/GMPanel");
 const BreathSystem_1 = require("../logic/BreathSystem");
@@ -2470,6 +2774,8 @@ function drawHUDTopLeft(time) {
     // 先绘制所有图标（不带长按附加面板）
     for (const slot of slots) {
         slot.item.iconDraw(Canvas_1.ctx, slot.cx, slot.cy, slot.size, time);
+        if (slot.item.id === 'lifeDetector')
+            (0, TapeEntry_1.drawTapeNowPlaying)(Canvas_1.ctx, slot.cx + slot.size / 2 + 12, slot.cy - 23);
         if (slot.item.id !== 'lifeDetector') {
             const captions = { oxygen: 'AIR', depth: 'DEPTH', deco: 'DECO', driveMode: 'DRIVE', audio: 'SOUND', gm: 'TOOLS' };
             Canvas_1.ctx.save();
@@ -2702,7 +3008,7 @@ function initMazeHUDTopLeft() {
                 return '深流随身听 · 双音模式\n按住查看节奏';
             if (!v.playing)
                 return '深流随身听 · 磁带就绪\n带上音乐，下潜\n按住查看分层节奏';
-            return `深流随身听 · ${v.mood === 'return' ? '一起回去' : v.mood === 'found' ? '就在这里' : '向深处去'}\n${v.level}/5 层 · 越靠近，音乐越丰盛\n按住查看分层节奏`;
+            return `深流随身听 · ${v.mood === 'return' ? 'B 面' : 'A 面'}\n${v.level}/5 层 · 120 BPM\n按住查看分层节奏`;
         },
     });
     // 5. GM 面板切换（调试工具，放在最后）
@@ -4057,6 +4363,7 @@ const player={o2:84,o2Max:100,y:3360};let visual;
 const noop=()=>{},deco={nitrogenLoad:.12,boostActive:false,inHoldWindow:false};
 function load(name){const id=name.split('/').pop();
  if(id==='AdaptiveScore')return SignalBelow;
+ if(id==='AdaptiveMusic')return {getAdaptiveMusicClock:()=>null,getAdaptiveMusicPreparation:()=>({status:'ready',progress:1})};
  if(id==='config')return {CONFIG:{...load('character').characterConfig,...load('gameplay').gameplayConfig}};
  if(id==='state')return {state,player};
  if(id==='Canvas')return {ctx:context,logicW:375,logicH:660};
@@ -4070,7 +4377,7 @@ function load(name){const id=name.split('/').pop();
  if(id==='DecompressionSystem')return {getDecoRuntime:()=>deco,getDecoLevel:()=>0,getCurrentStopInfo:()=>null,isDecompressionRequired:()=>false,isDecoLockActive:()=>false,setDecoBoost:noop,getCurrentDepthMeters:()=>28};
  if(!factories[id])throw Error('Missing preview module: '+name);
  if(!cache[id]){cache[id]={};factories[id](cache[id],load)}return cache[id];}
-window.DeepTape={...load('AdaptiveMusicVisuals'),...load('TapeDeckVisual'),...load('TapeResonance'),...load('RenderDiver'),...load('HUDTopLeft'),
+window.DeepTape={...load('AdaptiveMusicVisuals'),...load('TapeDeckVisual'),...load('TapeResonance'),...load('RescueDance'),...load('RenderDiver'),...load('HUDTopLeft'),
  setVisual:v=>{visual=v},state,player};})();</script><script>
 const {SCORE,VARIANTS,WARM_LAYER_TRACKS,renderStemAsync,renderPhrasePickup,AdaptiveMusicEngine}=SignalBelow;
 const {sampleTapeVisual,drawTapeDeck,drawTapeSleeve,drawTapeRibbons,drawDiver,drawHUDTopLeft,initMazeHUDTopLeft,cutPanel,TAPE}=DeepTape;
@@ -4099,7 +4406,7 @@ $('tour').onclick=async()=>{if(tourStart!==null){endTour();return}choose(0,'sear
 $('volume').oninput=()=>{if(engine)engine.setVolume(DeepTape.state.audio.muted?0:Number($('volume').value)/100)};
 function snapshot(){const slots=Array(12).fill(0),mix=SCORE.levelMixes[level];const indices=mood==='search'?[0,1,2,3,4,5]:[mood==='return'?7:6,8,9,3,10,11];indices.forEach((slot,i)=>slots[slot]=mix[i]);return {playing:true,level,requestedLevel:level,mood,requestedMood:mood,beats:8.012,beat:8,bar:2,beatPhase:.012,levelAgeSeconds:.28,trackGains:slots,variant:$('variant').value}}
 const colors={suit:'#253f48',body:'#41616c',tank:'#dde3d2',mask:'#85a8ad',fin:'#ff754c',accent:'#f4e7c7',skin:'#dfb390'};
-function diver(c,x,y,scale,v,id,echo=false){c.save();c.translate(x,y);c.scale(scale,scale);drawDiver(c,0,0,echo?2.9:-.2,echo?{...colors,fin:'#415565',accent:'#d8cab2'}:colors,{id,animTime:performance.now()/1000,hasTank:true,tankCount:1,vx:1.5,vy:0,autoSwim:true,tapeVisual:echo?undefined:v,resonanceVisual:v,resonanceEcho:echo});c.restore()}
+function diver(c,x,y,scale,v,id,echo=false){c.save();c.translate(x,y);c.scale(scale,scale);drawDiver(c,0,0,echo?-Math.PI/2:-.2,echo?{...colors,fin:'#415565',accent:'#d8cab2'}:colors,{id,animTime:performance.now()/1000,hasTank:true,tankCount:1,vx:1.5,vy:0,autoSwim:true,tapeVisual:echo?undefined:v,resonanceVisual:echo?undefined:v,dancePose:echo?DeepTape.sampleRescueDance(v):undefined});c.restore()}
 function field(v,t){scene.save();scene.scale(2,2);scene.fillStyle='#0a1720';scene.fillRect(0,0,375,660);
  const glow=scene.createRadialGradient(240,280,15,230,300,300);glow.addColorStop(0,'#213e46');glow.addColorStop(1,'#0a1720');scene.fillStyle=glow;scene.fillRect(0,0,375,660);
  scene.fillStyle='#12242d';scene.beginPath();scene.moveTo(0,0);[[105,0],[145,63],[127,160],[174,235],[135,310],[150,450],[93,520],[100,660],[0,660]].forEach(p=>scene.lineTo(...p));scene.closePath();scene.fill();
@@ -4107,7 +4414,7 @@ function field(v,t){scene.save();scene.scale(2,2);scene.fillStyle='#0a1720';scen
  scene.strokeStyle='#425b54';scene.lineWidth=1.1;scene.beginPath();scene.moveTo(210,0);scene.bezierCurveTo(290,100,110,190,223,300);scene.stroke();
  scene.fillStyle='#73938f';for(let i=0;i<34;i++){const x=(i*93.7)%375,y=(i*41.3+t*6)%660;scene.globalAlpha=.12+(i%4)*.04;scene.fillRect(x,y,1,1)}scene.globalAlpha=1;
  diver(scene,223,300,1.25,v,'field');
- if(v.lanes[5].gain>.01){diver(scene,271,224,1.1,v,'target',true)}
+ diver(scene,271,224,1.1,v,'target',true)
  scene.fillStyle=TAPE.paper;scene.font='9px Arial';scene.textAlign='center';scene.fillText('28 / 60 m',240,71);
  scene.font='bold 8px Arial';scene.fillStyle=TAPE.muted;scene.fillText('JACOB WELL / 01',230,620);
  DeepTape.setVisual(v);drawHUDTopLeft(t);scene.restore()}

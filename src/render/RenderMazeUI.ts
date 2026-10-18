@@ -4,6 +4,8 @@ import { ctx, logicW, logicH } from './Canvas';
 import { drawOxygenScreenGlow } from './RenderOxygenTank';
 import { drawHUDTopLeft, initMazeHUDTopLeft } from './HUDTopLeft';
 import { cutPanel, TAPE } from './TapeDeckVisual';
+import { drawTapeRewind, drawTapePlayIntro } from './TapeEntry';
+import { drawRescueEncounterNote } from './RescueEncounterNote';
 // BCD 浮力背心：水下 inflator 控件 + 失控告警层
 import { drawBCDController, drawBCDWarnOverlay } from './RenderBCD';
 // 撤离玩法 UI 模块（独立于现有 mazeUI 子目录，与撤离系统所有代码同处一个独立树下）
@@ -89,6 +91,12 @@ export function drawMazeHUD() {
     const time = Date.now() / 1000;
 
     ctx.save();
+
+    if (maze.phase === 'tape_rewind' || maze.phase === 'tape_play') {
+        if (maze.phase === 'tape_rewind') drawTapeRewind(); else drawTapePlayIntro();
+        ctx.restore();
+        return;
+    }
 
     // === 岸上阶段 ===
     if (maze.phase === 'shore') {
@@ -486,17 +494,7 @@ export function drawMazeHUD() {
         }
     }
 
-    // 侦察下潜时靠近NPC的提示（未发现时）
-    if (!maze.npcFound && state.npc.active) {
-        const distToNpc = Math.hypot(player.x - state.npc.x, player.y - state.npc.y);
-        if (distToNpc < CONFIG.maze.npcRescueRange * 2) {
-            ctx.globalAlpha = 0.9;
-            ctx.fillStyle = '#ff0';
-            ctx.font = 'bold 14px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText('发现被困者！记住位置！', cw / 2, ch * 0.85);
-        }
-    }
+    drawRescueEncounterNote();
 
     // NPC 已跟随提示
     if (maze.npcRescued) {

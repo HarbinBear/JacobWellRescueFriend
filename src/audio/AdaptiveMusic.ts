@@ -16,6 +16,7 @@ let retiring: AdaptiveMusicEngine[] = [];
 let cueStartedAt = -Infinity;
 let lastVisibleAt = -Infinity;
 let encountered = false;
+let preparationProgress = 0;
 
 function desiredVariant(): VariantName {
     const id = CONFIG.lifeDetector.music.variant;
@@ -31,6 +32,18 @@ function playCue(cue: MusicCue): void {
 
 export function isAdaptiveMusicReady(): boolean { return !!engine && !failed; }
 export function getAdaptiveMusicClock(): MusicClock | null { return engine ? engine.getClock() : null; }
+export function getAdaptiveMusicPreparation(): { status: 'ready' | 'loading' | 'locked' | 'error'; progress: number } {
+    if (!CONFIG.lifeDetector.music.enabled || !CONFIG.lifeDetector.enabled) return { status: 'ready', progress: 1 };
+    if (failed) return { status: 'error', progress: preparationProgress };
+    const ready = !!engine && loadedVariant === desiredVariant() && !preparing;
+    const unlocked = ctx && (!ctx.state || ctx.state === 'running');
+    return { status: ready ? unlocked && !hidden ? 'ready' : 'locked' : 'loading', progress: ready ? 1 : preparationProgress };
+}
+export function retryAdaptiveMusic(): void {
+    if (ctx && ctx.state === 'closed') { ctx = null; engine = null; cues = null; loadedVariant = null; }
+    failed = false;
+    warmUpAdaptiveMusic();
+}
 
 // 必须从触摸/按键回调调用 resume；乐谱生成分块让出主线程，不读网络或云存储。
 export function warmUpAdaptiveMusic(): void {
@@ -55,6 +68,7 @@ export function warmUpAdaptiveMusic(): void {
         }
         if ((!engine || loadedVariant !== desiredVariant()) && !preparing) {
             preparing = true;
+            preparationProgress = 0;
             prepare().catch(err => {
                 failed = true;
                 if (engine) engine.dispose();
@@ -63,11 +77,13 @@ export function warmUpAdaptiveMusic(): void {
                     const result = ctx.close();
                     if (result && result.catch) result.catch(() => { /* 已关闭 */ });
                 }
+                ctx = null; cues = null; loadedVariant = null;
                 console.warn('[AdaptiveMusic] 初始化失败，回退原探测音:', err);
             }).then(() => { preparing = false; });
         }
     } catch (err) {
         failed = true;
+        ctx = null; cues = null;
         console.warn('[AdaptiveMusic] 不可用，回退原探测音:', err);
     }
 }
@@ -80,6 +96,7 @@ async function prepare(): Promise<void> {
         const buffer = ctx.createBuffer(1, pcm.length, SCORE.sampleRate);
         buffer.getChannelData(0).set(pcm);
         buffers.push(buffer);
+        preparationProgress = buffers.length / 13;
     }
     // 合成期间可以继续切换；只提交最新选择，旧音乐保持播放直到替代版本就绪。
     if (variant !== desiredVariant()) return;
@@ -89,6 +106,7 @@ async function prepare(): Promise<void> {
     pickup.getChannelData(0).set(pcm);
     engine = new AdaptiveMusicEngine(ctx, buffers.slice(0, 6), buffers.slice(6, 8), buffers.slice(8), pickup, variant);
     loadedVariant = variant;
+    preparationProgress = 1;
     selected = 0;
 }
 
@@ -114,7 +132,7 @@ export function updateAdaptiveMusic(detector: { active: boolean; currentIntensit
         }
         if (!engine) return;
         const playing = !hidden && cfg.enabled && cfg.music.enabled && state.screen === 'mazeRescue'
-            && maze && maze.phase === 'play';
+            && maze && (maze.phase === 'play' || (maze.phase === 'tape_play' && maze.tapePlaybackStarted));
         if (!playing) { engine.stop(false, maze && maze.phase === 'failed' ? 0.06 : 0.35); engine.getClock(); selected = 0; return; }
         engine.start();
         // 救起后/范围外回到底轨，底轨整个下潜持续存在。

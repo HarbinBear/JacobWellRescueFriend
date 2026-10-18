@@ -40,7 +40,7 @@ async function check() {
     assert(!perception.isRescueTargetVisible());
     state.camera.vx = 1;
     assert(perception.isRescueTargetVisible(0.4), '在下一拍前预判身体入镜');
-    close(perception.rescueTargetEntrySeconds(), (270 - 50 - 203.5) / 60);
+    close(perception.rescueTargetEntrySeconds(), (270 - 50 - 219.5) / 60);
     state.camera.vx = 20;
     assert(!perception.isRescueTargetVisible(1.1));
     assert(Number.isFinite(perception.rescueTargetEntrySeconds()), '高速穿过视口，不能只查终点');
@@ -83,6 +83,17 @@ async function check() {
     const settle = () => new Promise(resolve => setImmediate(resolve));
     music.warmUpAdaptiveMusic(); await settle();
     assert(music.isAdaptiveMusicReady());
+    assert.equal(music.getAdaptiveMusicPreparation().status, 'ready');
+    ctx.state = 'suspended';
+    assert.equal(music.getAdaptiveMusicPreparation().status, 'locked', '合成完成仍须等音频解锁');
+    ctx.state = 'running';
+    state.mazeRescue.phase = 'tape_rewind'; tick();
+    assert.equal(sources.filter(s => s.buffer && s.buffer.duration === 16).length, 0, '倒带期间不能启动音乐');
+    state.mazeRescue.phase = 'tape_play'; state.mazeRescue.tapePlaybackStarted = false; tick();
+    assert.equal(sources.filter(s => s.buffer && s.buffer.duration === 16).length, 0, '播放键尚未按下，不能启动音乐');
+    state.mazeRescue.tapePlaybackStarted = true; tick();
+    assert.equal(sources.filter(s => s.buffer && s.buffer.duration === 16).length, 12, '按键后才启动同一时钟的十二条循环轨');
+    state.mazeRescue.phase = 'play';
     tick();
     assert.equal(music.getAdaptiveMusicClock().requestedLevel, 4);
     predicted = true; tick();
@@ -131,7 +142,27 @@ async function check() {
     assert(sources.every(s => s.stopped !== undefined || s.disconnected), '后台不残留循环或事件音');
     lifecycle.show(); tick();
     assert.equal(music.getAdaptiveMusicClock().requestedLevel, 4);
+    let rejectFirst = true, releaseLast;
+    const recoveryMusic = compile('audio/AdaptiveMusic', { ...baseDeps,
+        './AdaptiveScore': { ...score, renderStemAsync: async stem => {
+            if (rejectFirst) { rejectFirst = false; throw Error('expected preparation failure'); }
+            if (stem === 'sparkFound') await new Promise(resolve => { releaseLast = resolve; });
+            return new Float32Array(score.SCORE.sampleRate * score.SCORE.duration);
+        } }, './AdaptiveMusicEngine': load('AdaptiveMusicEngine'), './AdaptiveCues': load('AdaptiveCues'),
+        '../logic/NPCPerception': { isRescueTargetVisible: () => false, rescueTargetEntrySeconds: () => Infinity } });
+    const originalWarn = console.warn;
+    try { console.warn = () => {}; recoveryMusic.warmUpAdaptiveMusic(); await settle(); }
+    finally { console.warn = originalWarn; }
+    assert.equal(recoveryMusic.getAdaptiveMusicPreparation().status, 'error');
+    assert.equal(recoveryMusic.isAdaptiveMusicReady(), false, '失败不能把半成品提交为可播放');
+    recoveryMusic.retryAdaptiveMusic(); await settle();
+    assert.equal(recoveryMusic.getAdaptiveMusicPreparation().status, 'loading');
+    assert(recoveryMusic.getAdaptiveMusicPreparation().progress < 1);
+    assert.equal(recoveryMusic.isAdaptiveMusicReady(), false, '最后一轨没完成，不能解锁入水');
+    releaseLast(); await settle();
+    assert.equal(recoveryMusic.getAdaptiveMusicPreparation().status, 'ready');
+    close(recoveryMusic.getAdaptiveMusicPreparation().progress, 1);
     delete global.wx;
-    console.log('通过：入镜/边缘/缩放/运动预判与撤销、发现情绪保持、绑绳返程、死亡尾音、静音/后台、A/B/C快速切换。');
+    console.log('通过：入镜/边缘/缩放/运动预判与撤销、发现情绪保持、绑绳返程、死亡尾音、静音/后台、A/B/C快速切换、播放键门禁、准备失败重试与最后一轨就绪门禁。');
 }
 check().catch(err => { console.error(err); process.exitCode = 1; });

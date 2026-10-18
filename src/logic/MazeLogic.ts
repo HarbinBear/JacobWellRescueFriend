@@ -1,5 +1,5 @@
 import { CONFIG } from '../core/config';
-import { state, player, particles, input } from '../core/state';
+import { state, player, particles, input, touches } from '../core/state';
 import { generateMazeMap } from '../world/map';
 import { getMazeMainThemeConfig, getMazeSceneThemeKeyByIndex } from '../world/mazeScene';
 import { StoryManager } from '../story/StoryManager';
@@ -17,6 +17,7 @@ import { buildRelicsForMaze, updateRelicDiscovery, resetRelicDiscoveryForDive, g
 import { updateLifeDetector, resetLifeDetector } from './LifeDetector';
 import { playSFX } from '../audio/AudioManager';
 import { isRescueTargetVisible } from './NPCPerception';
+import { getAdaptiveMusicPreparation, getAdaptiveMusicClock, warmUpAdaptiveMusic } from '../audio/AdaptiveMusic';
 import { triggerCollisionImpact, resetCollisionImpact, updateRegulatorAnim } from './CollisionImpact';
 import { loadMazeProgress, saveMazeProgress, clearMazeSave } from './MazeSave';
 import { setActiveSeededRandom, clearActiveSeededRandom } from '../core/SeededRandom';
@@ -37,7 +38,6 @@ import {
     resetBCDSystem,
     computeBCDBuoyancyAccel,
     consumeBCDO2,
-    consumeBCDTutorialRequest,
     releaseBCDControls,
 } from './BCDSystem';
 
@@ -395,8 +395,7 @@ export function startMazeDive(diveType: string) {
     const maze = state.mazeRescue;
     if (!maze) return;
 
-    // 入水气泡音效：入水动作本身，声音应盖在 diving_in 动画（约 1.5 秒）上
-    playSFX('diveSplash');
+    warmUpAdaptiveMusic();
 
     // 重置呼吸系统运行态（清除残留气泡与音频状态）
     resetBreathSystem();
@@ -416,7 +415,15 @@ export function startMazeDive(diveType: string) {
 
     // 设置下潜类型（不区分scout/rescue，统一为scout，发现NPC后自动可绑绳）
     maze.diveType = diveType;
-    maze.phase = 'diving_in';
+    maze.phase = 'tape_rewind';
+    maze.tapeEntryStartedAt = Date.now();
+    maze.tapeIntroTimer = 0;
+    maze.tapePlaybackStarted = false;
+    maze.tapeNowPlayingAt = 0;
+    maze.npcEncounterNoteAt = 0;
+    input.move = 0; input.speedUp = false; touches.joystickId = null;
+    if (state.manualDrive) state.manualDrive.activeTouches = {};
+    state.alertMsg = '';
     maze.divingInTimer = 0;
     maze._hudEntryTimer = 0;
 
@@ -448,7 +455,7 @@ export function startMazeDive(diveType: string) {
         maze.divingInBubbles = bubbles;
     }
     maze.surfacingReason = '';
-    maze.startTime = Date.now();
+    maze.startTime = 0; // 真正取得控制后再计本次下潜时间。
     maze.finishTime = 0;
     maze.resultTimer = 0;
 
@@ -868,32 +875,33 @@ export function updateMaze() {
         return;
     }
 
-    // === 入水动效阶段 ===
+    // 倒带期间只有磁带和音频准备在运行，世界 / 氧气 / 救援计时全部冻结。
+    if (maze.phase === 'tape_rewind') {
+        if (getAdaptiveMusicPreparation().status === 'ready' && Date.now() - (maze.tapeEntryStartedAt || 0) >= 700) {
+            maze.phase = 'diving_in';
+            maze.divingInTimer = 0;
+            playSFX('diveSplash');
+        }
+        return;
+    }
     if (maze.phase === 'diving_in') {
-        maze.divingInTimer++;
-        // 入水动效持续约1.5秒（90帧）
-        if (maze.divingInTimer >= 90) {
+        if (++maze.divingInTimer >= 90) {
+            maze.phase = 'tape_play';
+            maze.tapeIntroTimer = 0;
+        }
+        return;
+    }
+    // 水下先按下 PLAY，机械键落下后才允许启动音乐。
+    if (maze.phase === 'tape_play') {
+        maze.tapeIntroTimer = (maze.tapeIntroTimer || 0) + 1;
+        if (maze.tapeIntroTimer === 30) playSFX('uiSecondary');
+        if (maze.tapeIntroTimer >= 36) maze.tapePlaybackStarted = true;
+        const clock = getAdaptiveMusicClock();
+        const silentMode = !CONFIG.lifeDetector.enabled || !CONFIG.lifeDetector.music.enabled;
+        if (maze.tapeIntroTimer >= 60 && (silentMode || (clock && clock.playing))) {
             maze.phase = 'play';
-            // 开场提示
-            if (maze.npcFound) {
-                if (maze.diveCount === 0) {
-                    storyManager.showText('第一次下潜，先探探路吧', '#aef', 3000);
-                    setTimeout(() => {
-                        storyManager.showText('靠近墙壁静止可以铺设引导绳', 'rgba(180,220,255,0.9)', 3000);
-                    }, 3500);
-                } else {
-                    storyManager.showText(`第 ${maze.diveCount + 1} 次下潜`, '#aef', 2500);
-                }
-            } else {
-                if (maze.diveCount === 0) {
-                    storyManager.showText('第一次下潜，先探探路吧', '#aef', 3000);
-                    setTimeout(() => {
-                        storyManager.showText('靠近墙壁静止可以铺设引导绳', 'rgba(180,220,255,0.9)', 3000);
-                    }, 3500);
-                } else {
-                    storyManager.showText(`第 ${maze.diveCount + 1} 次下潜，继续深入`, '#aef', 2500);
-                }
-            }
+            maze.startTime = Date.now();
+            maze.tapeNowPlayingAt = silentMode ? 0 : Date.now();
         }
         return;
     }
@@ -1081,13 +1089,6 @@ export function updateMaze() {
     // 保证"充/排气 → 浮力变化"在同一帧内成立，不产生一帧延迟的粘手感。
     updateBCDSystem(1 / 60);
     player.vy += computeBCDBuoyancyAccel();
-    if (consumeBCDTutorialRequest()) {
-        storyManager.showText(
-            '⚠ 深度增加，浮力背心里的气被压缩了\n右侧 [＋] 补气维持中性，[－] 排气下沉\n上浮时务必持续排气，否则会失控飞升',
-            '#7fdcff', 5200
-        );
-    }
-
     // 碰撞检测（使用迷宫专属地图）
     const nextX = player.x + player.vx;
     const nextY = player.y + player.vy;    // 记录撞前速度，用于撞击强度判定（必须在 vx/vy 反弹衰减前采样）
@@ -1234,7 +1235,7 @@ export function updateMaze() {
 
             // --- 呼救表现：玩家进入感知半径才激活 ---
             const distressRange = CONFIG.maze.npcRescueRange * CONFIG.maze.npcDistressActivateRatio;
-            const nowActive = distToPlayer < distressRange;
+            const nowActive = !CONFIG.lifeDetector.music.enabled && distToPlayer < distressRange;
             state.npc.distressActive = nowActive;
 
             if (nowActive) {
@@ -1286,10 +1287,12 @@ export function updateMaze() {
         }
 
         // 人物身体进入当前画面即标记发现，与音乐共用入镜条件
-        if (!maze.npcFound) {
-            if (isRescueTargetVisible()) {
-                maze.npcFound = true;
-                storyManager.showText('发现被困者！', '#ff0', 2500);
+        if (isRescueTargetVisible()) {
+            maze.npcFound = true;
+            if (!maze.npcStateObserved) {
+                maze.npcStateObserved = true;
+                maze.npcEncounterNoteAt = Date.now();
+                saveMazeProgress();
             }
         }
     }

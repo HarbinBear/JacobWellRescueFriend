@@ -12,8 +12,8 @@ main{max-width:1180px;margin:auto;padding:32px 36px 60px}nav{display:flex;justif
 @media(max-width:800px){main{padding:22px 18px 40px}.hero{grid-template-columns:1fr;gap:20px;margin-top:26px}h1{font-size:78px}.intro{max-width:100%}.transport,.study{grid-template-columns:1fr}.study{gap:26px}.scene{margin:auto;width:100%}.device{max-width:560px}.rules{gap:15px}nav{font-size:9px}.tag{margin-top:0}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
 </style></head><body><main>
-<nav><span>JACOB WELL / FIELD MIX 02</span><a href="../adaptive-audio/listen.html">音乐拆轨试听 ↗</a></nav>
-<div class="hero"><div><span class="eyebrow">把深处，听成一首歌。</span><h1>DEEP<br><em>TAPE.</em></h1><h2>深流随身听</h2><p class="intro">一台挂在胸前的防水磁带机。<br>旧贴纸上写着：听不清，就再近一点。</p><span class="tag">WATERPROOF / SIDE A → SIDE B</span></div>
+<nav><span>JACOB WELL / FIELD MIX 03</span><a href="game.html">▶ 实装游戏：主界面直接下潜</a><a href="../adaptive-audio/listen.html">音乐拆轨试听 ↗</a></nav>
+<div class="hero"><div><span class="eyebrow">把深处，听成一首歌。</span><h1>DEEP<br><em>TAPE.</em></h1><h2>深流随身听</h2><p class="intro">一台挂在胸前的旧防水磁带机。</p><span class="tag">WATERPROOF / SIDE A → SIDE B</span></div>
 <div class="device"><canvas id="deck" width="1000" height="600" aria-label="防水磁带机实时节拍动画"></canvas><footer><span>ORIGINAL GAME ART / LIVE SCORE</span><b id="deckState">静态试装 · 05 / 05</b></footer></div></div>
 <div class="transport"><div><span class="label">01 / PRESS PLAY</span><div class="row"><button class="primary" id="play">▶ 播放音乐</button><button id="stop">■ 停止</button><button id="tour" aria-pressed="false">完整旅程</button></div><div class="volume"><label for="variant">MIX</label><select id="variant" aria-label="音乐版本"></select><label for="volume">VOL</label><input id="volume" type="range" min="0" max="100" value="65" aria-label="音量"></div></div>
 <div><span class="label">02 / FIVE LAYERS, ONE TAPE</span><div class="row levels" id="levels" role="group" aria-label="音乐层数"></div><div class="row" id="moods" role="group" aria-label="旅程状态"><button data-mood="search" aria-pressed="false">向深处去</button><button data-mood="found" aria-pressed="true">就在这里</button><button data-mood="return" aria-pressed="false">一起回去</button></div></div></div>
@@ -49,7 +49,7 @@ $('tour').onclick=async()=>{if(tourStart!==null){endTour();return}choose(0,'sear
 $('volume').oninput=()=>{if(engine)engine.setVolume(DeepTape.state.audio.muted?0:Number($('volume').value)/100)};
 function snapshot(){const slots=Array(12).fill(0),mix=SCORE.levelMixes[level];const indices=mood==='search'?[0,1,2,3,4,5]:[mood==='return'?7:6,8,9,3,10,11];indices.forEach((slot,i)=>slots[slot]=mix[i]);return {playing:true,level,requestedLevel:level,mood,requestedMood:mood,beats:8.012,beat:8,bar:2,beatPhase:.012,levelAgeSeconds:.28,trackGains:slots,variant:$('variant').value}}
 const colors={suit:'#253f48',body:'#41616c',tank:'#dde3d2',mask:'#85a8ad',fin:'#ff754c',accent:'#f4e7c7',skin:'#dfb390'};
-function diver(c,x,y,scale,v,id,echo=false){c.save();c.translate(x,y);c.scale(scale,scale);drawDiver(c,0,0,echo?2.9:-.2,echo?{...colors,fin:'#415565',accent:'#d8cab2'}:colors,{id,animTime:performance.now()/1000,hasTank:true,tankCount:1,vx:1.5,vy:0,autoSwim:true,tapeVisual:echo?undefined:v,resonanceVisual:v,resonanceEcho:echo});c.restore()}
+function diver(c,x,y,scale,v,id,echo=false){c.save();c.translate(x,y);c.scale(scale,scale);drawDiver(c,0,0,echo?-Math.PI/2:-.2,echo?{...colors,fin:'#415565',accent:'#d8cab2'}:colors,{id,animTime:performance.now()/1000,hasTank:true,tankCount:1,vx:1.5,vy:0,autoSwim:true,tapeVisual:echo?undefined:v,resonanceVisual:echo?undefined:v,dancePose:echo?DeepTape.sampleRescueDance(v):undefined});c.restore()}
 function field(v,t){scene.save();scene.scale(2,2);scene.fillStyle='#0a1720';scene.fillRect(0,0,375,660);
  const glow=scene.createRadialGradient(240,280,15,230,300,300);glow.addColorStop(0,'#213e46');glow.addColorStop(1,'#0a1720');scene.fillStyle=glow;scene.fillRect(0,0,375,660);
  scene.fillStyle='#12242d';scene.beginPath();scene.moveTo(0,0);[[105,0],[145,63],[127,160],[174,235],[135,310],[150,450],[93,520],[100,660],[0,660]].forEach(p=>scene.lineTo(...p));scene.closePath();scene.fill();
@@ -57,7 +57,7 @@ function field(v,t){scene.save();scene.scale(2,2);scene.fillStyle='#0a1720';scen
  scene.strokeStyle='#425b54';scene.lineWidth=1.1;scene.beginPath();scene.moveTo(210,0);scene.bezierCurveTo(290,100,110,190,223,300);scene.stroke();
  scene.fillStyle='#73938f';for(let i=0;i<34;i++){const x=(i*93.7)%375,y=(i*41.3+t*6)%660;scene.globalAlpha=.12+(i%4)*.04;scene.fillRect(x,y,1,1)}scene.globalAlpha=1;
  diver(scene,223,300,1.25,v,'field');
- if(v.lanes[5].gain>.01){diver(scene,271,224,1.1,v,'target',true)}
+ diver(scene,271,224,1.1,v,'target',true)
  scene.fillStyle=TAPE.paper;scene.font='9px Arial';scene.textAlign='center';scene.fillText('28 / 60 m',240,71);
  scene.font='bold 8px Arial';scene.fillStyle=TAPE.muted;scene.fillText('JACOB WELL / 01',230,620);
  DeepTape.setVisual(v);drawHUDTopLeft(t);scene.restore()}

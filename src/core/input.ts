@@ -1,5 +1,6 @@
 import { CONFIG } from './config';
-import { warmUpAdaptiveMusic } from '../audio/AdaptiveMusic';
+import { warmUpAdaptiveMusic, retryAdaptiveMusic, resetAdaptiveMusic } from '../audio/AdaptiveMusic';
+import { getTapeEntryButtons } from '../render/TapeEntry';
 import { state, input, touches, player } from './state';
 import { createFishEnemy, triggerPlayerAttack, findSafeSpawnPosition } from '../logic/FishEnemy';
 import { DEBUG_FISH_BTN, ATTACK_BTN, FLASHLIGHT_BTN } from '../render/RenderUI';
@@ -99,8 +100,11 @@ const _homeTouchStartY: { [id: number]: number } = {};
 const _homeTouchMoved: { [id: number]: boolean } = {};
 
 // 主菜单按钮 → 行为
-function handleMenuButton(id: MenuButtonId, onMaze?: () => void) {
+function handleMenuButton(id: MenuButtonId, onMaze?: () => void, onMazeDive?: (kind: string) => void) {
     switch (id) {
+        case 'dive':
+            if (onMaze && onMazeDive) { onMaze(); onMazeDive('scout'); }
+            return;
         case 'continue':
             // 直接进迷宫救援营地（旧存档由 resetMazeLogic 自动 loadMazeProgress）
             if (onMaze) onMaze();
@@ -254,22 +258,15 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
         window.addEventListener('keydown', (e) => {
             warmUpAdaptiveMusic();
             if(state.screen === 'menu') {
-                if(e.code === 'Space') {
-                    if(!state.transition.active) {
-                        state.transition.active = true;
-                        state.transition.alpha = 0;
-                        state.transition.mode = 'out';
-                        state.transition.callback = () => {
-                            if (onReset) onReset();
-                        };
-                    }
+                if(e.code === 'Space' && !(state as any)._menuConfirmNewGame) {
+                    handleMenuButton('dive', onMaze, onMazeDive);
                 }
                 return;
             }
 
-            if(state.screen !== 'play') {
+            if(state.screen !== 'play' && !(state.screen === 'mazeRescue' && state.mazeRescue && state.mazeRescue.phase === 'play')) {
                 // 旧主线 ending 分支已废弃。
-                if(e.code === 'Space') state.screen = 'menu';
+                if(e.code === 'Space' && state.screen !== 'mazeRescue') state.screen = 'menu';
                 return;
             }
             
@@ -297,6 +294,9 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
 
     wx.onTouchStart((res) => {
         warmUpAdaptiveMusic();
+        if (state.screen === 'mazeRescue' && state.mazeRescue &&
+            ['tape_rewind', 'tape_play'].indexOf(state.mazeRescue.phase) >= 0) return;
+
         // GM 面板优先消费触摸事件（面板本身或 HUD 栏的 GM 齿轮按钮）
         const gmTouch = res.touches[res.touches.length - 1];
         if (gmTouch && handleGMTouchStart(gmTouch.clientX, gmTouch.clientY)) {
@@ -846,6 +846,19 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
     });
 
     wx.onTouchEnd((res) => {
+        if (state.screen === 'mazeRescue' && state.mazeRescue &&
+            ['tape_rewind', 'tape_play'].indexOf(state.mazeRescue.phase) >= 0) {
+            const touch = res.changedTouches[0];
+            if (touch) {
+                const buttons = getTapeEntryButtons();
+                const hit = (r: any) => touch.clientX >= r.x && touch.clientX <= r.x + r.w && touch.clientY >= r.y && touch.clientY <= r.y + r.h;
+                if (buttons.retry.enabled && hit(buttons.retry)) retryAdaptiveMusic();
+                else if (buttons.back.enabled && hit(buttons.back)) { resetAdaptiveMusic(); state.screen = 'menu'; }
+            }
+            bcdReleaseAll();
+            return;
+        }
+
         // 家场景（晚上）：完全独立的 UI 派发，不与营地/水下混用
         if (state.screen === 'home_evening') {
             const t = res.changedTouches[0] || res.touches[res.touches.length - 1];
@@ -1369,7 +1382,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                 return; // 确认框打开时其余点击吃掉
             }
 
-            // ---- 主菜单 4 个按钮 ----
+            // ---- 主菜单按钮（含直接下潜） ----
             const buttons = getMenuButtonRects();
             for (const b of buttons) {
                 if (tx >= b.x && tx <= b.x + b.w && ty >= b.y && ty <= b.y + b.h) {
@@ -1377,8 +1390,8 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                         playSFX('uiSecondary');
                         return;
                     }
-                    playSFX(b.id === 'continue' || b.id === 'newGame' ? 'uiPrimary' : 'uiSecondary');
-                    handleMenuButton(b.id, !!onMaze ? onMaze : undefined);
+                    playSFX(b.id === 'dive' || b.id === 'continue' || b.id === 'newGame' ? 'uiPrimary' : 'uiSecondary');
+                    handleMenuButton(b.id, onMaze, onMazeDive);
                     return;
                 }
             }

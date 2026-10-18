@@ -33,8 +33,8 @@
 //    完全归中时整个控件亮一圈青色"配平良好"光环，给正反馈。
 //
 // 告警层（drawBCDWarnOverlay）：
-//   失控上浮时屏幕上缘泛橙红脉冲 + "上浮过快 · 立即排气"；
-//   失控下沉时屏幕下缘泛琥珀脉冲 + "下沉过快 · 立即补气"。
+//   失控上浮时屏幕上缘泛橙红脉冲；失控下沉时屏幕下缘泛琥珀脉冲。
+//   教学与处置文字暂不展示。
 //   都是边缘渐变，不挡视野中心。
 // =============================================
 
@@ -144,7 +144,6 @@ export function drawBCDController(time: number): void {
     const rt = getBCDRuntime();
     const g = getBCDGaugeInfo();
     const L = getBCDLayout();
-    const c = cfg();
 
     // 配平良好（净浮力接近 0）时给整根手柄一圈青色呼吸光环 —— 正反馈
     const trimmed = Math.abs(g.netLiftNorm) < 0.12;
@@ -182,9 +181,6 @@ export function drawBCDController(time: number): void {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(g.pressureAtm.toFixed(1) + ' ATA', L.cx, L.deflateY + L.btnR + 15);
-
-    // ---------- 首次可见时的一次性上手提示 ----------
-    if (c.uiVisible) drawFirstHintIfNeeded(L, time);
 
     ctx.textAlign = 'start';
     ctx.textBaseline = 'alphabetic';
@@ -464,68 +460,7 @@ function drawDeflateBtn(L: BCDLayout, active: boolean, empty: boolean, time: num
 }
 
 // =============================================
-// 一次性上手提示（前若干秒在控件左侧浮一张小卡）
-// =============================================
-
-let _hintStartAt = 0;
-let _hintDoneForDive = false;
-let _lastSeenDiveStamp = 0;
-
-function drawFirstHintIfNeeded(L: BCDLayout, time: number): void {
-    void time;
-    const maze: any = state.mazeRescue;
-    if (!maze) return;
-    // 换一次下潜就重新给一次提示（用 startTime 当代际标识）
-    const stamp = maze.startTime || 0;
-    if (stamp !== _lastSeenDiveStamp) {
-        _lastSeenDiveStamp = stamp;
-        _hintStartAt = Date.now();
-        _hintDoneForDive = false;
-    }
-    if (_hintDoneForDive) return;
-    if (_hintStartAt === 0) _hintStartAt = Date.now();
-
-    const age = Date.now() - _hintStartAt;
-    const total = 5000;
-    if (age > total) { _hintDoneForDive = true; return; }
-    let alpha = 1;
-    if (age < 350) alpha = age / 350;
-    else if (age > total - 700) alpha = (total - age) / 700;
-    alpha = Math.max(0, Math.min(1, alpha));
-
-    const lines = ['浮力背心', '＋ 充气上浮', '－ 排气下沉', '黄线＝中性'];
-    ctx.save();
-    ctx.globalAlpha = alpha;
-    ctx.font = '10px Arial';
-    let maxW = 0;
-    for (const s of lines) maxW = Math.max(maxW, ctx.measureText(s).width);
-    const padding = 8;
-    const lineH = 14;
-    const panelW = maxW + padding * 2;
-    const panelH = lines.length * lineH + padding * 2 - 2;
-    const px = L.gaugeX - 10 - panelW;
-    const py = L.cy - panelH / 2;
-
-    ctx.fillStyle = 'rgba(8, 20, 32, 0.9)';
-    rrectPath(ctx, px, py, panelW, panelH, 7);
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(120, 190, 220, 0.4)';
-    ctx.lineWidth = 0.8;
-    rrectPath(ctx, px, py, panelW, panelH, 7);
-    ctx.stroke();
-
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-    for (let i = 0; i < lines.length; i++) {
-        ctx.fillStyle = i === 0 ? 'rgba(150, 235, 255, 0.95)' : 'rgba(215, 235, 245, 0.85)';
-        ctx.font = i === 0 ? 'bold 10px Arial' : '10px Arial';
-        ctx.fillText(lines[i], px + padding, py + padding + i * lineH);
-    }
-    ctx.restore();
-}
-
-// =============================================
-// 失控告警全屏层（边缘脉冲 + 一行处置指令）
+// 失控告警全屏层（仅保留边缘颜色，不弹教学或处置文案）
 // =============================================
 
 export function drawBCDWarnOverlay(time: number): void {
@@ -551,20 +486,6 @@ export function drawBCDWarnOverlay(time: number): void {
         ctx.fillStyle = grad;
         ctx.fillRect(0, 0, cw, ch * 0.3);
 
-        if (up > 0.35) {
-            const ta = Math.min(1, (up - 0.35) / 0.3) * pulse;
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.shadowColor = 'rgba(0,0,0,0.75)';
-            ctx.shadowBlur = 6;
-            ctx.fillStyle = `rgba(255, 225, 210, ${ta})`;
-            ctx.font = 'bold 17px "PingFang SC", Arial';
-            ctx.fillText('⚠ 上浮过快', cw / 2, ch * 0.13);
-            ctx.font = '11px "PingFang SC", Arial';
-            ctx.fillStyle = `rgba(255, 195, 175, ${ta * 0.9})`;
-            ctx.fillText('立即按 － 排气 · 氮气正在飙升', cw / 2, ch * 0.13 + 20);
-            ctx.shadowBlur = 0;
-        }
     }
 
     // --- 失控下沉：下缘琥珀（危险度低一档，配色偏暖不刺眼）---
@@ -576,17 +497,6 @@ export function drawBCDWarnOverlay(time: number): void {
         ctx.fillStyle = grad;
         ctx.fillRect(0, ch * 0.74, cw, ch * 0.26);
 
-        if (down > 0.4) {
-            const ta = Math.min(1, (down - 0.4) / 0.3) * pulse;
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.shadowColor = 'rgba(0,0,0,0.75)';
-            ctx.shadowBlur = 6;
-            ctx.fillStyle = `rgba(255, 238, 205, ${ta})`;
-            ctx.font = 'bold 15px "PingFang SC", Arial';
-            ctx.fillText('下沉过快 · 按 ＋ 补气', cw / 2, ch * 0.9);
-            ctx.shadowBlur = 0;
-        }
     }
 
     ctx.textAlign = 'start';

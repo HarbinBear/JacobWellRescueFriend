@@ -378,7 +378,8 @@ export function saveMazeProgress(): boolean {
             k === 'diveHistory' ||
             // 不该跨 session 存的运行时杂项
             k === 'playerPath' ||
-            k === 'divingInBubbles') {
+            k === 'divingInBubbles' || k === 'tapeEntryStartedAt' || k === 'tapeIntroTimer' ||
+            k === 'tapePlaybackStarted' || k === 'tapeNowPlayingAt' || k === 'npcEncounterNoteAt') {
             continue;
         }
         rest[k] = maze[k];

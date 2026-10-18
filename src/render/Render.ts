@@ -17,7 +17,8 @@ import { drawRelicsWorld, drawRelicHintsWorld } from './RenderRelic';
 // BCD 浮力背心：气囊鼓胀度 / 排气状态（驱动潜水员身上的背心视觉）
 import { getBCDInflationRatio, isBCDVenting } from '../logic/BCDSystem';
 import { getRescueTapeVisual } from './RescueTape';
-import { isRescueTargetVisible } from '../logic/NPCPerception';
+import { sampleRescueDance } from './RescueDance';
+import { drawRescueTarget } from './RenderRescueTarget';
 // 撤离玩法：拾取调试可视化（GM 开关控制）
 import { drawPickupDebugOverlay } from '../extraction/render/PickupDebugOverlay';
 // 撤离玩法：水底丢弃物世界层渲染
@@ -200,7 +201,7 @@ export function draw() {
     // 绘制墙壁（使用 state.walls 支持不规则布局）
 
     // 迷宫岸上阶段、入水动效和结算阶段：跳过水下场景渲染，只渲染UI
-    if (isMazeMode && (state.mazeRescue.phase === 'shore' || state.mazeRescue.phase === 'diving_in' || state.mazeRescue.phase === 'debrief' || state.mazeRescue.phase === 'rescued')) {
+    if (isMazeMode && (state.mazeRescue.phase === 'shore' || state.mazeRescue.phase === 'tape_rewind' || state.mazeRescue.phase === 'diving_in' || state.mazeRescue.phase === 'debrief' || state.mazeRescue.phase === 'rescued')) {
         ctx.restore();
         profileEnd('draw.sky');
         profileBegin('draw.ui');
@@ -456,29 +457,10 @@ export function draw() {
 
     // One audible-time sample drives both people and the cassette.
     const tapeVisual = isMazeMode && CONFIG.lifeDetector.enabled && state.mazeRescue.phase === 'play' ? getRescueTapeVisual() : undefined;
-    const targetEchoVisible = !!tapeVisual && tapeVisual.lanes[5].gain > .01 && isRescueTargetVisible();
+    const targetDance = isMazeMode && !state.mazeRescue.npcRescued ? sampleRescueDance(tapeVisual) : undefined;
 
-    // 绘制 NPC
-    if(state.npc && state.npc.active) {
-        const npcColors = {
-            suit: '#2b353c',
-            body: '#7c5353',
-            tank: '#bfd4dc',
-            mask: '#d68c4b',
-            fin: '#263238',
-            accent: '#8aa7b3',
-            skin: '#c4a48e'
-        };
-        drawDiver(ctx, state.npc.x, state.npc.y, state.npc.angle, npcColors, {
-            animTime: Date.now() / 150,
-            hasTank: true,
-            vx: state.npc.vx,
-            vy: state.npc.vy,
-            id: 'npc',
-            resonanceVisual: targetEchoVisible ? tapeVisual : undefined,
-            resonanceEcho: true,
-        });
-    }
+    // Maze target is rendered once after darkness; other modes keep world lighting.
+    if (!isMazeMode) drawRescueTarget(ctx, tapeVisual);
 
     // 绘制玩家
     // 旧主线 tankDamaged（氧气瓶损坏 → 不画瓶）已废弃，固定有瓶。
@@ -523,7 +505,7 @@ export function draw() {
 
 
     // --- 绘制 NPC 呼救表现（气泡、挥手、闪光圈，仅迷宫未被救时）---
-    drawNPCDistressWorld(ctx);
+    if (!targetDance) drawNPCDistressWorld(ctx);
 
     profileEnd('draw.diver');
     profileBegin('draw.dustDark');
@@ -646,6 +628,15 @@ export function draw() {
     }
 
     profileEnd('draw.lighting');
+    if (isMazeMode) {
+        ctx.save();
+        ctx.translate(logicW / 2 + shakeX, logicH / 2 + shakeY);
+        ctx.scale(zoom, zoom);
+        ctx.translate(-camX, -camY);
+        drawRescueTarget(ctx, tapeVisual);
+        ctx.restore();
+    }
+
     profileBegin('draw.overlay');
 
     // 绘制亮色悬浮尘埃（光照后，被手电照亮的尘埃散射发光）
