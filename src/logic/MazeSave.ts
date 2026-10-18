@@ -379,7 +379,8 @@ export function saveMazeProgress(): boolean {
             // 不该跨 session 存的运行时杂项
             k === 'playerPath' ||
             k === 'divingInBubbles' || k === 'tapeEntryStartedAt' || k === 'tapeIntroTimer' ||
-            k === 'tapePlaybackStarted' || k === 'tapeNowPlayingAt' || k === 'npcEncounterNoteAt' || k === 'npcSecuredAt') {
+            k === 'tapePlaybackStarted' || k === 'tapeNowPlayingAt' || k === 'npcEncounterNoteAt' || k === 'npcSecuredAt' ||
+            k === 'npcStateObserved') { // 旧版本的案件级台词标记已废弃
             continue;
         }
         rest[k] = maze[k];
@@ -591,13 +592,8 @@ export function loadMazeProgress(): boolean {
     // 恢复标记
     state.markers = Array.isArray(data.markers) ? data.markers : [];
 
-    // 恢复玩家关键状态
-    if (data.playerPos) {
-        player.x = data.playerPos.x;
-        player.y = data.playerPos.y;
-        player.angle = data.playerPos.angle;
-        player.o2 = data.playerPos.o2;
-    }
+    // 玩家位置和氧气属于单次下潜，不从旧档恢复（可能是死亡位置 / 零氧气）。
+    // MazeLogic 在进入营地和启动下潜时统一归位并应用本次装备。
 
     console.log('[MazeSave] 存档恢复成功（v3 种子），seed=' + (mazeData.seed >>> 0) +
                 '，已完成 ' + (maze.diveCount || 0) + ' 次下潜，活绳子 ' + restoredRopes.length + ' 条');

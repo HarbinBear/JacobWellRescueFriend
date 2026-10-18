@@ -103,7 +103,10 @@ const _homeTouchMoved: { [id: number]: boolean } = {};
 function handleMenuButton(id: MenuButtonId, onMaze?: () => void, onMazeDive?: (kind: string) => void) {
     switch (id) {
         case 'dive':
-            if (onMaze && onMazeDive) { onMaze(); onMazeDive('scout'); }
+            if (onMaze && onMazeDive) {
+                onMaze();
+                onMazeDive(state.mazeRescue?.npcFound ? 'rescue' : 'scout');
+            }
             return;
         case 'continue':
             // 直接进迷宫救援营地（旧存档由 resetMazeLogic 自动 loadMazeProgress）

@@ -5,6 +5,7 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
+    "maze:check": "node scripts/checkMazeDiveLifecycle.js",
     "watch": "tsc --watch",
     "clean": "rmdir /s /q dist 2>nul || true",
     "shaders": "node scripts/buildShaders.js",

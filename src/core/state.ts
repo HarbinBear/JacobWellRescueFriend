@@ -227,8 +227,7 @@ export const state = {
         tapeIntroTimer?: number;
         tapePlaybackStarted?: boolean;
         tapeNowPlayingAt?: number;
-        npcStateObserved?: boolean; // 本案第一次看见异常舞步后标记，跟随案件进度保存
-        npcEncounterNoteAt?: number;
+        npcEncounterNoteAt?: number; // 本次下潜首次看见被救者的台词时间戳，不进存档
         npcSecuredAt?: number; // 扣紧安全绳的短暂反馈，不进入存档
         _hudEntryTimer: number;     // HUD入场动效计时（帧）
         _hudDetailOpen: number;     // HUD详情展开进度（0~1，0=收起，1=展开）

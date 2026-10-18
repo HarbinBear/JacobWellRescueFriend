@@ -61,6 +61,18 @@ function buildCaseNumberFromSeed(seed: number): string {
     return 'JWR-' + n;
 }
 
+// 读档只恢复案件进度；每次入场和下潜都从洞口出发。
+function placePlayerAtMazeEntrance(maze: { exitX: number; mazeTileSize: number }) {
+    const wallThick = CONFIG.maze.wallThickness || 5;
+    player.x = maze.exitX;
+    player.y = (wallThick + 1) * maze.mazeTileSize + maze.mazeTileSize / 2;
+    player.vx = 0;
+    player.vy = 0;
+    player.angle = Math.PI / 2;
+    player.targetAngle = Math.PI / 2;
+    input.targetAngle = Math.PI / 2;
+}
+
 // =============================================
 // 迷宫多次下潜闭环：初始化
 // 默认行为：优先尝试读取本地存档；读档成功则直接恢复到岸上阶段，不生成新地图。
@@ -112,6 +124,8 @@ export function resetMazeLogic() {
             vx: 0, vy: 0,
             swayX: 0, swayY: 0, swayTime: 0,
         };
+        placePlayerAtMazeEntrance(state.mazeRescue);
+        snapCameraToPlayer();
 
         // 读档后重建食人鱼聚集点 + 骷髅（P4：fishDens 不进存档，由派生 seed 确定性重建）
         // 必须在 state.mazeRescue 挂好之后调用，因为 generateFishDens 会读 mazeWalls / mazeMap / mazeRows / mazeCols
@@ -371,13 +385,7 @@ export function resetMazeLogic() {
     state.npc.distressHaloTimer = 0;
 
     // 玩家放在出口位置（岸上阶段不显示，但预设好）
-    player.x = mazeData.exitX;
-    // 使用边缘厚度计算安全出生Y（在洞口内侧）
-    const wallThick = CONFIG.maze.wallThickness || 5;
-    player.y = (wallThick + 1) * mazeData.mazeTileSize + mazeData.mazeTileSize / 2;
-    player.angle = Math.PI / 2;
-    player.targetAngle = Math.PI / 2;
-    input.targetAngle = Math.PI / 2;
+    placePlayerAtMazeEntrance(mazeData);
 
     // 相机归位到迷宫出生点
     snapCameraToPlayer();
@@ -423,11 +431,34 @@ export function startMazeDive(diveType: string) {
     maze.tapeNowPlayingAt = 0;
     maze.npcEncounterNoteAt = 0;
     maze.npcSecuredAt = 0;
-    input.move = 0; input.speedUp = false; touches.joystickId = null;
-    if (state.manualDrive) state.manualDrive.activeTouches = {};
+    input.move = 0;
+    input.speedUp = false;
+    touches.joystickId = null;
+    touches.start = { x: 0, y: 0 };
+    touches.curr = { x: 0, y: 0 };
+    state.manualDrive = {
+        activeTouches: {}, nextStrokeSide: -1, lastInputAngle: Math.PI / 2, hasInput: false,
+        leftKickProgress: 0, rightKickProgress: 0, leftKickStrength: 0, rightKickStrength: 0,
+        leftTurnProgress: 0, rightTurnProgress: 0, leftTurnStrength: 0, rightTurnStrength: 0,
+        forwardVisual: 0, turnVisual: 0, kickDrive: 0,
+    };
+    if (state.msgTimer) clearTimeout(state.msgTimer);
+    state.msgTimer = null;
     state.alertMsg = '';
     maze.divingInTimer = 0;
     maze._hudEntryTimer = 0;
+    maze._hudDetailOpen = 0;
+    maze._hudDetailHolding = false;
+    maze._retreatDetailOpen = 0;
+    maze._retreatDetailHolding = false;
+    maze._driveToggleOpen = 0;
+    maze._driveToggleHolding = false;
+    maze._driveSwitchTip = 0;
+    maze.shoreMapOpen = false;
+    maze.codexOpen = false;
+    maze.codexSelectedKind = null;
+    (maze as any)._decoBlockedRescuedWarned = false;
+    (maze as any)._decoBlockedRescuedSince = 0;
 
     // 初始化入水气泡转场：完全照搬剧情模式 state.transition 的气泡公式
     // 剧情模式做法：200 个气泡随机撒在全屏，速度方向为"从屏幕中心指向自己位置"
@@ -466,21 +497,21 @@ export function startMazeDive(diveType: string) {
     player.o2 = 100;
     player.o2Max = 100;
     player.silt = 0;
-    player.vx = 0;
-    player.vy = 0;
-    // 玩家从出口（顶部）出发
-    player.x = maze.exitX;
-    // 使用边缘厚度计算安全出生Y（在洞口内侧）
-    const wallThick = CONFIG.maze.wallThickness || 5;
-    player.y = (wallThick + 1) * maze.mazeTileSize + maze.mazeTileSize / 2;
-    player.angle = Math.PI / 2;
-    player.targetAngle = Math.PI / 2;
-    input.targetAngle = Math.PI / 2;
+    placePlayerAtMazeEntrance(maze);
+    player.animTime = 0;
+    player.carryItemAnim.active = false;
+    player.carryItemAnim.timer = 0;
+    player.carryItemAnim.itemKind = '';
+    player.welcomeArmsAnim.active = false;
+    player.welcomeArmsAnim.timer = 0;
     particles.length = 0;
     state.splashes = [];
     state.fishBite = null;
+    state.flashlightOn = true;
+    state.playerAttack = { active: false, timer: 0, cooldownTimer: 0, angle: 0 };
     state.fx.redOverlay = 0;
     state.fx.shake = 0;
+    maze.oxygenFeedback = createOxygenFeedback();
 
     // 生成迷宫食人鱼（按聚集点分布，每个聚集点 denFishCountMin~denFishCountMax 条）
     state.fishEnemies = [];
@@ -504,6 +535,8 @@ export function startMazeDive(diveType: string) {
     }
 
     // 相机归位到下潜出生点
+    state.camera.zoom = 1;
+    state.camera.targetZoom = 1;
     snapCameraToPlayer();
 
     // 重置 BCD 浮力背心运行态。
@@ -521,10 +554,8 @@ export function startMazeDive(diveType: string) {
     maze.npcRescueHoldStart = 0;
     maze.npcRescueTouchId = null;
 
-    // 正式救援时重置NPC跟随状态
-    if (diveType === 'rescue') {
-        maze.npcRescued = false;
-    }
+    // 绑绳只属于本次下潜，包括主菜单直接启动的 scout。
+    maze.npcRescued = false;
 
     // 激活NPC
     state.npc.active = true;
@@ -1290,10 +1321,12 @@ export function updateMaze() {
 
         // 人物身体进入当前画面即标记发现，与音乐共用入镜条件
         if (isRescueTargetVisible()) {
-            maze.npcFound = true;
-            if (!maze.npcStateObserved) {
-                maze.npcStateObserved = true;
+            // 台词时间戳不进存档，每次下潜重置，同次再次入镜不重播。
+            if (!maze.npcEncounterNoteAt) {
                 maze.npcEncounterNoteAt = Date.now();
+            }
+            if (!maze.npcFound) {
+                maze.npcFound = true;
                 saveMazeProgress();
             }
         }
