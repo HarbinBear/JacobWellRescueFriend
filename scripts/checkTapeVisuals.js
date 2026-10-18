@@ -82,6 +82,14 @@ const resonance = compile('render/TapeResonance', { './TapeDeckVisual': artwork 
 const v4 = visuals.sampleTapeVisual(clock(4, 8, 'undertow'));
 const v5 = visuals.sampleTapeVisual(clock(5, 8, 'undertow'));
 v5.levelAgeSeconds = .28;
+const motions=Array.from({length:6},(_,n)=>artwork.sampleTapeMotion(visuals.sampleTapeVisual(clock(n,8,'undertow'))));
+assert.equal(motions[0].sx,1);assert(Math.abs(motions[0].y)<1e-9);
+assert(motions[1].y<0 && motions[1].sx===1,'First layer breathes without a bass impact');
+assert(motions[2].sx>motions[1].sx,'Bass visibly compresses the shell');
+assert(motions[3].roll!==motions[2].roll,'Drums introduce a distinct physical snap');
+assert(motions[4].drive>0 && motions[3].drive===0,'Fourth layer adds the moving print');
+assert(motions[5].rush===1 && motions[4].rush===0 && motions[5].sy>motions[4].sy,'Fifth layer has its own cut-up print and larger full-object impact');
+assert.deepEqual(artwork.sampleTapeMotion({...v5,muted:true}),artwork.sampleTapeMotion({...v5,playing:false}));
 const body4 = resonance.sampleTapeBody(v4), body5 = resonance.sampleTapeBody(v5);
 assert.equal(body4.bloom, 0, 'fourth layer never gets the fifth-layer blossom');
 assert.equal(body5.bloom, 1);

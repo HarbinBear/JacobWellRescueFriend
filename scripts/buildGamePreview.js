@@ -14,11 +14,11 @@ load('/game');
 const {state,player,input}=load('/src/core/state'),music=load('/src/audio/AdaptiveMusic');
 window.DeepTapeGame={state,player,music,menu(){music.resetAdaptiveMusic();state.screen='menu';},nearTarget(){
  if(!state.mazeRescue||state.mazeRescue.phase!=='play')return;
- const maze=state.mazeRescue,ts=maze.mazeTileSize,npc=state.npc;
+ const maze=state.mazeRescue,ts=maze.mazeTileSize,npc=state.npc;maze.npcRescued=false;maze.npcSecuredAt=0;npc.state='wait';
  let best=null,score=Infinity;for(let r=1;r<maze.mazeRows-1;r++)for(let c=1;c<maze.mazeCols-1;c++)if(maze.mazeMap[r][c]===0){const x=(c+.5)*ts,y=(r+.5)*ts,d=Math.hypot(x-npc.x,y-npc.y);if(d>45&&Math.abs(d-110)<score){best={x,y};score=Math.abs(d-110)}}
  const collision=load('/src/logic/Collision').checkMazeCollision;
- for(const [dx,dy] of [[-55,-65],[-40,-45],[-60,0],[0,-60],[-40,40],[40,-40]])if(!collision(npc.x+dx,npc.y+dy,maze)){best={x:npc.x+dx,y:npc.y+dy};break}
- if(best){player.x=best.x;player.y=best.y;player.vx=player.vy=0;player.angle=player.targetAngle=input.targetAngle=Math.atan2(npc.y-player.y,npc.x-player.x);CONFIG.infiniteO2=true;state.fishEnemies=[];maze.npcEncounterNoteAt=Date.now();load('/src/logic/CameraLogic').snapCameraToPlayer();}
+ for(const [dx,dy] of [[-40,-45],[-60,0],[0,-60],[-40,40],[40,-40]])if(!collision(npc.x+dx,npc.y+dy,maze)){best={x:npc.x+dx,y:npc.y+dy};break}
+ if(best){player.x=best.x;player.y=best.y;player.vx=player.vy=0;player.angle=player.targetAngle=input.targetAngle=Math.atan2(npc.y-player.y,npc.x-player.x);CONFIG.infiniteO2=true;player.o2=player.o2Max;maze.maxDepthAllowed=Math.max(maze.maxDepthAllowed,60);state.fishEnemies=[];maze.npcEncounterNoteAt=Date.now();load('/src/logic/BCDSystem').resetBCDSystem();load('/src/logic/CameraLogic').snapCameraToPlayer();}
 }};})();`;
 new Function(bundle);
 const output=path.join(root,'design/deeptape');fs.mkdirSync(output,{recursive:true});

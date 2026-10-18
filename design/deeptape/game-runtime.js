@@ -17909,6 +17909,7 @@ exports.acceptNewCase = acceptNewCase;
 exports.stayInResolvedCase = stayInResolvedCase;
 exports.goHome = goHome;
 exports.updateMaze = updateMaze;
+const RescueLink_1 = require("./RescueLink");
 const config_1 = require("../core/config");
 const state_1 = require("../core/state");
 const map_1 = require("../world/map");
@@ -18295,6 +18296,7 @@ function startMazeDive(diveType) {
     maze.tapePlaybackStarted = false;
     maze.tapeNowPlayingAt = 0;
     maze.npcEncounterNoteAt = 0;
+    maze.npcSecuredAt = 0;
     state_1.input.move = 0;
     state_1.input.speedUp = false;
     state_1.touches.joystickId = null;
@@ -19138,19 +19140,8 @@ function updateMaze() {
             }
         }
     }
-    // --- 救援交互：靠近NPC长按（发现NPC后即可绑绳，不区分下潜类型） ---
-    if (!maze.npcRescued && state_1.state.npc.active) {
-        if (maze.npcRescueHolding) {
-            const elapsed = (Date.now() - maze.npcRescueHoldStart) / 1000;
-            if (elapsed >= config_1.CONFIG.maze.npcRescueHoldDuration) {
-                // 完成绑绳
-                maze.npcRescued = true;
-                maze.npcRescueHolding = false;
-                state_1.state.npc.state = 'follow';
-                storyManager.showText('绑好了！带他出去！', '#0f8', 2500);
-            }
-        }
-    }
+    // --- 安全绳连接：持续按住且保持在接触范围内 ---
+    (0, RescueLink_1.updateRescueLink)();
     // --- 撤离协议：长按完成后开始上浮（未带人时可用） ---
     if (!maze.npcRescued && maze.retreatHolding) {
         const elapsed = (Date.now() - maze.retreatHoldStart) / 1000;
@@ -19634,7 +19625,7 @@ function saveMazeProgress() {
             // 不该跨 session 存的运行时杂项
             k === 'playerPath' ||
             k === 'divingInBubbles' || k === 'tapeEntryStartedAt' || k === 'tapeIntroTimer' ||
-            k === 'tapePlaybackStarted' || k === 'tapeNowPlayingAt' || k === 'npcEncounterNoteAt') {
+            k === 'tapePlaybackStarted' || k === 'tapeNowPlayingAt' || k === 'npcEncounterNoteAt' || k === 'npcSecuredAt') {
             continue;
         }
         rest[k] = maze[k];
@@ -21285,6 +21276,30 @@ function findRelicById(id) {
             return r;
     }
     return null;
+}
+},"/src/logic/RescueLink":function(exports,require){"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.updateRescueLink = updateRescueLink;
+const config_1 = require("../core/config");
+const state_1 = require("../core/state");
+/** Commit the clasp only while the same uninterrupted hold is still in reach. */
+function updateRescueLink(now = Date.now()) {
+    const maze = state_1.state.mazeRescue;
+    if (!maze || maze.phase !== 'play' || maze.npcRescued || !state_1.state.npc.active || !maze.npcRescueHolding)
+        return;
+    if (Math.hypot(state_1.player.x - state_1.state.npc.x, state_1.player.y - state_1.state.npc.y) >= config_1.CONFIG.maze.npcRescueRange) {
+        maze.npcRescueHolding = false;
+        maze.npcRescueHoldStart = 0;
+        maze.npcRescueTouchId = null;
+        return;
+    }
+    if (now - maze.npcRescueHoldStart < config_1.CONFIG.maze.npcRescueHoldDuration * 1000)
+        return;
+    maze.npcRescued = true;
+    maze.npcRescueHolding = false;
+    maze.npcRescueTouchId = null;
+    maze.npcSecuredAt = now;
+    state_1.state.npc.state = 'follow';
 }
 },"/src/logic/Rope":function(exports,require){"use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
@@ -29435,6 +29450,7 @@ const HUDTopLeft_1 = require("./HUDTopLeft");
 const TapeDeckVisual_1 = require("./TapeDeckVisual");
 const TapeEntry_1 = require("./TapeEntry");
 const RescueEncounterNote_1 = require("./RescueEncounterNote");
+const RescueLinkFeedback_1 = require("./RescueLinkFeedback");
 // BCD 浮力背心：水下 inflator 控件 + 失控告警层
 const RenderBCD_1 = require("./RenderBCD");
 // 撤离玩法 UI 模块（独立于现有 mazeUI 子目录，与撤离系统所有代码同处一个独立树下）
@@ -29855,45 +29871,17 @@ function drawMazeHUD() {
         Canvas_1.ctx.textBaseline = 'alphabetic';
         Canvas_1.ctx.restore();
     }
-    // NPC 救援提示（靠近NPC时显示，发现后即可绑绳）
-    if (!maze.npcRescued && state_1.state.npc.active) {
-        const distToNpc = Math.hypot(state_1.player.x - state_1.state.npc.x, state_1.player.y - state_1.state.npc.y);
-        if (distToNpc < config_1.CONFIG.maze.npcRescueRange) {
-            Canvas_1.ctx.globalAlpha = 0.9;
-            Canvas_1.ctx.textAlign = 'center';
-            if (maze.npcRescueHolding) {
-                const elapsed = (Date.now() - maze.npcRescueHoldStart) / 1000;
-                const progress = Math.min(1, elapsed / config_1.CONFIG.maze.npcRescueHoldDuration);
-                const zoom = state_1.state.camera ? state_1.state.camera.zoom : 1;
-                const npcScreenX = cw / 2 + (state_1.state.npc.x - state_1.player.x) * zoom;
-                const npcScreenY = ch / 2 + (state_1.state.npc.y - state_1.player.y) * zoom;
-                Canvas_1.ctx.strokeStyle = 'rgba(0,255,150,0.9)';
-                Canvas_1.ctx.lineWidth = 4;
-                Canvas_1.ctx.beginPath();
-                Canvas_1.ctx.arc(npcScreenX, npcScreenY - 40, 22, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress);
-                Canvas_1.ctx.stroke();
-                Canvas_1.ctx.fillStyle = 'rgba(0,255,150,0.9)';
-                Canvas_1.ctx.font = 'bold 13px Arial';
-                Canvas_1.ctx.fillText('绑绳中...', npcScreenX, npcScreenY - 70);
-            }
-            else {
-                Canvas_1.ctx.fillStyle = 'rgba(200,255,200,0.9)';
-                Canvas_1.ctx.font = '13px Arial';
-                Canvas_1.ctx.fillText('长按绑绳', cw / 2, ch * 0.85);
-            }
-        }
-    }
+    (0, RescueLinkFeedback_1.drawRescueLinkFeedback)();
     (0, RescueEncounterNote_1.drawRescueEncounterNote)();
     // NPC 已跟随提示
     if (maze.npcRescued) {
         const distToExit = Math.hypot(state_1.player.x - maze.exitX, state_1.player.y - maze.exitY);
         if (distToExit < maze.mazeTileSize * 8) {
-            const pulse = 0.7 + Math.sin(time * 4) * 0.3;
-            Canvas_1.ctx.globalAlpha = pulse;
-            Canvas_1.ctx.fillStyle = '#0f8';
-            Canvas_1.ctx.font = 'bold 16px Arial';
+            Canvas_1.ctx.globalAlpha = .85;
+            Canvas_1.ctx.fillStyle = TapeDeckVisual_1.TAPE.paper;
+            Canvas_1.ctx.font = '11px "PingFang SC", Arial';
             Canvas_1.ctx.textAlign = 'center';
-            Canvas_1.ctx.fillText('↑ 出口就在上方！', cw / 2, ch * 0.15);
+            Canvas_1.ctx.fillText('↑  返回入水口', cw / 2, ch * 0.15);
         }
     }
     // 撤离按钮（未带人时可用，左下角，按住展开说明）
@@ -33867,42 +33855,164 @@ const state_1 = require("../core/state");
 const Canvas_1 = require("./Canvas");
 const TapeDeckVisual_1 = require("./TapeDeckVisual");
 exports.RESCUE_ENCOUNTER_LINES = [
-    '他似乎认不出这里了。',
-    '把洞穴当成了舞池，还在笑。',
-    '得先把他带回水面。',
+    '……他认不出这儿了。',
+    '还以为自己在舞池里……',
+    '先带他上去。',
 ];
-/** Once on first encounter, as an observation rather than a diagnosis/source reveal. */
+/** Quiet, actor-attached speech. No journal, speaker label or source reveal. */
 function drawRescueEncounterNote() {
     const maze = state_1.state.mazeRescue;
     if (!maze || maze.phase !== 'play' || !maze.npcEncounterNoteAt)
         return;
     const age = (Date.now() - maze.npcEncounterNoteAt) / 1000;
-    if (age < 0 || age > 8 || maze.npcRescued)
+    if (age < 0 || age >= 8.4 || maze.npcRescued || maze.npcRescueHolding)
         return;
-    const alpha = Math.max(0, Math.min(1, age / .45, (8 - age) / 1));
-    const x = 91, width = Math.min(236, Canvas_1.logicW - x - 80);
-    const camera = state_1.state.camera, npc = state_1.state.npc;
-    const screenX = camera && npc ? Canvas_1.logicW / 2 + (npc.x - camera.x - camera.swayX) * camera.zoom : -100;
-    const screenY = camera && npc ? Canvas_1.logicH / 2 + (npc.y - camera.y - camera.swayY) * camera.zoom : -100;
-    // Do not cover the very person this note introduces. Leave HUD/BCD controls clear.
-    const coversTarget = screenX + 40 > x && screenX - 40 < x + width && screenY + 75 > 86 && screenY - 75 < 187;
-    const y = coversTarget ? Math.max(205, Canvas_1.logicH - 235) : 86;
+    const index = Math.floor(age / 2.8), local = age % 2.8;
+    const alpha = Math.max(0, Math.min(.9, local / .25, (2.8 - local) / .4));
+    const camera = state_1.state.camera;
+    const px = Canvas_1.logicW / 2 + (state_1.player.x - camera.x - camera.swayX) * camera.zoom;
+    const py = Canvas_1.logicH / 2 + (state_1.player.y - camera.y - camera.swayY) * camera.zoom;
+    if (px < -25 || px > Canvas_1.logicW + 25 || py < 50 || py > Canvas_1.logicH - 30)
+        return;
+    // A small mouth-directed tail identifies the speaking diver; text follows him.
+    const width = 176, x = Math.max(84, Math.min(Canvas_1.logicW - width - 54, px - width + 25));
+    let y = Math.max(100, Math.min(Canvas_1.logicH - 125, py - 66));
+    const nx = Canvas_1.logicW / 2 + (state_1.state.npc.x - camera.x - camera.swayX) * camera.zoom;
+    const ny = Canvas_1.logicH / 2 + (state_1.state.npc.y - camera.y - camera.swayY) * camera.zoom;
+    const below = nx + 42 > x && nx - 42 < x + width && ny + 65 > y && ny - 65 < y + 30;
+    if (below)
+        y = Math.min(Canvas_1.logicH - 125, py + 42);
     Canvas_1.ctx.save();
     Canvas_1.ctx.globalAlpha *= alpha;
-    Canvas_1.ctx.translate(0, -(1 - alpha) * 5);
-    Canvas_1.ctx.fillStyle = 'rgba(17,28,30,.88)';
-    (0, TapeDeckVisual_1.cutPanel)(Canvas_1.ctx, x, y, width, 101, 5);
+    Canvas_1.ctx.fillStyle = 'rgba(15,28,30,.84)';
+    Canvas_1.ctx.beginPath();
+    Canvas_1.ctx.moveTo(x + 8, y);
+    Canvas_1.ctx.lineTo(x + width, y + 2);
+    Canvas_1.ctx.lineTo(x + width - 5, y + 30);
+    Canvas_1.ctx.lineTo(x, y + 28);
+    Canvas_1.ctx.lineTo(x + 3, y + 5);
+    Canvas_1.ctx.closePath();
     Canvas_1.ctx.fill();
-    Canvas_1.ctx.fillStyle = '#b58962';
-    Canvas_1.ctx.fillRect(x, y + 10, 2, 81);
+    const edgeY = below ? y + 1 : y + 29;
+    const tailX = Math.max(x + 12, Math.min(x + width - 20, px));
+    Canvas_1.ctx.beginPath();
+    Canvas_1.ctx.moveTo(tailX - 5, edgeY);
+    Canvas_1.ctx.lineTo(px + 12, py + (below ? 13 : -19));
+    Canvas_1.ctx.lineTo(tailX + 8, edgeY);
+    Canvas_1.ctx.closePath();
+    Canvas_1.ctx.fill();
     Canvas_1.ctx.textAlign = 'left';
     Canvas_1.ctx.textBaseline = 'middle';
-    Canvas_1.ctx.font = '9px Arial';
-    Canvas_1.ctx.fillStyle = '#a5ad9a';
-    Canvas_1.ctx.fillText('潜水手记  /  01', x + 13, y + 17);
     Canvas_1.ctx.font = '12px "PingFang SC", Arial';
     Canvas_1.ctx.fillStyle = TapeDeckVisual_1.TAPE.paper;
-    exports.RESCUE_ENCOUNTER_LINES.forEach((line, i) => Canvas_1.ctx.fillText(line, x + 13, y + 40 + i * 20, width - 23));
+    Canvas_1.ctx.fillText(exports.RESCUE_ENCOUNTER_LINES[index], x + 11, y + 15, width - 22);
+    Canvas_1.ctx.restore();
+}
+},"/src/render/RescueLinkFeedback":function(exports,require){"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.getRescueLinkFeedback = getRescueLinkFeedback;
+exports.drawRescueLinkFeedback = drawRescueLinkFeedback;
+const config_1 = require("../core/config");
+const state_1 = require("../core/state");
+const Canvas_1 = require("./Canvas");
+const TapeDeckVisual_1 = require("./TapeDeckVisual");
+/** Read the interaction itself, so cancelling cannot leave an animated false success. */
+function getRescueLinkFeedback(now = Date.now()) {
+    const maze = state_1.state.mazeRescue;
+    if (!maze || maze.phase !== 'play' || !state_1.state.npc.active)
+        return null;
+    if (maze.npcRescued) {
+        const age = (now - (maze.npcSecuredAt || 0)) / 1000;
+        return maze.npcSecuredAt && age >= 0 && age < 4
+            ? { mode: 'secured', progress: 1, alpha: Math.min(1, (4 - age) / .7) } : null;
+    }
+    if (Math.hypot(state_1.player.x - state_1.state.npc.x, state_1.player.y - state_1.state.npc.y) >= config_1.CONFIG.maze.npcRescueRange)
+        return null;
+    return maze.npcRescueHolding
+        ? { mode: 'holding', progress: Math.max(0, Math.min(1, (now - maze.npcRescueHoldStart) / (1000 * config_1.CONFIG.maze.npcRescueHoldDuration))), alpha: 1 }
+        : { mode: 'ready', progress: 0, alpha: .9 };
+}
+function clasp(x, y, progress, locked) {
+    // Two pieces of webbing feed into the same clasp, then its gate snaps shut.
+    const gap = (1 - progress) * 13;
+    Canvas_1.ctx.fillStyle = locked ? '#b9452e' : '#8f7257';
+    Canvas_1.ctx.fillRect(x - 57, y - 5, 41 - gap, 10);
+    Canvas_1.ctx.fillRect(x + 16 + gap, y - 5, 41 - gap, 10);
+    Canvas_1.ctx.strokeStyle = '#e8cf9d';
+    Canvas_1.ctx.lineWidth = 1;
+    for (let i = 0; i < 5; i++) {
+        Canvas_1.ctx.beginPath();
+        Canvas_1.ctx.moveTo(x - 53 + i * 6, y - 3);
+        Canvas_1.ctx.lineTo(x - 50 + i * 6, y + 3);
+        Canvas_1.ctx.stroke();
+        Canvas_1.ctx.beginPath();
+        Canvas_1.ctx.moveTo(x + 26 + i * 6, y - 3);
+        Canvas_1.ctx.lineTo(x + 29 + i * 6, y + 3);
+        Canvas_1.ctx.stroke();
+    }
+    Canvas_1.ctx.lineWidth = 2;
+    Canvas_1.ctx.strokeStyle = locked ? TapeDeckVisual_1.TAPE.paper : '#a3aaa0';
+    (0, TapeDeckVisual_1.cutPanel)(Canvas_1.ctx, x - 17 - gap, y - 10, 22, 20, 4);
+    Canvas_1.ctx.stroke();
+    Canvas_1.ctx.beginPath();
+    Canvas_1.ctx.moveTo(x + 17 + gap, y - 9);
+    Canvas_1.ctx.lineTo(x + 6 + gap, y - 9);
+    Canvas_1.ctx.lineTo(x + 6 + gap, y + 9);
+    Canvas_1.ctx.lineTo(x + 17 + gap, y + 9);
+    Canvas_1.ctx.stroke();
+    if (locked) {
+        Canvas_1.ctx.strokeStyle = TapeDeckVisual_1.TAPE.paper;
+        Canvas_1.ctx.lineWidth = 2;
+        Canvas_1.ctx.beginPath();
+        Canvas_1.ctx.moveTo(x - 4, y);
+        Canvas_1.ctx.lineTo(x, y + 4);
+        Canvas_1.ctx.lineTo(x + 8, y - 5);
+        Canvas_1.ctx.stroke();
+    }
+}
+function drawRescueLinkFeedback() {
+    const feedback = getRescueLinkFeedback();
+    if (!feedback)
+        return;
+    const camera = state_1.state.camera;
+    const nx = Canvas_1.logicW / 2 + (state_1.state.npc.x - camera.x - camera.swayX) * camera.zoom;
+    const ny = Canvas_1.logicH / 2 + (state_1.state.npc.y - camera.y - camera.swayY) * camera.zoom;
+    if (nx < -60 || nx > Canvas_1.logicW + 60 || ny < -60 || ny > Canvas_1.logicH + 60)
+        return;
+    // Attach to the person, above or below their silhouette, never at the old toast position.
+    const w = 156, h = feedback.mode === 'secured' ? 72 : 61;
+    const x = Math.max(87, Math.min(Canvas_1.logicW - w - 57, nx - w / 2));
+    const y = Math.max(110, Math.min(Canvas_1.logicH - 130, ny > Canvas_1.logicH - 210 ? ny - 118 : ny + 72));
+    const locked = feedback.mode === 'secured';
+    Canvas_1.ctx.save();
+    Canvas_1.ctx.globalAlpha *= feedback.alpha;
+    Canvas_1.ctx.fillStyle = locked ? TapeDeckVisual_1.TAPE.paper : 'rgba(18,30,31,.94)';
+    (0, TapeDeckVisual_1.cutPanel)(Canvas_1.ctx, x, y, w, h, 7);
+    Canvas_1.ctx.fill();
+    Canvas_1.ctx.fillStyle = '#b9452e';
+    Canvas_1.ctx.fillRect(x, y + 8, 3, h - 16);
+    Canvas_1.ctx.textAlign = 'center';
+    Canvas_1.ctx.textBaseline = 'middle';
+    Canvas_1.ctx.font = 'bold 12px "PingFang SC", Arial';
+    Canvas_1.ctx.fillStyle = locked ? TapeDeckVisual_1.TAPE.ink : TapeDeckVisual_1.TAPE.paper;
+    Canvas_1.ctx.fillText(locked ? '接住你了。' : feedback.mode === 'holding' ? '别松手' : '按住他 · 接上安全绳', x + w / 2, y + 15);
+    Canvas_1.ctx.save();
+    if (locked) {
+        Canvas_1.ctx.fillStyle = TapeDeckVisual_1.TAPE.ink;
+        (0, TapeDeckVisual_1.cutPanel)(Canvas_1.ctx, x + 12, y + 29, w - 24, 27, 3);
+        Canvas_1.ctx.fill();
+    }
+    clasp(x + w / 2, y + 41, feedback.progress, locked);
+    Canvas_1.ctx.restore();
+    if (locked) {
+        Canvas_1.ctx.fillStyle = '#6c705e';
+        Canvas_1.ctx.font = '9px "PingFang SC", Arial';
+        Canvas_1.ctx.fillText('安全绳已扣紧  /  一起回去', x + w / 2, y + 63);
+    }
+    else if (feedback.mode === 'holding') {
+        Canvas_1.ctx.fillStyle = '#b9452e';
+        Canvas_1.ctx.fillRect(x + 12, y + h - 4, (w - 24) * feedback.progress, 2);
+    }
     Canvas_1.ctx.restore();
 }
 },"/src/render/RescueTape":function(exports,require){"use strict";
@@ -33938,6 +34048,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.TAPE_NOTE = exports.TAPE = void 0;
 exports.tapeAccent = tapeAccent;
 exports.cutPanel = cutPanel;
+exports.sampleTapeMotion = sampleTapeMotion;
 exports.drawTapeDeck = drawTapeDeck;
 exports.drawTapeRibbons = drawTapeRibbons;
 exports.drawTapeSleeve = drawTapeSleeve;
@@ -33958,12 +34069,30 @@ function cutPanel(c, x, y, w, h, cut = 6) {
     c.lineTo(x, y + cut);
     c.closePath();
 }
+/** Each newly audible instrument changes the object's motion, not an unrelated clock. */
+function sampleTapeMotion(v) {
+    const neutral = { x: 0, y: 0, roll: 0, sx: 1, sy: 1, drive: 0, rush: 0 };
+    if (!v.playing || v.muted)
+        return neutral;
+    const bass = v.lanes[2].hit, drum = v.lanes[3].gain;
+    const drive = v.lanes[4].gain, rush = Math.min(1, v.lanes[5].gain / .94);
+    const direction = v.lanes[4].step % 2 ? -1 : 1;
+    return {
+        x: drive * v.lanes[4].hit * direction * .026,
+        y: -.016 * v.lanes[1].hit - .025 * bass - v.kick * (.045 * drum + .075 * rush),
+        roll: v.snare * (.09 * drum + .07 * rush) - v.kick * (.045 * drum + .07 * rush),
+        sx: 1 + .09 * bass + v.kick * .14 * rush,
+        sy: 1 - .07 * bass + v.kick * (.08 * drum + .15 * rush), drive, rush,
+    };
+}
 /** The same physical cassette at HUD, worn and loading sizes. */
 function drawTapeDeck(c, x, y, width, v, worn = false) {
+    const motion = sampleTapeMotion(v);
     c.save();
     c.translate(x, y);
-    c.rotate(worn ? -.12 : -.045 - v.kick * .025);
-    c.translate(0, -v.kick * width / 50);
+    c.rotate((worn ? -.12 : -.045) + motion.roll);
+    c.translate(motion.x * width, motion.y * width);
+    c.scale(motion.sx, motion.sy);
     if (worn) {
         c.fillStyle = '#273e47';
         c.fillRect(-width * .12, -width * .55, width * .14, width * 1.1);
@@ -33972,21 +34101,62 @@ function drawTapeDeck(c, x, y, width, v, worn = false) {
         mode: v.playing ? 'play' : 'stop', progress: .65,
         seconds: v.beats / 2, side: v.mood === 'return' ? 'B' : 'A',
     }, 0);
-    // Beat markers stay inside the lower shell. They never change its label or shape.
+    // The label becomes a moving print: red chevrons at four, a cut-up stripe at five.
+    // Everything remains on the existing shell; no halos, rays or off-body trails.
     c.save();
     c.scale(width / 560, width / 560);
     c.translate(-280, -177.5);
     const alpha = c.globalAlpha;
+    const audible = v.playing && !v.muted;
+    if (audible) {
+        c.globalAlpha = alpha * Math.min(1, v.lanes[1].hit);
+        c.strokeStyle = exports.TAPE.paper;
+        c.lineWidth = 9;
+        for (const rx of [159, 401]) {
+            c.beginPath();
+            c.arc(rx, 179, 38, 0, Math.PI * 2);
+            c.stroke();
+        }
+        // A broad pair of bass shutters is legible even in the 56px HUD cassette.
+        c.globalAlpha = alpha * v.lanes[2].gain;
+        c.fillStyle = '#b9452e';
+        const bh = 10 + v.lanes[2].hit * 58;
+        c.fillRect(242, 218 - bh, 28, bh);
+        c.fillRect(290, 218 - bh, 28, bh);
+        c.globalAlpha = alpha * motion.drive;
+        c.fillStyle = exports.TAPE.paper;
+        for (let i = 0; i < 6; i++) {
+            const cx = 50 + ((i * 80 + (v.lanes[4].step % 6) * 16) % 460);
+            c.beginPath();
+            c.moveTo(cx, 93);
+            c.lineTo(cx + 18, 93);
+            c.lineTo(cx + 34, 114);
+            c.lineTo(cx + 16, 114);
+            c.closePath();
+            c.fill();
+        }
+        if (motion.rush > .01) {
+            c.globalAlpha = alpha * motion.rush;
+            c.fillStyle = '#d54c32';
+            c.fillRect(32, 86, 496, 43);
+            // Ten exact source events per beat: spatial jump, not an invisible short flash.
+            const head = ((v.lanes[5].step % 10) + 10) % 10;
+            c.fillStyle = exports.TAPE.paper;
+            for (let i = 0; i < 10; i++) {
+                const hot = i === head || i === (head + 5) % 10;
+                c.fillRect(38 + i * 49, hot ? 86 : 105, 31, hot ? 43 : 8);
+            }
+            c.fillStyle = '#d54c32';
+            c.fillRect(head < 5 ? 124 : 366, 151, 70, 56);
+            c.fillStyle = exports.TAPE.paper;
+            c.fillRect(head < 5 ? 150 : 392, 157, 18, 44);
+        }
+    }
     for (let i = 1; i <= 5; i++) {
         const lane = v.lanes[i];
         c.globalAlpha = alpha * (.3 + .7 * lane.gain);
         c.fillStyle = exports.TAPE.paper;
-        c.fillRect(158 + (i - 1) * 50, 286 - lane.hit * 5, 24, 7 + lane.hit * 5);
-    }
-    if (v.lanes[5].gain > .01) {
-        c.globalAlpha = alpha * .9;
-        c.fillStyle = '#b9452e';
-        c.fillRect(235 + ((v.lanes[5].step % 10 + 10) % 10) * 8, 175, 7, 5);
+        c.fillRect(158 + (i - 1) * 50, 286 - lane.hit * 20, 24, 7 + lane.hit * 20);
     }
     c.restore();
     c.restore();
@@ -41597,9 +41767,9 @@ load('/game');
 const {state,player,input}=load('/src/core/state'),music=load('/src/audio/AdaptiveMusic');
 window.DeepTapeGame={state,player,music,menu(){music.resetAdaptiveMusic();state.screen='menu';},nearTarget(){
  if(!state.mazeRescue||state.mazeRescue.phase!=='play')return;
- const maze=state.mazeRescue,ts=maze.mazeTileSize,npc=state.npc;
+ const maze=state.mazeRescue,ts=maze.mazeTileSize,npc=state.npc;maze.npcRescued=false;maze.npcSecuredAt=0;npc.state='wait';
  let best=null,score=Infinity;for(let r=1;r<maze.mazeRows-1;r++)for(let c=1;c<maze.mazeCols-1;c++)if(maze.mazeMap[r][c]===0){const x=(c+.5)*ts,y=(r+.5)*ts,d=Math.hypot(x-npc.x,y-npc.y);if(d>45&&Math.abs(d-110)<score){best={x,y};score=Math.abs(d-110)}}
  const collision=load('/src/logic/Collision').checkMazeCollision;
- for(const [dx,dy] of [[-55,-65],[-40,-45],[-60,0],[0,-60],[-40,40],[40,-40]])if(!collision(npc.x+dx,npc.y+dy,maze)){best={x:npc.x+dx,y:npc.y+dy};break}
- if(best){player.x=best.x;player.y=best.y;player.vx=player.vy=0;player.angle=player.targetAngle=input.targetAngle=Math.atan2(npc.y-player.y,npc.x-player.x);CONFIG.infiniteO2=true;state.fishEnemies=[];maze.npcEncounterNoteAt=Date.now();load('/src/logic/CameraLogic').snapCameraToPlayer();}
+ for(const [dx,dy] of [[-40,-45],[-60,0],[0,-60],[-40,40],[40,-40]])if(!collision(npc.x+dx,npc.y+dy,maze)){best={x:npc.x+dx,y:npc.y+dy};break}
+ if(best){player.x=best.x;player.y=best.y;player.vx=player.vy=0;player.angle=player.targetAngle=input.targetAngle=Math.atan2(npc.y-player.y,npc.x-player.x);CONFIG.infiniteO2=true;player.o2=player.o2Max;maze.maxDepthAllowed=Math.max(maze.maxDepthAllowed,60);state.fishEnemies=[];maze.npcEncounterNoteAt=Date.now();load('/src/logic/BCDSystem').resetBCDSystem();load('/src/logic/CameraLogic').snapCameraToPlayer();}
 }};})();

@@ -1,3 +1,4 @@
+import { updateRescueLink } from './RescueLink';
 import { CONFIG } from '../core/config';
 import { state, player, particles, input, touches } from '../core/state';
 import { generateMazeMap } from '../world/map';
@@ -421,6 +422,7 @@ export function startMazeDive(diveType: string) {
     maze.tapePlaybackStarted = false;
     maze.tapeNowPlayingAt = 0;
     maze.npcEncounterNoteAt = 0;
+    maze.npcSecuredAt = 0;
     input.move = 0; input.speedUp = false; touches.joystickId = null;
     if (state.manualDrive) state.manualDrive.activeTouches = {};
     state.alertMsg = '';
@@ -1297,19 +1299,8 @@ export function updateMaze() {
         }
     }
 
-    // --- 救援交互：靠近NPC长按（发现NPC后即可绑绳，不区分下潜类型） ---
-    if (!maze.npcRescued && state.npc.active) {
-        if (maze.npcRescueHolding) {
-            const elapsed = (Date.now() - maze.npcRescueHoldStart) / 1000;
-            if (elapsed >= CONFIG.maze.npcRescueHoldDuration) {
-                // 完成绑绳
-                maze.npcRescued = true;
-                maze.npcRescueHolding = false;
-                state.npc.state = 'follow';
-                storyManager.showText('绑好了！带他出去！', '#0f8', 2500);
-            }
-        }
-    }
+    // --- 安全绳连接：持续按住且保持在接触范围内 ---
+    updateRescueLink();
 
     // --- 撤离协议：长按完成后开始上浮（未带人时可用） ---
     if (!maze.npcRescued && maze.retreatHolding) {

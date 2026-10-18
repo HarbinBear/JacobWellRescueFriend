@@ -19,7 +19,7 @@ main{max-width:1180px;margin:auto;padding:32px 36px 60px}nav{display:flex;justif
 <div><span class="label">02 / FIVE LAYERS, ONE TAPE</span><div class="row levels" id="levels" role="group" aria-label="音乐层数"></div><div class="row" id="moods" role="group" aria-label="旅程状态"><button data-mood="search" aria-pressed="false">向深处去</button><button data-mood="found" aria-pressed="true">就在这里</button><button data-mood="return" aria-pressed="false">一起回去</button></div></div></div>
 <p id="status" role="status" aria-live="polite">静态试装。点击播放，听看同一套游戏音乐与节拍动画；完整旅程约 32 秒。</p>
 <div class="study"><div><div class="section-title">03 / IN THE FIELD</div><div class="row" style="margin-bottom:12px"><button id="field4">对比第4级</button><button id="field5">对比第5级</button><button id="fieldPlay">▶ 播放这一段</button></div><div class="scene"><canvas id="scene" width="750" height="1320" aria-label="真实游戏HUD与潜水员绘制，洞穴和数值为预览场景"></canvas><div class="caption">游戏原 HUD / 原角色绘制 · 洞穴与数值为模拟场景<br>默认只有磁带；按住再展开封套。</div></div></div>
-<div><div class="section-title">04 / THE RHYTHM SLEEVE</div><canvas id="sleeve" width="1000" height="800" aria-label="五层节奏与胸前随身听细节"></canvas><div class="rules"><div class="rule"><b>重拍经过全身</b><p>身体舒展、肩臂打开、胸口微光回应。音乐的力度落在整个人身上。</p><span class="density">30 → 60 → 120 → 240 / MIN</span></div><div class="rule"><b>第五级，全身回应</b><p>身体和肩臂更明显地随重拍舒展，快速音符逐格推进磁带窗口。</p><span class="density">1200 / MIN · 50 MS / NOTE</span></div><div class="rule"><b>一盘磁带，两段旅程</b><p>寻找是珊瑚橙，发现是酸橙黄，返程是薄荷绿。</p></div><div class="rule"><b>没写歌名的带子</b><p>壳背贴着一截磨旧的胶带。是谁留下的字，已经看不清了。</p></div></div></div></div>
+<div><div class="section-title">04 / THE RHYTHM SLEEVE</div><canvas id="sleeve" width="1000" height="800" aria-label="五层节奏与胸前随身听细节"></canvas><div class="rules"><div class="rule"><b>重拍经过全身</b><p>身体舒展、肩臂打开、胸口微光回应。音乐的力度落在整个人身上。</p><span class="density">30 → 60 → 120 → 240 / MIN</span></div><div class="rule"><b>第五级，全身回应</b><p>身体和肩臂更明显地随重拍舒展，快速音符逐格推进磁带窗口。</p><span class="density">1200 / MIN · 50 MS / NOTE</span></div><div class="rule"><b>一盘磁带，两段旅程</b><p>纸标、朱红条纹与深色外壳始终一致。慢拍呼吸、低音压缩、重鼓顿挫、疾行切纹，第五级整盘迸发。</p></div><div class="rule"><b>没写歌名的带子</b><p>壳背贴着一截磨旧的胶带。是谁留下的字，已经看不清了。</p></div></div></div></div>
 <p class="foot">此页复用游戏音频引擎、乐谱和 Canvas 绘制。首次播放会本地合成 12 条音轨；无需联网。画面不会改变音乐的速度。</p>
 </main><script>(function(){const factories={"AdaptiveScore":function(exports,require){"use strict";
 var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
@@ -865,6 +865,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.TAPE_NOTE = exports.TAPE = void 0;
 exports.tapeAccent = tapeAccent;
 exports.cutPanel = cutPanel;
+exports.sampleTapeMotion = sampleTapeMotion;
 exports.drawTapeDeck = drawTapeDeck;
 exports.drawTapeRibbons = drawTapeRibbons;
 exports.drawTapeSleeve = drawTapeSleeve;
@@ -885,12 +886,30 @@ function cutPanel(c, x, y, w, h, cut = 6) {
     c.lineTo(x, y + cut);
     c.closePath();
 }
+/** Each newly audible instrument changes the object's motion, not an unrelated clock. */
+function sampleTapeMotion(v) {
+    const neutral = { x: 0, y: 0, roll: 0, sx: 1, sy: 1, drive: 0, rush: 0 };
+    if (!v.playing || v.muted)
+        return neutral;
+    const bass = v.lanes[2].hit, drum = v.lanes[3].gain;
+    const drive = v.lanes[4].gain, rush = Math.min(1, v.lanes[5].gain / .94);
+    const direction = v.lanes[4].step % 2 ? -1 : 1;
+    return {
+        x: drive * v.lanes[4].hit * direction * .026,
+        y: -.016 * v.lanes[1].hit - .025 * bass - v.kick * (.045 * drum + .075 * rush),
+        roll: v.snare * (.09 * drum + .07 * rush) - v.kick * (.045 * drum + .07 * rush),
+        sx: 1 + .09 * bass + v.kick * .14 * rush,
+        sy: 1 - .07 * bass + v.kick * (.08 * drum + .15 * rush), drive, rush,
+    };
+}
 /** The same physical cassette at HUD, worn and loading sizes. */
 function drawTapeDeck(c, x, y, width, v, worn = false) {
+    const motion = sampleTapeMotion(v);
     c.save();
     c.translate(x, y);
-    c.rotate(worn ? -.12 : -.045 - v.kick * .025);
-    c.translate(0, -v.kick * width / 50);
+    c.rotate((worn ? -.12 : -.045) + motion.roll);
+    c.translate(motion.x * width, motion.y * width);
+    c.scale(motion.sx, motion.sy);
     if (worn) {
         c.fillStyle = '#273e47';
         c.fillRect(-width * .12, -width * .55, width * .14, width * 1.1);
@@ -899,21 +918,62 @@ function drawTapeDeck(c, x, y, width, v, worn = false) {
         mode: v.playing ? 'play' : 'stop', progress: .65,
         seconds: v.beats / 2, side: v.mood === 'return' ? 'B' : 'A',
     }, 0);
-    // Beat markers stay inside the lower shell. They never change its label or shape.
+    // The label becomes a moving print: red chevrons at four, a cut-up stripe at five.
+    // Everything remains on the existing shell; no halos, rays or off-body trails.
     c.save();
     c.scale(width / 560, width / 560);
     c.translate(-280, -177.5);
     const alpha = c.globalAlpha;
+    const audible = v.playing && !v.muted;
+    if (audible) {
+        c.globalAlpha = alpha * Math.min(1, v.lanes[1].hit);
+        c.strokeStyle = exports.TAPE.paper;
+        c.lineWidth = 9;
+        for (const rx of [159, 401]) {
+            c.beginPath();
+            c.arc(rx, 179, 38, 0, Math.PI * 2);
+            c.stroke();
+        }
+        // A broad pair of bass shutters is legible even in the 56px HUD cassette.
+        c.globalAlpha = alpha * v.lanes[2].gain;
+        c.fillStyle = '#b9452e';
+        const bh = 10 + v.lanes[2].hit * 58;
+        c.fillRect(242, 218 - bh, 28, bh);
+        c.fillRect(290, 218 - bh, 28, bh);
+        c.globalAlpha = alpha * motion.drive;
+        c.fillStyle = exports.TAPE.paper;
+        for (let i = 0; i < 6; i++) {
+            const cx = 50 + ((i * 80 + (v.lanes[4].step % 6) * 16) % 460);
+            c.beginPath();
+            c.moveTo(cx, 93);
+            c.lineTo(cx + 18, 93);
+            c.lineTo(cx + 34, 114);
+            c.lineTo(cx + 16, 114);
+            c.closePath();
+            c.fill();
+        }
+        if (motion.rush > .01) {
+            c.globalAlpha = alpha * motion.rush;
+            c.fillStyle = '#d54c32';
+            c.fillRect(32, 86, 496, 43);
+            // Ten exact source events per beat: spatial jump, not an invisible short flash.
+            const head = ((v.lanes[5].step % 10) + 10) % 10;
+            c.fillStyle = exports.TAPE.paper;
+            for (let i = 0; i < 10; i++) {
+                const hot = i === head || i === (head + 5) % 10;
+                c.fillRect(38 + i * 49, hot ? 86 : 105, 31, hot ? 43 : 8);
+            }
+            c.fillStyle = '#d54c32';
+            c.fillRect(head < 5 ? 124 : 366, 151, 70, 56);
+            c.fillStyle = exports.TAPE.paper;
+            c.fillRect(head < 5 ? 150 : 392, 157, 18, 44);
+        }
+    }
     for (let i = 1; i <= 5; i++) {
         const lane = v.lanes[i];
         c.globalAlpha = alpha * (.3 + .7 * lane.gain);
         c.fillStyle = exports.TAPE.paper;
-        c.fillRect(158 + (i - 1) * 50, 286 - lane.hit * 5, 24, 7 + lane.hit * 5);
-    }
-    if (v.lanes[5].gain > .01) {
-        c.globalAlpha = alpha * .9;
-        c.fillStyle = '#b9452e';
-        c.fillRect(235 + ((v.lanes[5].step % 10 + 10) % 10) * 8, 175, 7, 5);
+        c.fillRect(158 + (i - 1) * 50, 286 - lane.hit * 20, 24, 7 + lane.hit * 20);
     }
     c.restore();
     c.restore();

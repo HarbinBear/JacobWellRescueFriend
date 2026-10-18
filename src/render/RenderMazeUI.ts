@@ -6,6 +6,7 @@ import { drawHUDTopLeft, initMazeHUDTopLeft } from './HUDTopLeft';
 import { cutPanel, TAPE } from './TapeDeckVisual';
 import { drawTapeRewind, drawTapePlayIntro } from './TapeEntry';
 import { drawRescueEncounterNote } from './RescueEncounterNote';
+import { drawRescueLinkFeedback } from './RescueLinkFeedback';
 // BCD 浮力背心：水下 inflator 控件 + 失控告警层
 import { drawBCDController, drawBCDWarnOverlay } from './RenderBCD';
 // 撤离玩法 UI 模块（独立于现有 mazeUI 子目录，与撤离系统所有代码同处一个独立树下）
@@ -466,33 +467,7 @@ export function drawMazeHUD() {
     }
 
 
-    // NPC 救援提示（靠近NPC时显示，发现后即可绑绳）
-    if (!maze.npcRescued && state.npc.active) {
-        const distToNpc = Math.hypot(player.x - state.npc.x, player.y - state.npc.y);
-        if (distToNpc < CONFIG.maze.npcRescueRange) {
-            ctx.globalAlpha = 0.9;
-            ctx.textAlign = 'center';
-            if (maze.npcRescueHolding) {
-                const elapsed = (Date.now() - maze.npcRescueHoldStart) / 1000;
-                const progress = Math.min(1, elapsed / CONFIG.maze.npcRescueHoldDuration);
-                const zoom = state.camera ? state.camera.zoom : 1;
-                const npcScreenX = cw / 2 + (state.npc.x - player.x) * zoom;
-                const npcScreenY = ch / 2 + (state.npc.y - player.y) * zoom;
-                ctx.strokeStyle = 'rgba(0,255,150,0.9)';
-                ctx.lineWidth = 4;
-                ctx.beginPath();
-                ctx.arc(npcScreenX, npcScreenY - 40, 22, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress);
-                ctx.stroke();
-                ctx.fillStyle = 'rgba(0,255,150,0.9)';
-                ctx.font = 'bold 13px Arial';
-                ctx.fillText('绑绳中...', npcScreenX, npcScreenY - 70);
-            } else {
-                ctx.fillStyle = 'rgba(200,255,200,0.9)';
-                ctx.font = '13px Arial';
-                ctx.fillText('长按绑绳', cw / 2, ch * 0.85);
-            }
-        }
-    }
+    drawRescueLinkFeedback();
 
     drawRescueEncounterNote();
 
@@ -500,12 +475,11 @@ export function drawMazeHUD() {
     if (maze.npcRescued) {
         const distToExit = Math.hypot(player.x - maze.exitX, player.y - maze.exitY);
         if (distToExit < maze.mazeTileSize * 8) {
-            const pulse = 0.7 + Math.sin(time * 4) * 0.3;
-            ctx.globalAlpha = pulse;
-            ctx.fillStyle = '#0f8';
-            ctx.font = 'bold 16px Arial';
+            ctx.globalAlpha = .85;
+            ctx.fillStyle = TAPE.paper;
+            ctx.font = '11px "PingFang SC", Arial';
             ctx.textAlign = 'center';
-            ctx.fillText('↑ 出口就在上方！', cw / 2, ch * 0.15);
+            ctx.fillText('↑  返回入水口', cw / 2, ch * 0.15);
         }
     }
 
