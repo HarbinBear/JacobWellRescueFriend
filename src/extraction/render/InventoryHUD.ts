@@ -1,7 +1,7 @@
 // 下潜中的背包 HUD（折叠胶囊态）
 //
 // 设计：
-// - 折叠态：右下角胶囊小条 "🎒 背包 N/M"，位于拾取按钮上方（避免和轮盘按钮重叠）
+// - 折叠态：左下角胶囊小条 "🎒 背包 N/M"，为底部体力条留出空间
 //   - 占用空间小，不挡视野
 //   - 容量将满时变金色脉冲提示
 // - 展开态：全屏背包页（BagFullPage）—— 由本模块的 openBagFullPage() 进入
@@ -56,22 +56,12 @@ export function getInventoryHUDCapsuleRect(): { x: number; y: number; w: number;
     return _hudCapsuleRect;
 }
 
-/**
- * 计算折叠胶囊位置：左下角，紧贴撤离按钮上方（与撤离按钮中线左对齐，自然形成"撤离 + 背包"竖排）
- *
- * 撤离按钮中心 (cw * retreatBtnXRatio, ch * retreatBtnYRatio)，半径 retreatBtnRadius。
- * 背包胶囊横向：跟撤离按钮共享中线 → 居中对齐
- * 背包胶囊纵向：撤离按钮顶边再上方 12px
- */
+/** 背包独立锚定左下角，不再依赖已移入侧栏的撤离按钮。 */
 function getCapsulePosition(cw: number, ch: number): { x: number; y: number } {
-    const retreatCx = cw * (CONFIG.maze as any).retreatBtnXRatio;
-    const retreatCy = ch * (CONFIG.maze as any).retreatBtnYRatio;
-    const retreatR = (CONFIG.maze as any).retreatBtnRadius || 36;
-
-    // 居中对齐撤离按钮
-    const x = retreatCx - HUD_W / 2;
-    // 撤离按钮顶边上方 12px
-    const y = retreatCy - retreatR - 12 - HUD_H;
+    const safeTop = Math.max(62, CONFIG.uiSafeTop || 0);
+    const safeBottom = Math.max(18, CONFIG.uiSafeBottom || 0);
+    const x = Math.max(0, Math.min(14, cw - HUD_W - 14));
+    const y = Math.max(safeTop, ch - safeBottom - 112);
     return { x, y };
 }
 
@@ -85,7 +75,7 @@ export function drawInventoryHUD(): void {
 
     const slotN = Math.max(1, ex.bag.maxSlots);
     const used = getBagOccupiedSlots();
-    const fillRatio = used / slotN;
+    const fillRatio = Math.min(1, used / slotN);
 
     const { x, y } = getCapsulePosition(cw, ch);
 

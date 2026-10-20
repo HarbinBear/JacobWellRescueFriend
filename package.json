@@ -6,6 +6,7 @@
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "movement:check": "node scripts/checkSemiAutoDrive.js",
+    "inventory:check": "node scripts/checkInventoryHUD.js",
     "maze:check": "node scripts/checkMazeDiveLifecycle.js && node scripts/checkRescueRagdoll.js",
     "watch": "tsc --watch",
     "clean": "rmdir /s /q dist 2>nul || true",
