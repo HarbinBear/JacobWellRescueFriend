@@ -2,6 +2,7 @@
 // 负责面板状态管理、触摸处理、键盘输入、CONFIG 读写
 // 绘制逻辑在 GMRender.ts，参数配置在 GMConfig.ts
 
+import { setDriveMode } from '../logic/DriveMode';
 import { CONFIG } from '../core/config';
 import {
     TABS, GMNumberItem, GMActionItem, GMSelectItem,
@@ -90,6 +91,7 @@ export function getConfigValue(path: string): any {
 }
 
 export function setConfigValue(path: string, value: any): void {
+    if (path === 'driveMode') { setDriveMode(value); return; }
     const parts = path.split('.');
     let obj: any = CONFIG;
     for (let i = 0; i < parts.length - 1; i++) {
@@ -132,6 +134,12 @@ export function handleGMTouchStart(tx: number, ty: number): boolean {
     // 检测是否在面板区域内
     if (tx < _panelX || tx > _panelX + PANEL_W || ty < _panelY || ty > _panelY + PANEL_H) {
         return false;
+    }
+
+    // 左栏会被面板盖住，提供独立关闭区，布局实验后能直接返回游戏。
+    if (tx >= _panelX + PANEL_W - 32 && ty <= _panelY + DRAG_BAR_H) {
+        toggleGMOpen();
+        return true;
     }
 
     // 检测拖动条点击（面板顶部边框区域）

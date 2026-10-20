@@ -12,6 +12,8 @@ export const baseConfig = {
     // 画布设置 (竖屏适配)
     screenWidth: systemInfo.windowWidth,
     screenHeight: systemInfo.windowHeight,
+    uiSafeTop: systemInfo.safeTop,
+    uiSafeBottom: systemInfo.safeBottom,
 
     // 调试
     debug: false,              // 调试模式：显示小地图和实时坐标

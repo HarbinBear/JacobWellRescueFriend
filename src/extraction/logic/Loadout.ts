@@ -29,10 +29,10 @@ let _appliedSnapshot: ConfigSnapshot | null = null;
 // 用于 HUD 双圈氧气环、潜水员双气瓶视觉、撤离结算等读取。
 let _activeAirTanks: string[] = [];
 
-/** 按氧气瓶 id 推断单瓶起始氧气（从 ItemRegistry 取 startO2，未知值兜底 60） */
+/** 按氧气瓶 id 读取起始氧气，未知值兜底 120。 */
 function tankCapacity(id: string): number {
     const eff = getEquipmentEffects(id);
-    return Math.max(0, (eff?.startO2 ?? 60));
+    return Math.max(0, (eff?.startO2 ?? 120));
 }
 
 /** 装备等级（数字越大越好） */
@@ -194,7 +194,7 @@ export function applyLoadoutForDive(): void {
     // 把所有氧气瓶的 startO2 累加 → 本次最大氧气；player.o2 也设为该值（满槽下水）
     let totalO2 = 0;
     for (const id of _activeAirTanks) totalO2 += tankCapacity(id);
-    if (totalO2 <= 0) totalO2 = 60;  // 极端兜底
+    if (totalO2 <= 0) totalO2 = 120;  // 极端兜底
 
     // === DCS 惩罚：若上次跳过了减压，这次下潜的 O2Max 打折（默认 -30%） ===
     // 打折只作用在 o2Max（最大上限），同时 player.o2 初始也按打折后的满值给；
@@ -210,7 +210,7 @@ export function applyLoadoutForDive(): void {
     // 把潜水衣的最大安全深度（米）写入 maze 运行时数据，给 HUD / 渲染层读
     const maze: any = state.mazeRescue;
     if (maze) {
-        maze.maxDepthAllowed = merged.maxDepthMeters || 30;
+        maze.maxDepthAllowed = merged.maxDepthMeters || 90;
         // 同步初始化 oxygenFeedback.o2DisplayAnim 到满值，避免环从 100 缩到 60 的视觉漂移
         if (maze.oxygenFeedback) {
             maze.oxygenFeedback.o2DisplayAnim = totalO2;

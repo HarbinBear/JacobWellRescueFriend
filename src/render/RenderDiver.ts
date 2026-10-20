@@ -51,6 +51,8 @@ type DiverMotion = {
     // 为 false 则保持原带臂摇摆/划水姿态。适用于在摇杆／自动挡移动时
     // 突出“没有划手动作”的贴身巡航观感。
     autoSwim?: boolean;
+    // 半自动显式发力信号：有惯性速度也不代表还在踢腿；不传则沿用原动画。
+    swimEffort?: number;
     /**
      * 气嘴脱落→捞回塞嘴 动画数据（由 CollisionImpact 启动，Logic/MazeLogic 每帧推进）。
      * active=false 时按原样渲染（气嘴藏在嘴里不显示）；
@@ -761,7 +763,8 @@ export function drawDiver(
         bodyClocks.set(clockId, bodyClock);
     }
     const speedRefMaxForBody = 6;
-    const speedNormForBody = clamp(speed / speedRefMaxForBody, 0, 1);
+    const speedNormForBody = motion.swimEffort === undefined
+        ? clamp(speed / speedRefMaxForBody, 0, 1) : clamp(motion.swimEffort, 0, 1);
     const turnAbsVisual = Math.abs(turnVisual);
     // 身体扭动频率：idle 慢 + forward 随速度加快 + turn 再加一点
     const bodyFreq = cfg.bodyWaveIdleFreq
@@ -924,11 +927,12 @@ export function drawDiver(
     const rollSquashClamped = Math.max(1 - cfg.rollSquashMax, rollSquash);
     renderCtx.scale(1, rollSquashClamped);
 
-    // ===== 腿部相位时钟：完全由速度 + kickDrive boost 自驱（渲染侧自持） =====
+    // 半自动按实际发力踢腿，松手/耗尽时收腿滑行；其他模式继续由速度驱动。
     // 速度归一化：玩家手动挡 maxSpeed=11，自动挡/NPC 一般 4~6，这里用 6 做归一化让两种模式都能进入高频段
     const speedRefMax = 6;
-    const speedNorm = clamp(speed / speedRefMax, 0, 1);
-    const kickDriveVal = clamp(motion.kickDrive ?? 0, 0, 1);
+    const hasEffort = motion.swimEffort !== undefined;
+    const speedNorm = hasEffort ? clamp(motion.swimEffort, 0, 1) : clamp(speed / speedRefMax, 0, 1);
+    const kickDriveVal = hasEffort ? 0 : clamp(motion.kickDrive ?? 0, 0, 1);
     // 频率：base + speedNorm 主导 + kickDrive 加速瞬间 boost
     // kickDrive boost 降到 0.3 倍，避免手动挡加速瞬间腿摆得过快
     const freq = cfg.legAutoFreqBase
@@ -936,8 +940,8 @@ export function drawDiver(
                + kickDriveVal * cfg.legAutoFreqBoost * 0.3;
     // 幅度：由速度主导（静止时=低幅常驻呼吸，不再归零） + kickDrive 给加速瞬间的额外鞭打
     // idle 也给一点微幅（cfg.legIdleAmpNorm），让双腿在静止漂浮时做呼吸式抽动
-    const idleLegAmp = cfg.legIdleAmpNorm * idleBlend;
-    const ampNorm = clamp(speedNorm + kickDriveVal * 0.5 + idleLegAmp + resonance.kick * resonance.bloom * .2, 0, 1);
+    const idleLegAmp = hasEffort ? 0 : cfg.legIdleAmpNorm * idleBlend;
+    const ampNorm = clamp(speedNorm + kickDriveVal * 0.5 + idleLegAmp + (hasEffort ? 0 : resonance.kick * resonance.bloom * .2), 0, 1);
 
     // 取/建本角色的相位时钟
     let clock = legClocks.get(clockId);

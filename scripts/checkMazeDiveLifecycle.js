@@ -58,6 +58,8 @@ Date.now = () => now;
 try {
     const core = load('core/state'), { state, player, input, touches } = core;
     const { CONFIG } = load('core/config');
+    assert.equal(CONFIG.driveMode, 'semiAuto');
+    CONFIG.driveMode = 'auto'; // Keep legacy lifecycle assertions independent of stamina.
     CONFIG.maze.fishEnabled = false;
     CONFIG.camera.adaptiveZoom = false;
     const map = load('world/map');
@@ -96,6 +98,7 @@ try {
     // Simulate residual controls and feedback from a failed dive after binding the NPC.
     input.move = 1; input.speedUp = true; touches.joystickId = 42;
     state.manualDrive.activeTouches[42] = {};
+    Object.assign(state.semiAutoDrive, { pushStartedAt: now, remaining: .2, exhausted: true, thrusting: true, effort: 1 });
     state.manualDrive.kickDrive = 1;
     state.manualDrive.turnVisual = 1;
     state.fishBite = { active: true };
@@ -118,6 +121,11 @@ try {
     assert.equal(input.move, 0); assert.equal(input.speedUp, false);
     assert.equal(touches.joystickId, null);
     assert.deepEqual(state.manualDrive.activeTouches, {});
+    assert.equal(state.semiAutoDrive.pushStartedAt, null);
+    assert.equal(state.semiAutoDrive.remaining, 1);
+    assert.equal(state.semiAutoDrive.exhausted, false);
+    assert.equal(state.semiAutoDrive.thrusting, false);
+    assert.equal(state.semiAutoDrive.effort, 0);
     assert.equal(state.manualDrive.kickDrive, 0);
     assert.equal(state.manualDrive.turnVisual, 0);
     assert.equal(state.fishBite, null); assert.equal(state.flashlightOn, true);
@@ -262,6 +270,23 @@ try {
     logic.resetMazeLogic();
     assert.deepEqual(state.mazeRescue.oxygenTanks, expectedTanks, 'Legacy depleted tanks also respawn in their original places');
     assert.deepEqual(state.mazeRescue.consumedTankIds, []);
+    // Actual compact HUD press feeds the existing retreat completion lifecycle.
+    logic.startMazeDive('scout');
+    state.mazeRescue.phase = 'play'; state.npc.active = false;
+    const hud = compile('render/HUDTopLeft', name => {
+        if (name === '../core/state') return core;
+        if (name === '../core/config') return { CONFIG };
+        return idleSystems;
+    });
+    hud.initMazeHUDTopLeft();
+    assert(hud.handleHUDTouchStart(900, 38, 268));
+    assert(state.mazeRescue.retreatHolding, 'Compact left-hand button starts retreat');
+    now += CONFIG.maze.retreatHoldDuration * 1000 + 50;
+    logic.updateMaze();
+    assert.equal(state.mazeRescue.phase, 'surfacing', 'Holding the compact button completes the existing safe-return flow');
+    hud.handleHUDTouchEnd(900, 38, 268);
+    assert.equal(state.mazeRescue.retreatHolding, false);
+
     console.log('通过：旧档死亡坐标归位、绑绳后重新下潜无回拉、操作/反馈状态清理、同次发现不重复台词、下次首次发现重播、案件进度保留、主菜单一键下潜触摸流程。');
     console.log('通过：同次下潜气瓶只用一次、下次原位全量刷新、安装进度和反馈清理、旧档消耗记录兼容。');
 } finally {

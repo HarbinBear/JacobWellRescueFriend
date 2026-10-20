@@ -1,3 +1,6 @@
+import { processJoystickDrive } from './JoystickDrive';
+import { resetDriveInput } from './DriveMode';
+import { processSemiAutoDrive } from './SemiAutoDrive';
 import { updateRescueLink } from './RescueLink';
 import { updateRescueTow } from './RescueTow';
 import { CONFIG } from '../core/config';
@@ -9,7 +12,7 @@ import { enterHomeScene } from '../story/HomeScene';
 import { triggerSilt, updateParticles, updateSplashes } from './Particle';
 import { updateBreathSystem, resetBreathSystem, consumeBreathO2, resetBreathO2Consumer, computeBuoyancyOffset } from './BreathSystem';
 import { updateRopeSystem } from './Rope';
-import { processManualDrive, updateAutoDriveVisual } from './ManualDrive';
+import { processManualDrive } from './ManualDrive';
 import { checkMazeCollision } from './Collision';
 import { updateCameraSpringArm, snapCameraToPlayer, getAdaptiveZoom } from './CameraLogic';
 import { updateMarkers, updateWheelButtonVisibility } from './Marker';
@@ -80,6 +83,7 @@ function placePlayerAtMazeEntrance(maze: { exitX: number; mazeTileSize: number }
 // 读档失败（无存档/版本不兼容/数据损坏）才走原来的流程生成新地图。
 // =============================================
 export function resetMazeLogic() {
+    resetDriveInput(true);
     // === 优先尝试读取本地存档 ===
     // 注意：loadMazeProgress 成功时会直接把 state.mazeRescue / state.rope.ropes / state.markers
     // 恢复到岸上阶段；这里只需要补上相机、屏幕模式等与 state.mazeRescue 无关的运行态。
@@ -432,9 +436,7 @@ export function startMazeDive(diveType: string) {
     maze.npcStunnedAt = 0;
     maze.rescueRagdoll = null;
     maze.npcSecuredAt = 0;
-    input.move = 0;
-    input.speedUp = false;
-    touches.joystickId = null;
+    resetDriveInput(true);
     touches.start = { x: 0, y: 0 };
     touches.curr = { x: 0, y: 0 };
     state.manualDrive = {
@@ -644,6 +646,7 @@ export function startMazeDive(diveType: string) {
 // 迷宫多次下潜闭环：完成本次下潜，返回岸上
 // =============================================
 function finishMazeDive(returnReason: string) {
+    resetDriveInput(true);
     const maze = state.mazeRescue;
     if (!maze) return;
 
@@ -775,6 +778,7 @@ function finishMazeDive(returnReason: string) {
 // 迷宫多次下潜闭环：从结算回到岸上
 // =============================================
 export function returnToShore() {
+    resetDriveInput(true);
     const maze = state.mazeRescue;
     if (!maze) return;
 
@@ -1095,28 +1099,11 @@ export function updateMaze() {
 
     // --- 玩家移动 ---
     // 敲晕和绑绳时仍正常移动、受浮力影响，由玩家自行保持接触距离。
-    if (processManualDrive()) {
-        // 手动挡模式：脉冲已处理
+    if (processManualDrive() || processSemiAutoDrive(CONFIG.maze.moveSpeed || CONFIG.moveSpeed)) {
+        // 手动挡/半自动：移动已处理
     } else {
-        // 自动挡（摇杆）模式
-        player.targetAngle = input.targetAngle;
-        let angleDiff = player.targetAngle - player.angle;
-        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-        player.angle += angleDiff * CONFIG.turnSpeed;
-
-        let speed = (CONFIG.maze.moveSpeed || CONFIG.moveSpeed) * 0.3;
-        if (input.speedUp) speed = CONFIG.maze.moveSpeed || CONFIG.moveSpeed;
-
-        if (input.move > 0) {
-            player.vx += Math.cos(player.targetAngle) * speed * CONFIG.acceleration;
-            player.vy += Math.sin(player.targetAngle) * speed * CONFIG.acceleration;
-        }
-        player.vx *= CONFIG.waterDrag;
-        player.vy *= CONFIG.waterDrag;
-
-        // 自动档动作视觉：写入转向/前进信号，让 drawDiver 能呈现转向身体侧倾与手臂动作
-        updateAutoDriveVisual(angleDiff * CONFIG.turnSpeed, input.move > 0);
+        // 自动挡：与半自动共用转向、推进和水阻。
+        processJoystickDrive(CONFIG.maze.moveSpeed || CONFIG.moveSpeed);
     }
 
     // 呼吸浮力：吐气阶段轻微下沉、吸气阶段轻微上浮，给玩家直观的呼吸押频感
@@ -1359,14 +1346,14 @@ export function updateMaze() {
     // 别在 30m 反复大口充排"——这正是真实潜水的耗气纪律。
     o2Consumption += consumeBCDO2();
 
-    // === 潜水衣超深惩罚：当玩家深度 > 装备的 maxDepthAllowed 时，氧气消耗 ×3 ===
+    // 超深仍有代价，探索调试期先把氧耗惩罚放宽为 1.5 倍。
     // 不硬卡墙（保留游泳手感），靠快速失氧 + 红警逼玩家上浮
     {
         const maxDepth = (maze as any).maxDepthAllowed;   // 米
         if (maxDepth && maxDepth > 0) {
             const curDepth = Math.max(0, Math.floor(player.y / (maze.mazeTileSize || 120)));
             if (curDepth > maxDepth) {
-                o2Consumption *= 3;
+                o2Consumption *= 1.5;
                 // 一次性提示：进入超深区域时提醒玩家（不要每帧 spam，用 flag 限制）
                 if (!(maze as any)._overDepthWarned) {
                     (maze as any)._overDepthWarned = true;

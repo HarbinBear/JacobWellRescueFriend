@@ -1,3 +1,5 @@
+import { updateSemiAutoJoystick, releaseSemiAutoDrive } from '../logic/SemiAutoDrive';
+import { resetDriveInput } from '../logic/DriveMode';
 import { CONFIG } from './config';
 import { warmUpAdaptiveMusic, retryAdaptiveMusic, resetAdaptiveMusic } from '../audio/AdaptiveMusic';
 import { getTapeEntryButtons } from '../render/TapeEntry';
@@ -83,7 +85,6 @@ let attackTouchId: number | null = null;
 let mazeRescueTouchId: number | null = null;
 
 // 迷宫撤离长按触点 ID
-let mazeRetreatTouchId: number | null = null;
 
 // 岸上页面触摸起始位置
 let shoreTouchStartX = 0;
@@ -218,7 +219,9 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
             if (keys.a) dx -= 1;
             if (keys.d) dx += 1;
 
-            if (CONFIG.manualDrive.enabled) {
+            if (CONFIG.driveMode === 'semiAuto') {
+                updateSemiAutoJoystick(dx * 40, dy * 40, keys.shift);
+            } else if (CONFIG.driveMode === 'manual') {
                 // 手动挡模式：键盘模拟持续搓屏
                 // 每次 updateKeyInput 被调用（keydown/keyup），更新虚拟触点
                 // 关键：curr 每帧递增，让逻辑层能检测到帧间位移
@@ -256,7 +259,10 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
             }
         };
 
-        // 手动挡键盘：不再需要 prevKeys 和脉冲产生逻辑，updateKeyInput 已处理
+        window.addEventListener('blur', () => {
+            keys.w = keys.a = keys.s = keys.d = keys.shift = false;
+            resetDriveInput();
+        });
 
         window.addEventListener('keydown', (e) => {
             warmUpAdaptiveMusic();
@@ -363,9 +369,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                     playSFX('uiSecondary');
                     openBagFullPage();
                     // 立刻清空玩家移动输入，避免打开背包页时角色继续滑行
-                    input.move = 0;
-                    input.speedUp = false;
-                    touches.joystickId = null;
+                    resetDriveInput();
                     bcdReleaseAll();
                     return;
                 }
@@ -521,10 +525,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                         state.wheel.touchId = t.identifier;
                         state.wheel.centerX = btnX;
                         state.wheel.centerY = btnY;
-                        input.move = 0;
-                        input.speedUp = false;
-                        // 手动挡：冻结输入
-                        if (state.manualDrive) state.manualDrive.activeTouches = {};
+                        resetDriveInput();
                     }
                     return;
                 }
@@ -597,21 +598,6 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                         continue;
                     }
                 }
-                // 撤离按钮（未带人时可用）
-                if (!maze.npcRescued && mazeRetreatTouchId === null) {
-                    const retreatBtnX = CONFIG.screenWidth * CONFIG.maze.retreatBtnXRatio;
-                    const retreatBtnY = CONFIG.screenHeight * CONFIG.maze.retreatBtnYRatio;
-                    const rdx = t.clientX - retreatBtnX;
-                    const rdy = t.clientY - retreatBtnY;
-                    if (Math.hypot(rdx, rdy) <= CONFIG.maze.retreatBtnRadius) {
-                        mazeRetreatTouchId = t.identifier;
-                        maze.retreatHolding = true;
-                        maze.retreatHoldStart = Date.now();
-                        maze.retreatTouchId = t.identifier;
-                        continue;
-                    }
-                }
-
                 // BCD 浮力背心 inflator（右侧竖直双钮）：必须在手动挡搓屏之前消费触点
                 if (bcdOnTouchStart(t.identifier, t.clientX, t.clientY)) {
                     continue;
@@ -626,7 +612,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
             // 旧主线第三关放弃按钮已废弃（迷宫的"放弃救援"是另外一个按钮，由 abandonHolding 管理）
 
             // 手动挡模式：记录滑动起始点，实时跟踪
-            if (CONFIG.manualDrive.enabled) {
+            if (CONFIG.driveMode === 'manual') {
                 const md = state.manualDrive;
                 const activeCount = Object.keys(md.activeTouches).length;
                 if (activeCount < CONFIG.manualDrive.maxTouchPoints) {
@@ -643,8 +629,9 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                     };
                 }
             } else {
-                // 自动挡（摇杆）：只绑定第一个未被其他功能占用的触点
+                // 自动挡/半自动共用摇杆：只绑定第一个未被其他功能占用的触点
                 if (touches.joystickId === null) {
+                    if (CONFIG.driveMode === 'semiAuto') releaseSemiAutoDrive();
                     touches.joystickId = t.identifier;
                     touches.start = { x: t.clientX, y: t.clientY };
                     touches.curr = { x: t.clientX, y: t.clientY };
@@ -802,7 +789,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
         }
 
         // 手动挡模式：touchMove 只更新当前位置，prev 由逻辑层推进
-        if (CONFIG.manualDrive.enabled) {
+        if (CONFIG.driveMode === 'manual') {
             const md = state.manualDrive;
             for (let t of res.touches) {
                 const td = md.activeTouches[t.identifier];
@@ -829,6 +816,12 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                     let angle = Math.atan2(dy, dx);
                     touches.curr.x = touches.start.x + Math.cos(angle) * 40;
                     touches.curr.y = touches.start.y + Math.sin(angle) * 40;
+                }
+
+                // 半自动持续读取方向与快慢挡，保持外推只消耗动力，不会刷新动力。
+                if (CONFIG.driveMode === 'semiAuto') {
+                    updateSemiAutoJoystick(dx, dy);
+                    break;
                 }
 
                 // 逻辑输入
@@ -1434,6 +1427,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
     });
 
     wx.onTouchCancel((res) => {
+        if (res.changedTouches.some(t => t.identifier === touches.joystickId)) resetDriveInput();
         if (state.screen === 'home_evening') {
             for (const t of res.changedTouches) {
                 delete _homeTouchPrev[t.identifier];
@@ -1458,13 +1452,6 @@ function handleTouchEnd(changedTouches) {
             }
         }
         // 迷宫撤离长按松手
-        if (t.identifier === mazeRetreatTouchId) {
-            mazeRetreatTouchId = null;
-            if (state.mazeRescue) {
-                state.mazeRescue.retreatHolding = false;
-                state.mazeRescue.retreatTouchId = null;
-            }
-        }
         // 左上角 HUD 触点松手（氧气环长按结束、tip 触发等）
         handleHUDTouchEnd(t.identifier, t.clientX, t.clientY);
         // BCD inflator 松手（充气/排气立即停止；过短的按压由 minBurstSec 补足成一口）
@@ -1501,7 +1488,7 @@ function handleTouchEnd(changedTouches) {
             state.rope.ui.progress = 0;
         }
         // 手动挡模式：滑动结束时清除触点
-        if (CONFIG.manualDrive.enabled && state.manualDrive) {
+        if (CONFIG.driveMode === 'manual' && state.manualDrive) {
             const md = state.manualDrive;
             if (md.activeTouches[t.identifier]) {
                 delete md.activeTouches[t.identifier];
@@ -1510,6 +1497,7 @@ function handleTouchEnd(changedTouches) {
 
         if(t.identifier === touches.joystickId) {
             touches.joystickId = null;
+            if (CONFIG.driveMode === 'semiAuto') releaseSemiAutoDrive();
             input.move = 0;
             input.speedUp = false;
         }

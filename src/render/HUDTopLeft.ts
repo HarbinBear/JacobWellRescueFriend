@@ -29,10 +29,11 @@ import { ctx, logicW, logicH } from './Canvas';
 import { drawTapeDeck, drawTapeSleeve, cutPanel, TAPE } from './TapeDeckVisual';
 import { getRescueTapeVisual } from './RescueTape';
 import { drawTapeNowPlaying } from './TapeEntry';
-import { drawAudioIcon, toggleMuted as audioToggleMuted } from './RenderAudioToggle';
+import { toggleMuted as audioToggleMuted } from './RenderAudioToggle';
 import { toggleGMOpen, isGMOpen } from '../gm/GMPanel';
 import { getBreathPhaseAngle, getBreathPhase, getBreathPressure, getLungVolume } from '../logic/BreathSystem';
 import { playSFX } from '../audio/AudioManager';
+import { getEquipmentEffects } from '../extraction/core/ExtractionRegistry';
 import { getActiveAirTanks } from '../extraction/logic/Loadout';
 import {
     getDecoRuntime, getDecoLevel, getCurrentStopInfo, isDecompressionRequired,
@@ -44,10 +45,10 @@ import {
 // 起点 X/Y，每项尺寸、间距（垂直排列）
 // 注意：HUD_START_Y 必须避开微信小游戏右上角胶囊和设备前置摄像头
 //       设计安全区基线 SAFE_TOP=62，图标顶边 = 62 → 中心 = 62 + ITEM_SIZE/2
-const HUD_START_X = 46;         // 所有图标的中心X（左侧留足边距）
-const HUD_START_Y = 84;         // 第一个图标中心Y（= SAFE_TOP 62 + HUD_ITEM_SIZE/2 22）
-const HUD_ITEM_SIZE = 44;       // 图标直径（作为hitTest和视觉尺寸基准）
-const HUD_ITEM_GAP = 18;        // 图标之间的垂直间距（从边缘到边缘）
+const HUD_START_X = 38;         // 所有图标的中心X（左侧留足边距）
+const HUD_START_Y = 82;         // 第一个图标中心Y（= SAFE_TOP 62 + HUD_ITEM_SIZE/2 22）
+const HUD_ITEM_SIZE = 40;       // 图标直径（作为hitTest和视觉尺寸基准）
+const HUD_ITEM_GAP = 14;        // 图标之间的垂直间距（从边缘到边缘）
 const HUD_TIP_OFFSET_X = 8;     // tip面板相对图标右侧的X偏移
 const HUD_TIP_MAX_WIDTH = 220;
 const HUD_TIP_PADDING = 10;
@@ -67,6 +68,8 @@ export interface HUDItem {
     iconDraw: (ctx2: CanvasRenderingContext2D, cx: number, cy: number, size: number, time: number) => void;
     // 短按回调（点击图标的主要操作）
     onShortTap?: () => void;
+    onPressStart?: () => void;
+    onPressEnd?: () => void;
     // 短按后 tip 的内容（可以是动态的，调用时求值）
     tipText?: () => string;
     // 是否支持长按（支持的话区分短长按，否则任何按都是短按）
@@ -135,16 +138,16 @@ function getVisibleSlots(): HUDSlot[] {
     const slots: HUDSlot[] = [];
     // 氧气环单独放大：参考 CONFIG.breath.oxygenRingSizeMul，其他图标保持原尺寸
     const cfgBreath: any = (CONFIG as any).breath || {};
-    const oxygenSizeMul: number = cfgBreath.oxygenRingSizeMul ?? 1.0;
-    let y = HUD_START_Y;
+    const oxygenSizeMul: number = Math.min(1.4, cfgBreath.oxygenRingSizeMul ?? 1.0);
+    let y = Math.max(HUD_START_Y, (CONFIG.uiSafeTop || 62) + HUD_ITEM_SIZE / 2);
     let prevHalf = 0; // 上一项的半径，用于给不同尺寸图标之间留出正确间距
     for (const item of hudItems) {
         if (item.visible && !item.visible()) continue;
-        const sizeHere = item.id === 'oxygen' ? HUD_ITEM_SIZE * oxygenSizeMul : item.id === 'lifeDetector' ? 56 : HUD_ITEM_SIZE;
+        const sizeHere = item.id === 'oxygen' ? HUD_ITEM_SIZE * oxygenSizeMul : item.id === 'lifeDetector' ? 48 : HUD_ITEM_SIZE;
         const halfHere = sizeHere / 2;
         if (slots.length === 0) {
             // 第一个项以固定起点为中心（但若它被放大，起点往下挪让它离顶部有合理留白）
-            y = HUD_START_Y + Math.max(0, halfHere - HUD_ITEM_SIZE / 2);
+            y += Math.max(0, halfHere - HUD_ITEM_SIZE / 2);
         } else {
             // 后续项基于上一项的下边缘 + 统一间距 + 本项半径
             y = y + prevHalf + HUD_ITEM_GAP + halfHere;
@@ -181,6 +184,7 @@ export function handleHUDTouchStart(touchId: number, x: number, y: number): bool
         startY: y,
         longFired: false,
     });
+    if (slot.item.onPressStart) slot.item.onPressStart();
 
     // 不支持长按的item：touchStart 立刻触发短按
     if (!slot.item.supportsLongPress) {
@@ -192,6 +196,10 @@ export function handleHUDTouchStart(touchId: number, x: number, y: number): bool
 export function handleHUDTouchMove(touchId: number, x: number, y: number): boolean {
     const track = activeTouches.get(touchId);
     if (!track) return false;
+    const pressedSlot = findSlotById(track.itemId);
+    if (pressedSlot?.item.onPressEnd && Math.hypot(x - pressedSlot.cx, y - pressedSlot.cy) > pressedSlot.size / 2 + 10) {
+        pressedSlot.item.onPressEnd(); activeTouches.delete(touchId); return true;
+    }
     // 移动超出容差视为取消长按候选
     const moved = Math.hypot(x - track.startX, y - track.startY);
     if (moved > HUD_TAP_MOVE_TOLERANCE) {
@@ -200,6 +208,7 @@ export function handleHUDTouchMove(touchId: number, x: number, y: number): boole
             const slot = findSlotById(track.itemId);
             if (slot && slot.item.supportsLongPress) {
                 // 取消追踪，拒绝后续判定
+                if (slot.item.onPressEnd) slot.item.onPressEnd();
                 activeTouches.delete(touchId);
                 return false;
             }
@@ -228,6 +237,7 @@ export function handleHUDTouchEnd(touchId: number, x: number, y: number): boolea
 
     const slot = findSlotById(track.itemId);
     if (!slot) return true;
+    if (slot.item.onPressEnd) slot.item.onPressEnd();
 
     if (track.longFired) {
         // 长按松手
@@ -293,7 +303,7 @@ export function drawHUDTopLeft(time: number): void {
         slot.item.iconDraw(ctx, slot.cx, slot.cy, slot.size, time);
         if (slot.item.id === 'lifeDetector') drawTapeNowPlaying(ctx, slot.cx + slot.size / 2 + 12, slot.cy - 23);
         if (slot.item.id !== 'lifeDetector') {
-            const captions: { [id: string]: string } = { oxygen: 'AIR', depth: 'DEPTH', deco: 'DECO', driveMode: 'DRIVE', audio: 'SOUND', gm: 'TOOLS' };
+            const captions: { [id: string]: string } = { oxygen: 'AIR', depth: 'DEPTH', deco: 'DECO', retreat: 'RETURN', gm: 'TOOLS' };
             ctx.save(); ctx.font = 'bold 7px Arial'; ctx.textAlign = 'center';
             ctx.fillStyle = TAPE.paper; ctx.fillText(captions[slot.item.id] || '', slot.cx, slot.cy + slot.size / 2 + 9); ctx.restore();
         }
@@ -427,7 +437,7 @@ export function initMazeHUDTopLeft(): void {
         tipText: () => {
             const maze = state.mazeRescue;
             const depth = maze ? Math.max(0, Math.floor(player.y / (maze.mazeTileSize || 120))) : 0;
-            const maxAllowed = maze ? ((maze as any).maxDepthAllowed || 30) : 30;
+            const maxAllowed = maze ? ((maze as any).maxDepthAllowed || 90) : 90;
             const overFlag = depth > maxAllowed ? '\n⚠ 已超出潜水衣极限！' : '';
             return `当前深度：${depth}m\n潜水衣极限：${maxAllowed}m${overFlag}`;
         },
@@ -479,35 +489,7 @@ export function initMazeHUDTopLeft(): void {
         },
     });
 
-    // 3. 手动/自动挡切换（短按切换）
-    registerHUDItem({
-        id: 'driveMode',
-        visible: () => true,
-        iconDraw: drawDriveModeIcon,
-        supportsLongPress: false,
-        onShortTap: () => {
-            CONFIG.manualDrive.enabled = !CONFIG.manualDrive.enabled;
-        },
-        tipText: () => {
-            return CONFIG.manualDrive.enabled ? '已切换：手动挡\n搓屏驱动潜水员踢水' : '已切换：自动挡\n摇杆控制移动方向';
-        },
-    });
-
-    // 3. 全局音频开关（短按切换）
-    registerHUDItem({
-        id: 'audio',
-        visible: () => true,
-        iconDraw: drawAudioIconWrapper,
-        supportsLongPress: false,
-        onShortTap: () => {
-            audioToggleMuted();
-        },
-        tipText: () => {
-            return state.audio.muted ? '音频：已静音' : '音频：已开启';
-        },
-    });
-
-    // 4. 深流随身听：短按提示，按住展开磁带封套。
+    // 随身听同时接管音量：轻点静音/恢复，按住展开磁带封套。
     registerHUDItem({
         id: 'lifeDetector',
         visible: () => {
@@ -522,14 +504,25 @@ export function initMazeHUDTopLeft(): void {
             drawTapeSleeve(c, Math.min(cx + 38, logicW - w - 12), Math.max(64, Math.min(cy - 112, logicH - 236)), w, getRescueTapeVisual());
             c.restore();
         },
-        onShortTap: () => { /* 只弹tip */ },
+        onShortTap: () => { audioToggleMuted(); },
         tipText: () => {
             const v = getRescueTapeVisual();
-            if (state.audio.muted) return '深流随身听 · 已静音\n点上方音量键恢复声音\n按住磁带可看分层节奏';
+            if (state.audio.muted) return '深流随身听 · 已静音\n轻点磁带恢复声音\n按住磁带可看分层节奏';
             if (v.fallback) return '深流随身听 · 双音模式\n按住查看节奏';
             if (!v.playing) return '深流随身听 · 磁带就绪\n带上音乐，下潜\n按住查看分层节奏';
             return `深流随身听 · ${v.mood === 'return' ? 'B 面' : 'A 面'}\n${v.level}/5 层 · 120 BPM\n按住查看分层节奏`;
         },
+    });
+
+    registerHUDItem({
+        id: 'retreat', visible: () => !state.mazeRescue?.npcRescued,
+        iconDraw: drawRetreatIcon, supportsLongPress: true,
+        onPressStart: () => {
+            const maze = state.mazeRescue;
+            if (!maze || maze.phase !== 'play') return;
+            maze.retreatHolding = true; maze.retreatHoldStart = Date.now();
+        },
+        onPressEnd: () => { if (state.mazeRescue) state.mazeRescue.retreatHolding = false; },
     });
 
     // 5. GM 面板切换（调试工具，放在最后）
@@ -567,13 +560,11 @@ function drawOxygenIcon(c: CanvasRenderingContext2D, cx: number, cy: number, siz
     // === 解析当前携带的氧气瓶组合，算出每瓶的剩余比率 ===
     // 规则：瓶 0 先被耗光，再耗瓶 1。
     //   bottleRemaining[i] = clamp(o2 - sumOfPrevCaps, 0, cap[i]) / cap[i]
-    //   bottleCap[i] 取自 startO2（airTankS=60 / M=100 / L=150）
+    //   bottleCap[i] 从装备表读取，与当次气瓶容量同步。
     const tanks = getActiveAirTanks();
     const tankCaps: number[] = [];
     for (const id of tanks) {
-        if (id === 'airTankL') tankCaps.push(150);
-        else if (id === 'airTankM') tankCaps.push(100);
-        else tankCaps.push(60);   // S 或未知
+        tankCaps.push(getEquipmentEffects(id)?.startO2 ?? 120);
     }
     if (tankCaps.length === 0) tankCaps.push(Math.max(1, player.o2Max || 100));
     let totalCap = 0;
@@ -832,7 +823,7 @@ function drawDepthIcon(c: CanvasRenderingContext2D, cx: number, cy: number, size
     const maze = state.mazeRescue;
     const tile = maze ? (maze.mazeTileSize || 120) : 120;
     const curDepth = maze ? Math.max(0, Math.floor(player.y / tile)) : 0;
-    const maxAllowed = maze ? ((maze as any).maxDepthAllowed || 30) : 30;
+    const maxAllowed = maze ? ((maze as any).maxDepthAllowed || 90) : 90;
     const ratio = curDepth / Math.max(1, maxAllowed);
     const overLimit = curDepth > maxAllowed;
     const r = size / 2 - 2;
@@ -1087,32 +1078,21 @@ function drawDecoIcon(c: CanvasRenderingContext2D, cx: number, cy: number, size:
     c.restore();
 }
 
-// 手动/自动挡图标：圆形背景 + M/A 字母
-function drawDriveModeIcon(c: CanvasRenderingContext2D, cx: number, cy: number, size: number, _time: number): void {
-    const isManual = CONFIG.manualDrive.enabled;
-    const r = size / 2 - 2;
-
-    c.save();
-    c.fillStyle = TAPE.ink;
-    c.strokeStyle = isManual ? TAPE.orange : TAPE.mint;
-    c.lineWidth = 1.3; cutPanel(c, cx - r, cy - r, r * 2, r * 2, 6); c.fill(); c.stroke();
-    c.fillStyle = isManual ? TAPE.orange : TAPE.mint; c.fillRect(cx - r + 4, cy - r + 4, 3, 8);
-    // 字母
-    c.fillStyle = 'rgba(255,255,255,0.96)';
-    c.font = 'bold 16px Arial';
-    c.textAlign = 'center';
-    c.textBaseline = 'middle';
-    c.fillText(isManual ? 'M' : 'A', cx, cy + 1);
-    c.textBaseline = 'alphabetic';
+// 防水随身听：与角色胸前共用同一画法、同一音频时间。
+function drawRetreatIcon(c: CanvasRenderingContext2D, cx: number, cy: number, size: number): void {
+    const r = size / 2 - 2, maze = state.mazeRescue;
+    c.save(); c.fillStyle = TAPE.ink; c.strokeStyle = TAPE.mint; c.lineWidth = 1;
+    cutPanel(c, cx - r, cy - r, r * 2, r * 2, 6); c.fill(); c.stroke();
+    c.strokeStyle = TAPE.paper; c.lineWidth = 2; c.beginPath();
+    c.moveTo(cx, cy + 9); c.lineTo(cx, cy - 8); c.moveTo(cx - 6, cy - 2); c.lineTo(cx, cy - 8); c.lineTo(cx + 6, cy - 2); c.stroke();
+    if (maze?.retreatHolding) {
+        const progress = Math.min(1, (Date.now() - maze.retreatHoldStart) / (CONFIG.maze.retreatHoldDuration * 1000));
+        c.strokeStyle = TAPE.mint; c.lineWidth = 2.5; c.beginPath();
+        c.arc(cx, cy, r + 3, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2); c.stroke();
+    }
     c.restore();
 }
 
-// 音频开关图标：调用 RenderAudioToggle 里已有的音符绘制
-function drawAudioIconWrapper(c: CanvasRenderingContext2D, cx: number, cy: number, size: number, _time: number): void {
-    drawAudioIcon(c, cx, cy, size);
-}
-
-// 防水随身听：与角色胸前共用同一画法、同一音频时间。
 function drawLifeDetectorIcon(c: CanvasRenderingContext2D, cx: number, cy: number, size: number, _time: number): void {
     const v = getRescueTapeVisual();
     drawTapeDeck(c, cx, cy, size, v);

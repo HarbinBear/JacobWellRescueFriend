@@ -1,3 +1,5 @@
+import { processJoystickDrive } from './JoystickDrive';
+import { processSemiAutoDrive } from './SemiAutoDrive';
 import { CONFIG } from '../core/config';
 import { state, player, particles, input, resetState } from '../core/state';
 import { generateMap } from '../world/map';
@@ -6,7 +8,7 @@ import { Particle, createSplash, updateSplashes, triggerSilt, updateParticles } 
 import { updateBreathSystem, resetBreathSystem, consumeBreathO2, resetBreathO2Consumer, computeBuoyancyOffset } from './BreathSystem';
 import { updateRopeSystem, findNearestWall } from './Rope';
 import { updateAllFishEnemies, createFishEnemy, findSafeSpawnPosition, findMazeFishSpawnPosition } from './FishEnemy';
-import { processManualDrive, updateAutoDriveVisual } from './ManualDrive';
+import { processManualDrive } from './ManualDrive';
 import { checkCollision, getNearestWallDist, checkMazeCollision } from './Collision';
 
 import { updateCameraSpringArm, snapCameraToPlayer, getAdaptiveZoom } from './CameraLogic';
@@ -223,31 +225,11 @@ export function update() {
 
     // 1. 转向系统 + 2. 移动系统
     let angleDiff = 0; // 声明在外层，泥沙逻辑需要引用
-    if (processManualDrive()) {
-        // 手动挡模式：脉冲已处理
+    if (processManualDrive() || processSemiAutoDrive()) {
+        // 手动挡/半自动：移动已处理
     } else {
-        // 自动挡（摇杆）模式
-        player.targetAngle = input.targetAngle;
-
-        angleDiff = player.targetAngle - player.angle;
-        while(angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-        while(angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-        
-        player.angle += angleDiff * CONFIG.turnSpeed; 
-
-        let speed = CONFIG.moveSpeed * 0.3;
-        if(input.speedUp) speed = CONFIG.moveSpeed; 
-
-        if(input.move > 0) {
-            player.vx += Math.cos(player.targetAngle) * speed * CONFIG.acceleration;
-            player.vy += Math.sin(player.targetAngle) * speed * CONFIG.acceleration;
-        }
-
-        player.vx *= CONFIG.waterDrag;
-        player.vy *= CONFIG.waterDrag;
-
-        // 自动挡动作视觉：写入转向/前进信号，让 drawDiver 能呈现转向身体侧倾与手臂动作
-        updateAutoDriveVisual(angleDiff * CONFIG.turnSpeed, input.move > 0);
+        // 自动挡：与半自动共用转向、推进和水阻。
+        angleDiff = processJoystickDrive(CONFIG.moveSpeed);
     }
 
     // 呼吸浮力：吐气阶段轻微下沉、吸气阶段轻微上浮，让玩家能直观感知呼吸节奏

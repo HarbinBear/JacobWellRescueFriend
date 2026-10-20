@@ -140,9 +140,9 @@ export const gameplayConfig = {
         impactRecoverPerSec: 0.25,       // 撞击急促度每秒线性衰减（0.8 → 约 3.2s 平复）
 
         // ========== 阶梯式氧气消耗（每次 exhale → holdEmpty 切换瞬间扣一口）==========
-        o2PerBreathStatic: 0.4,          // 静止时每口吐气扣氧（%）
-        o2PerBreathPeak: 2.0,            // 全速时每口吐气扣氧（%）
-        o2IdleDrain: 0.005,              // 呼吸系统未激活时的兜底恒量扣减（每帧 %）
+        o2PerBreathStatic: 0.2,          // 静止时每口吐气扣氧（%）
+        o2PerBreathPeak: 1.0,            // 全速时每口吐气扣氧（%）
+        o2IdleDrain: 0.0025,              // 呼吸系统未激活时的兜底恒量扣减（每帧 %）
 
         // ========== 呼吸浮力（加速度模型，叠加到 player.vy）==========
         // 肺空（lungVolume=0）→ 向下加速度（+Y）
@@ -436,12 +436,12 @@ export const gameplayConfig = {
 
         // ---- 交互控件布局（屏幕右侧竖直 inflator）----
         uiVisible: true,                 // 控件显隐（关掉后仍可由 GM/键盘驱动）
-        uiXFromRight: 44,                // 控件竖轴距屏幕右边缘（像素）
+        uiXFromRight: 46,                // 控件竖轴距屏幕右边缘（像素）
         uiCenterYRatio: 0.52,            // 控件竖向中心占屏高比例
         uiBtnRadius: 21,                 // 充/排气按钮半径
-        uiBtnGap: 120,                    // 按钮中心到量表中心的距离
-        uiGaugeW: 26,                    // 气量表宽度
-        uiGaugeH: 180,                    // 气量表高度
+        uiBtnGap: 104,                    // 按钮中心到量表中心的距离
+        uiGaugeW: 56,                    // 气量表宽度
+        uiGaugeH: 112,                    // 气量表高度
 
         // ---- 排气气泡 ----
         ventBubbleRate: 26,              // 排气时每秒生成的气泡数

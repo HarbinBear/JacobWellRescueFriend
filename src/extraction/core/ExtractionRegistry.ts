@@ -156,9 +156,9 @@ const TREASURE_ITEMS: ItemDef[] = [
 // =============================================
 
 const CONSUMABLE_ITEMS: EquipmentDef[] = [
-    { id: 'airTankS',    name: '小氧气瓶',  desc: '免费兜底装备，起始氧气 60。',          category: 'consumable', baseValue: 0,   weight: 600,  slots: 1, rarity: 'common',   spawnWeight: 0, conditionPool: 'defaultPool', effects: { startO2: 60 } },
-    { id: 'airTankM',    name: '中氧气瓶',  desc: '常规装备，起始氧气 100。',             category: 'consumable', baseValue: 40,  weight: 800,  slots: 2, rarity: 'common',   spawnWeight: 0, conditionPool: 'defaultPool', effects: { startO2: 100 } },
-    { id: 'airTankL',    name: '大氧气瓶',  desc: '深水玩家必备，起始氧气 150。',         category: 'consumable', baseValue: 120, weight: 1200, slots: 3, rarity: 'uncommon', spawnWeight: 0, conditionPool: 'defaultPool', effects: { startO2: 150 } },
+    { id: 'airTankS',    name: '小氧气瓶',  desc: '免费兜底装备，起始氧气 120。',          category: 'consumable', baseValue: 0,   weight: 600,  slots: 1, rarity: 'common',   spawnWeight: 0, conditionPool: 'defaultPool', effects: { startO2: 120 } },
+    { id: 'airTankM',    name: '中氧气瓶',  desc: '常规装备，起始氧气 200。',             category: 'consumable', baseValue: 40,  weight: 800,  slots: 2, rarity: 'common',   spawnWeight: 0, conditionPool: 'defaultPool', effects: { startO2: 200 } },
+    { id: 'airTankL',    name: '大氧气瓶',  desc: '深水玩家必备，起始氧气 300。',         category: 'consumable', baseValue: 120, weight: 1200, slots: 3, rarity: 'uncommon', spawnWeight: 0, conditionPool: 'defaultPool', effects: { startO2: 300 } },
     { id: 'batteryWeak', name: '弱电池',    desc: '免费兜底装备，手电照射距离 ×0.7。',    category: 'consumable', baseValue: 0,   weight: 100,  slots: 1, rarity: 'common',   spawnWeight: 0, conditionPool: 'defaultPool', effects: { flashlightRangeMul: 0.7 } },
     { id: 'batteryStd',  name: '标准电池',  desc: '常规手电电池。',                       category: 'consumable', baseValue: 30,  weight: 100,  slots: 1, rarity: 'common',   spawnWeight: 0, conditionPool: 'defaultPool', effects: { flashlightRangeMul: 1.0 } },
     { id: 'batteryHigh', name: '高功率电池', desc: '手电照射距离 ×1.3。',                  category: 'consumable', baseValue: 80,  weight: 150,  slots: 1, rarity: 'uncommon', spawnWeight: 0, conditionPool: 'defaultPool', effects: { flashlightRangeMul: 1.3 } },
@@ -180,9 +180,9 @@ const EQUIPMENT_ITEMS: EquipmentDef[] = [
     { id: 'finsEndurance', name: '长续航脚蹼', desc: '速度 0.95×，氧耗 0.85×，深水玩家爱。', category: 'equipment', baseValue: 350,  weight: 0, slots: 0, rarity: 'rare',     spawnWeight: 0, conditionPool: 'defaultPool', effects: { moveSpeedMul: 0.95, o2DrainMul: 0.85 } },
     // 潜水衣 / 呼吸器：决定本次下潜可达的最大安全深度
     // 超深时不硬卡（保留游泳手感），但氧气消耗 ×3 + 画面红警，逼玩家上浮
-    { id: 'suitBasic',     name: '简易潜水衣', desc: '基础潜水服，安全深度 30m。再深就吃不消了。', category: 'equipment', baseValue: 0,    weight: 0, slots: 0, rarity: 'common',   spawnWeight: 0, conditionPool: 'defaultPool', effects: { maxDepthMeters: 30 } },
-    { id: 'suitDeep',      name: '深水潜水衣', desc: '加厚抗压，安全深度 60m。',           category: 'equipment', baseValue: 500,  weight: 0, slots: 0, rarity: 'rare',     spawnWeight: 0, conditionPool: 'defaultPool', effects: { maxDepthMeters: 60 } },
-    { id: 'suitCCR',       name: 'CCR 循环呼吸机', desc: '闭式循环呼吸器，安全深度 100m，深水玩家终极装备。', category: 'equipment', baseValue: 2000, weight: 0, slots: 0, rarity: 'epic',     spawnWeight: 0, conditionPool: 'defaultPool', effects: { maxDepthMeters: 100 } },
+    { id: 'suitBasic',     name: '简易潜水衣', desc: '基础潜水服，安全深度 90m，适合探索练习。', category: 'equipment', baseValue: 0,    weight: 0, slots: 0, rarity: 'common',   spawnWeight: 0, conditionPool: 'defaultPool', effects: { maxDepthMeters: 90 } },
+    { id: 'suitDeep',      name: '深水潜水衣', desc: '加厚抗压，安全深度 140m。',           category: 'equipment', baseValue: 500,  weight: 0, slots: 0, rarity: 'rare',     spawnWeight: 0, conditionPool: 'defaultPool', effects: { maxDepthMeters: 140 } },
+    { id: 'suitCCR',       name: 'CCR 循环呼吸机', desc: '闭式循环呼吸器，安全深度 200m，深水玩家终极装备。', category: 'equipment', baseValue: 2000, weight: 0, slots: 0, rarity: 'epic',     spawnWeight: 0, conditionPool: 'defaultPool', effects: { maxDepthMeters: 200 } },
 ];
 
 // =============================================

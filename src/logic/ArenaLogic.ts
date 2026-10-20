@@ -1,9 +1,12 @@
+import { processJoystickDrive } from './JoystickDrive';
+import { resetDriveInput } from './DriveMode';
+import { processSemiAutoDrive } from './SemiAutoDrive';
 import { CONFIG } from '../core/config';
 import { state, player, input, resetState } from '../core/state';
 import { generateArenaMap } from '../world/map';
 import { updateParticles, updateSplashes } from './Particle';
 import { updateAllFishEnemies, createFishEnemy, findSafeSpawnPosition } from './FishEnemy';
-import { processManualDrive, updateAutoDriveVisual } from './ManualDrive';
+import { processManualDrive } from './ManualDrive';
 import { checkCollision } from './Collision';
 import { triggerSilt } from './Particle';
 import { updateCameraSpringArm, snapCameraToPlayer, getAdaptiveZoom } from './CameraLogic';
@@ -180,32 +183,14 @@ function updateArenaPlayer() {
         input.speedUp = false;
         player.vx = 0;
         player.vy = 0;
-        if (state.manualDrive) state.manualDrive.activeTouches = {};
+        resetDriveInput();
         return;
     }
-    if (processManualDrive()) {
-        // 手动挡模式：脉冲已处理
+    if (processManualDrive() || processSemiAutoDrive()) {
+        // 手动挡/半自动：移动已处理
     } else {
-        // 自动挡（摇杆）模式
-        // 转向
-        player.targetAngle = input.targetAngle;
-        let angleDiff = player.targetAngle - player.angle;
-        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-        player.angle += angleDiff * CONFIG.turnSpeed;
-
-        // 移动
-        let speed = CONFIG.moveSpeed * 0.3;
-        if (input.speedUp) speed = CONFIG.moveSpeed;
-        if (input.move > 0) {
-            player.vx += Math.cos(player.targetAngle) * speed * CONFIG.acceleration;
-            player.vy += Math.sin(player.targetAngle) * speed * CONFIG.acceleration;
-        }
-        player.vx *= CONFIG.waterDrag;
-        player.vy *= CONFIG.waterDrag;
-
-        // 自动挡动作视觉：写入转向/前进信号，让 drawDiver 能呈现转向身体侧倾与手臂动作
-        updateAutoDriveVisual(angleDiff * CONFIG.turnSpeed, input.move > 0);
+        // 自动挡：与半自动共用转向、推进和水阻。
+        processJoystickDrive(CONFIG.moveSpeed);
     }
 
     // 碰撞检测

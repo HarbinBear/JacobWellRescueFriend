@@ -431,7 +431,7 @@ export function drawMazeHUD() {
     drawHUDTopLeft(time);
 
     // --- 顶部居中深度标牌 + 超深红警（场景内可视化"本次最大深度极限"） ---
-    drawDepthBanner(maze, cw, ch);
+    drawOverDepthWarning(maze, cw, ch);
 
     // --- BCD 浮力背心：失控上浮/下沉的屏幕边缘告警（压在控件下面，不挡控件）---
     drawBCDWarnOverlay(time);
@@ -481,93 +481,6 @@ export function drawMazeHUD() {
             ctx.textAlign = 'center';
             ctx.fillText('↑  返回入水口', cw / 2, ch * 0.15);
         }
-    }
-
-    // 撤离按钮（未带人时可用，左下角，按住展开说明）
-    if (!maze.npcRescued) {
-        const retreatBtnX = cw * CONFIG.maze.retreatBtnXRatio;
-        const retreatBtnY = ch * CONFIG.maze.retreatBtnYRatio;
-        const retreatR = CONFIG.maze.retreatBtnRadius;
-
-        // 长按进度
-        let retreatProgress = 0;
-        if (maze.retreatHolding) {
-            const elapsed = (Date.now() - maze.retreatHoldStart) / 1000;
-            retreatProgress = Math.min(1, elapsed / CONFIG.maze.retreatHoldDuration);
-        }
-
-        // 撤离详情展开动画（长按时展开说明文字）
-        if (maze.retreatHolding && retreatProgress > 0) {
-            maze._retreatDetailOpen = Math.min(1, (maze._retreatDetailOpen || 0) + 0.06);
-        } else if (!maze.retreatHolding) {
-            maze._retreatDetailOpen = Math.max(0, (maze._retreatDetailOpen || 0) - 0.1);
-        }
-        const retDetailEase = (maze._retreatDetailOpen || 0);
-        const retDE = retDetailEase * retDetailEase * (3 - 2 * retDetailEase);
-
-        // 展开的说明面板（按钮上方）
-        if (retDE > 0.01) {
-            const rpW = 80 * retDE;
-            const rpH = 28 * retDE;
-            const rpX = retreatBtnX - rpW / 2;
-            const rpY = retreatBtnY - retreatR - 10 - rpH;
-            ctx.globalAlpha = 0.85 * retDE;
-            ctx.fillStyle = 'rgba(8,20,35,0.88)';
-            ctx.beginPath();
-            rrect(ctx, rpX, rpY, rpW, rpH, 8 * retDE);
-            ctx.fill();
-            if (retDE > 0.4) {
-                const cA = Math.min(1, (retDE - 0.4) / 0.6);
-                ctx.globalAlpha = 0.9 * cA;
-                ctx.fillStyle = 'rgba(150,255,220,0.9)';
-                ctx.font = 'bold 12px Arial';
-                ctx.textAlign = 'center';
-                ctx.fillText('撤离上浮', retreatBtnX, rpY + rpH / 2 + 4);
-            }
-        }
-
-        // 按钮底色（磨砂玻璃感）
-        ctx.globalAlpha = 0.65;
-        ctx.fillStyle = retreatProgress > 0 ? 'rgba(40,120,100,0.8)' : 'rgba(15,35,50,0.75)';
-        ctx.beginPath();
-        ctx.arc(retreatBtnX, retreatBtnY, retreatR, 0, Math.PI * 2);
-        ctx.fill();
-
-        // 外圈（静态细线）
-        ctx.globalAlpha = 0.5;
-        ctx.strokeStyle = 'rgba(100,200,220,0.35)';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.arc(retreatBtnX, retreatBtnY, retreatR, 0, Math.PI * 2);
-        ctx.stroke();
-
-        // 长按进度环
-        if (retreatProgress > 0) {
-            ctx.globalAlpha = 0.9;
-            ctx.strokeStyle = 'rgba(80,255,200,0.85)';
-            ctx.lineWidth = 3;
-            ctx.lineCap = 'round';
-            ctx.beginPath();
-            ctx.arc(retreatBtnX, retreatBtnY, retreatR - 2, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * retreatProgress);
-            ctx.stroke();
-            ctx.lineCap = 'butt';
-        }
-
-        // 上箭头图标
-        ctx.globalAlpha = retreatProgress > 0 ? 0.95 : 0.75;
-        ctx.fillStyle = retreatProgress > 0 ? 'rgba(150,255,220,0.95)' : 'rgba(150,210,230,0.85)';
-        ctx.beginPath();
-        ctx.moveTo(retreatBtnX, retreatBtnY - 10);
-        ctx.lineTo(retreatBtnX - 7, retreatBtnY - 2);
-        ctx.lineTo(retreatBtnX + 7, retreatBtnY - 2);
-        ctx.closePath();
-        ctx.fill();
-        ctx.strokeStyle = ctx.fillStyle;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(retreatBtnX, retreatBtnY - 1);
-        ctx.lineTo(retreatBtnX, retreatBtnY + 10);
-        ctx.stroke();
     }
 
     // 小地图（仅调试模式显示，左上角，可折叠）
@@ -751,14 +664,13 @@ function drawMazeMinimap(maze: any, cw: number, ch: number, time: number) {
 // - 顶部居中（避开微信胶囊和左上 HUD）显示"30 / 60m"两段数字
 // - 超过潜水衣极限时：标牌底变红 + 屏幕四周脉冲红雾（提示风险）
 // - 不阻塞玩家视线（高度仅 26px、宽度约 110px）
-function drawDepthBanner(maze: any, cw: number, ch: number): void {
+function drawOverDepthWarning(maze: any, cw: number, ch: number): void {
     if (!maze || maze.phase !== 'play') return;
 
     const tile = maze.mazeTileSize || 120;
     const curDepth = Math.max(0, Math.floor(player.y / tile));
-    const maxAllowed = (maze.maxDepthAllowed | 0) || 30;
+    const maxAllowed = (maze.maxDepthAllowed | 0) || 90;
     const overLimit = curDepth > maxAllowed;
-    const ratio = Math.min(1.2, curDepth / Math.max(1, maxAllowed));
 
     // === 1. 屏幕边缘红警（仅超深时） ===
     if (overLimit) {
@@ -773,59 +685,5 @@ function drawDepthBanner(maze: any, cw: number, ch: number): void {
         ctx.restore();
     }
 
-    // === 2. 顶部居中标牌 ===
-    // 位置：避开左上 HUD（左 92px 内是 HUD 区）和右上微信胶囊（右 110px 内）
-    // 标牌宽 110、高 26，水平居中（如果可用宽度足够）
-    const bannerW = 110;
-    const bannerH = 26;
-    const bannerX = (cw - bannerW) / 2;
-    const bannerY = 16;
 
-    ctx.save();
-
-    // 底色：常态深蓝 / 临界（≥85%）橙色 / 超限红色
-    let bgColor: string;
-    let strokeColor: string;
-    if (overLimit) {
-        bgColor = 'rgba(140, 20, 20, 0.92)';
-        strokeColor = 'rgba(255, 100, 100, 0.95)';
-    } else if (ratio >= 0.85) {
-        bgColor = 'rgba(80, 50, 10, 0.88)';
-        strokeColor = 'rgba(255, 200, 100, 0.85)';
-    } else {
-        bgColor = 'rgba(16,30,38,0.9)';
-        strokeColor = TAPE.paper;
-    }
-
-    ctx.fillStyle = bgColor;
-    ctx.beginPath();
-    cutPanel(ctx, bannerX, bannerY, bannerW, bannerH, 6);
-    ctx.fill();
-    ctx.strokeStyle = strokeColor;
-    ctx.lineWidth = overLimit ? 1.6 : 1.1;
-    ctx.beginPath();
-    cutPanel(ctx, bannerX, bannerY, bannerW, bannerH, 6);
-    ctx.stroke();
-
-    // 文字："深度 30 / 60m"
-    const textColor = overLimit ? 'rgba(255, 220, 220, 0.98)'
-                    : ratio >= 0.85 ? 'rgba(255, 230, 180, 0.95)'
-                    : 'rgba(220, 240, 255, 0.95)';
-    ctx.fillStyle = textColor;
-    ctx.font = 'bold 12px Arial';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-
-    const cx = bannerX + bannerW / 2;
-    const cy = bannerY + bannerH / 2;
-
-    if (overLimit) {
-        ctx.fillText(`⚠ ${curDepth}m / 极限 ${maxAllowed}m`, cx, cy);
-    } else {
-        ctx.fillText(`深度 ${curDepth} / ${maxAllowed}m`, cx, cy);
-    }
-
-    ctx.textAlign = 'start';
-    ctx.textBaseline = 'alphabetic';
-    ctx.restore();
 }

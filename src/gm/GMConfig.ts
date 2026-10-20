@@ -129,9 +129,23 @@ export const TABS: GMTab[] = [
         ]
     },
     {
+        name: '半自动',
+        items: [
+            { type: 'select', label: '移动模式', path: 'driveMode', options: ['auto', 'manual', 'semiAuto'], optionLabels: ['自动挡', '手动挡', '半自动 Semi Auto'] },
+            { type: 'select', label: '体力条位置', path: 'semiAutoDrive.staminaPosition', options: ['top', 'bottom', 'bcd'], optionLabels: ['顶部（安全区内）', '底部', 'BCD 右侧'] },
+            { type: 'bool', label: '显示虚拟摇杆', path: 'semiAutoDrive.showJoystick' },
+            { type: 'number', label: '全力持续秒数', path: 'semiAutoDrive.sprintDuration', min: 1, max: 12, step: 0.5, precision: 1 },
+            { type: 'number', label: '空到满恢复秒数', path: 'semiAutoDrive.recoveryDuration', min: 0.5, max: 8, step: 0.1, precision: 1 },
+            { type: 'number', label: '回气间隔(秒)', path: 'semiAutoDrive.recoveryDelay', min: 0, max: 1, step: 0.05, precision: 2 },
+            { type: 'number', label: '力度耗体力曲线', path: 'semiAutoDrive.drainExponent', min: 1, max: 3, step: 0.1, precision: 1 },
+            { type: 'number', label: '耗空后恢复门槛', path: 'semiAutoDrive.resumeThreshold', min: 0.1, max: 0.5, step: 0.05, precision: 2 },
+            { type: 'number', label: '踢腿收势时间(秒)', path: 'semiAutoDrive.kickFadeDuration', min: 0.03, max: 0.3, step: 0.01, precision: 2 },
+        ]
+    },
+    {
         name: '手动挡',
         items: [
-            { type: 'bool', label: '启用手动挡', path: 'manualDrive.enabled' },
+            { type: 'select', label: '移动模式', path: 'driveMode', options: ['auto', 'manual', 'semiAuto'], optionLabels: ['自动挡', '手动挡', '半自动 Semi Auto'] },
             { type: 'bool', label: '调试辅助线', path: 'manualDrive.debugDraw' },
             { type: 'number', label: '有效行程', path: 'manualDrive.effectiveDistance', min: 40, max: 240, step: 4 },
             { type: 'number', label: '基础推进', path: 'manualDrive.thrustBase', min: 0.05, max: 3, step: 0.05, precision: 2 },

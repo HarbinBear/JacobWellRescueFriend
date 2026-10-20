@@ -465,7 +465,7 @@ export function draw() {
     // 绘制玩家
     // 旧主线 tankDamaged（氧气瓶损坏 → 不画瓶）已废弃，固定有瓶。
     let hasTank = true;
-    const isAutoSwim = !CONFIG.manualDrive.enabled;
+    const isAutoSwim = CONFIG.driveMode !== 'manual';
     // 撤离玩法：根据装备的潜水衣 / 脚蹼调色，让外观随装备等级变化
     const playerColors = buildPlayerDiverColors();
     // 撤离玩法：根据本次携带的氧气瓶数量决定画一只还是两只
@@ -493,6 +493,7 @@ export function draw() {
         kickDrive: state.manualDrive.kickDrive,
         id: 'player',
         autoSwim: isAutoSwim,
+        swimEffort: CONFIG.driveMode === 'semiAuto' ? state.semiAutoDrive.effort : undefined,
         regulatorAnim: player.regulatorAnim,
         carryItemAnim: player.carryItemAnim,
         welcomeArmsAnim: player.welcomeArmsAnim,
@@ -764,7 +765,7 @@ export function draw() {
     }
 
     // 手动挡调试辅助线（在所有游戏内容之上、GM面板之下绘制）
-    if (CONFIG.manualDrive.enabled && CONFIG.manualDrive.debugDraw &&
+    if (CONFIG.driveMode === 'manual' && CONFIG.manualDrive.debugDraw &&
         (state.screen === 'play' || state.screen === 'fishArena' || state.screen === 'mazeRescue')) {
         const cx = CONFIG.screenWidth / 2 + (player.x - camX) * zoom;
         const cy = CONFIG.screenHeight / 2 + (player.y - camY) * zoom;

@@ -1,11 +1,25 @@
 // 角色表现与交互：手动挡输入 / 潜水员动画 / 相机 / 音频
 
+export type DriveMode = 'auto' | 'manual' | 'semiAuto';
+
 export const characterConfig = {
+    // HUD 循环切换：自动挡 → 手动挡 → 半自动。
+    driveMode: 'semiAuto' as DriveMode,
+
+    // 体力按实际输入强度消耗，停止推动后延迟恢复。
+    semiAutoDrive: {
+        sprintDuration: 4.0,       // 满体力、最大推力可持续秒数
+        recoveryDuration: 1.8,     // 从空到满的恢复秒数（不含回气间隔）
+        recoveryDelay: 0.25,       // 停止发力后的回气间隔（秒）
+        drainExponent: 1.5,        // 大推更费力，轻推更省力
+        resumeThreshold: 0.22,     // 耗空后至少恢复到此比例才能重新推进
+        kickFadeDuration: 0.10,
+        staminaPosition: 'bottom', // top / bottom / bcd，可在 GM 中实验
+        showJoystick: false,       // 隐藏图形时仍正常接受屏幕拖动
+    },
     // ===== 手动挡（搓屏移动）配置 =====
     // 物理模型：推力沿输入方向施加，身体朝向被动跟随速度方向
     manualDrive: {
-        enabled: false,            // 是否启用手动挡模式（false=自动挡/摇杆，默认）；玩家可在 HUD 短按切换
-
         // --- 输入行程参数 ---
         effectiveDistance: 184,      // 一次输入可持续生效的有效行程（像素）
         minSwipeDist: 2,             // 输入起效的最小位移（像素）

@@ -1,3 +1,4 @@
+import { drawSemiAutoControls } from './RenderSemiAutoDrive';
 import { CONFIG } from '../core/config';
 import { state, player, touches } from '../core/state';
 import { ctx, canvas, logicW, logicH } from './Canvas';
@@ -178,31 +179,33 @@ function drawDebugFishButton() {
 
 export function drawControls() {
     // 主游戏和竞技场模式都需要显示控制器
-    const isPlayScreen = state.screen === 'play' || state.screen === 'fishArena';
+    const isMazePlay = state.screen === 'mazeRescue' && state.mazeRescue?.phase === 'play';
+    const isPlayScreen = state.screen === 'play' || state.screen === 'fishArena' || isMazePlay;
     if (!isPlayScreen) return;
 
     // 竞技场准备阶段不显示摇杆提示（但攻击按钮仍显示）
     const isArenaPrep = state.screen === 'fishArena' && state.fishArena && state.fishArena.phase === 'prep';
 
     if (!isArenaPrep) {
-        if (CONFIG.manualDrive.enabled) {
+        if (CONFIG.driveMode === 'manual') {
             // 手动挡模式：不显示摇杆，显示搓屏提示
             if (touches.joystickId === null && !Object.keys(state.manualDrive.activeTouches || {}).length) {
                 ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.textAlign = 'center'; ctx.font = '14px Arial';
                 ctx.fillText('搓屏幕移动（方向与推水相反）', logicW/2, logicH-50);
             }
-        } else if(touches.joystickId !== null) {
+        } else if (CONFIG.driveMode === 'semiAuto') {
+            drawSemiAutoControls(ctx, logicW, logicH);
+        } else if(CONFIG.semiAutoDrive.showJoystick && touches.joystickId !== null) {
             ctx.beginPath(); ctx.arc(touches.start.x, touches.start.y, 40, 0, Math.PI*2);
             ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = 2; ctx.stroke();
             ctx.beginPath(); ctx.arc(touches.curr.x, touches.curr.y, 20, 0, Math.PI*2);
             ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.fill();
             ctx.beginPath(); ctx.moveTo(touches.start.x, touches.start.y); ctx.lineTo(touches.curr.x, touches.curr.y);
             ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = 1; ctx.stroke();
-        } else {
-            ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.textAlign = 'center'; ctx.font = '14px Arial';
-            ctx.fillText('按住屏幕任意位置移动', logicW/2, logicH-50);
         }
     }
+    // 迷宫由自身 HUD 绘制攻击和手电按钮。
+    if (isMazePlay) return;
     // 绘制攻击按鈕
     drawAttackButton();
     // 绘制手电筒开关按钮

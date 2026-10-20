@@ -1,5 +1,21 @@
 import { CONFIG } from './config';
 import type { RescueRagdollState } from '../logic/RescueRagdoll';
+
+export function createSemiAutoDriveState() {
+    return {
+        pushStartedAt: null as number | null,
+        remaining: 1,
+        exhausted: false,
+        thrusting: false,
+        effort: 0,
+        lastUpdateAt: null as number | null,
+        depletedAt: 0,
+        recoveredAt: 0,
+        restStartedAt: null as number | null,
+        inputPower: 0,
+    };
+}
+
 export const state = {
     screen: 'menu', // menu, progressSelect, mazeRescue, home_evening, dream（旧 play/win/lose/ending/fishArena 已废弃；fishArena 仍可由 GM 强制进入）
     // 主菜单"开始新游戏"确认框开关（运行时，不进存档）
@@ -146,6 +162,8 @@ export const state = {
         cooldownTimer: number;  // 冷却计时（>0 表示冷却中）
         angle: number;          // 攻击方向（玩家朝向）
     },
+    // 半自动：连续输入按力度消耗体力，停止发力后延迟恢复。
+    semiAutoDrive: createSemiAutoDriveState(),
     // 手动挡（搓屏移动）运行态
     manualDrive: {
         // 当前正在进行的滑动触点（最多支持2个），实时更新位置
@@ -540,6 +558,8 @@ export function resetState() {
         cooldownTimer: 0,
         angle: 0,
     };
+
+    state.semiAutoDrive = createSemiAutoDriveState();
 
     // 重置手动挡状态
     state.manualDrive = {

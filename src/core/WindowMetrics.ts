@@ -3,6 +3,8 @@ export interface WindowMetrics {
     windowWidth: number;
     windowHeight: number;
     pixelRatio: number;
+    safeTop: number;
+    safeBottom: number;
 }
 
 let cached: WindowMetrics | null = null;
@@ -48,7 +50,11 @@ export function getWindowMetrics(): WindowMetrics {
     if (!width || !height) {
         console.warn('[WindowMetrics] 窗口接口未提供有效尺寸，暂用 375 × 667；请检查真机基础库/调试环境。');
     }
+    const raw = (modern as any).safeArea || (legacy as any).safeArea || {};
+    const status = (modern as any).statusBarHeight || (legacy as any).statusBarHeight || 0;
     cached = {
+        safeTop: Math.max(62, Math.min((height || 667) * .2, Math.max(raw.top || 0, status) + 12)),
+        safeBottom: Math.max(18, Math.min(64, (raw.bottom ? (height || 667) - raw.bottom : 0) + 10)),
         windowWidth: width || 375,
         windowHeight: height || 667,
         pixelRatio: firstPositive(modern.pixelRatio, legacy.pixelRatio, host.devicePixelRatio,

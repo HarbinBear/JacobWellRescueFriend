@@ -405,11 +405,12 @@ export function updateWheelButtonVisibility() {
     // 判定"没有移动输入"：
     // - 自动挡：摇杆未推（input.move === 0）
     // - 手动挡：没有活跃的搓屏触点
-    const isManual = !!(CONFIG as any).manualDrive?.enabled;
+    // - 半自动：和自动挡相同，以摇杆是否回中/松手为准
+    const isManual = CONFIG.driveMode === 'manual';
     const hasManualTouch = isManual
         ? Object.keys(state.manualDrive?.activeTouches || {}).length > 0
         : false;
-    const noMoveInput = isManual ? !hasManualTouch : (input.move === 0);
+    const noMoveInput = isManual ? !hasManualTouch : input.move === 0;
 
     const nearbyInfo = detectWheelContext();
     // stillTimer 字段保留但始终重置为 0，保持数据兼容

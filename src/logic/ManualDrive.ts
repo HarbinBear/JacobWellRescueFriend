@@ -15,7 +15,7 @@ import { state, player } from '../core/state';
  * 返回 true 表示手动挡已处理移动，调用方应跳过自动挡逻辑
  */
 export function processManualDrive(): boolean {
-    if (!CONFIG.manualDrive.enabled) return false;
+    if (CONFIG.driveMode !== 'manual') return false;
     const md = state.manualDrive;
     if (!md) return false;
 

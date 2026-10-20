@@ -5,6 +5,6 @@
 //   - src/core/config/gameplay.ts   标记 / 氧气瓶 / 呼吸 / 撞击反馈 / 攻击 / 探知仪
 //   - src/core/config/modes.ts      fishArena / fishEnemy / maze（含浅水区）
 //   - src/core/config/rendering.ts  dust / flashlight / quality / perfHUD / postProcess
-//   - src/core/config/character.ts  manualDrive / diver / camera / audio
+//   - src/core/config/character.ts  driveMode / semiAutoDrive / manualDrive / diver / camera / audio
 
 export { CONFIG } from './config/index';

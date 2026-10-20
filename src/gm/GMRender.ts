@@ -62,6 +62,11 @@ export function drawGMPanel(ctx: CanvasRenderingContext2D): void {
         ctx.stroke();
     }
 
+    const closeX = PX + PANEL_W - 16;
+    ctx.strokeStyle = 'rgba(255,235,205,.85)'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(closeX - 4, handleCY - 4); ctx.lineTo(closeX + 4, handleCY + 4);
+    ctx.moveTo(closeX + 4, handleCY - 4); ctx.lineTo(closeX - 4, handleCY + 4); ctx.stroke();
+
     // ---- Tab 页签（可滑动） ----
     const tabY = PY + DRAG_BAR_H;
     const totalTabW = TABS.length * TAB_FIXED_W;

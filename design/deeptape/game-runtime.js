@@ -2592,7 +2592,11 @@ function getWindowMetrics() {
     if (!width || !height) {
         console.warn('[WindowMetrics] 窗口接口未提供有效尺寸，暂用 375 × 667；请检查真机基础库/调试环境。');
     }
+    const raw = modern.safeArea || legacy.safeArea || {};
+    const status = modern.statusBarHeight || legacy.statusBarHeight || 0;
     cached = {
+        safeTop: Math.max(62, Math.min((height || 667) * .2, Math.max(raw.top || 0, status) + 12)),
+        safeBottom: Math.max(18, Math.min(64, (raw.bottom ? (height || 667) - raw.bottom : 0) + 10)),
         windowWidth: width || 375,
         windowHeight: height || 667,
         pixelRatio: firstPositive(modern.pixelRatio, legacy.pixelRatio, host.devicePixelRatio, gameHost.devicePixelRatio, 2),
@@ -2612,6 +2616,8 @@ exports.baseConfig = {
     // 画布设置 (竖屏适配)
     screenWidth: systemInfo.windowWidth,
     screenHeight: systemInfo.windowHeight,
+    uiSafeTop: systemInfo.safeTop,
+    uiSafeBottom: systemInfo.safeBottom,
     // 调试
     debug: false, // 调试模式：显示小地图和实时坐标
     debugSpeedMultiplier: 1, // 调试模式下的移动速度系数
@@ -2718,10 +2724,22 @@ exports.baseConfig = {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.characterConfig = void 0;
 exports.characterConfig = {
+    // HUD 循环切换：自动挡 → 手动挡 → 半自动。
+    driveMode: 'semiAuto',
+    // 体力按实际输入强度消耗，停止推动后延迟恢复。
+    semiAutoDrive: {
+        sprintDuration: 4.0, // 满体力、最大推力可持续秒数
+        recoveryDuration: 1.8, // 从空到满的恢复秒数（不含回气间隔）
+        recoveryDelay: 0.25, // 停止发力后的回气间隔（秒）
+        drainExponent: 1.5, // 大推更费力，轻推更省力
+        resumeThreshold: 0.22, // 耗空后至少恢复到此比例才能重新推进
+        kickFadeDuration: 0.10,
+        staminaPosition: 'bottom', // top / bottom / bcd，可在 GM 中实验
+        showJoystick: false, // 隐藏图形时仍正常接受屏幕拖动
+    },
     // ===== 手动挡（搓屏移动）配置 =====
     // 物理模型：推力沿输入方向施加，身体朝向被动跟随速度方向
     manualDrive: {
-        enabled: false, // 是否启用手动挡模式（false=自动挡/摇杆，默认）；玩家可在 HUD 短按切换
         // --- 输入行程参数 ---
         effectiveDistance: 184, // 一次输入可持续生效的有效行程（像素）
         minSwipeDist: 2, // 输入起效的最小位移（像素）
@@ -3037,9 +3055,9 @@ exports.gameplayConfig = {
         rateFall: 0.02, // movement 下降速率（静止后慢慢平复，约 3s 降一半）
         impactRecoverPerSec: 0.25, // 撞击急促度每秒线性衰减（0.8 → 约 3.2s 平复）
         // ========== 阶梯式氧气消耗（每次 exhale → holdEmpty 切换瞬间扣一口）==========
-        o2PerBreathStatic: 0.4, // 静止时每口吐气扣氧（%）
-        o2PerBreathPeak: 2.0, // 全速时每口吐气扣氧（%）
-        o2IdleDrain: 0.005, // 呼吸系统未激活时的兜底恒量扣减（每帧 %）
+        o2PerBreathStatic: 0.2, // 静止时每口吐气扣氧（%）
+        o2PerBreathPeak: 1.0, // 全速时每口吐气扣氧（%）
+        o2IdleDrain: 0.0025, // 呼吸系统未激活时的兜底恒量扣减（每帧 %）
         // ========== 呼吸浮力（加速度模型，叠加到 player.vy）==========
         // 肺空（lungVolume=0）→ 向下加速度（+Y）
         // 肺满（lungVolume=1）→ 向上加速度（-Y）
@@ -3303,12 +3321,12 @@ exports.gameplayConfig = {
         tutorialDepth: 12, // 首次下潜超过此深度弹一次教学文案（米）
         // ---- 交互控件布局（屏幕右侧竖直 inflator）----
         uiVisible: true, // 控件显隐（关掉后仍可由 GM/键盘驱动）
-        uiXFromRight: 44, // 控件竖轴距屏幕右边缘（像素）
+        uiXFromRight: 46, // 控件竖轴距屏幕右边缘（像素）
         uiCenterYRatio: 0.52, // 控件竖向中心占屏高比例
         uiBtnRadius: 21, // 充/排气按钮半径
-        uiBtnGap: 120, // 按钮中心到量表中心的距离
-        uiGaugeW: 26, // 气量表宽度
-        uiGaugeH: 180, // 气量表高度
+        uiBtnGap: 104, // 按钮中心到量表中心的距离
+        uiGaugeW: 56, // 气量表宽度
+        uiGaugeH: 112, // 气量表高度
         // ---- 排气气泡 ----
         ventBubbleRate: 26, // 排气时每秒生成的气泡数
         ventBubbleSizeMul: 0.85, // 相对呼吸气泡的尺寸倍数
@@ -3520,9 +3538,6 @@ exports.modesConfig = {
         denSkullSearchRadiusRatio: 0.9, // 骷髅搜索半径占聚集点半径的比例
         // === 多次下潜闭环配置 ===
         retreatHoldDuration: 1.0, // 探路撤离长按秒数
-        retreatBtnRadius: 36, // 撤离按钮半径
-        retreatBtnXRatio: 0.18, // 撤离按钮X位置比例
-        retreatBtnYRatio: 0.88, // 撤离按钮Y位置比例
         surfacingDuration: 30, // 上浮动画帧数（0.5秒，蓄力→爆发→破水）——仅用于成功撤离/救援
         failedDuration: 45, // 撤离失败转场帧数（~0.75s，黑幕淡入，没有飞升动画）
         debriefShowDelay: 30, // 结算页延迟显示帧数
@@ -3652,7 +3667,7 @@ exports.renderingConfig = {
 //   - src/core/config/gameplay.ts   标记 / 氧气瓶 / 呼吸 / 撞击反馈 / 攻击 / 探知仪
 //   - src/core/config/modes.ts      fishArena / fishEnemy / maze（含浅水区）
 //   - src/core/config/rendering.ts  dust / flashlight / quality / perfHUD / postProcess
-//   - src/core/config/character.ts  manualDrive / diver / camera / audio
+//   - src/core/config/character.ts  driveMode / semiAutoDrive / manualDrive / diver / camera / audio
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CONFIG = void 0;
 var index_1 = require("./config/index");
@@ -3660,6 +3675,8 @@ Object.defineProperty(exports, "CONFIG", { enumerable: true, get: function () { 
 },"/src/core/input":function(exports,require){"use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.initInput = initInput;
+const SemiAutoDrive_1 = require("../logic/SemiAutoDrive");
+const DriveMode_1 = require("../logic/DriveMode");
 const config_1 = require("./config");
 const AdaptiveMusic_1 = require("../audio/AdaptiveMusic");
 const TapeEntry_1 = require("../render/TapeEntry");
@@ -3691,7 +3708,6 @@ let attackTouchId = null;
 // 迷宫救援长按触点 ID
 let mazeRescueTouchId = null;
 // 迷宫撤离长按触点 ID
-let mazeRetreatTouchId = null;
 // 岸上页面触摸起始位置
 let shoreTouchStartX = 0;
 let shoreTouchStartY = 0;
@@ -3829,7 +3845,10 @@ function initInput(onReset, onArena, onMaze, onMazeReplay, onMazeDive, onReturnT
                 dx -= 1;
             if (keys.d)
                 dx += 1;
-            if (config_1.CONFIG.manualDrive.enabled) {
+            if (config_1.CONFIG.driveMode === 'semiAuto') {
+                (0, SemiAutoDrive_1.updateSemiAutoJoystick)(dx * 40, dy * 40, keys.shift);
+            }
+            else if (config_1.CONFIG.driveMode === 'manual') {
                 // 手动挡模式：键盘模拟持续搓屏
                 // 每次 updateKeyInput 被调用（keydown/keyup），更新虚拟触点
                 // 关键：curr 每帧递增，让逻辑层能检测到帧间位移
@@ -3870,7 +3889,10 @@ function initInput(onReset, onArena, onMaze, onMazeReplay, onMazeDive, onReturnT
                 state_1.input.speedUp = false;
             }
         };
-        // 手动挡键盘：不再需要 prevKeys 和脉冲产生逻辑，updateKeyInput 已处理
+        window.addEventListener('blur', () => {
+            keys.w = keys.a = keys.s = keys.d = keys.shift = false;
+            (0, DriveMode_1.resetDriveInput)();
+        });
         window.addEventListener('keydown', (e) => {
             (0, AdaptiveMusic_1.warmUpAdaptiveMusic)();
             if (state_1.state.screen === 'menu') {
@@ -3989,9 +4011,7 @@ function initInput(onReset, onArena, onMaze, onMazeReplay, onMazeDive, onReturnT
                     (0, AudioManager_1.playSFX)('uiSecondary');
                     (0, extraction_1.openBagFullPage)();
                     // 立刻清空玩家移动输入，避免打开背包页时角色继续滑行
-                    state_1.input.move = 0;
-                    state_1.input.speedUp = false;
-                    state_1.touches.joystickId = null;
+                    (0, DriveMode_1.resetDriveInput)();
                     bcdReleaseAll();
                     return;
                 }
@@ -4143,11 +4163,7 @@ function initInput(onReset, onArena, onMaze, onMazeReplay, onMazeDive, onReturnT
                         state_1.state.wheel.touchId = t.identifier;
                         state_1.state.wheel.centerX = btnX;
                         state_1.state.wheel.centerY = btnY;
-                        state_1.input.move = 0;
-                        state_1.input.speedUp = false;
-                        // 手动挡：冻结输入
-                        if (state_1.state.manualDrive)
-                            state_1.state.manualDrive.activeTouches = {};
+                        (0, DriveMode_1.resetDriveInput)();
                     }
                     return;
                 }
@@ -4214,20 +4230,6 @@ function initInput(onReset, onArena, onMaze, onMazeReplay, onMazeDive, onReturnT
                         continue;
                     }
                 }
-                // 撤离按钮（未带人时可用）
-                if (!maze.npcRescued && mazeRetreatTouchId === null) {
-                    const retreatBtnX = config_1.CONFIG.screenWidth * config_1.CONFIG.maze.retreatBtnXRatio;
-                    const retreatBtnY = config_1.CONFIG.screenHeight * config_1.CONFIG.maze.retreatBtnYRatio;
-                    const rdx = t.clientX - retreatBtnX;
-                    const rdy = t.clientY - retreatBtnY;
-                    if (Math.hypot(rdx, rdy) <= config_1.CONFIG.maze.retreatBtnRadius) {
-                        mazeRetreatTouchId = t.identifier;
-                        maze.retreatHolding = true;
-                        maze.retreatHoldStart = Date.now();
-                        maze.retreatTouchId = t.identifier;
-                        continue;
-                    }
-                }
                 // BCD 浮力背心 inflator（右侧竖直双钮）：必须在手动挡搓屏之前消费触点
                 if (bcdOnTouchStart(t.identifier, t.clientX, t.clientY)) {
                     continue;
@@ -4239,7 +4241,7 @@ function initInput(onReset, onArena, onMaze, onMazeReplay, onMazeDive, onReturnT
             }
             // 旧主线第三关放弃按钮已废弃（迷宫的"放弃救援"是另外一个按钮，由 abandonHolding 管理）
             // 手动挡模式：记录滑动起始点，实时跟踪
-            if (config_1.CONFIG.manualDrive.enabled) {
+            if (config_1.CONFIG.driveMode === 'manual') {
                 const md = state_1.state.manualDrive;
                 const activeCount = Object.keys(md.activeTouches).length;
                 if (activeCount < config_1.CONFIG.manualDrive.maxTouchPoints) {
@@ -4257,8 +4259,10 @@ function initInput(onReset, onArena, onMaze, onMazeReplay, onMazeDive, onReturnT
                 }
             }
             else {
-                // 自动挡（摇杆）：只绑定第一个未被其他功能占用的触点
+                // 自动挡/半自动共用摇杆：只绑定第一个未被其他功能占用的触点
                 if (state_1.touches.joystickId === null) {
+                    if (config_1.CONFIG.driveMode === 'semiAuto')
+                        (0, SemiAutoDrive_1.releaseSemiAutoDrive)();
                     state_1.touches.joystickId = t.identifier;
                     state_1.touches.start = { x: t.clientX, y: t.clientY };
                     state_1.touches.curr = { x: t.clientX, y: t.clientY };
@@ -4415,7 +4419,7 @@ function initInput(onReset, onArena, onMaze, onMazeReplay, onMazeDive, onReturnT
             }
         }
         // 手动挡模式：touchMove 只更新当前位置，prev 由逻辑层推进
-        if (config_1.CONFIG.manualDrive.enabled) {
+        if (config_1.CONFIG.driveMode === 'manual') {
             const md = state_1.state.manualDrive;
             for (let t of res.touches) {
                 const td = md.activeTouches[t.identifier];
@@ -4439,6 +4443,11 @@ function initInput(onReset, onArena, onMaze, onMazeReplay, onMazeDive, onReturnT
                     let angle = Math.atan2(dy, dx);
                     state_1.touches.curr.x = state_1.touches.start.x + Math.cos(angle) * 40;
                     state_1.touches.curr.y = state_1.touches.start.y + Math.sin(angle) * 40;
+                }
+                // 半自动持续读取方向与快慢挡，保持外推只消耗动力，不会刷新动力。
+                if (config_1.CONFIG.driveMode === 'semiAuto') {
+                    (0, SemiAutoDrive_1.updateSemiAutoJoystick)(dx, dy);
+                    break;
                 }
                 // 逻辑输入
                 if (dist > 10) {
@@ -5033,6 +5042,8 @@ function initInput(onReset, onArena, onMaze, onMazeReplay, onMazeDive, onReturnT
         handleTouchEnd(res.changedTouches);
     });
     wx.onTouchCancel((res) => {
+        if (res.changedTouches.some(t => t.identifier === state_1.touches.joystickId))
+            (0, DriveMode_1.resetDriveInput)();
         if (state_1.state.screen === 'home_evening') {
             for (const t of res.changedTouches) {
                 delete _homeTouchPrev[t.identifier];
@@ -5056,13 +5067,6 @@ function handleTouchEnd(changedTouches) {
             }
         }
         // 迷宫撤离长按松手
-        if (t.identifier === mazeRetreatTouchId) {
-            mazeRetreatTouchId = null;
-            if (state_1.state.mazeRescue) {
-                state_1.state.mazeRescue.retreatHolding = false;
-                state_1.state.mazeRescue.retreatTouchId = null;
-            }
-        }
         // 左上角 HUD 触点松手（氧气环长按结束、tip 触发等）
         (0, HUDTopLeft_1.handleHUDTouchEnd)(t.identifier, t.clientX, t.clientY);
         // BCD inflator 松手（充气/排气立即停止；过短的按压由 minBurstSec 补足成一口）
@@ -5100,7 +5104,7 @@ function handleTouchEnd(changedTouches) {
             state_1.state.rope.ui.progress = 0;
         }
         // 手动挡模式：滑动结束时清除触点
-        if (config_1.CONFIG.manualDrive.enabled && state_1.state.manualDrive) {
+        if (config_1.CONFIG.driveMode === 'manual' && state_1.state.manualDrive) {
             const md = state_1.state.manualDrive;
             if (md.activeTouches[t.identifier]) {
                 delete md.activeTouches[t.identifier];
@@ -5108,6 +5112,8 @@ function handleTouchEnd(changedTouches) {
         }
         if (t.identifier === state_1.touches.joystickId) {
             state_1.touches.joystickId = null;
+            if (config_1.CONFIG.driveMode === 'semiAuto')
+                (0, SemiAutoDrive_1.releaseSemiAutoDrive)();
             state_1.input.move = 0;
             state_1.input.speedUp = false;
         }
@@ -5171,8 +5177,23 @@ function handleDetailCardAction(actionId) {
 },"/src/core/state":function(exports,require){"use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.touches = exports.input = exports.particles = exports.player = exports.state = void 0;
+exports.createSemiAutoDriveState = createSemiAutoDriveState;
 exports.resetState = resetState;
 const config_1 = require("./config");
+function createSemiAutoDriveState() {
+    return {
+        pushStartedAt: null,
+        remaining: 1,
+        exhausted: false,
+        thrusting: false,
+        effort: 0,
+        lastUpdateAt: null,
+        depletedAt: 0,
+        recoveredAt: 0,
+        restStartedAt: null,
+        inputPower: 0,
+    };
+}
 exports.state = {
     screen: 'menu', // menu, progressSelect, mazeRescue, home_evening, dream（旧 play/win/lose/ending/fishArena 已废弃；fishArena 仍可由 GM 强制进入）
     // 主菜单"开始新游戏"确认框开关（运行时，不进存档）
@@ -5275,6 +5296,8 @@ exports.state = {
     fishBite: null, // 玩家被咬状态 { active, phase, timer, shakeIntensity }
     // 玩家攻击状态
     playerAttack: null,
+    // 半自动：连续输入按力度消耗体力，停止发力后延迟恢复。
+    semiAutoDrive: createSemiAutoDriveState(),
     // 手动挡（搓屏移动）运行态
     manualDrive: {
         // 当前正在进行的滑动触点（最多支持2个），实时更新位置
@@ -5479,6 +5502,7 @@ function resetState() {
         cooldownTimer: 0,
         angle: 0,
     };
+    exports.state.semiAutoDrive = createSemiAutoDriveState();
     // 重置手动挡状态
     exports.state.manualDrive = {
         activeTouches: {},
@@ -5912,9 +5936,9 @@ const TREASURE_ITEMS = [
 // 消耗品表
 // =============================================
 const CONSUMABLE_ITEMS = [
-    { id: 'airTankS', name: '小氧气瓶', desc: '免费兜底装备，起始氧气 60。', category: 'consumable', baseValue: 0, weight: 600, slots: 1, rarity: 'common', spawnWeight: 0, conditionPool: 'defaultPool', effects: { startO2: 60 } },
-    { id: 'airTankM', name: '中氧气瓶', desc: '常规装备，起始氧气 100。', category: 'consumable', baseValue: 40, weight: 800, slots: 2, rarity: 'common', spawnWeight: 0, conditionPool: 'defaultPool', effects: { startO2: 100 } },
-    { id: 'airTankL', name: '大氧气瓶', desc: '深水玩家必备，起始氧气 150。', category: 'consumable', baseValue: 120, weight: 1200, slots: 3, rarity: 'uncommon', spawnWeight: 0, conditionPool: 'defaultPool', effects: { startO2: 150 } },
+    { id: 'airTankS', name: '小氧气瓶', desc: '免费兜底装备，起始氧气 120。', category: 'consumable', baseValue: 0, weight: 600, slots: 1, rarity: 'common', spawnWeight: 0, conditionPool: 'defaultPool', effects: { startO2: 120 } },
+    { id: 'airTankM', name: '中氧气瓶', desc: '常规装备，起始氧气 200。', category: 'consumable', baseValue: 40, weight: 800, slots: 2, rarity: 'common', spawnWeight: 0, conditionPool: 'defaultPool', effects: { startO2: 200 } },
+    { id: 'airTankL', name: '大氧气瓶', desc: '深水玩家必备，起始氧气 300。', category: 'consumable', baseValue: 120, weight: 1200, slots: 3, rarity: 'uncommon', spawnWeight: 0, conditionPool: 'defaultPool', effects: { startO2: 300 } },
     { id: 'batteryWeak', name: '弱电池', desc: '免费兜底装备，手电照射距离 ×0.7。', category: 'consumable', baseValue: 0, weight: 100, slots: 1, rarity: 'common', spawnWeight: 0, conditionPool: 'defaultPool', effects: { flashlightRangeMul: 0.7 } },
     { id: 'batteryStd', name: '标准电池', desc: '常规手电电池。', category: 'consumable', baseValue: 30, weight: 100, slots: 1, rarity: 'common', spawnWeight: 0, conditionPool: 'defaultPool', effects: { flashlightRangeMul: 1.0 } },
     { id: 'batteryHigh', name: '高功率电池', desc: '手电照射距离 ×1.3。', category: 'consumable', baseValue: 80, weight: 150, slots: 1, rarity: 'uncommon', spawnWeight: 0, conditionPool: 'defaultPool', effects: { flashlightRangeMul: 1.3 } },
@@ -5934,9 +5958,9 @@ const EQUIPMENT_ITEMS = [
     { id: 'finsEndurance', name: '长续航脚蹼', desc: '速度 0.95×，氧耗 0.85×，深水玩家爱。', category: 'equipment', baseValue: 350, weight: 0, slots: 0, rarity: 'rare', spawnWeight: 0, conditionPool: 'defaultPool', effects: { moveSpeedMul: 0.95, o2DrainMul: 0.85 } },
     // 潜水衣 / 呼吸器：决定本次下潜可达的最大安全深度
     // 超深时不硬卡（保留游泳手感），但氧气消耗 ×3 + 画面红警，逼玩家上浮
-    { id: 'suitBasic', name: '简易潜水衣', desc: '基础潜水服，安全深度 30m。再深就吃不消了。', category: 'equipment', baseValue: 0, weight: 0, slots: 0, rarity: 'common', spawnWeight: 0, conditionPool: 'defaultPool', effects: { maxDepthMeters: 30 } },
-    { id: 'suitDeep', name: '深水潜水衣', desc: '加厚抗压，安全深度 60m。', category: 'equipment', baseValue: 500, weight: 0, slots: 0, rarity: 'rare', spawnWeight: 0, conditionPool: 'defaultPool', effects: { maxDepthMeters: 60 } },
-    { id: 'suitCCR', name: 'CCR 循环呼吸机', desc: '闭式循环呼吸器，安全深度 100m，深水玩家终极装备。', category: 'equipment', baseValue: 2000, weight: 0, slots: 0, rarity: 'epic', spawnWeight: 0, conditionPool: 'defaultPool', effects: { maxDepthMeters: 100 } },
+    { id: 'suitBasic', name: '简易潜水衣', desc: '基础潜水服，安全深度 90m，适合探索练习。', category: 'equipment', baseValue: 0, weight: 0, slots: 0, rarity: 'common', spawnWeight: 0, conditionPool: 'defaultPool', effects: { maxDepthMeters: 90 } },
+    { id: 'suitDeep', name: '深水潜水衣', desc: '加厚抗压，安全深度 140m。', category: 'equipment', baseValue: 500, weight: 0, slots: 0, rarity: 'rare', spawnWeight: 0, conditionPool: 'defaultPool', effects: { maxDepthMeters: 140 } },
+    { id: 'suitCCR', name: 'CCR 循环呼吸机', desc: '闭式循环呼吸器，安全深度 200m，深水玩家终极装备。', category: 'equipment', baseValue: 2000, weight: 0, slots: 0, rarity: 'epic', spawnWeight: 0, conditionPool: 'defaultPool', effects: { maxDepthMeters: 200 } },
 ];
 // =============================================
 // 注册中心：合并所有物品到 id->def map
@@ -7472,11 +7496,11 @@ let _appliedSnapshot = null;
 // 本次下潜实际带的氧气瓶（最多两瓶，按等级降序；带的 itemId 列表）。
 // 用于 HUD 双圈氧气环、潜水员双气瓶视觉、撤离结算等读取。
 let _activeAirTanks = [];
-/** 按氧气瓶 id 推断单瓶起始氧气（从 ItemRegistry 取 startO2，未知值兜底 60） */
+/** 按氧气瓶 id 读取起始氧气，未知值兜底 120。 */
 function tankCapacity(id) {
     var _a;
     const eff = (0, ExtractionRegistry_1.getEquipmentEffects)(id);
-    return Math.max(0, ((_a = eff === null || eff === void 0 ? void 0 : eff.startO2) !== null && _a !== void 0 ? _a : 60));
+    return Math.max(0, ((_a = eff === null || eff === void 0 ? void 0 : eff.startO2) !== null && _a !== void 0 ? _a : 120));
 }
 /** 装备等级（数字越大越好） */
 function airTankTier(id) {
@@ -7636,7 +7660,7 @@ function applyLoadoutForDive() {
     for (const id of _activeAirTanks)
         totalO2 += tankCapacity(id);
     if (totalO2 <= 0)
-        totalO2 = 60; // 极端兜底
+        totalO2 = 120; // 极端兜底
     // === DCS 惩罚：若上次跳过了减压，这次下潜的 O2Max 打折（默认 -30%） ===
     // 打折只作用在 o2Max（最大上限），同时 player.o2 初始也按打折后的满值给；
     // 紫标 debuff 的视觉提示在岸上 UI 显示（见 isPurpleDebuffActive）
@@ -7649,7 +7673,7 @@ function applyLoadoutForDive() {
     // 把潜水衣的最大安全深度（米）写入 maze 运行时数据，给 HUD / 渲染层读
     const maze = state_1.state.mazeRescue;
     if (maze) {
-        maze.maxDepthAllowed = merged.maxDepthMeters || 30;
+        maze.maxDepthAllowed = merged.maxDepthMeters || 90;
         // 同步初始化 oxygenFeedback.o2DisplayAnim 到满值，避免环从 100 缩到 60 的视觉漂移
         if (maze.oxygenFeedback) {
             maze.oxygenFeedback.o2DisplayAnim = totalO2;
@@ -11936,9 +11960,23 @@ exports.TABS = [
         ]
     },
     {
+        name: '半自动',
+        items: [
+            { type: 'select', label: '移动模式', path: 'driveMode', options: ['auto', 'manual', 'semiAuto'], optionLabels: ['自动挡', '手动挡', '半自动 Semi Auto'] },
+            { type: 'select', label: '体力条位置', path: 'semiAutoDrive.staminaPosition', options: ['top', 'bottom', 'bcd'], optionLabels: ['顶部（安全区内）', '底部', 'BCD 右侧'] },
+            { type: 'bool', label: '显示虚拟摇杆', path: 'semiAutoDrive.showJoystick' },
+            { type: 'number', label: '全力持续秒数', path: 'semiAutoDrive.sprintDuration', min: 1, max: 12, step: 0.5, precision: 1 },
+            { type: 'number', label: '空到满恢复秒数', path: 'semiAutoDrive.recoveryDuration', min: 0.5, max: 8, step: 0.1, precision: 1 },
+            { type: 'number', label: '回气间隔(秒)', path: 'semiAutoDrive.recoveryDelay', min: 0, max: 1, step: 0.05, precision: 2 },
+            { type: 'number', label: '力度耗体力曲线', path: 'semiAutoDrive.drainExponent', min: 1, max: 3, step: 0.1, precision: 1 },
+            { type: 'number', label: '耗空后恢复门槛', path: 'semiAutoDrive.resumeThreshold', min: 0.1, max: 0.5, step: 0.05, precision: 2 },
+            { type: 'number', label: '踢腿收势时间(秒)', path: 'semiAutoDrive.kickFadeDuration', min: 0.03, max: 0.3, step: 0.01, precision: 2 },
+        ]
+    },
+    {
         name: '手动挡',
         items: [
-            { type: 'bool', label: '启用手动挡', path: 'manualDrive.enabled' },
+            { type: 'select', label: '移动模式', path: 'driveMode', options: ['auto', 'manual', 'semiAuto'], optionLabels: ['自动挡', '手动挡', '半自动 Semi Auto'] },
             { type: 'bool', label: '调试辅助线', path: 'manualDrive.debugDraw' },
             { type: 'number', label: '有效行程', path: 'manualDrive.effectiveDistance', min: 40, max: 240, step: 4 },
             { type: 'number', label: '基础推进', path: 'manualDrive.thrustBase', min: 0.05, max: 3, step: 0.05, precision: 2 },
@@ -12461,6 +12499,7 @@ exports.toggleGMOpen = toggleGMOpen;
 exports.handleGMTouchStart = handleGMTouchStart;
 exports.handleGMTouchMove = handleGMTouchMove;
 exports.handleGMTouchEnd = handleGMTouchEnd;
+const DriveMode_1 = require("../logic/DriveMode");
 const config_1 = require("../core/config");
 const GMConfig_1 = require("./GMConfig");
 const state_1 = require("../core/state");
@@ -12526,6 +12565,10 @@ function getConfigValue(path) {
     return obj;
 }
 function setConfigValue(path, value) {
+    if (path === 'driveMode') {
+        (0, DriveMode_1.setDriveMode)(value);
+        return;
+    }
     const parts = path.split('.');
     let obj = config_1.CONFIG;
     for (let i = 0; i < parts.length - 1; i++) {
@@ -12563,6 +12606,11 @@ function handleGMTouchStart(tx, ty) {
     // 检测是否在面板区域内
     if (tx < _panelX || tx > _panelX + GMConfig_1.PANEL_W || ty < _panelY || ty > _panelY + GMConfig_1.PANEL_H) {
         return false;
+    }
+    // 左栏会被面板盖住，提供独立关闭区，布局实验后能直接返回游戏。
+    if (tx >= _panelX + GMConfig_1.PANEL_W - 32 && ty <= _panelY + GMConfig_1.DRAG_BAR_H) {
+        toggleGMOpen();
+        return true;
     }
     // 检测拖动条点击（面板顶部边框区域）
     if (ty >= _panelY && ty <= _panelY + GMConfig_1.DRAG_BAR_H) {
@@ -13104,6 +13152,15 @@ function drawGMPanel(ctx) {
         ctx.lineTo(handleCX + 12, handleCY + i * 4);
         ctx.stroke();
     }
+    const closeX = PX + GMConfig_1.PANEL_W - 16;
+    ctx.strokeStyle = 'rgba(255,235,205,.85)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(closeX - 4, handleCY - 4);
+    ctx.lineTo(closeX + 4, handleCY + 4);
+    ctx.moveTo(closeX + 4, handleCY - 4);
+    ctx.lineTo(closeX - 4, handleCY + 4);
+    ctx.stroke();
     // ---- Tab 页签（可滑动） ----
     const tabY = PY + GMConfig_1.DRAG_BAR_H;
     const totalTabW = GMConfig_1.TABS.length * GMConfig_1.TAB_FIXED_W;
@@ -13319,6 +13376,9 @@ function _rrect(c, x, y, w, h, r) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.resetArenaLogic = resetArenaLogic;
 exports.updateArena = updateArena;
+const JoystickDrive_1 = require("./JoystickDrive");
+const DriveMode_1 = require("./DriveMode");
+const SemiAutoDrive_1 = require("./SemiAutoDrive");
 const config_1 = require("../core/config");
 const state_1 = require("../core/state");
 const map_1 = require("../world/map");
@@ -13482,35 +13542,15 @@ function updateArenaPlayer() {
         state_1.input.speedUp = false;
         state_1.player.vx = 0;
         state_1.player.vy = 0;
-        if (state_1.state.manualDrive)
-            state_1.state.manualDrive.activeTouches = {};
+        (0, DriveMode_1.resetDriveInput)();
         return;
     }
-    if ((0, ManualDrive_1.processManualDrive)()) {
-        // 手动挡模式：脉冲已处理
+    if ((0, ManualDrive_1.processManualDrive)() || (0, SemiAutoDrive_1.processSemiAutoDrive)()) {
+        // 手动挡/半自动：移动已处理
     }
     else {
-        // 自动挡（摇杆）模式
-        // 转向
-        state_1.player.targetAngle = state_1.input.targetAngle;
-        let angleDiff = state_1.player.targetAngle - state_1.player.angle;
-        while (angleDiff > Math.PI)
-            angleDiff -= Math.PI * 2;
-        while (angleDiff < -Math.PI)
-            angleDiff += Math.PI * 2;
-        state_1.player.angle += angleDiff * config_1.CONFIG.turnSpeed;
-        // 移动
-        let speed = config_1.CONFIG.moveSpeed * 0.3;
-        if (state_1.input.speedUp)
-            speed = config_1.CONFIG.moveSpeed;
-        if (state_1.input.move > 0) {
-            state_1.player.vx += Math.cos(state_1.player.targetAngle) * speed * config_1.CONFIG.acceleration;
-            state_1.player.vy += Math.sin(state_1.player.targetAngle) * speed * config_1.CONFIG.acceleration;
-        }
-        state_1.player.vx *= config_1.CONFIG.waterDrag;
-        state_1.player.vy *= config_1.CONFIG.waterDrag;
-        // 自动挡动作视觉：写入转向/前进信号，让 drawDiver 能呈现转向身体侧倾与手臂动作
-        (0, ManualDrive_1.updateAutoDriveVisual)(angleDiff * config_1.CONFIG.turnSpeed, state_1.input.move > 0);
+        // 自动挡：与半自动共用转向、推进和水阻。
+        (0, JoystickDrive_1.processJoystickDrive)(config_1.CONFIG.moveSpeed);
     }
     // 碰撞检测
     const nextX = state_1.player.x + state_1.player.vx;
@@ -15478,6 +15518,44 @@ function isPurpleDebuffActive() {
         return false;
     return (ex.decoPenalty.severity | 0) >= 2;
 }
+},"/src/logic/DriveMode":function(exports,require){"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.resetDriveInput = resetDriveInput;
+exports.setDriveMode = setDriveMode;
+exports.cycleDriveMode = cycleDriveMode;
+const config_1 = require("../core/config");
+const state_1 = require("../core/state");
+/** 取消所有移动输入和半自动供力状态，用于模式切换/场景切换/系统中断。 */
+function resetDriveInput(refillStamina = false) {
+    const previous = state_1.state.semiAutoDrive;
+    state_1.input.move = 0;
+    state_1.input.speedUp = false;
+    state_1.input.targetAngle = state_1.player.angle;
+    state_1.touches.joystickId = null;
+    state_1.state.semiAutoDrive = (0, state_1.createSemiAutoDriveState)();
+    if (!refillStamina) {
+        state_1.state.semiAutoDrive.remaining = previous.remaining;
+        state_1.state.semiAutoDrive.exhausted = previous.exhausted;
+        state_1.state.semiAutoDrive.restStartedAt = Date.now();
+        state_1.state.semiAutoDrive.lastUpdateAt = Date.now();
+    }
+    state_1.state.manualDrive.activeTouches = {};
+    state_1.state.manualDrive.hasInput = false;
+}
+function setDriveMode(mode) {
+    config_1.CONFIG.driveMode = mode;
+    resetDriveInput(true);
+    const md = state_1.state.manualDrive;
+    md.leftKickProgress = md.rightKickProgress = 0;
+    md.leftKickStrength = md.rightKickStrength = 0;
+    md.leftTurnProgress = md.rightTurnProgress = 0;
+    md.leftTurnStrength = md.rightTurnStrength = 0;
+    md.forwardVisual = md.turnVisual = md.kickDrive = 0;
+}
+function cycleDriveMode() {
+    const modes = ['auto', 'manual', 'semiAuto'];
+    setDriveMode(modes[(modes.indexOf(config_1.CONFIG.driveMode) + 1) % modes.length]);
+}
 },"/src/logic/FishEnemy":function(exports,require){"use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.createFishEnemy = createFishEnemy;
@@ -16570,6 +16648,31 @@ function updateAllFishEnemies(dt) {
         }
     }
 }
+},"/src/logic/JoystickDrive":function(exports,require){"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.processJoystickDrive = processJoystickDrive;
+const config_1 = require("../core/config");
+const state_1 = require("../core/state");
+const ManualDrive_1 = require("./ManualDrive");
+/** 自动挡与半自动共用同一套物理；半自动只决定此刻是否允许供力。 */
+function processJoystickDrive(moveSpeed, thrusting = state_1.input.move > 0, power = state_1.input.speedUp ? 1 : .3) {
+    state_1.player.targetAngle = state_1.input.targetAngle;
+    let angleDiff = state_1.player.targetAngle - state_1.player.angle;
+    while (angleDiff > Math.PI)
+        angleDiff -= Math.PI * 2;
+    while (angleDiff < -Math.PI)
+        angleDiff += Math.PI * 2;
+    state_1.player.angle += angleDiff * config_1.CONFIG.turnSpeed;
+    const speed = moveSpeed * Math.max(0, Math.min(1, power));
+    if (thrusting) {
+        state_1.player.vx += Math.cos(state_1.player.targetAngle) * speed * config_1.CONFIG.acceleration;
+        state_1.player.vy += Math.sin(state_1.player.targetAngle) * speed * config_1.CONFIG.acceleration;
+    }
+    state_1.player.vx *= config_1.CONFIG.waterDrag;
+    state_1.player.vy *= config_1.CONFIG.waterDrag;
+    (0, ManualDrive_1.updateAutoDriveVisual)(angleDiff * config_1.CONFIG.turnSpeed, thrusting);
+    return angleDiff;
+}
 },"/src/logic/LifeDetector":function(exports,require){"use strict";
 // 深流随身听的距离输入（保留 LifeDetector 内部接口兼容存档/GM）：
 // 检测被救援者（NPC）距离，驱动六档累加音乐；Web Audio 不可用时回退 D# + F 双音。
@@ -16709,6 +16812,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.findNearestWall = exports.getOpenness = exports.resetAdaptiveZoom = exports.getAdaptiveZoom = exports.snapCameraToPlayer = exports.updateCameraSpringArm = exports.checkMazeCollision = exports.getNearestWallDist = exports.checkCollision = exports.markBriefingShown = exports.stayInResolvedCase = exports.acceptNewCase = exports.abandonCase = exports.updateMaze = exports.replayMazeLogic = exports.returnToShore = exports.startMazeDive = exports.resetMazeLogic = exports.updateArena = exports.resetArenaLogic = void 0;
 exports.resetGameLogic = resetGameLogic;
 exports.update = update;
+const JoystickDrive_1 = require("./JoystickDrive");
+const SemiAutoDrive_1 = require("./SemiAutoDrive");
 const config_1 = require("../core/config");
 const state_1 = require("../core/state");
 const map_1 = require("../world/map");
@@ -16937,29 +17042,12 @@ function update() {
     // 旧主线"防卡墙机制"和"濒死强制抖动"已废弃。
     // 1. 转向系统 + 2. 移动系统
     let angleDiff = 0; // 声明在外层，泥沙逻辑需要引用
-    if ((0, ManualDrive_1.processManualDrive)()) {
-        // 手动挡模式：脉冲已处理
+    if ((0, ManualDrive_1.processManualDrive)() || (0, SemiAutoDrive_1.processSemiAutoDrive)()) {
+        // 手动挡/半自动：移动已处理
     }
     else {
-        // 自动挡（摇杆）模式
-        state_1.player.targetAngle = state_1.input.targetAngle;
-        angleDiff = state_1.player.targetAngle - state_1.player.angle;
-        while (angleDiff > Math.PI)
-            angleDiff -= Math.PI * 2;
-        while (angleDiff < -Math.PI)
-            angleDiff += Math.PI * 2;
-        state_1.player.angle += angleDiff * config_1.CONFIG.turnSpeed;
-        let speed = config_1.CONFIG.moveSpeed * 0.3;
-        if (state_1.input.speedUp)
-            speed = config_1.CONFIG.moveSpeed;
-        if (state_1.input.move > 0) {
-            state_1.player.vx += Math.cos(state_1.player.targetAngle) * speed * config_1.CONFIG.acceleration;
-            state_1.player.vy += Math.sin(state_1.player.targetAngle) * speed * config_1.CONFIG.acceleration;
-        }
-        state_1.player.vx *= config_1.CONFIG.waterDrag;
-        state_1.player.vy *= config_1.CONFIG.waterDrag;
-        // 自动挡动作视觉：写入转向/前进信号，让 drawDiver 能呈现转向身体侧倾与手臂动作
-        (0, ManualDrive_1.updateAutoDriveVisual)(angleDiff * config_1.CONFIG.turnSpeed, state_1.input.move > 0);
+        // 自动挡：与半自动共用转向、推进和水阻。
+        angleDiff = (0, JoystickDrive_1.processJoystickDrive)(config_1.CONFIG.moveSpeed);
     }
     // 呼吸浮力：吐气阶段轻微下沉、吸气阶段轻微上浮，让玩家能直观感知呼吸节奏
     // 濒死阶段不叠加（旧主线已废弃；新主线无濒死强制冻结）
@@ -17143,7 +17231,7 @@ const state_1 = require("../core/state");
  * 返回 true 表示手动挡已处理移动，调用方应跳过自动挡逻辑
  */
 function processManualDrive() {
-    if (!config_1.CONFIG.manualDrive.enabled)
+    if (config_1.CONFIG.driveMode !== 'manual')
         return false;
     const md = state_1.state.manualDrive;
     if (!md)
@@ -17750,7 +17838,7 @@ function buildWheelSectors(ctx, hasExistingMarker) {
 // ============ 轮盘交互按钮可见性更新 ============
 /** 每帧更新轮盘交互按钮的可见性（替代旧的绳索按钮逻辑） */
 function updateWheelButtonVisibility() {
-    var _a, _b;
+    var _a;
     if (!state_1.state.wheel)
         return;
     // 轮盘打开时不更新按钮
@@ -17765,11 +17853,12 @@ function updateWheelButtonVisibility() {
     // 判定"没有移动输入"：
     // - 自动挡：摇杆未推（input.move === 0）
     // - 手动挡：没有活跃的搓屏触点
-    const isManual = !!((_a = config_1.CONFIG.manualDrive) === null || _a === void 0 ? void 0 : _a.enabled);
+    // - 半自动：和自动挡相同，以摇杆是否回中/松手为准
+    const isManual = config_1.CONFIG.driveMode === 'manual';
     const hasManualTouch = isManual
-        ? Object.keys(((_b = state_1.state.manualDrive) === null || _b === void 0 ? void 0 : _b.activeTouches) || {}).length > 0
+        ? Object.keys(((_a = state_1.state.manualDrive) === null || _a === void 0 ? void 0 : _a.activeTouches) || {}).length > 0
         : false;
-    const noMoveInput = isManual ? !hasManualTouch : (state_1.input.move === 0);
+    const noMoveInput = isManual ? !hasManualTouch : state_1.input.move === 0;
     const nearbyInfo = detectWheelContext();
     // stillTimer 字段保留但始终重置为 0，保持数据兼容
     state_1.state.wheel.stillTimer = 0;
@@ -17918,6 +18007,9 @@ exports.acceptNewCase = acceptNewCase;
 exports.stayInResolvedCase = stayInResolvedCase;
 exports.goHome = goHome;
 exports.updateMaze = updateMaze;
+const JoystickDrive_1 = require("./JoystickDrive");
+const DriveMode_1 = require("./DriveMode");
+const SemiAutoDrive_1 = require("./SemiAutoDrive");
 const RescueLink_1 = require("./RescueLink");
 const RescueTow_1 = require("./RescueTow");
 const config_1 = require("../core/config");
@@ -17984,6 +18076,7 @@ function placePlayerAtMazeEntrance(maze) {
 // =============================================
 function resetMazeLogic() {
     var _a;
+    (0, DriveMode_1.resetDriveInput)(true);
     // === 优先尝试读取本地存档 ===
     // 注意：loadMazeProgress 成功时会直接把 state.mazeRescue / state.rope.ropes / state.markers
     // 恢复到岸上阶段；这里只需要补上相机、屏幕模式等与 state.mazeRescue 无关的运行态。
@@ -18316,9 +18409,7 @@ function startMazeDive(diveType) {
     maze.npcStunnedAt = 0;
     maze.rescueRagdoll = null;
     maze.npcSecuredAt = 0;
-    state_1.input.move = 0;
-    state_1.input.speedUp = false;
-    state_1.touches.joystickId = null;
+    (0, DriveMode_1.resetDriveInput)(true);
     state_1.touches.start = { x: 0, y: 0 };
     state_1.touches.curr = { x: 0, y: 0 };
     state_1.state.manualDrive = {
@@ -18516,6 +18607,7 @@ function startMazeDive(diveType) {
 // 迷宫多次下潜闭环：完成本次下潜，返回岸上
 // =============================================
 function finishMazeDive(returnReason) {
+    (0, DriveMode_1.resetDriveInput)(true);
     const maze = state_1.state.mazeRescue;
     if (!maze)
         return;
@@ -18638,6 +18730,7 @@ function finishMazeDive(returnReason) {
 // 迷宫多次下潜闭环：从结算回到岸上
 // =============================================
 function returnToShore() {
+    (0, DriveMode_1.resetDriveInput)(true);
     const maze = state_1.state.mazeRescue;
     if (!maze)
         return;
@@ -18949,29 +19042,12 @@ function updateMaze() {
     }
     // --- 玩家移动 ---
     // 敲晕和绑绳时仍正常移动、受浮力影响，由玩家自行保持接触距离。
-    if ((0, ManualDrive_1.processManualDrive)()) {
-        // 手动挡模式：脉冲已处理
+    if ((0, ManualDrive_1.processManualDrive)() || (0, SemiAutoDrive_1.processSemiAutoDrive)(config_1.CONFIG.maze.moveSpeed || config_1.CONFIG.moveSpeed)) {
+        // 手动挡/半自动：移动已处理
     }
     else {
-        // 自动挡（摇杆）模式
-        state_1.player.targetAngle = state_1.input.targetAngle;
-        let angleDiff = state_1.player.targetAngle - state_1.player.angle;
-        while (angleDiff > Math.PI)
-            angleDiff -= Math.PI * 2;
-        while (angleDiff < -Math.PI)
-            angleDiff += Math.PI * 2;
-        state_1.player.angle += angleDiff * config_1.CONFIG.turnSpeed;
-        let speed = (config_1.CONFIG.maze.moveSpeed || config_1.CONFIG.moveSpeed) * 0.3;
-        if (state_1.input.speedUp)
-            speed = config_1.CONFIG.maze.moveSpeed || config_1.CONFIG.moveSpeed;
-        if (state_1.input.move > 0) {
-            state_1.player.vx += Math.cos(state_1.player.targetAngle) * speed * config_1.CONFIG.acceleration;
-            state_1.player.vy += Math.sin(state_1.player.targetAngle) * speed * config_1.CONFIG.acceleration;
-        }
-        state_1.player.vx *= config_1.CONFIG.waterDrag;
-        state_1.player.vy *= config_1.CONFIG.waterDrag;
-        // 自动档动作视觉：写入转向/前进信号，让 drawDiver 能呈现转向身体侧倾与手臂动作
-        (0, ManualDrive_1.updateAutoDriveVisual)(angleDiff * config_1.CONFIG.turnSpeed, state_1.input.move > 0);
+        // 自动挡：与半自动共用转向、推进和水阻。
+        (0, JoystickDrive_1.processJoystickDrive)(config_1.CONFIG.maze.moveSpeed || config_1.CONFIG.moveSpeed);
     }
     // 呼吸浮力：吐气阶段轻微下沉、吸气阶段轻微上浮，给玩家直观的呼吸押频感
     state_1.player.vy += (0, BreathSystem_1.computeBuoyancyOffset)();
@@ -19208,14 +19284,14 @@ function updateMaze() {
     // 深处充气自动更贵（同样体积需要更多标准升），玩家会自然学会"该配平的时候配平，
     // 别在 30m 反复大口充排"——这正是真实潜水的耗气纪律。
     o2Consumption += (0, BCDSystem_1.consumeBCDO2)();
-    // === 潜水衣超深惩罚：当玩家深度 > 装备的 maxDepthAllowed 时，氧气消耗 ×3 ===
+    // 超深仍有代价，探索调试期先把氧耗惩罚放宽为 1.5 倍。
     // 不硬卡墙（保留游泳手感），靠快速失氧 + 红警逼玩家上浮
     {
         const maxDepth = maze.maxDepthAllowed; // 米
         if (maxDepth && maxDepth > 0) {
             const curDepth = Math.max(0, Math.floor(state_1.player.y / (maze.mazeTileSize || 120)));
             if (curDepth > maxDepth) {
-                o2Consumption *= 3;
+                o2Consumption *= 1.5;
                 // 一次性提示：进入超深区域时提醒玩家（不要每帧 spam，用 flag 限制）
                 if (!maze._overDepthWarned) {
                     maze._overDepthWarned = true;
@@ -21628,6 +21704,84 @@ function updateRopeSystem() {
         state_1.state.rope.ui.anchor = null;
     }
 }
+},"/src/logic/SemiAutoDrive":function(exports,require){"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.releaseSemiAutoDrive = releaseSemiAutoDrive;
+exports.updateSemiAutoJoystick = updateSemiAutoJoystick;
+exports.processSemiAutoDrive = processSemiAutoDrive;
+const config_1 = require("../core/config");
+const state_1 = require("../core/state");
+const JoystickDrive_1 = require("./JoystickDrive");
+const AudioManager_1 = require("../audio/AudioManager");
+/** 松手撤掉推力，体力在逻辑更新中逐渐恢复，绝不瞬间补满。 */
+function releaseSemiAutoDrive() {
+    const sd = state_1.state.semiAutoDrive;
+    sd.pushStartedAt = null;
+    sd.thrusting = false;
+    sd.inputPower = 0;
+    if (sd.restStartedAt === null)
+        sd.restStartedAt = Date.now();
+    state_1.input.move = 0;
+    state_1.input.speedUp = false;
+}
+function updateSemiAutoJoystick(dx, dy, speedUp) {
+    if (config_1.CONFIG.driveMode !== 'semiAuto')
+        return;
+    const sd = state_1.state.semiAutoDrive;
+    const distance = Math.hypot(dx, dy);
+    if (distance <= 10) {
+        releaseSemiAutoDrive();
+        return;
+    }
+    state_1.input.move = 1;
+    state_1.input.targetAngle = Math.atan2(dy, dx);
+    state_1.input.speedUp = speedUp !== null && speedUp !== void 0 ? speedUp : distance > 35;
+    // 触屏：由行程连续映射 .3~1；键盘保留普通/Shift 两档。
+    sd.inputPower = speedUp === undefined ? .3 + .7 * Math.min(1, (distance - 10) / 30) : speedUp ? 1 : .3;
+    if (sd.pushStartedAt === null)
+        sd.pushStartedAt = Date.now();
+    sd.restStartedAt = null;
+    sd.thrusting = !sd.exhausted && sd.remaining > 0;
+}
+function processSemiAutoDrive(moveSpeed = config_1.CONFIG.moveSpeed) {
+    var _a, _b, _c, _d, _e;
+    if (config_1.CONFIG.driveMode !== 'semiAuto')
+        return false;
+    const blocked = ((_b = (_a = state_1.state.rope) === null || _a === void 0 ? void 0 : _a.hold) === null || _b === void 0 ? void 0 : _b.active) || ((_c = state_1.state.fishBite) === null || _c === void 0 ? void 0 : _c.active) ||
+        (state_1.state.screen === 'mazeRescue' && ((_d = state_1.state.mazeRescue) === null || _d === void 0 ? void 0 : _d.retreatHolding));
+    if (blocked || state_1.input.move === 0)
+        releaseSemiAutoDrive();
+    const sd = state_1.state.semiAutoDrive, cfg = config_1.CONFIG.semiAutoDrive;
+    const now = Date.now(), previousAt = sd.lastUpdateAt;
+    const dt = previousAt === null ? 1 / 60 : Math.max(0, Math.min(.1, (now - previousAt) / 1000));
+    sd.lastUpdateAt = now;
+    sd.thrusting = state_1.input.move > 0 && !sd.exhausted && sd.remaining > 0;
+    if (sd.thrusting) {
+        sd.remaining = Math.max(0, sd.remaining - dt * Math.pow(sd.inputPower, cfg.drainExponent) / Math.max(.1, cfg.sprintDuration));
+        if (sd.remaining <= 0) {
+            sd.remaining = 0;
+            sd.exhausted = true;
+            sd.thrusting = false;
+            sd.depletedAt = now;
+            (0, AudioManager_1.playSFX)('uiSecondary', { volume: .65, playbackRate: .7 });
+        }
+    }
+    else if (state_1.input.move === 0) {
+        const recoveryStart = ((_e = sd.restStartedAt) !== null && _e !== void 0 ? _e : now) + cfg.recoveryDelay * 1000;
+        const recoverDt = Math.min(dt, Math.max(0, (now - Math.max(previousAt !== null && previousAt !== void 0 ? previousAt : now, recoveryStart)) / 1000));
+        sd.remaining = Math.min(1, sd.remaining + recoverDt / Math.max(.1, cfg.recoveryDuration));
+        if (sd.exhausted && sd.remaining >= cfg.resumeThreshold) {
+            sd.exhausted = false;
+            sd.recoveredAt = now;
+        }
+    }
+    const effortTarget = sd.thrusting ? .45 + sd.inputPower * .55 : 0;
+    sd.effort += (effortTarget - sd.effort) * (1 - Math.exp(-dt / Math.max(.01, cfg.kickFadeDuration)));
+    if (sd.effort < .005)
+        sd.effort = 0;
+    (0, JoystickDrive_1.processJoystickDrive)(moveSpeed, sd.thrusting, sd.inputPower);
+    return true;
+}
 },"/src/render/Canvas":function(exports,require){"use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.logicH = exports.logicW = exports.dpr = exports.ctx = exports.canvas = void 0;
@@ -21956,16 +22110,17 @@ const RenderAudioToggle_1 = require("./RenderAudioToggle");
 const GMPanel_1 = require("../gm/GMPanel");
 const BreathSystem_1 = require("../logic/BreathSystem");
 const AudioManager_1 = require("../audio/AudioManager");
+const ExtractionRegistry_1 = require("../extraction/core/ExtractionRegistry");
 const Loadout_1 = require("../extraction/logic/Loadout");
 const DecompressionSystem_1 = require("../logic/DecompressionSystem");
 // ========== 布局常量 ==========
 // 起点 X/Y，每项尺寸、间距（垂直排列）
 // 注意：HUD_START_Y 必须避开微信小游戏右上角胶囊和设备前置摄像头
 //       设计安全区基线 SAFE_TOP=62，图标顶边 = 62 → 中心 = 62 + ITEM_SIZE/2
-const HUD_START_X = 46; // 所有图标的中心X（左侧留足边距）
-const HUD_START_Y = 84; // 第一个图标中心Y（= SAFE_TOP 62 + HUD_ITEM_SIZE/2 22）
-const HUD_ITEM_SIZE = 44; // 图标直径（作为hitTest和视觉尺寸基准）
-const HUD_ITEM_GAP = 18; // 图标之间的垂直间距（从边缘到边缘）
+const HUD_START_X = 38; // 所有图标的中心X（左侧留足边距）
+const HUD_START_Y = 82; // 第一个图标中心Y（= SAFE_TOP 62 + HUD_ITEM_SIZE/2 22）
+const HUD_ITEM_SIZE = 40; // 图标直径（作为hitTest和视觉尺寸基准）
+const HUD_ITEM_GAP = 14; // 图标之间的垂直间距（从边缘到边缘）
 const HUD_TIP_OFFSET_X = 8; // tip面板相对图标右侧的X偏移
 const HUD_TIP_MAX_WIDTH = 220;
 const HUD_TIP_PADDING = 10;
@@ -22001,17 +22156,17 @@ function getVisibleSlots() {
     const slots = [];
     // 氧气环单独放大：参考 CONFIG.breath.oxygenRingSizeMul，其他图标保持原尺寸
     const cfgBreath = config_1.CONFIG.breath || {};
-    const oxygenSizeMul = (_a = cfgBreath.oxygenRingSizeMul) !== null && _a !== void 0 ? _a : 1.0;
-    let y = HUD_START_Y;
+    const oxygenSizeMul = Math.min(1.4, (_a = cfgBreath.oxygenRingSizeMul) !== null && _a !== void 0 ? _a : 1.0);
+    let y = Math.max(HUD_START_Y, (config_1.CONFIG.uiSafeTop || 62) + HUD_ITEM_SIZE / 2);
     let prevHalf = 0; // 上一项的半径，用于给不同尺寸图标之间留出正确间距
     for (const item of hudItems) {
         if (item.visible && !item.visible())
             continue;
-        const sizeHere = item.id === 'oxygen' ? HUD_ITEM_SIZE * oxygenSizeMul : item.id === 'lifeDetector' ? 56 : HUD_ITEM_SIZE;
+        const sizeHere = item.id === 'oxygen' ? HUD_ITEM_SIZE * oxygenSizeMul : item.id === 'lifeDetector' ? 48 : HUD_ITEM_SIZE;
         const halfHere = sizeHere / 2;
         if (slots.length === 0) {
             // 第一个项以固定起点为中心（但若它被放大，起点往下挪让它离顶部有合理留白）
-            y = HUD_START_Y + Math.max(0, halfHere - HUD_ITEM_SIZE / 2);
+            y += Math.max(0, halfHere - HUD_ITEM_SIZE / 2);
         }
         else {
             // 后续项基于上一项的下边缘 + 统一间距 + 本项半径
@@ -22047,6 +22202,8 @@ function handleHUDTouchStart(touchId, x, y) {
         startY: y,
         longFired: false,
     });
+    if (slot.item.onPressStart)
+        slot.item.onPressStart();
     // 不支持长按的item：touchStart 立刻触发短按
     if (!slot.item.supportsLongPress) {
         fireShortTap(slot);
@@ -22057,6 +22214,12 @@ function handleHUDTouchMove(touchId, x, y) {
     const track = activeTouches.get(touchId);
     if (!track)
         return false;
+    const pressedSlot = findSlotById(track.itemId);
+    if ((pressedSlot === null || pressedSlot === void 0 ? void 0 : pressedSlot.item.onPressEnd) && Math.hypot(x - pressedSlot.cx, y - pressedSlot.cy) > pressedSlot.size / 2 + 10) {
+        pressedSlot.item.onPressEnd();
+        activeTouches.delete(touchId);
+        return true;
+    }
     // 移动超出容差视为取消长按候选
     const moved = Math.hypot(x - track.startX, y - track.startY);
     if (moved > HUD_TAP_MOVE_TOLERANCE) {
@@ -22065,6 +22228,8 @@ function handleHUDTouchMove(touchId, x, y) {
             const slot = findSlotById(track.itemId);
             if (slot && slot.item.supportsLongPress) {
                 // 取消追踪，拒绝后续判定
+                if (slot.item.onPressEnd)
+                    slot.item.onPressEnd();
                 activeTouches.delete(touchId);
                 return false;
             }
@@ -22094,6 +22259,8 @@ function handleHUDTouchEnd(touchId, x, y) {
     const slot = findSlotById(track.itemId);
     if (!slot)
         return true;
+    if (slot.item.onPressEnd)
+        slot.item.onPressEnd();
     if (track.longFired) {
         // 长按松手
         if (slot.item.onLongHoldEnd)
@@ -22157,7 +22324,7 @@ function drawHUDTopLeft(time) {
         if (slot.item.id === 'lifeDetector')
             (0, TapeEntry_1.drawTapeNowPlaying)(Canvas_1.ctx, slot.cx + slot.size / 2 + 12, slot.cy - 23);
         if (slot.item.id !== 'lifeDetector') {
-            const captions = { oxygen: 'AIR', depth: 'DEPTH', deco: 'DECO', driveMode: 'DRIVE', audio: 'SOUND', gm: 'TOOLS' };
+            const captions = { oxygen: 'AIR', depth: 'DEPTH', deco: 'DECO', retreat: 'RETURN', gm: 'TOOLS' };
             Canvas_1.ctx.save();
             Canvas_1.ctx.font = 'bold 7px Arial';
             Canvas_1.ctx.textAlign = 'center';
@@ -22286,7 +22453,7 @@ function initMazeHUDTopLeft() {
         tipText: () => {
             const maze = state_1.state.mazeRescue;
             const depth = maze ? Math.max(0, Math.floor(state_1.player.y / (maze.mazeTileSize || 120))) : 0;
-            const maxAllowed = maze ? (maze.maxDepthAllowed || 30) : 30;
+            const maxAllowed = maze ? (maze.maxDepthAllowed || 90) : 90;
             const overFlag = depth > maxAllowed ? '\n⚠ 已超出潜水衣极限！' : '';
             return `当前深度：${depth}m\n潜水衣极限：${maxAllowed}m${overFlag}`;
         },
@@ -22337,33 +22504,7 @@ function initMazeHUDTopLeft() {
             (0, DecompressionSystem_1.setDecoBoost)(false);
         },
     });
-    // 3. 手动/自动挡切换（短按切换）
-    registerHUDItem({
-        id: 'driveMode',
-        visible: () => true,
-        iconDraw: drawDriveModeIcon,
-        supportsLongPress: false,
-        onShortTap: () => {
-            config_1.CONFIG.manualDrive.enabled = !config_1.CONFIG.manualDrive.enabled;
-        },
-        tipText: () => {
-            return config_1.CONFIG.manualDrive.enabled ? '已切换：手动挡\n搓屏驱动潜水员踢水' : '已切换：自动挡\n摇杆控制移动方向';
-        },
-    });
-    // 3. 全局音频开关（短按切换）
-    registerHUDItem({
-        id: 'audio',
-        visible: () => true,
-        iconDraw: drawAudioIconWrapper,
-        supportsLongPress: false,
-        onShortTap: () => {
-            (0, RenderAudioToggle_1.toggleMuted)();
-        },
-        tipText: () => {
-            return state_1.state.audio.muted ? '音频：已静音' : '音频：已开启';
-        },
-    });
-    // 4. 深流随身听：短按提示，按住展开磁带封套。
+    // 随身听同时接管音量：轻点静音/恢复，按住展开磁带封套。
     registerHUDItem({
         id: 'lifeDetector',
         visible: () => {
@@ -22379,17 +22520,30 @@ function initMazeHUDTopLeft() {
             (0, TapeDeckVisual_1.drawTapeSleeve)(c, Math.min(cx + 38, Canvas_1.logicW - w - 12), Math.max(64, Math.min(cy - 112, Canvas_1.logicH - 236)), w, (0, RescueTape_1.getRescueTapeVisual)());
             c.restore();
         },
-        onShortTap: () => { },
+        onShortTap: () => { (0, RenderAudioToggle_1.toggleMuted)(); },
         tipText: () => {
             const v = (0, RescueTape_1.getRescueTapeVisual)();
             if (state_1.state.audio.muted)
-                return '深流随身听 · 已静音\n点上方音量键恢复声音\n按住磁带可看分层节奏';
+                return '深流随身听 · 已静音\n轻点磁带恢复声音\n按住磁带可看分层节奏';
             if (v.fallback)
                 return '深流随身听 · 双音模式\n按住查看节奏';
             if (!v.playing)
                 return '深流随身听 · 磁带就绪\n带上音乐，下潜\n按住查看分层节奏';
             return `深流随身听 · ${v.mood === 'return' ? 'B 面' : 'A 面'}\n${v.level}/5 层 · 120 BPM\n按住查看分层节奏`;
         },
+    });
+    registerHUDItem({
+        id: 'retreat', visible: () => { var _a; return !((_a = state_1.state.mazeRescue) === null || _a === void 0 ? void 0 : _a.npcRescued); },
+        iconDraw: drawRetreatIcon, supportsLongPress: true,
+        onPressStart: () => {
+            const maze = state_1.state.mazeRescue;
+            if (!maze || maze.phase !== 'play')
+                return;
+            maze.retreatHolding = true;
+            maze.retreatHoldStart = Date.now();
+        },
+        onPressEnd: () => { if (state_1.state.mazeRescue)
+            state_1.state.mazeRescue.retreatHolding = false; },
     });
     // 5. GM 面板切换（调试工具，放在最后）
     // 旧的屏幕顶部独立 GM 按钮已下线，统一收缩到左上 HUD 栏
@@ -22415,6 +22569,7 @@ function initMazeHUDTopLeft() {
 //   - 内圈 = 第二瓶（外圈耗光后才开始消耗）
 // 单瓶模式：保留原来的单一圆环外观（仅外圈）
 function drawOxygenIcon(c, cx, cy, size, time) {
+    var _a, _b;
     const maze = state_1.state.mazeRescue;
     // 动画值优先（拾取时平滑上涨）
     const o2DisplayRaw = (maze && maze.oxygenFeedback && typeof maze.oxygenFeedback.o2DisplayAnim === 'number')
@@ -22423,16 +22578,11 @@ function drawOxygenIcon(c, cx, cy, size, time) {
     // === 解析当前携带的氧气瓶组合，算出每瓶的剩余比率 ===
     // 规则：瓶 0 先被耗光，再耗瓶 1。
     //   bottleRemaining[i] = clamp(o2 - sumOfPrevCaps, 0, cap[i]) / cap[i]
-    //   bottleCap[i] 取自 startO2（airTankS=60 / M=100 / L=150）
+    //   bottleCap[i] 从装备表读取，与当次气瓶容量同步。
     const tanks = (0, Loadout_1.getActiveAirTanks)();
     const tankCaps = [];
     for (const id of tanks) {
-        if (id === 'airTankL')
-            tankCaps.push(150);
-        else if (id === 'airTankM')
-            tankCaps.push(100);
-        else
-            tankCaps.push(60); // S 或未知
+        tankCaps.push((_b = (_a = (0, ExtractionRegistry_1.getEquipmentEffects)(id)) === null || _a === void 0 ? void 0 : _a.startO2) !== null && _b !== void 0 ? _b : 120);
     }
     if (tankCaps.length === 0)
         tankCaps.push(Math.max(1, state_1.player.o2Max || 100));
@@ -22677,7 +22827,7 @@ function drawDepthIcon(c, cx, cy, size, _time) {
     const maze = state_1.state.mazeRescue;
     const tile = maze ? (maze.mazeTileSize || 120) : 120;
     const curDepth = maze ? Math.max(0, Math.floor(state_1.player.y / tile)) : 0;
-    const maxAllowed = maze ? (maze.maxDepthAllowed || 30) : 30;
+    const maxAllowed = maze ? (maze.maxDepthAllowed || 90) : 90;
     const ratio = curDepth / Math.max(1, maxAllowed);
     const overLimit = curDepth > maxAllowed;
     const r = size / 2 - 2;
@@ -22928,33 +23078,35 @@ function drawDecoIcon(c, cx, cy, size, _time) {
     }
     c.restore();
 }
-// 手动/自动挡图标：圆形背景 + M/A 字母
-function drawDriveModeIcon(c, cx, cy, size, _time) {
-    const isManual = config_1.CONFIG.manualDrive.enabled;
-    const r = size / 2 - 2;
+// 防水随身听：与角色胸前共用同一画法、同一音频时间。
+function drawRetreatIcon(c, cx, cy, size) {
+    const r = size / 2 - 2, maze = state_1.state.mazeRescue;
     c.save();
     c.fillStyle = TapeDeckVisual_1.TAPE.ink;
-    c.strokeStyle = isManual ? TapeDeckVisual_1.TAPE.orange : TapeDeckVisual_1.TAPE.mint;
-    c.lineWidth = 1.3;
+    c.strokeStyle = TapeDeckVisual_1.TAPE.mint;
+    c.lineWidth = 1;
     (0, TapeDeckVisual_1.cutPanel)(c, cx - r, cy - r, r * 2, r * 2, 6);
     c.fill();
     c.stroke();
-    c.fillStyle = isManual ? TapeDeckVisual_1.TAPE.orange : TapeDeckVisual_1.TAPE.mint;
-    c.fillRect(cx - r + 4, cy - r + 4, 3, 8);
-    // 字母
-    c.fillStyle = 'rgba(255,255,255,0.96)';
-    c.font = 'bold 16px Arial';
-    c.textAlign = 'center';
-    c.textBaseline = 'middle';
-    c.fillText(isManual ? 'M' : 'A', cx, cy + 1);
-    c.textBaseline = 'alphabetic';
+    c.strokeStyle = TapeDeckVisual_1.TAPE.paper;
+    c.lineWidth = 2;
+    c.beginPath();
+    c.moveTo(cx, cy + 9);
+    c.lineTo(cx, cy - 8);
+    c.moveTo(cx - 6, cy - 2);
+    c.lineTo(cx, cy - 8);
+    c.lineTo(cx + 6, cy - 2);
+    c.stroke();
+    if (maze === null || maze === void 0 ? void 0 : maze.retreatHolding) {
+        const progress = Math.min(1, (Date.now() - maze.retreatHoldStart) / (config_1.CONFIG.maze.retreatHoldDuration * 1000));
+        c.strokeStyle = TapeDeckVisual_1.TAPE.mint;
+        c.lineWidth = 2.5;
+        c.beginPath();
+        c.arc(cx, cy, r + 3, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2);
+        c.stroke();
+    }
     c.restore();
 }
-// 音频开关图标：调用 RenderAudioToggle 里已有的音符绘制
-function drawAudioIconWrapper(c, cx, cy, size, _time) {
-    (0, RenderAudioToggle_1.drawAudioIcon)(c, cx, cy, size);
-}
-// 防水随身听：与角色胸前共用同一画法、同一音频时间。
 function drawLifeDetectorIcon(c, cx, cy, size, _time) {
     const v = (0, RescueTape_1.getRescueTapeVisual)();
     (0, TapeDeckVisual_1.drawTapeDeck)(c, cx, cy, size, v);
@@ -24132,7 +24284,7 @@ function draw() {
     // 绘制玩家
     // 旧主线 tankDamaged（氧气瓶损坏 → 不画瓶）已废弃，固定有瓶。
     let hasTank = true;
-    const isAutoSwim = !config_1.CONFIG.manualDrive.enabled;
+    const isAutoSwim = config_1.CONFIG.driveMode !== 'manual';
     // 撤离玩法：根据装备的潜水衣 / 脚蹼调色，让外观随装备等级变化
     const playerColors = buildPlayerDiverColors();
     // 撤离玩法：根据本次携带的氧气瓶数量决定画一只还是两只
@@ -24160,6 +24312,7 @@ function draw() {
         kickDrive: state_1.state.manualDrive.kickDrive,
         id: 'player',
         autoSwim: isAutoSwim,
+        swimEffort: config_1.CONFIG.driveMode === 'semiAuto' ? state_1.state.semiAutoDrive.effort : undefined,
         regulatorAnim: state_1.player.regulatorAnim,
         carryItemAnim: state_1.player.carryItemAnim,
         welcomeArmsAnim: state_1.player.welcomeArmsAnim,
@@ -24403,7 +24556,7 @@ function draw() {
         Canvas_1.ctx.restore();
     }
     // 手动挡调试辅助线（在所有游戏内容之上、GM面板之下绘制）
-    if (config_1.CONFIG.manualDrive.enabled && config_1.CONFIG.manualDrive.debugDraw &&
+    if (config_1.CONFIG.driveMode === 'manual' && config_1.CONFIG.manualDrive.debugDraw &&
         (state_1.state.screen === 'play' || state_1.state.screen === 'fishArena' || state_1.state.screen === 'mazeRescue')) {
         const cx = config_1.CONFIG.screenWidth / 2 + (state_1.player.x - camX) * zoom;
         const cy = config_1.CONFIG.screenHeight / 2 + (state_1.player.y - camY) * zoom;
@@ -24907,306 +25060,121 @@ function drawAudioToggle(_ctx) {
     // 已废弃。左上角 HUD 管理器负责绘制。
 }
 },"/src/render/RenderBCD":function(exports,require){"use strict";
-// =============================================
-// BCD 浮力背心 —— 水下操作控件与告警层
-// ---------------------------------------------
-//
-// 交互原型来自真实装备：潜水员左手握着一根从左肩垂下来的 inflator（充气管）手柄，
-// 手柄上竖着排两颗按钮，拇指按上面那颗充气、按下面那颗排气。
-// 所以这里也做成一根**竖直的手柄**，而不是两个散落的圆按钮：
-//
-//        ┌──────┐
-//        │  ＋  │   充气钮（上）：气进气囊 → 上浮
-//        ├──────┤
-//        │ ▓▓▓▓ │   气囊量表：显示气囊"实际体积"
-//        │ ┈┈┈┈ │   中性刻度线（会随深度上移，因为湿衣被压扁）
-//        │ ▓▓▓▓ │   右侧细条 = 净浮力方向与强度
-//        ├──────┤
-//        │  －  │   排气钮（下）：气出气囊 → 下沉
-//        └──────┘
-//
-// 三条设计约束（不遵守就会失去教学意义）：
-//
-// 1. **"上=充气=上浮" 的方向语义必须与屏幕方向一致。**
-//    真实装备上充气钮反而在下面，但那是握持姿态决定的；在屏幕上必须服从
-//    "按上面的钮身体往上走"这个直觉，否则玩家永远建立不起条件反射。
-//
-// 2. **中性刻度线必须画成"会动的"。**
-//    玩家下潜时会亲眼看到：气量条自己往下掉（气被压缩）、中性线自己往上爬
-//    （湿衣失效），两条线越拉越开 —— 这就是玻意耳定律的可视化，
-//    比任何一段文字教程都有效。
-//
-// 3. **净浮力指示必须与气量分开显示。**
-//    玩家真正要控的不是"气量"，而是"净浮力=0"。所以量表右侧另挂一根
-//    中心为零的双向条：绿色向上=正在被托起，橙色向下=正在被拽下去，
-//    完全归中时整个控件亮一圈青色"配平良好"光环，给正反馈。
-//
-// 告警层（drawBCDWarnOverlay）：
-//   失控上浮时屏幕上缘泛橙红脉冲；失控下沉时屏幕下缘泛琥珀脉冲。
-//   教学与处置文字暂不展示。
-//   都是边缘渐变，不挡视野中心。
-// =============================================
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.isBCDUIVisible = isBCDUIVisible;
 exports.getBCDLayout = getBCDLayout;
 exports.getBCDInflateBtn = getBCDInflateBtn;
 exports.getBCDDeflateBtn = getBCDDeflateBtn;
+exports.getBCDBladderDimensions = getBCDBladderDimensions;
 exports.drawBCDController = drawBCDController;
 exports.drawBCDWarnOverlay = drawBCDWarnOverlay;
+// BCD 软气囊：轮廓随实际气体体积膨胀/压缩，只保留绝对气量，去掉净浮力副条。
 const config_1 = require("../core/config");
-const TapeDeckVisual_1 = require("./TapeDeckVisual");
 const state_1 = require("../core/state");
 const Canvas_1 = require("./Canvas");
 const BCDSystem_1 = require("../logic/BCDSystem");
-function cfg() {
-    return config_1.CONFIG.bcd || {};
-}
-/** 控件是否应该出现（迷宫 play 阶段 + 系统开启 + UI 开启） */
+function cfg() { return config_1.CONFIG.bcd || {}; }
 function isBCDUIVisible() {
-    const c = cfg();
-    if (!c.enabled || !c.uiVisible)
-        return false;
-    if (state_1.state.screen !== 'mazeRescue')
-        return false;
-    const maze = state_1.state.mazeRescue;
-    if (!maze || maze.phase !== 'play')
-        return false;
-    return true;
+    var _a;
+    return !!(cfg().enabled && cfg().uiVisible && state_1.state.screen === 'mazeRescue' && ((_a = state_1.state.mazeRescue) === null || _a === void 0 ? void 0 : _a.phase) === 'play');
 }
 function getBCDLayout() {
-    const c = cfg();
-    const cw = config_1.CONFIG.screenWidth;
-    const ch = config_1.CONFIG.screenHeight;
-    const gaugeW = c.uiGaugeW || 26;
-    const gaugeH = c.uiGaugeH || 96;
-    const btnR = c.uiBtnRadius || 25;
-    const gap = c.uiBtnGap || 50;
-    const cx = cw - (c.uiXFromRight || 44);
-    // 竖向中心做一次安全夹紧，保证整根手柄（含两颗钮）不会顶出屏幕
-    const halfSpan = gap + btnR + 6;
-    const cy = Math.max(halfSpan + 24, Math.min(ch - halfSpan - 24, ch * (c.uiCenterYRatio || 0.52)));
-    return {
-        cx, cy, btnR,
-        inflateY: cy - gap,
-        deflateY: cy + gap,
-        gaugeX: cx - gaugeW / 2,
-        gaugeY: cy - gaugeH / 2,
-        gaugeW,
-        gaugeH,
-    };
+    const c = cfg(), cw = config_1.CONFIG.screenWidth, ch = config_1.CONFIG.screenHeight;
+    const gaugeW = c.uiGaugeW || 42, gaugeH = c.uiGaugeH || 132;
+    const btnR = c.uiBtnRadius || 21;
+    const gap = Math.max(c.uiBtnGap || 104, gaugeH / 2 + btnR + 26);
+    const cx = cw - (c.uiXFromRight || 46);
+    const halfSpan = gap + btnR + 20;
+    const cy = Math.max(halfSpan + 62, Math.min(ch - halfSpan - 32, ch * (c.uiCenterYRatio || .52)));
+    return { cx, cy, btnR, inflateY: cy - gap, deflateY: cy + gap,
+        gaugeX: cx - gaugeW / 2, gaugeY: cy - gaugeH / 2, gaugeW, gaugeH };
 }
-/** 充气钮命中圆（input.ts 用） */
-function getBCDInflateBtn() {
-    const L = getBCDLayout();
-    return { cx: L.cx, cy: L.inflateY, r: L.btnR + 6 };
+function getBCDInflateBtn() { const L = getBCDLayout(); return { cx: L.cx, cy: L.inflateY, r: L.btnR + 6 }; }
+function getBCDDeflateBtn() { const L = getBCDLayout(); return { cx: L.cx, cy: L.deflateY, r: L.btnR + 6 }; }
+/** 体积改变的是整只柔性气囊的宽高，不是固定管子里的液面。 */
+function getBCDBladderDimensions(fill, width, height) {
+    const expansion = Math.sqrt(Math.max(0, Math.min(1, fill)));
+    return { width: width * (.30 + .70 * expansion), height: height * (.58 + .42 * expansion) };
 }
-/** 排气钮命中圆（input.ts 用） */
-function getBCDDeflateBtn() {
-    const L = getBCDLayout();
-    return { cx: L.cx, cy: L.deflateY, r: L.btnR + 6 };
-}
-// =============================================
-// 绘制辅助
-// =============================================
-function rrectPath(c, x, y, w, h, r) {
-    r = Math.min(r, w / 2, h / 2);
+function bladderPath(c, w, h) {
+    const x = w / 2, y = h / 2;
     c.beginPath();
-    c.moveTo(x + r, y);
-    c.lineTo(x + w - r, y);
-    c.arcTo(x + w, y, x + w, y + r, r);
-    c.lineTo(x + w, y + h - r);
-    c.arcTo(x + w, y + h, x + w - r, y + h, r);
-    c.lineTo(x + r, y + h);
-    c.arcTo(x, y + h, x, y + h - r, r);
-    c.lineTo(x, y + r);
-    c.arcTo(x, y, x + r, y, r);
+    c.moveTo(0, -y * .86);
+    c.bezierCurveTo(x * .35, -y * 1.08, x, -y, x, -y * .58);
+    c.bezierCurveTo(x, -y * .22, x * .65, -y * .12, x * .76, y * .22);
+    c.bezierCurveTo(x * 1.05, y * .72, x * .8, y * 1.02, 0, y * .87);
+    c.bezierCurveTo(-x * .8, y * 1.02, -x * 1.05, y * .72, -x * .76, y * .22);
+    c.bezierCurveTo(-x * .65, -y * .12, -x, -y * .22, -x, -y * .58);
+    c.bezierCurveTo(-x, -y, -x * .35, -y * 1.08, 0, -y * .86);
     c.closePath();
 }
-// =============================================
-// 主绘制入口
-// =============================================
 function drawBCDController(time) {
     if (!isBCDUIVisible())
         return;
-    const rt = (0, BCDSystem_1.getBCDRuntime)();
-    const g = (0, BCDSystem_1.getBCDGaugeInfo)();
-    const L = getBCDLayout();
-    // 配平良好（净浮力接近 0）时给整根手柄一圈青色呼吸光环 —— 正反馈
-    const trimmed = Math.abs(g.netLiftNorm) < 0.12;
-    const pulse = 0.5 + 0.5 * Math.sin(time * 3.0);
+    const rt = (0, BCDSystem_1.getBCDRuntime)(), g = (0, BCDSystem_1.getBCDGaugeInfo)(), L = getBCDLayout();
+    const fill = Math.max(0, Math.min(1, g.volumeL / Math.max(.1, cfg().capacityL)));
+    const size = getBCDBladderDimensions(fill, L.gaugeW, L.gaugeH);
     Canvas_1.ctx.save();
-    // ---------- 手柄底板（把两颗钮和量表在视觉上连成一根 inflator）----------
-    {
-        const padX = L.cx - (L.gaugeW / 2 + 9);
-        const padY = L.inflateY - L.btnR - 8;
-        const padW = L.gaugeW + 18;
-        const padH = (L.deflateY + L.btnR + 8) - padY;
-        Canvas_1.ctx.fillStyle = 'rgba(16,30,38,0.75)';
-        (0, TapeDeckVisual_1.cutPanel)(Canvas_1.ctx, padX, padY, padW, padH, 7);
-        Canvas_1.ctx.fill();
-        Canvas_1.ctx.strokeStyle = trimmed
-            ? `rgba(110, 235, 220, ${0.35 + 0.3 * pulse})`
-            : TapeDeckVisual_1.TAPE.muted;
-        Canvas_1.ctx.lineWidth = trimmed ? 1.4 : 0.9;
-        (0, TapeDeckVisual_1.cutPanel)(Canvas_1.ctx, padX, padY, padW, padH, 7);
-        Canvas_1.ctx.stroke();
-    }
-    // ---------- 气囊量表 ----------
-    drawGauge(L, g, time);
-    // ---------- 两颗按钮 ----------
-    drawInflateBtn(L, rt.inflating, rt.overflow, time);
-    drawDeflateBtn(L, rt.deflating, g.volumeL <= 0.001, time);
-    // ---------- 深度压力小标（告诉玩家"现在几个大气压"，玻意耳的自变量）----------
-    Canvas_1.ctx.fillStyle = TapeDeckVisual_1.TAPE.paper;
-    Canvas_1.ctx.font = '9px Arial';
-    Canvas_1.ctx.textAlign = 'center';
-    Canvas_1.ctx.textBaseline = 'middle';
-    Canvas_1.ctx.fillText(g.pressureAtm.toFixed(1) + ' ATA', L.cx, L.deflateY + L.btnR + 15);
-    Canvas_1.ctx.textAlign = 'start';
-    Canvas_1.ctx.textBaseline = 'alphabetic';
-    Canvas_1.ctx.restore();
-}
-// =============================================
-// 气囊量表：填充 + 会动的中性线 + 净浮力副条
-// =============================================
-function drawGauge(L, g, time) {
-    const x = L.gaugeX;
-    const y = L.gaugeY;
-    const w = L.gaugeW;
-    const h = L.gaugeH;
-    // 背景槽
-    Canvas_1.ctx.fillStyle = 'rgba(6, 14, 22, 0.85)';
-    rrectPath(Canvas_1.ctx, x, y, w, h, 7);
-    Canvas_1.ctx.fill();
-    // 内壁刻度（每 25% 一道细线，纯装饰，帮助读数）
-    Canvas_1.ctx.strokeStyle = 'rgba(120, 160, 185, 0.16)';
-    Canvas_1.ctx.lineWidth = 0.7;
-    Canvas_1.ctx.beginPath();
-    for (let i = 1; i < 4; i++) {
-        const ly = y + h * (i / 4);
-        Canvas_1.ctx.moveTo(x + 2, ly);
-        Canvas_1.ctx.lineTo(x + w - 2, ly);
-    }
-    Canvas_1.ctx.stroke();
-    // ---- 气体填充（从底部往上长）----
-    const fillH = h * g.fillRatio;
-    if (fillH > 0.5) {
-        const fy = y + h - fillH;
-        // 颜色按"离中性有多远"变化：配平良好 = 青绿；偏正浮力 = 亮蓝；偏负 = 暗蓝灰
-        const off = g.netLiftNorm; // +1 上浮 / -1 下沉
-        let top, bot;
-        if (Math.abs(off) < 0.12) {
-            top = 'rgba(130, 250, 225, 0.95)';
-            bot = 'rgba(60, 175, 165, 0.85)';
-        }
-        else if (off > 0) {
-            top = 'rgba(120, 215, 255, 0.95)';
-            bot = 'rgba(55, 135, 200, 0.85)';
-        }
-        else {
-            top = 'rgba(130, 165, 195, 0.9)';
-            bot = 'rgba(60, 85, 115, 0.85)';
-        }
-        const grad = Canvas_1.ctx.createLinearGradient(0, fy, 0, y + h);
-        grad.addColorStop(0, top);
-        grad.addColorStop(1, bot);
-        Canvas_1.ctx.save();
-        rrectPath(Canvas_1.ctx, x + 1.5, y + 1.5, w - 3, h - 3, 6);
-        Canvas_1.ctx.clip();
-        Canvas_1.ctx.fillStyle = grad;
-        Canvas_1.ctx.fillRect(x + 1.5, fy, w - 3, fillH);
-        // 气体表面的微弱晃动高光（表示里面是气不是液体）
-        Canvas_1.ctx.strokeStyle = 'rgba(235, 255, 255, 0.75)';
-        Canvas_1.ctx.lineWidth = 1.2;
-        Canvas_1.ctx.beginPath();
-        for (let i = 0; i <= 6; i++) {
-            const px = x + 2 + (w - 4) * (i / 6);
-            const py = fy + Math.sin(time * 4 + i * 0.9) * 1.1;
-            if (i === 0)
-                Canvas_1.ctx.moveTo(px, py);
-            else
-                Canvas_1.ctx.lineTo(px, py);
-        }
-        Canvas_1.ctx.stroke();
-        Canvas_1.ctx.restore();
-    }
-    // ---- 中性刻度线（会随深度上移，是本控件最重要的一条线）----
-    const nY = y + h * (1 - g.neutralRatio);
-    Canvas_1.ctx.save();
-    Canvas_1.ctx.strokeStyle = 'rgba(255, 226, 130, 0.95)';
-    Canvas_1.ctx.lineWidth = 1.5;
-    Canvas_1.ctx.setLineDash([3.5, 2.5]);
-    Canvas_1.ctx.beginPath();
-    Canvas_1.ctx.moveTo(x - 3, nY);
-    Canvas_1.ctx.lineTo(x + w + 3, nY);
+    Canvas_1.ctx.translate(L.cx, L.cy);
+    // 很淡的最大容量轮廓，让压缩后的气囊有参照物，不添加第二个量表。
+    bladderPath(Canvas_1.ctx, L.gaugeW, L.gaugeH);
+    Canvas_1.ctx.strokeStyle = 'rgba(135,171,188,.18)';
+    Canvas_1.ctx.lineWidth = 1;
+    Canvas_1.ctx.setLineDash([2, 5]);
     Canvas_1.ctx.stroke();
     Canvas_1.ctx.setLineDash([]);
-    // 左侧小三角箭头，强调"目标在这"
-    Canvas_1.ctx.fillStyle = 'rgba(255, 226, 130, 0.95)';
-    Canvas_1.ctx.beginPath();
-    Canvas_1.ctx.moveTo(x - 4, nY);
-    Canvas_1.ctx.lineTo(x - 9, nY - 3.2);
-    Canvas_1.ctx.lineTo(x - 9, nY + 3.2);
-    Canvas_1.ctx.closePath();
+    bladderPath(Canvas_1.ctx, size.width, size.height);
+    const grad = Canvas_1.ctx.createLinearGradient(-size.width / 2, 0, size.width / 2, 0);
+    grad.addColorStop(0, '#29434e');
+    grad.addColorStop(.28, '#629caa');
+    grad.addColorStop(.5, '#355966');
+    grad.addColorStop(.76, '#74b9bc');
+    grad.addColorStop(1, '#29434e');
+    Canvas_1.ctx.fillStyle = grad;
     Canvas_1.ctx.fill();
+    Canvas_1.ctx.strokeStyle = rt.overflow ? '#efb56c' : 'rgba(174,224,218,.8)';
+    Canvas_1.ctx.lineWidth = 1.3;
+    Canvas_1.ctx.stroke();
+    // 缝线、腰带与压瘪时更明显的布料褶皱。
+    Canvas_1.ctx.strokeStyle = 'rgba(8,24,32,.7)';
+    Canvas_1.ctx.lineWidth = 2;
+    Canvas_1.ctx.beginPath();
+    Canvas_1.ctx.moveTo(0, -size.height * .39);
+    Canvas_1.ctx.lineTo(0, size.height * .39);
+    Canvas_1.ctx.stroke();
+    Canvas_1.ctx.fillStyle = 'rgba(12,26,34,.65)';
+    Canvas_1.ctx.fillRect(-size.width * .43, -3, size.width * .86, 6);
+    Canvas_1.ctx.strokeStyle = `rgba(180,222,224,${.12 + (1 - fill) * .35})`;
+    Canvas_1.ctx.lineWidth = .8;
+    for (const side of [-1, 1])
+        for (const y of [-.28, .22, .32]) {
+            Canvas_1.ctx.beginPath();
+            Canvas_1.ctx.moveTo(side * size.width * .13, size.height * y);
+            Canvas_1.ctx.quadraticCurveTo(side * size.width * .2, size.height * y - (1 - fill) * 5, side * size.width * .38, size.height * y + 3);
+            Canvas_1.ctx.stroke();
+        }
     Canvas_1.ctx.restore();
-    // ---- 顶部溢流警示（气囊满了还在充）----
-    if (g.overRange) {
-        const a = 0.45 + 0.45 * (0.5 + 0.5 * Math.sin(time * 10));
-        Canvas_1.ctx.fillStyle = `rgba(255, 150, 90, ${a})`;
-        Canvas_1.ctx.beginPath();
-        Canvas_1.ctx.moveTo(L.cx, y - 6);
-        Canvas_1.ctx.lineTo(L.cx - 5, y - 1);
-        Canvas_1.ctx.lineTo(L.cx + 5, y - 1);
-        Canvas_1.ctx.closePath();
-        Canvas_1.ctx.fill();
-    }
-    // 外框
-    Canvas_1.ctx.strokeStyle = 'rgba(150, 195, 220, 0.4)';
-    Canvas_1.ctx.lineWidth = 1;
-    rrectPath(Canvas_1.ctx, x, y, w, h, 7);
-    Canvas_1.ctx.stroke();
-    // ---- 净浮力副条（贴在量表右侧，中心为零的双向条）----
-    drawNetLiftBar(L, g.netLiftNorm);
+    Canvas_1.ctx.save();
+    Canvas_1.ctx.textAlign = 'center';
+    Canvas_1.ctx.textBaseline = 'middle';
+    Canvas_1.ctx.font = 'bold 8px Arial';
+    Canvas_1.ctx.fillStyle = 'rgba(178,205,210,.75)';
+    Canvas_1.ctx.fillText('BCD', L.cx, L.gaugeY - 11);
+    Canvas_1.ctx.font = 'bold 10px Arial';
+    Canvas_1.ctx.fillStyle = '#d6ebe8';
+    Canvas_1.ctx.fillText(g.volumeL.toFixed(1) + ' L', L.cx, L.gaugeY + L.gaugeH + 10);
+    // 唯一的绝对气量进度条，以真实容量为满格。
+    Canvas_1.ctx.fillStyle = 'rgba(180,214,217,.15)';
+    Canvas_1.ctx.fillRect(L.cx - 18, L.gaugeY + L.gaugeH + 20, 36, 3);
+    Canvas_1.ctx.fillStyle = '#9be2d1';
+    Canvas_1.ctx.fillRect(L.cx - 18, L.gaugeY + L.gaugeH + 20, 36 * fill, 3);
+    drawInflateBtn(L, rt.inflating, rt.overflow, time);
+    drawDeflateBtn(L, rt.deflating, g.volumeL <= .001, time);
+    Canvas_1.ctx.font = '8px Arial';
+    Canvas_1.ctx.fillStyle = 'rgba(178,205,210,.65)';
+    Canvas_1.ctx.fillText(g.pressureAtm.toFixed(1) + ' ATA', L.cx, L.deflateY + L.btnR + 15);
+    Canvas_1.ctx.restore();
 }
-/**
- * 净浮力条：中心 = 0（中性），向上填绿 = 正在被托起，向下填橙 = 正在被拽下去。
- * 玩家真正要控的是这一根归零，气量条只是手段。
- */
-function drawNetLiftBar(L, norm) {
-    const bw = 5;
-    const bx = L.gaugeX + L.gaugeW + 4;
-    const by = L.gaugeY + 4;
-    const bh = L.gaugeH - 8;
-    const midY = by + bh / 2;
-    Canvas_1.ctx.fillStyle = 'rgba(6, 14, 22, 0.8)';
-    rrectPath(Canvas_1.ctx, bx, by, bw, bh, 2.5);
-    Canvas_1.ctx.fill();
-    // 中性中线
-    Canvas_1.ctx.strokeStyle = 'rgba(200, 225, 240, 0.55)';
-    Canvas_1.ctx.lineWidth = 1;
-    Canvas_1.ctx.beginPath();
-    Canvas_1.ctx.moveTo(bx - 1.5, midY);
-    Canvas_1.ctx.lineTo(bx + bw + 1.5, midY);
-    Canvas_1.ctx.stroke();
-    const mag = Math.min(1, Math.abs(norm));
-    if (mag > 0.02) {
-        const len = (bh / 2) * mag;
-        if (norm > 0) {
-            // 正浮力 → 向上填（被托起）
-            Canvas_1.ctx.fillStyle = 'rgba(120, 240, 190, 0.9)';
-            Canvas_1.ctx.fillRect(bx + 0.8, midY - len, bw - 1.6, len);
-        }
-        else {
-            // 负浮力 → 向下填（被拽沉）
-            Canvas_1.ctx.fillStyle = 'rgba(255, 175, 105, 0.9)';
-            Canvas_1.ctx.fillRect(bx + 0.8, midY, bw - 1.6, len);
-        }
-    }
-}
-// =============================================
-// 按钮
-// =============================================
 function drawInflateBtn(L, active, overflow, time) {
     const { cx, inflateY: cy, btnR: r } = L;
     const pulse = 0.5 + 0.5 * Math.sin(time * 12);
@@ -25925,7 +25893,8 @@ function drawDiver(renderCtx, x, y, angle, colors = null, motion = {}) {
         bodyClocks.set(clockId, bodyClock);
     }
     const speedRefMaxForBody = 6;
-    const speedNormForBody = clamp(speed / speedRefMaxForBody, 0, 1);
+    const speedNormForBody = motion.swimEffort === undefined
+        ? clamp(speed / speedRefMaxForBody, 0, 1) : clamp(motion.swimEffort, 0, 1);
     const turnAbsVisual = Math.abs(turnVisual);
     // 身体扭动频率：idle 慢 + forward 随速度加快 + turn 再加一点
     const bodyFreq = cfg.bodyWaveIdleFreq
@@ -26070,11 +26039,12 @@ function drawDiver(renderCtx, x, y, angle, colors = null, motion = {}) {
     const rollSquash = limp ? 1 : 1 - Math.abs(bodyRoll) * cfg.rollSquashFactor;
     const rollSquashClamped = Math.max(1 - cfg.rollSquashMax, rollSquash);
     renderCtx.scale(1, rollSquashClamped);
-    // ===== 腿部相位时钟：完全由速度 + kickDrive boost 自驱（渲染侧自持） =====
+    // 半自动按实际发力踢腿，松手/耗尽时收腿滑行；其他模式继续由速度驱动。
     // 速度归一化：玩家手动挡 maxSpeed=11，自动挡/NPC 一般 4~6，这里用 6 做归一化让两种模式都能进入高频段
     const speedRefMax = 6;
-    const speedNorm = clamp(speed / speedRefMax, 0, 1);
-    const kickDriveVal = clamp((_q = motion.kickDrive) !== null && _q !== void 0 ? _q : 0, 0, 1);
+    const hasEffort = motion.swimEffort !== undefined;
+    const speedNorm = hasEffort ? clamp(motion.swimEffort, 0, 1) : clamp(speed / speedRefMax, 0, 1);
+    const kickDriveVal = hasEffort ? 0 : clamp((_q = motion.kickDrive) !== null && _q !== void 0 ? _q : 0, 0, 1);
     // 频率：base + speedNorm 主导 + kickDrive 加速瞬间 boost
     // kickDrive boost 降到 0.3 倍，避免手动挡加速瞬间腿摆得过快
     const freq = cfg.legAutoFreqBase
@@ -26082,8 +26052,8 @@ function drawDiver(renderCtx, x, y, angle, colors = null, motion = {}) {
         + kickDriveVal * cfg.legAutoFreqBoost * 0.3;
     // 幅度：由速度主导（静止时=低幅常驻呼吸，不再归零） + kickDrive 给加速瞬间的额外鞭打
     // idle 也给一点微幅（cfg.legIdleAmpNorm），让双腿在静止漂浮时做呼吸式抽动
-    const idleLegAmp = cfg.legIdleAmpNorm * idleBlend;
-    const ampNorm = clamp(speedNorm + kickDriveVal * 0.5 + idleLegAmp + resonance.kick * resonance.bloom * .2, 0, 1);
+    const idleLegAmp = hasEffort ? 0 : cfg.legIdleAmpNorm * idleBlend;
+    const ampNorm = clamp(speedNorm + kickDriveVal * 0.5 + idleLegAmp + (hasEffort ? 0 : resonance.kick * resonance.bloom * .2), 0, 1);
     // 取/建本角色的相位时钟
     let clock = legClocks.get(clockId);
     if (!clock) {
@@ -30015,7 +29985,7 @@ function drawMazeHUD() {
     ensureMazeHUDInitialized();
     (0, HUDTopLeft_1.drawHUDTopLeft)(time);
     // --- 顶部居中深度标牌 + 超深红警（场景内可视化"本次最大深度极限"） ---
-    drawDepthBanner(maze, cw, ch);
+    drawOverDepthWarning(maze, cw, ch);
     // --- BCD 浮力背心：失控上浮/下沉的屏幕边缘告警（压在控件下面，不挡控件）---
     (0, RenderBCD_1.drawBCDWarnOverlay)(time);
     // --- BCD 浮力背心：右侧竖直 inflator 控件（充气钮 / 气囊量表 / 排气钮）---
@@ -30058,86 +30028,6 @@ function drawMazeHUD() {
             Canvas_1.ctx.textAlign = 'center';
             Canvas_1.ctx.fillText('↑  返回入水口', cw / 2, ch * 0.15);
         }
-    }
-    // 撤离按钮（未带人时可用，左下角，按住展开说明）
-    if (!maze.npcRescued) {
-        const retreatBtnX = cw * config_1.CONFIG.maze.retreatBtnXRatio;
-        const retreatBtnY = ch * config_1.CONFIG.maze.retreatBtnYRatio;
-        const retreatR = config_1.CONFIG.maze.retreatBtnRadius;
-        // 长按进度
-        let retreatProgress = 0;
-        if (maze.retreatHolding) {
-            const elapsed = (Date.now() - maze.retreatHoldStart) / 1000;
-            retreatProgress = Math.min(1, elapsed / config_1.CONFIG.maze.retreatHoldDuration);
-        }
-        // 撤离详情展开动画（长按时展开说明文字）
-        if (maze.retreatHolding && retreatProgress > 0) {
-            maze._retreatDetailOpen = Math.min(1, (maze._retreatDetailOpen || 0) + 0.06);
-        }
-        else if (!maze.retreatHolding) {
-            maze._retreatDetailOpen = Math.max(0, (maze._retreatDetailOpen || 0) - 0.1);
-        }
-        const retDetailEase = (maze._retreatDetailOpen || 0);
-        const retDE = retDetailEase * retDetailEase * (3 - 2 * retDetailEase);
-        // 展开的说明面板（按钮上方）
-        if (retDE > 0.01) {
-            const rpW = 80 * retDE;
-            const rpH = 28 * retDE;
-            const rpX = retreatBtnX - rpW / 2;
-            const rpY = retreatBtnY - retreatR - 10 - rpH;
-            Canvas_1.ctx.globalAlpha = 0.85 * retDE;
-            Canvas_1.ctx.fillStyle = 'rgba(8,20,35,0.88)';
-            Canvas_1.ctx.beginPath();
-            rrect(Canvas_1.ctx, rpX, rpY, rpW, rpH, 8 * retDE);
-            Canvas_1.ctx.fill();
-            if (retDE > 0.4) {
-                const cA = Math.min(1, (retDE - 0.4) / 0.6);
-                Canvas_1.ctx.globalAlpha = 0.9 * cA;
-                Canvas_1.ctx.fillStyle = 'rgba(150,255,220,0.9)';
-                Canvas_1.ctx.font = 'bold 12px Arial';
-                Canvas_1.ctx.textAlign = 'center';
-                Canvas_1.ctx.fillText('撤离上浮', retreatBtnX, rpY + rpH / 2 + 4);
-            }
-        }
-        // 按钮底色（磨砂玻璃感）
-        Canvas_1.ctx.globalAlpha = 0.65;
-        Canvas_1.ctx.fillStyle = retreatProgress > 0 ? 'rgba(40,120,100,0.8)' : 'rgba(15,35,50,0.75)';
-        Canvas_1.ctx.beginPath();
-        Canvas_1.ctx.arc(retreatBtnX, retreatBtnY, retreatR, 0, Math.PI * 2);
-        Canvas_1.ctx.fill();
-        // 外圈（静态细线）
-        Canvas_1.ctx.globalAlpha = 0.5;
-        Canvas_1.ctx.strokeStyle = 'rgba(100,200,220,0.35)';
-        Canvas_1.ctx.lineWidth = 1;
-        Canvas_1.ctx.beginPath();
-        Canvas_1.ctx.arc(retreatBtnX, retreatBtnY, retreatR, 0, Math.PI * 2);
-        Canvas_1.ctx.stroke();
-        // 长按进度环
-        if (retreatProgress > 0) {
-            Canvas_1.ctx.globalAlpha = 0.9;
-            Canvas_1.ctx.strokeStyle = 'rgba(80,255,200,0.85)';
-            Canvas_1.ctx.lineWidth = 3;
-            Canvas_1.ctx.lineCap = 'round';
-            Canvas_1.ctx.beginPath();
-            Canvas_1.ctx.arc(retreatBtnX, retreatBtnY, retreatR - 2, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * retreatProgress);
-            Canvas_1.ctx.stroke();
-            Canvas_1.ctx.lineCap = 'butt';
-        }
-        // 上箭头图标
-        Canvas_1.ctx.globalAlpha = retreatProgress > 0 ? 0.95 : 0.75;
-        Canvas_1.ctx.fillStyle = retreatProgress > 0 ? 'rgba(150,255,220,0.95)' : 'rgba(150,210,230,0.85)';
-        Canvas_1.ctx.beginPath();
-        Canvas_1.ctx.moveTo(retreatBtnX, retreatBtnY - 10);
-        Canvas_1.ctx.lineTo(retreatBtnX - 7, retreatBtnY - 2);
-        Canvas_1.ctx.lineTo(retreatBtnX + 7, retreatBtnY - 2);
-        Canvas_1.ctx.closePath();
-        Canvas_1.ctx.fill();
-        Canvas_1.ctx.strokeStyle = Canvas_1.ctx.fillStyle;
-        Canvas_1.ctx.lineWidth = 2;
-        Canvas_1.ctx.beginPath();
-        Canvas_1.ctx.moveTo(retreatBtnX, retreatBtnY - 1);
-        Canvas_1.ctx.lineTo(retreatBtnX, retreatBtnY + 10);
-        Canvas_1.ctx.stroke();
     }
     // 小地图（仅调试模式显示，左上角，可折叠）
     if (config_1.CONFIG.debug) {
@@ -30305,14 +30195,13 @@ function drawMazeMinimap(maze, cw, ch, time) {
 // - 顶部居中（避开微信胶囊和左上 HUD）显示"30 / 60m"两段数字
 // - 超过潜水衣极限时：标牌底变红 + 屏幕四周脉冲红雾（提示风险）
 // - 不阻塞玩家视线（高度仅 26px、宽度约 110px）
-function drawDepthBanner(maze, cw, ch) {
+function drawOverDepthWarning(maze, cw, ch) {
     if (!maze || maze.phase !== 'play')
         return;
     const tile = maze.mazeTileSize || 120;
     const curDepth = Math.max(0, Math.floor(state_1.player.y / tile));
-    const maxAllowed = (maze.maxDepthAllowed | 0) || 30;
+    const maxAllowed = (maze.maxDepthAllowed | 0) || 90;
     const overLimit = curDepth > maxAllowed;
-    const ratio = Math.min(1.2, curDepth / Math.max(1, maxAllowed));
     // === 1. 屏幕边缘红警（仅超深时） ===
     if (overLimit) {
         const pulse = 0.35 + 0.25 * Math.sin(Date.now() / 250);
@@ -30325,57 +30214,6 @@ function drawDepthBanner(maze, cw, ch) {
         Canvas_1.ctx.fillRect(0, 0, cw, ch);
         Canvas_1.ctx.restore();
     }
-    // === 2. 顶部居中标牌 ===
-    // 位置：避开左上 HUD（左 92px 内是 HUD 区）和右上微信胶囊（右 110px 内）
-    // 标牌宽 110、高 26，水平居中（如果可用宽度足够）
-    const bannerW = 110;
-    const bannerH = 26;
-    const bannerX = (cw - bannerW) / 2;
-    const bannerY = 16;
-    Canvas_1.ctx.save();
-    // 底色：常态深蓝 / 临界（≥85%）橙色 / 超限红色
-    let bgColor;
-    let strokeColor;
-    if (overLimit) {
-        bgColor = 'rgba(140, 20, 20, 0.92)';
-        strokeColor = 'rgba(255, 100, 100, 0.95)';
-    }
-    else if (ratio >= 0.85) {
-        bgColor = 'rgba(80, 50, 10, 0.88)';
-        strokeColor = 'rgba(255, 200, 100, 0.85)';
-    }
-    else {
-        bgColor = 'rgba(16,30,38,0.9)';
-        strokeColor = TapeDeckVisual_1.TAPE.paper;
-    }
-    Canvas_1.ctx.fillStyle = bgColor;
-    Canvas_1.ctx.beginPath();
-    (0, TapeDeckVisual_1.cutPanel)(Canvas_1.ctx, bannerX, bannerY, bannerW, bannerH, 6);
-    Canvas_1.ctx.fill();
-    Canvas_1.ctx.strokeStyle = strokeColor;
-    Canvas_1.ctx.lineWidth = overLimit ? 1.6 : 1.1;
-    Canvas_1.ctx.beginPath();
-    (0, TapeDeckVisual_1.cutPanel)(Canvas_1.ctx, bannerX, bannerY, bannerW, bannerH, 6);
-    Canvas_1.ctx.stroke();
-    // 文字："深度 30 / 60m"
-    const textColor = overLimit ? 'rgba(255, 220, 220, 0.98)'
-        : ratio >= 0.85 ? 'rgba(255, 230, 180, 0.95)'
-            : 'rgba(220, 240, 255, 0.95)';
-    Canvas_1.ctx.fillStyle = textColor;
-    Canvas_1.ctx.font = 'bold 12px Arial';
-    Canvas_1.ctx.textAlign = 'center';
-    Canvas_1.ctx.textBaseline = 'middle';
-    const cx = bannerX + bannerW / 2;
-    const cy = bannerY + bannerH / 2;
-    if (overLimit) {
-        Canvas_1.ctx.fillText(`⚠ ${curDepth}m / 极限 ${maxAllowed}m`, cx, cy);
-    }
-    else {
-        Canvas_1.ctx.fillText(`深度 ${curDepth} / ${maxAllowed}m`, cx, cy);
-    }
-    Canvas_1.ctx.textAlign = 'start';
-    Canvas_1.ctx.textBaseline = 'alphabetic';
-    Canvas_1.ctx.restore();
 }
 },"/src/render/RenderMenu":function(exports,require){"use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
@@ -33218,12 +33056,91 @@ function drawRopeButton() {
     Canvas_1.ctx.fillText(isEnd ? '结束布线' : '开始布线', btnX, btnY + radius + 6);
     Canvas_1.ctx.restore();
 }
+},"/src/render/RenderSemiAutoDrive":function(exports,require){"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.getSemiAutoFeedback = getSemiAutoFeedback;
+exports.getStaminaLayout = getStaminaLayout;
+exports.drawSemiAutoControls = drawSemiAutoControls;
+const config_1 = require("../core/config");
+const state_1 = require("../core/state");
+const RenderBCD_1 = require("./RenderBCD");
+const MINT = '#9be2d1', AMBER = '#efb56c';
+function getSemiAutoFeedback() {
+    const sd = state_1.state.semiAutoDrive;
+    if (sd.exhausted)
+        return { title: '体力耗尽', hint: state_1.input.move > 0 ? '松手恢复' : '恢复中', color: AMBER };
+    if (!sd.thrusting && sd.remaining < .999)
+        return { title: '体力', hint: '恢复中', color: MINT };
+    return { title: '体力', hint: sd.thrusting ? '推进' : '就绪', color: sd.remaining < .25 ? AMBER : MINT };
+}
+/** 三种实验位置均与手指无关，顶部位于刘海/微信胶囊下方。 */
+function getStaminaLayout(width, height) {
+    const position = config_1.CONFIG.semiAutoDrive.staminaPosition;
+    const safeTop = Math.max(62, config_1.CONFIG.uiSafeTop || 62), safeBottom = Math.max(18, config_1.CONFIG.uiSafeBottom || 18);
+    if (position === 'bcd' && (0, RenderBCD_1.isBCDUIVisible)()) {
+        const bcd = (0, RenderBCD_1.getBCDLayout)();
+        return { x: Math.min(width - 14, bcd.gaugeX + bcd.gaugeW + 10), y: bcd.gaugeY + 4, width: 7, height: bcd.gaugeH - 8, vertical: true };
+    }
+    const w = Math.min(238, width - 116);
+    return { x: Math.max(92, (width - w) / 2), y: position === 'top' ? safeTop + 20 : height - safeBottom - 24,
+        width: w, height: 6, vertical: false };
+}
+function drawSemiAutoControls(c, width, height) {
+    const sd = state_1.state.semiAutoDrive, feedback = getSemiAutoFeedback(), L = getStaminaLayout(width, height);
+    c.save();
+    if (config_1.CONFIG.semiAutoDrive.showJoystick && state_1.touches.joystickId !== null) {
+        c.beginPath();
+        c.arc(state_1.touches.start.x, state_1.touches.start.y, 39, 0, Math.PI * 2);
+        c.strokeStyle = 'rgba(215,235,232,.3)';
+        c.lineWidth = 1.3;
+        c.stroke();
+        c.beginPath();
+        c.arc(state_1.touches.curr.x, state_1.touches.curr.y, 16, 0, Math.PI * 2);
+        c.fillStyle = sd.exhausted ? 'rgba(239,181,108,.2)' : 'rgba(155,226,209,.4)';
+        c.fill();
+        c.strokeStyle = feedback.color;
+        c.stroke();
+    }
+    c.textBaseline = 'middle';
+    c.font = 'bold 9px Arial';
+    c.fillStyle = 'rgba(5,16,23,.82)';
+    c.fillRect(L.x - 3, L.y - 3, L.width + 6, L.height + 6);
+    c.fillStyle = 'rgba(155,190,193,.18)';
+    c.fillRect(L.x, L.y, L.width, L.height);
+    c.fillStyle = feedback.color;
+    if (L.vertical) {
+        c.fillRect(L.x, L.y + L.height * (1 - sd.remaining), L.width, L.height * sd.remaining);
+        c.textAlign = 'center';
+        c.font = 'bold 7px Arial';
+        c.fillText('STA', L.x + L.width / 2, L.y - 10);
+        c.font = '8px Arial';
+        c.fillText(Math.round(sd.remaining * 100) + '', L.x + L.width / 2, L.y + L.height + 11);
+        // 耗空恢复门槛只是一道刻度，帮助判断何时能再次发力。
+        if (sd.exhausted) {
+            const y = L.y + L.height * (1 - config_1.CONFIG.semiAutoDrive.resumeThreshold);
+            c.fillStyle = AMBER;
+            c.fillRect(L.x - 2, y, L.width + 4, 1);
+        }
+    }
+    else {
+        c.fillRect(L.x, L.y, L.width * sd.remaining, L.height);
+        c.textAlign = 'left';
+        c.fillText(feedback.title, L.x, L.y - 10);
+        c.textAlign = 'right';
+        c.font = '9px Arial';
+        c.fillText(feedback.hint + ' · ' + Math.round(sd.remaining * 100) + '%', L.x + L.width, L.y - 10);
+        if (sd.exhausted)
+            c.fillRect(L.x + L.width * config_1.CONFIG.semiAutoDrive.resumeThreshold, L.y - 2, 1, L.height + 4);
+    }
+    c.restore();
+}
 },"/src/render/RenderUI":function(exports,require){"use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.FLASHLIGHT_BTN = exports.ATTACK_BTN = exports.DEBUG_FISH_BTN = void 0;
 exports.drawUI = drawUI;
 exports.drawControls = drawControls;
 exports.drawSlashEffect = drawSlashEffect;
+const RenderSemiAutoDrive_1 = require("./RenderSemiAutoDrive");
 const config_1 = require("../core/config");
 const state_1 = require("../core/state");
 const Canvas_1 = require("./Canvas");
@@ -33398,14 +33315,16 @@ function drawDebugFishButton() {
     Canvas_1.ctx.restore();
 }
 function drawControls() {
+    var _a;
     // 主游戏和竞技场模式都需要显示控制器
-    const isPlayScreen = state_1.state.screen === 'play' || state_1.state.screen === 'fishArena';
+    const isMazePlay = state_1.state.screen === 'mazeRescue' && ((_a = state_1.state.mazeRescue) === null || _a === void 0 ? void 0 : _a.phase) === 'play';
+    const isPlayScreen = state_1.state.screen === 'play' || state_1.state.screen === 'fishArena' || isMazePlay;
     if (!isPlayScreen)
         return;
     // 竞技场准备阶段不显示摇杆提示（但攻击按钮仍显示）
     const isArenaPrep = state_1.state.screen === 'fishArena' && state_1.state.fishArena && state_1.state.fishArena.phase === 'prep';
     if (!isArenaPrep) {
-        if (config_1.CONFIG.manualDrive.enabled) {
+        if (config_1.CONFIG.driveMode === 'manual') {
             // 手动挡模式：不显示摇杆，显示搓屏提示
             if (state_1.touches.joystickId === null && !Object.keys(state_1.state.manualDrive.activeTouches || {}).length) {
                 Canvas_1.ctx.fillStyle = 'rgba(255,255,255,0.3)';
@@ -33414,7 +33333,10 @@ function drawControls() {
                 Canvas_1.ctx.fillText('搓屏幕移动（方向与推水相反）', Canvas_1.logicW / 2, Canvas_1.logicH - 50);
             }
         }
-        else if (state_1.touches.joystickId !== null) {
+        else if (config_1.CONFIG.driveMode === 'semiAuto') {
+            (0, RenderSemiAutoDrive_1.drawSemiAutoControls)(Canvas_1.ctx, Canvas_1.logicW, Canvas_1.logicH);
+        }
+        else if (config_1.CONFIG.semiAutoDrive.showJoystick && state_1.touches.joystickId !== null) {
             Canvas_1.ctx.beginPath();
             Canvas_1.ctx.arc(state_1.touches.start.x, state_1.touches.start.y, 40, 0, Math.PI * 2);
             Canvas_1.ctx.strokeStyle = 'rgba(255,255,255,0.3)';
@@ -33431,13 +33353,10 @@ function drawControls() {
             Canvas_1.ctx.lineWidth = 1;
             Canvas_1.ctx.stroke();
         }
-        else {
-            Canvas_1.ctx.fillStyle = 'rgba(255,255,255,0.3)';
-            Canvas_1.ctx.textAlign = 'center';
-            Canvas_1.ctx.font = '14px Arial';
-            Canvas_1.ctx.fillText('按住屏幕任意位置移动', Canvas_1.logicW / 2, Canvas_1.logicH - 50);
-        }
     }
+    // 迷宫由自身 HUD 绘制攻击和手电按钮。
+    if (isMazePlay)
+        return;
     // 绘制攻击按鈕
     drawAttackButton();
     // 绘制手电筒开关按钮
