@@ -9,7 +9,6 @@ export function releaseSemiAutoDrive(): void {
     sd.pushStartedAt = null;
     sd.thrusting = false;
     sd.inputPower = 0;
-    if (sd.restStartedAt === null) sd.restStartedAt = Date.now();
     input.move = 0;
     input.speedUp = false;
 }
@@ -25,7 +24,6 @@ export function updateSemiAutoJoystick(dx: number, dy: number, speedUp?: boolean
     // 触屏：由行程连续映射 .3~1；键盘保留普通/Shift 两档。
     sd.inputPower = speedUp === undefined ? .3 + .7 * Math.min(1, (distance - 10) / 30) : speedUp ? 1 : .3;
     if (sd.pushStartedAt === null) sd.pushStartedAt = Date.now();
-    sd.restStartedAt = null;
     sd.thrusting = !sd.exhausted && sd.remaining > 0;
 }
 
@@ -46,10 +44,8 @@ export function processSemiAutoDrive(moveSpeed = CONFIG.moveSpeed): boolean {
             playSFX('uiSecondary', { volume: .65, playbackRate: .7 });
         }
     } else if (input.move === 0) {
-        const recoveryStart = (sd.restStartedAt ?? now) + cfg.recoveryDelay * 1000;
-        const recoverDt = Math.min(dt, Math.max(0, (now - Math.max(previousAt ?? now, recoveryStart)) / 1000));
-        sd.remaining = Math.min(1, sd.remaining + recoverDt / Math.max(.1, cfg.recoveryDuration));
-        if (sd.exhausted && sd.remaining >= cfg.resumeThreshold) { sd.exhausted = false; sd.recoveredAt = now; }
+        sd.remaining = Math.min(1, sd.remaining + dt / Math.max(.1, cfg.recoveryDuration));
+        if (sd.exhausted && sd.remaining > 0) { sd.exhausted = false; sd.recoveredAt = now; }
     }
     const effortTarget = sd.thrusting ? .45 + sd.inputPower * .55 : 0;
     sd.effort += (effortTarget - sd.effort) * (1 - Math.exp(-dt / Math.max(.01, cfg.kickFadeDuration)));

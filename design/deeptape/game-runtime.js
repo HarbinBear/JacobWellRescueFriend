@@ -2726,13 +2726,11 @@ exports.characterConfig = void 0;
 exports.characterConfig = {
     // HUD 循环切换：自动挡 → 手动挡 → 半自动。
     driveMode: 'semiAuto',
-    // 体力按实际输入强度消耗，停止推动后延迟恢复。
+    // 体力按实际输入强度消耗，松手立即逐渐恢复。
     semiAutoDrive: {
         sprintDuration: 4.0, // 满体力、最大推力可持续秒数
-        recoveryDuration: 1.8, // 从空到满的恢复秒数（不含回气间隔）
-        recoveryDelay: 0.25, // 停止发力后的回气间隔（秒）
+        recoveryDuration: 1.8, // 从空到满的恢复秒数
         drainExponent: 1.5, // 大推更费力，轻推更省力
-        resumeThreshold: 0.22, // 耗空后至少恢复到此比例才能重新推进
         kickFadeDuration: 0.10,
         staminaPosition: 'bottom', // top / bottom / bcd，可在 GM 中实验
         showJoystick: false, // 隐藏图形时仍正常接受屏幕拖动
@@ -3287,7 +3285,7 @@ exports.gameplayConfig = {
     //   充到显示满格、30m  a=-0.0120 → 上浮 0.60 px/frame ≈ 18 m/min（危险阈值）
     //   充到容量上限、30m  a=-0.0303 → 上浮 1.50 px/frame ≈ 45 m/min（严重失控）
     //
-    // 中性所需体积随深度上升（湿衣越深越不给力），UI 上的中性刻度线因此会动：
+    // 中性所需体积随深度上升（湿衣越深越不给力），玩家需结合气囊形态和实际浮沉配平：
     //   水面 1.14 L  →  30m 1.51 L
     //
     // 惩罚闭环：失控上浮时每秒往减压系统的 nitrogenLoad 追加 ascentNitrogenPerSec，
@@ -3297,7 +3295,7 @@ exports.gameplayConfig = {
         // ---- 物理 ----
         depthPerAtmMeters: 10, // 每多少米增加 1 atm（真实海水约 10m）
         capacityL: 4.0, // 气囊最大实际体积（升）；超过即触发溢流阀
-        displayMaxL: 2.5, // 气量表满格对应体积（大于此值条顶格 + 溢流警示）
+        displayMaxL: 2.5, // GM 诊断数据的归一化量程；气囊符号按实际容量变形
         baseSinkAccel: 0.050, // 配重+装备的恒定负浮力加速度（像素/帧²，>0 向下）
         liftAccelPerLiter: 0.0322, // 每升气囊体积抵消多少下沉加速度
         suitLiftSurfaceL: 0.5, // 湿衣在水面提供的等效浮力升数（随深度 /P 压缩）
@@ -3324,9 +3322,8 @@ exports.gameplayConfig = {
         uiXFromRight: 46, // 控件竖轴距屏幕右边缘（像素）
         uiCenterYRatio: 0.52, // 控件竖向中心占屏高比例
         uiBtnRadius: 21, // 充/排气按钮半径
-        uiBtnGap: 104, // 按钮中心到量表中心的距离
-        uiGaugeW: 56, // 气量表宽度
-        uiGaugeH: 112, // 气量表高度
+        uiBtnGap: 72, // 按钮中心到气囊符号中心的距离
+        uiIndicatorSize: 52, // 气囊符号尺寸
         // ---- 排气气泡 ----
         ventBubbleRate: 26, // 排气时每秒生成的气泡数
         ventBubbleSizeMul: 0.85, // 相对呼吸气泡的尺寸倍数
@@ -5190,7 +5187,6 @@ function createSemiAutoDriveState() {
         lastUpdateAt: null,
         depletedAt: 0,
         recoveredAt: 0,
-        restStartedAt: null,
         inputPower: 0,
     };
 }
@@ -5296,7 +5292,7 @@ exports.state = {
     fishBite: null, // 玩家被咬状态 { active, phase, timer, shakeIntensity }
     // 玩家攻击状态
     playerAttack: null,
-    // 半自动：连续输入按力度消耗体力，停止发力后延迟恢复。
+    // 半自动：连续输入按力度消耗体力，停止发力后立即逐渐恢复。
     semiAutoDrive: createSemiAutoDriveState(),
     // 手动挡（搓屏移动）运行态
     manualDrive: {
@@ -9222,7 +9218,7 @@ function drawDroppedItemsWorld(viewL, viewR, viewT, viewB) {
 // 下潜中的背包 HUD（折叠胶囊态）
 //
 // 设计：
-// - 折叠态：右下角胶囊小条 "🎒 背包 N/M"，位于拾取按钮上方（避免和轮盘按钮重叠）
+// - 折叠态：左下角胶囊小条 "🎒 背包 N/M"，为底部体力条留出空间
 //   - 占用空间小，不挡视野
 //   - 容量将满时变金色脉冲提示
 // - 展开态：全屏背包页（BagFullPage）—— 由本模块的 openBagFullPage() 进入
@@ -9277,21 +9273,12 @@ let _hudCapsuleRect = null;
 function getInventoryHUDCapsuleRect() {
     return _hudCapsuleRect;
 }
-/**
- * 计算折叠胶囊位置：左下角，紧贴撤离按钮上方（与撤离按钮中线左对齐，自然形成"撤离 + 背包"竖排）
- *
- * 撤离按钮中心 (cw * retreatBtnXRatio, ch * retreatBtnYRatio)，半径 retreatBtnRadius。
- * 背包胶囊横向：跟撤离按钮共享中线 → 居中对齐
- * 背包胶囊纵向：撤离按钮顶边再上方 12px
- */
+/** 背包独立锚定左下角，不再依赖已移入侧栏的撤离按钮。 */
 function getCapsulePosition(cw, ch) {
-    const retreatCx = cw * config_1.CONFIG.maze.retreatBtnXRatio;
-    const retreatCy = ch * config_1.CONFIG.maze.retreatBtnYRatio;
-    const retreatR = config_1.CONFIG.maze.retreatBtnRadius || 36;
-    // 居中对齐撤离按钮
-    const x = retreatCx - HUD_W / 2;
-    // 撤离按钮顶边上方 12px
-    const y = retreatCy - retreatR - 12 - HUD_H;
+    const safeTop = Math.max(62, config_1.CONFIG.uiSafeTop || 0);
+    const safeBottom = Math.max(18, config_1.CONFIG.uiSafeBottom || 0);
+    const x = Math.max(0, Math.min(14, cw - HUD_W - 14));
+    const y = Math.max(safeTop, ch - safeBottom - 112);
     return { x, y };
 }
 function drawInventoryHUD() {
@@ -9303,7 +9290,7 @@ function drawInventoryHUD() {
     const ch = config_1.CONFIG.screenHeight;
     const slotN = Math.max(1, ex.bag.maxSlots);
     const used = (0, Inventory_1.getBagOccupiedSlots)();
-    const fillRatio = used / slotN;
+    const fillRatio = Math.min(1, used / slotN);
     const { x, y } = getCapsulePosition(cw, ch);
     Canvas_1.ctx.save();
     // 容量脉冲（>= 80% 时金色脉冲）
@@ -11967,9 +11954,7 @@ exports.TABS = [
             { type: 'bool', label: '显示虚拟摇杆', path: 'semiAutoDrive.showJoystick' },
             { type: 'number', label: '全力持续秒数', path: 'semiAutoDrive.sprintDuration', min: 1, max: 12, step: 0.5, precision: 1 },
             { type: 'number', label: '空到满恢复秒数', path: 'semiAutoDrive.recoveryDuration', min: 0.5, max: 8, step: 0.1, precision: 1 },
-            { type: 'number', label: '回气间隔(秒)', path: 'semiAutoDrive.recoveryDelay', min: 0, max: 1, step: 0.05, precision: 2 },
             { type: 'number', label: '力度耗体力曲线', path: 'semiAutoDrive.drainExponent', min: 1, max: 3, step: 0.1, precision: 1 },
-            { type: 'number', label: '耗空后恢复门槛', path: 'semiAutoDrive.resumeThreshold', min: 0.1, max: 0.5, step: 0.05, precision: 2 },
             { type: 'number', label: '踢腿收势时间(秒)', path: 'semiAutoDrive.kickFadeDuration', min: 0.03, max: 0.3, step: 0.01, precision: 2 },
         ]
     },
@@ -12406,7 +12391,6 @@ exports.TABS = [
             // ---- 物理 ----
             { type: 'number', label: '每大气压深度(m)', path: 'bcd.depthPerAtmMeters', min: 5, max: 20, step: 1 },
             { type: 'number', label: '气囊容量(L)', path: 'bcd.capacityL', min: 1, max: 12, step: 0.25, precision: 2 },
-            { type: 'number', label: '量表满格体积(L)', path: 'bcd.displayMaxL', min: 0.5, max: 8, step: 0.25, precision: 2 },
             { type: 'number', label: '基础下沉加速度', path: 'bcd.baseSinkAccel', min: 0, max: 0.1, step: 0.002, precision: 4 },
             { type: 'number', label: '每升浮力加速度', path: 'bcd.liftAccelPerLiter', min: 0.001, max: 0.06, step: 0.001, precision: 4 },
             { type: 'number', label: '湿衣水面浮力(L)', path: 'bcd.suitLiftSurfaceL', min: 0, max: 2, step: 0.05, precision: 2 },
@@ -12430,8 +12414,7 @@ exports.TABS = [
             { type: 'number', label: 'UI 竖向中心比', path: 'bcd.uiCenterYRatio', min: 0.2, max: 0.85, step: 0.02, precision: 2 },
             { type: 'number', label: 'UI 按钮半径', path: 'bcd.uiBtnRadius', min: 14, max: 44, step: 1 },
             { type: 'number', label: 'UI 按钮间距', path: 'bcd.uiBtnGap', min: 30, max: 200, step: 2 },
-            { type: 'number', label: 'UI 量表宽', path: 'bcd.uiGaugeW', min: 14, max: 48, step: 1 },
-            { type: 'number', label: 'UI 量表高', path: 'bcd.uiGaugeH', min: 50, max: 180, step: 4 },
+            { type: 'number', label: '气囊符号尺寸', path: 'bcd.uiIndicatorSize', min: 36, max: 64, step: 2 },
             // ---- 排气气泡 ----
             { type: 'number', label: '排气气泡/秒', path: 'bcd.ventBubbleRate', min: 0, max: 80, step: 2 },
             { type: 'number', label: '排气气泡尺寸倍数', path: 'bcd.ventBubbleSizeMul', min: 0.2, max: 2, step: 0.05, precision: 2 },
@@ -15536,7 +15519,6 @@ function resetDriveInput(refillStamina = false) {
     if (!refillStamina) {
         state_1.state.semiAutoDrive.remaining = previous.remaining;
         state_1.state.semiAutoDrive.exhausted = previous.exhausted;
-        state_1.state.semiAutoDrive.restStartedAt = Date.now();
         state_1.state.semiAutoDrive.lastUpdateAt = Date.now();
     }
     state_1.state.manualDrive.activeTouches = {};
@@ -21719,8 +21701,6 @@ function releaseSemiAutoDrive() {
     sd.pushStartedAt = null;
     sd.thrusting = false;
     sd.inputPower = 0;
-    if (sd.restStartedAt === null)
-        sd.restStartedAt = Date.now();
     state_1.input.move = 0;
     state_1.input.speedUp = false;
 }
@@ -21740,11 +21720,10 @@ function updateSemiAutoJoystick(dx, dy, speedUp) {
     sd.inputPower = speedUp === undefined ? .3 + .7 * Math.min(1, (distance - 10) / 30) : speedUp ? 1 : .3;
     if (sd.pushStartedAt === null)
         sd.pushStartedAt = Date.now();
-    sd.restStartedAt = null;
     sd.thrusting = !sd.exhausted && sd.remaining > 0;
 }
 function processSemiAutoDrive(moveSpeed = config_1.CONFIG.moveSpeed) {
-    var _a, _b, _c, _d, _e;
+    var _a, _b, _c, _d;
     if (config_1.CONFIG.driveMode !== 'semiAuto')
         return false;
     const blocked = ((_b = (_a = state_1.state.rope) === null || _a === void 0 ? void 0 : _a.hold) === null || _b === void 0 ? void 0 : _b.active) || ((_c = state_1.state.fishBite) === null || _c === void 0 ? void 0 : _c.active) ||
@@ -21767,10 +21746,8 @@ function processSemiAutoDrive(moveSpeed = config_1.CONFIG.moveSpeed) {
         }
     }
     else if (state_1.input.move === 0) {
-        const recoveryStart = ((_e = sd.restStartedAt) !== null && _e !== void 0 ? _e : now) + cfg.recoveryDelay * 1000;
-        const recoverDt = Math.min(dt, Math.max(0, (now - Math.max(previousAt !== null && previousAt !== void 0 ? previousAt : now, recoveryStart)) / 1000));
-        sd.remaining = Math.min(1, sd.remaining + recoverDt / Math.max(.1, cfg.recoveryDuration));
-        if (sd.exhausted && sd.remaining >= cfg.resumeThreshold) {
+        sd.remaining = Math.min(1, sd.remaining + dt / Math.max(.1, cfg.recoveryDuration));
+        if (sd.exhausted && sd.remaining > 0) {
             sd.exhausted = false;
             sd.recoveredAt = now;
         }
@@ -23078,12 +23055,12 @@ function drawDecoIcon(c, cx, cy, size, _time) {
     }
     c.restore();
 }
-// 防水随身听：与角色胸前共用同一画法、同一音频时间。
+// 撤离：长按描边沿切角方框前进。
 function drawRetreatIcon(c, cx, cy, size) {
     const r = size / 2 - 2, maze = state_1.state.mazeRescue;
     c.save();
     c.fillStyle = TapeDeckVisual_1.TAPE.ink;
-    c.strokeStyle = TapeDeckVisual_1.TAPE.mint;
+    c.strokeStyle = (maze === null || maze === void 0 ? void 0 : maze.retreatHolding) ? 'rgba(129,227,206,.25)' : TapeDeckVisual_1.TAPE.mint;
     c.lineWidth = 1;
     (0, TapeDeckVisual_1.cutPanel)(c, cx - r, cy - r, r * 2, r * 2, 6);
     c.fill();
@@ -23101,9 +23078,8 @@ function drawRetreatIcon(c, cx, cy, size) {
         const progress = Math.min(1, (Date.now() - maze.retreatHoldStart) / (config_1.CONFIG.maze.retreatHoldDuration * 1000));
         c.strokeStyle = TapeDeckVisual_1.TAPE.mint;
         c.lineWidth = 2.5;
-        c.beginPath();
-        c.arc(cx, cy, r + 3, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2);
-        c.stroke();
+        c.lineCap = 'butt';
+        (0, TapeDeckVisual_1.drawCutPanelProgress)(c, cx - r, cy - r, r * 2, r * 2, progress, 6);
     }
     c.restore();
 }
@@ -25065,10 +25041,10 @@ exports.isBCDUIVisible = isBCDUIVisible;
 exports.getBCDLayout = getBCDLayout;
 exports.getBCDInflateBtn = getBCDInflateBtn;
 exports.getBCDDeflateBtn = getBCDDeflateBtn;
-exports.getBCDBladderDimensions = getBCDBladderDimensions;
+exports.getBCDInflationShape = getBCDInflationShape;
 exports.drawBCDController = drawBCDController;
 exports.drawBCDWarnOverlay = drawBCDWarnOverlay;
-// BCD 软气囊：轮廓随实际气体体积膨胀/压缩，只保留绝对气量，去掉净浮力副条。
+// BCD：用气囊轮廓的收瘪/鼓起提示实际体积，配平由玩家感受。
 const config_1 = require("../core/config");
 const state_1 = require("../core/state");
 const Canvas_1 = require("./Canvas");
@@ -25080,217 +25056,91 @@ function isBCDUIVisible() {
 }
 function getBCDLayout() {
     const c = cfg(), cw = config_1.CONFIG.screenWidth, ch = config_1.CONFIG.screenHeight;
-    const gaugeW = c.uiGaugeW || 42, gaugeH = c.uiGaugeH || 132;
-    const btnR = c.uiBtnRadius || 21;
-    const gap = Math.max(c.uiBtnGap || 104, gaugeH / 2 + btnR + 26);
-    const cx = cw - (c.uiXFromRight || 46);
-    const halfSpan = gap + btnR + 20;
-    const cy = Math.max(halfSpan + 62, Math.min(ch - halfSpan - 32, ch * (c.uiCenterYRatio || .52)));
+    const size = c.uiIndicatorSize || 52;
+    const btnR = c.uiBtnRadius || 21, gap = Math.max(c.uiBtnGap || 72, size / 2 + btnR + 14);
+    const cx = cw - (c.uiXFromRight || 46), halfSpan = gap + btnR + 20;
+    const safeTop = Math.max(62, config_1.CONFIG.uiSafeTop || 62);
+    const cy = Math.max(halfSpan + safeTop, Math.min(ch - halfSpan - 32, ch * (c.uiCenterYRatio || .52)));
     return { cx, cy, btnR, inflateY: cy - gap, deflateY: cy + gap,
-        gaugeX: cx - gaugeW / 2, gaugeY: cy - gaugeH / 2, gaugeW, gaugeH };
+        indicatorX: cx - size / 2, indicatorY: cy - size / 2, indicatorSize: size };
 }
 function getBCDInflateBtn() { const L = getBCDLayout(); return { cx: L.cx, cy: L.inflateY, r: L.btnR + 6 }; }
 function getBCDDeflateBtn() { const L = getBCDLayout(); return { cx: L.cx, cy: L.deflateY, r: L.btnR + 6 }; }
-/** 体积改变的是整只柔性气囊的宽高，不是固定管子里的液面。 */
-function getBCDBladderDimensions(fill, width, height) {
-    const expansion = Math.sqrt(Math.max(0, Math.min(1, fill)));
-    return { width: width * (.30 + .70 * expansion), height: height * (.58 + .42 * expansion) };
+/**
+ * 只读实际气囊体积，不读净浮力或中性体积。
+ * 同样的轮廓在不同配重/深度下可以有不同的浮沉状态，没有“配平形状”。
+ */
+function getBCDInflationShape(volumeL, capacityL, size) {
+    const inflation = Math.max(0, Math.min(1, volumeL / Math.max(.1, capacityL)));
+    return { halfWidth: size * .36, halfHeight: size * (.065 + .225 * Math.sqrt(inflation)) };
 }
-function bladderPath(c, w, h) {
-    const x = w / 2, y = h / 2;
-    c.beginPath();
-    c.moveTo(0, -y * .86);
-    c.bezierCurveTo(x * .35, -y * 1.08, x, -y, x, -y * .58);
-    c.bezierCurveTo(x, -y * .22, x * .65, -y * .12, x * .76, y * .22);
-    c.bezierCurveTo(x * 1.05, y * .72, x * .8, y * 1.02, 0, y * .87);
-    c.bezierCurveTo(-x * .8, y * 1.02, -x * 1.05, y * .72, -x * .76, y * .22);
-    c.bezierCurveTo(-x * .65, -y * .12, -x, -y * .22, -x, -y * .58);
-    c.bezierCurveTo(-x, -y, -x * .35, -y * 1.08, 0, -y * .86);
-    c.closePath();
-}
-function drawBCDController(time) {
+function drawBCDController(_time) {
     if (!isBCDUIVisible())
         return;
-    const rt = (0, BCDSystem_1.getBCDRuntime)(), g = (0, BCDSystem_1.getBCDGaugeInfo)(), L = getBCDLayout();
-    const fill = Math.max(0, Math.min(1, g.volumeL / Math.max(.1, cfg().capacityL)));
-    const size = getBCDBladderDimensions(fill, L.gaugeW, L.gaugeH);
-    Canvas_1.ctx.save();
-    Canvas_1.ctx.translate(L.cx, L.cy);
-    // 很淡的最大容量轮廓，让压缩后的气囊有参照物，不添加第二个量表。
-    bladderPath(Canvas_1.ctx, L.gaugeW, L.gaugeH);
-    Canvas_1.ctx.strokeStyle = 'rgba(135,171,188,.18)';
-    Canvas_1.ctx.lineWidth = 1;
-    Canvas_1.ctx.setLineDash([2, 5]);
-    Canvas_1.ctx.stroke();
-    Canvas_1.ctx.setLineDash([]);
-    bladderPath(Canvas_1.ctx, size.width, size.height);
-    const grad = Canvas_1.ctx.createLinearGradient(-size.width / 2, 0, size.width / 2, 0);
-    grad.addColorStop(0, '#29434e');
-    grad.addColorStop(.28, '#629caa');
-    grad.addColorStop(.5, '#355966');
-    grad.addColorStop(.76, '#74b9bc');
-    grad.addColorStop(1, '#29434e');
-    Canvas_1.ctx.fillStyle = grad;
-    Canvas_1.ctx.fill();
-    Canvas_1.ctx.strokeStyle = rt.overflow ? '#efb56c' : 'rgba(174,224,218,.8)';
-    Canvas_1.ctx.lineWidth = 1.3;
-    Canvas_1.ctx.stroke();
-    // 缝线、腰带与压瘪时更明显的布料褶皱。
-    Canvas_1.ctx.strokeStyle = 'rgba(8,24,32,.7)';
-    Canvas_1.ctx.lineWidth = 2;
-    Canvas_1.ctx.beginPath();
-    Canvas_1.ctx.moveTo(0, -size.height * .39);
-    Canvas_1.ctx.lineTo(0, size.height * .39);
-    Canvas_1.ctx.stroke();
-    Canvas_1.ctx.fillStyle = 'rgba(12,26,34,.65)';
-    Canvas_1.ctx.fillRect(-size.width * .43, -3, size.width * .86, 6);
-    Canvas_1.ctx.strokeStyle = `rgba(180,222,224,${.12 + (1 - fill) * .35})`;
-    Canvas_1.ctx.lineWidth = .8;
-    for (const side of [-1, 1])
-        for (const y of [-.28, .22, .32]) {
-            Canvas_1.ctx.beginPath();
-            Canvas_1.ctx.moveTo(side * size.width * .13, size.height * y);
-            Canvas_1.ctx.quadraticCurveTo(side * size.width * .2, size.height * y - (1 - fill) * 5, side * size.width * .38, size.height * y + 3);
-            Canvas_1.ctx.stroke();
-        }
-    Canvas_1.ctx.restore();
+    const rt = (0, BCDSystem_1.getBCDRuntime)(), L = getBCDLayout();
     Canvas_1.ctx.save();
     Canvas_1.ctx.textAlign = 'center';
     Canvas_1.ctx.textBaseline = 'middle';
+    Canvas_1.ctx.fillStyle = 'rgba(185,209,210,.65)';
     Canvas_1.ctx.font = 'bold 8px Arial';
-    Canvas_1.ctx.fillStyle = 'rgba(178,205,210,.75)';
-    Canvas_1.ctx.fillText('BCD', L.cx, L.gaugeY - 11);
-    Canvas_1.ctx.font = 'bold 10px Arial';
-    Canvas_1.ctx.fillStyle = '#d6ebe8';
-    Canvas_1.ctx.fillText(g.volumeL.toFixed(1) + ' L', L.cx, L.gaugeY + L.gaugeH + 10);
-    // 唯一的绝对气量进度条，以真实容量为满格。
-    Canvas_1.ctx.fillStyle = 'rgba(180,214,217,.15)';
-    Canvas_1.ctx.fillRect(L.cx - 18, L.gaugeY + L.gaugeH + 20, 36, 3);
-    Canvas_1.ctx.fillStyle = '#9be2d1';
-    Canvas_1.ctx.fillRect(L.cx - 18, L.gaugeY + L.gaugeH + 20, 36 * fill, 3);
-    drawInflateBtn(L, rt.inflating, rt.overflow, time);
-    drawDeflateBtn(L, rt.deflating, g.volumeL <= .001, time);
-    Canvas_1.ctx.font = '8px Arial';
-    Canvas_1.ctx.fillStyle = 'rgba(178,205,210,.65)';
-    Canvas_1.ctx.fillText(g.pressureAtm.toFixed(1) + ' ATA', L.cx, L.deflateY + L.btnR + 15);
+    Canvas_1.ctx.fillText('BCD', L.cx, L.cy - L.indicatorSize * .6);
+    drawBCDBladder(L.cx, L.cy, rt.volumeL, cfg().capacityL || 4, L.indicatorSize);
+    drawBCDButton(L.cx, L.inflateY, L.btnR, 1, rt.inflating, rt.overflow);
+    drawBCDButton(L.cx, L.deflateY, L.btnR, -1, rt.deflating, false);
     Canvas_1.ctx.restore();
 }
-function drawInflateBtn(L, active, overflow, time) {
-    const { cx, inflateY: cy, btnR: r } = L;
-    const pulse = 0.5 + 0.5 * Math.sin(time * 12);
-    // 按下时的外扩光环
-    if (active) {
-        Canvas_1.ctx.fillStyle = `rgba(120, 215, 255, ${0.16 + 0.14 * pulse})`;
-        Canvas_1.ctx.beginPath();
-        Canvas_1.ctx.arc(cx, cy, r + 5 + pulse * 2.5, 0, Math.PI * 2);
-        Canvas_1.ctx.fill();
-    }
-    const grad = Canvas_1.ctx.createRadialGradient(cx - r * 0.35, cy - r * 0.4, r * 0.2, cx, cy, r);
-    if (active) {
-        grad.addColorStop(0, 'rgba(190, 245, 255, 0.98)');
-        grad.addColorStop(1, 'rgba(45, 145, 200, 0.95)');
-    }
-    else {
-        grad.addColorStop(0, 'rgba(70, 110, 135, 0.9)');
-        grad.addColorStop(1, 'rgba(22, 48, 68, 0.92)');
-    }
-    Canvas_1.ctx.fillStyle = grad;
-    Canvas_1.ctx.beginPath();
-    Canvas_1.ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    Canvas_1.ctx.fill();
-    Canvas_1.ctx.strokeStyle = overflow
-        ? 'rgba(255, 165, 100, 0.95)'
-        : (active ? 'rgba(215, 250, 255, 0.95)' : 'rgba(150, 200, 225, 0.5)');
-    Canvas_1.ctx.lineWidth = overflow ? 2 : 1.2;
-    Canvas_1.ctx.beginPath();
-    Canvas_1.ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    Canvas_1.ctx.stroke();
-    // 图标：向上箭头 + 上方三小道"进气流"短线（气从软管压进来）
-    const ic = active ? 'rgba(255,255,255,0.98)' : 'rgba(205, 235, 250, 0.9)';
-    Canvas_1.ctx.strokeStyle = ic;
-    Canvas_1.ctx.fillStyle = ic;
-    Canvas_1.ctx.lineWidth = 2.2;
+/** 扁平气囊：一笔柔软外缘、两侧封口和少量反光；没有容器、刻度或填充进度。 */
+function drawBCDBladder(cx, cy, volumeL, capacityL, size) {
+    const { halfWidth: w, halfHeight: h } = getBCDInflationShape(volumeL, capacityL, size);
+    const seam = size * .045;
     Canvas_1.ctx.lineCap = 'round';
+    Canvas_1.ctx.lineJoin = 'round';
+    Canvas_1.ctx.lineWidth = 1.5;
     Canvas_1.ctx.beginPath();
-    Canvas_1.ctx.moveTo(cx, cy + 6.5);
-    Canvas_1.ctx.lineTo(cx, cy - 3.5);
-    Canvas_1.ctx.stroke();
-    Canvas_1.ctx.beginPath();
-    Canvas_1.ctx.moveTo(cx, cy - 8.5);
-    Canvas_1.ctx.lineTo(cx - 5.5, cy - 2.5);
-    Canvas_1.ctx.lineTo(cx + 5.5, cy - 2.5);
+    Canvas_1.ctx.moveTo(cx - w, cy - seam);
+    Canvas_1.ctx.bezierCurveTo(cx - w, cy - h, cx - w * .55, cy - h, cx, cy - h);
+    Canvas_1.ctx.bezierCurveTo(cx + w * .55, cy - h, cx + w, cy - h, cx + w, cy - seam);
+    Canvas_1.ctx.lineTo(cx + w, cy + seam);
+    Canvas_1.ctx.bezierCurveTo(cx + w, cy + h, cx + w * .55, cy + h, cx, cy + h);
+    Canvas_1.ctx.bezierCurveTo(cx - w * .55, cy + h, cx - w, cy + h, cx - w, cy + seam);
     Canvas_1.ctx.closePath();
+    Canvas_1.ctx.fillStyle = 'rgba(21,47,50,.8)';
     Canvas_1.ctx.fill();
-    Canvas_1.ctx.lineWidth = 1.4;
-    Canvas_1.ctx.beginPath();
-    for (let i = -1; i <= 1; i++) {
-        const lx = cx + i * 6.5;
-        const jitter = active ? Math.sin(time * 18 + i) * 1.2 : 0;
-        Canvas_1.ctx.moveTo(lx, cy + 11 + jitter);
-        Canvas_1.ctx.lineTo(lx, cy + 14.5 + jitter);
-    }
+    Canvas_1.ctx.strokeStyle = 'rgba(170,218,206,.9)';
     Canvas_1.ctx.stroke();
-    Canvas_1.ctx.lineCap = 'butt';
+    // 封口不会变长，鼓胀只体现在柔软轮廓上。
+    Canvas_1.ctx.beginPath();
+    Canvas_1.ctx.moveTo(cx - w - 2.5, cy - seam);
+    Canvas_1.ctx.lineTo(cx - w - 2.5, cy + seam);
+    Canvas_1.ctx.moveTo(cx + w + 2.5, cy - seam);
+    Canvas_1.ctx.lineTo(cx + w + 2.5, cy + seam);
+    Canvas_1.ctx.strokeStyle = 'rgba(170,218,206,.4)';
+    Canvas_1.ctx.lineWidth = 1;
+    Canvas_1.ctx.stroke();
+    Canvas_1.ctx.beginPath();
+    Canvas_1.ctx.moveTo(cx - w * .58, cy - h * .5);
+    Canvas_1.ctx.quadraticCurveTo(cx - w * .42, cy - h * .72, cx - w * .14, cy - h * .72);
+    Canvas_1.ctx.strokeStyle = 'rgba(196,230,219,.38)';
+    Canvas_1.ctx.stroke();
 }
-function drawDeflateBtn(L, active, empty, time) {
-    const { cx, deflateY: cy, btnR: r } = L;
-    const pulse = 0.5 + 0.5 * Math.sin(time * 12);
-    if (active) {
-        Canvas_1.ctx.fillStyle = `rgba(255, 190, 130, ${0.14 + 0.12 * pulse})`;
-        Canvas_1.ctx.beginPath();
-        Canvas_1.ctx.arc(cx, cy, r + 5 + pulse * 2.5, 0, Math.PI * 2);
-        Canvas_1.ctx.fill();
-    }
-    const grad = Canvas_1.ctx.createRadialGradient(cx - r * 0.35, cy - r * 0.4, r * 0.2, cx, cy, r);
-    if (active) {
-        grad.addColorStop(0, 'rgba(255, 232, 195, 0.98)');
-        grad.addColorStop(1, 'rgba(190, 110, 45, 0.95)');
-    }
-    else {
-        grad.addColorStop(0, 'rgba(105, 92, 78, 0.9)');
-        grad.addColorStop(1, 'rgba(48, 38, 28, 0.92)');
-    }
-    Canvas_1.ctx.fillStyle = grad;
+function drawBCDButton(cx, cy, radius, direction, active, overflow) {
+    const color = overflow ? '#efb56c' : direction > 0 ? '#9be2d1' : '#efb56c';
     Canvas_1.ctx.beginPath();
-    Canvas_1.ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    Canvas_1.ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    Canvas_1.ctx.fillStyle = active ? 'rgba(100,171,166,.18)' : 'rgba(12,26,33,.5)';
     Canvas_1.ctx.fill();
-    // 已经完全排空时描边变灰，暗示"再按也没用了"
-    Canvas_1.ctx.strokeStyle = empty
-        ? 'rgba(130, 140, 145, 0.4)'
-        : (active ? 'rgba(255, 235, 200, 0.95)' : 'rgba(215, 175, 130, 0.5)');
-    Canvas_1.ctx.lineWidth = 1.2;
-    Canvas_1.ctx.beginPath();
-    Canvas_1.ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    Canvas_1.ctx.strokeStyle = active || overflow ? color : 'rgba(167,193,195,.42)';
+    Canvas_1.ctx.lineWidth = active ? 2 : 1;
     Canvas_1.ctx.stroke();
-    // 图标：向下箭头 + 下方三个上浮的小气泡（气被排进水里）
-    const ic = empty
-        ? 'rgba(160, 168, 172, 0.7)'
-        : (active ? 'rgba(255,255,255,0.98)' : 'rgba(250, 225, 195, 0.9)');
-    Canvas_1.ctx.strokeStyle = ic;
-    Canvas_1.ctx.fillStyle = ic;
-    Canvas_1.ctx.lineWidth = 2.2;
-    Canvas_1.ctx.lineCap = 'round';
+    Canvas_1.ctx.strokeStyle = active ? color : '#d6e3df';
+    Canvas_1.ctx.lineWidth = 1.7;
     Canvas_1.ctx.beginPath();
-    Canvas_1.ctx.moveTo(cx, cy - 6.5);
-    Canvas_1.ctx.lineTo(cx, cy + 3.5);
+    Canvas_1.ctx.moveTo(cx, cy + direction * 7);
+    Canvas_1.ctx.lineTo(cx, cy - direction * 7);
+    Canvas_1.ctx.moveTo(cx - 5, cy - direction * 2);
+    Canvas_1.ctx.lineTo(cx, cy - direction * 7);
+    Canvas_1.ctx.lineTo(cx + 5, cy - direction * 2);
     Canvas_1.ctx.stroke();
-    Canvas_1.ctx.beginPath();
-    Canvas_1.ctx.moveTo(cx, cy + 8.5);
-    Canvas_1.ctx.lineTo(cx - 5.5, cy + 2.5);
-    Canvas_1.ctx.lineTo(cx + 5.5, cy + 2.5);
-    Canvas_1.ctx.closePath();
-    Canvas_1.ctx.fill();
-    // 气泡：排气时向上飘动
-    Canvas_1.ctx.lineWidth = 1.2;
-    for (let i = 0; i < 3; i++) {
-        const bx = cx - 6 + i * 6;
-        const drift = active ? ((time * 26 + i * 5) % 9) : 0;
-        const br = 1.5 + (i === 1 ? 0.7 : 0);
-        Canvas_1.ctx.beginPath();
-        Canvas_1.ctx.arc(bx, cy - 11 - drift, br, 0, Math.PI * 2);
-        Canvas_1.ctx.stroke();
-    }
-    Canvas_1.ctx.lineCap = 'butt';
 }
 // =============================================
 // 失控告警全屏层（仅保留边缘颜色，不弹教学或处置文案）
@@ -33079,10 +32929,10 @@ function getStaminaLayout(width, height) {
     const safeTop = Math.max(62, config_1.CONFIG.uiSafeTop || 62), safeBottom = Math.max(18, config_1.CONFIG.uiSafeBottom || 18);
     if (position === 'bcd' && (0, RenderBCD_1.isBCDUIVisible)()) {
         const bcd = (0, RenderBCD_1.getBCDLayout)();
-        return { x: Math.min(width - 14, bcd.gaugeX + bcd.gaugeW + 10), y: bcd.gaugeY + 4, width: 7, height: bcd.gaugeH - 8, vertical: true };
+        return { x: Math.min(width - 14, bcd.cx + bcd.btnR + 14), y: bcd.inflateY, width: 7, height: bcd.deflateY - bcd.inflateY, vertical: true };
     }
     const w = Math.min(238, width - 116);
-    return { x: Math.max(92, (width - w) / 2), y: position === 'top' ? safeTop + 20 : height - safeBottom - 24,
+    return { x: Math.max(92, (width - w) / 2), y: position === 'top' ? safeTop + 20 : height - safeBottom - 10,
         width: w, height: 6, vertical: false };
 }
 function drawSemiAutoControls(c, width, height) {
@@ -33115,12 +32965,6 @@ function drawSemiAutoControls(c, width, height) {
         c.fillText('STA', L.x + L.width / 2, L.y - 10);
         c.font = '8px Arial';
         c.fillText(Math.round(sd.remaining * 100) + '', L.x + L.width / 2, L.y + L.height + 11);
-        // 耗空恢复门槛只是一道刻度，帮助判断何时能再次发力。
-        if (sd.exhausted) {
-            const y = L.y + L.height * (1 - config_1.CONFIG.semiAutoDrive.resumeThreshold);
-            c.fillStyle = AMBER;
-            c.fillRect(L.x - 2, y, L.width + 4, 1);
-        }
     }
     else {
         c.fillRect(L.x, L.y, L.width * sd.remaining, L.height);
@@ -33129,8 +32973,6 @@ function drawSemiAutoControls(c, width, height) {
         c.textAlign = 'right';
         c.font = '9px Arial';
         c.fillText(feedback.hint + ' · ' + Math.round(sd.remaining * 100) + '%', L.x + L.width, L.y - 10);
-        if (sd.exhausted)
-            c.fillRect(L.x + L.width * config_1.CONFIG.semiAutoDrive.resumeThreshold, L.y - 2, 1, L.height + 4);
     }
     c.restore();
 }
@@ -33629,14 +33471,17 @@ const state_1 = require("../core/state");
 const Canvas_1 = require("./Canvas");
 // ============ 自适应按钮位置计算 ============
 // 确保按钮+轮盘不超出屏幕边界
-function getWheelBtnPos() {
+function getWheelBtnPos(width = config_1.CONFIG.screenWidth, height = config_1.CONFIG.screenHeight) {
     const outerR = config_1.CONFIG.marker.wheelOuterRadius;
     const margin = outerR + 12; // 轮盘外径 + 安全边距
-    const rawX = config_1.CONFIG.screenWidth * config_1.CONFIG.marker.btnXRatio;
-    const rawY = config_1.CONFIG.screenHeight * config_1.CONFIG.marker.btnYRatio;
+    const rawX = width * config_1.CONFIG.marker.btnXRatio;
+    const rawY = height * config_1.CONFIG.marker.btnYRatio;
     // 限制按钮位置，使轮盘展开后不超出屏幕
-    const x = Math.max(margin, Math.min(config_1.CONFIG.screenWidth - margin, rawX));
-    const y = Math.max(margin, Math.min(config_1.CONFIG.screenHeight - margin, rawY));
+    const x = Math.max(margin, Math.min(width - margin, rawX));
+    // 底部体力栏独占安全区上方 36px；展开轮盘与按钮文字均留在栏外。
+    const footer = config_1.CONFIG.driveMode === 'semiAuto' && config_1.CONFIG.semiAutoDrive.staminaPosition === 'bottom'
+        ? Math.max(18, config_1.CONFIG.uiSafeBottom || 18) + 36 : 0;
+    const y = Math.max(margin, Math.min(height - margin - footer, rawY));
     return { x, y };
 }
 // ============ 绘制轮盘交互按钮（替代旧绳索按钮） ============
@@ -34219,6 +34064,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.TAPE_NOTE = exports.TAPE = void 0;
 exports.tapeAccent = tapeAccent;
 exports.cutPanel = cutPanel;
+exports.drawCutPanelProgress = drawCutPanelProgress;
 exports.sampleTapeMotion = sampleTapeMotion;
 exports.drawTapeDeck = drawTapeDeck;
 exports.drawTapeRibbons = drawTapeRibbons;
@@ -34239,6 +34085,21 @@ function cutPanel(c, x, y, w, h, cut = 6) {
     c.lineTo(x, y + h);
     c.lineTo(x, y + cut);
     c.closePath();
+}
+/** 沿同一切角矩形描边显示进度，与按钮轮廓完全一致。 */
+function drawCutPanelProgress(c, x, y, w, h, progress, cut = 6) {
+    const points = [[x + cut, y], [x + w, y], [x + w, y + h - cut],
+        [x + w - cut, y + h], [x, y + h], [x, y + cut], [x + cut, y]];
+    const lengths = points.slice(1).map((p, i) => Math.hypot(p[0] - points[i][0], p[1] - points[i][1]));
+    let remaining = lengths.reduce((a, b) => a + b, 0) * Math.max(0, Math.min(1, progress));
+    c.beginPath();
+    c.moveTo(points[0][0], points[0][1]);
+    for (let i = 0; i < lengths.length && remaining > 0; i++) {
+        const ratio = Math.min(1, remaining / lengths[i]);
+        c.lineTo(points[i][0] + (points[i + 1][0] - points[i][0]) * ratio, points[i][1] + (points[i + 1][1] - points[i][1]) * ratio);
+        remaining -= lengths[i];
+    }
+    c.stroke();
 }
 /** Each newly audible instrument changes the object's motion, not an unrelated clock. */
 function sampleTapeMotion(v) {

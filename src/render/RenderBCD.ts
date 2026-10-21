@@ -1,12 +1,12 @@
-// BCD 软气囊：轮廓随实际气体体积膨胀/压缩，只保留绝对气量，去掉净浮力副条。
+// BCD：用气囊轮廓的收瘪/鼓起提示实际体积，配平由玩家感受。
 import { CONFIG } from '../core/config';
 import { state } from '../core/state';
 import { ctx } from './Canvas';
-import { getBCDRuntime, getBCDGaugeInfo } from '../logic/BCDSystem';
+import { getBCDRuntime } from '../logic/BCDSystem';
 
 export interface BCDLayout {
     cx: number; cy: number; btnR: number; inflateY: number; deflateY: number;
-    gaugeX: number; gaugeY: number; gaugeW: number; gaugeH: number;
+    indicatorX: number; indicatorY: number; indicatorSize: number;
 }
 function cfg(): any { return CONFIG.bcd || {}; }
 export function isBCDUIVisible(): boolean {
@@ -14,194 +14,70 @@ export function isBCDUIVisible(): boolean {
 }
 export function getBCDLayout(): BCDLayout {
     const c = cfg(), cw = CONFIG.screenWidth, ch = CONFIG.screenHeight;
-    const gaugeW = c.uiGaugeW || 42, gaugeH = c.uiGaugeH || 132;
-    const btnR = c.uiBtnRadius || 21;
-    const gap = Math.max(c.uiBtnGap || 104, gaugeH / 2 + btnR + 26);
-    const cx = cw - (c.uiXFromRight || 46);
-    const halfSpan = gap + btnR + 20;
-    const cy = Math.max(halfSpan + 62, Math.min(ch - halfSpan - 32, ch * (c.uiCenterYRatio || .52)));
+    const size = c.uiIndicatorSize || 52;
+    const btnR = c.uiBtnRadius || 21, gap = Math.max(c.uiBtnGap || 72, size / 2 + btnR + 14);
+    const cx = cw - (c.uiXFromRight || 46), halfSpan = gap + btnR + 20;
+    const safeTop = Math.max(62, CONFIG.uiSafeTop || 62);
+    const cy = Math.max(halfSpan + safeTop, Math.min(ch - halfSpan - 32, ch * (c.uiCenterYRatio || .52)));
     return { cx, cy, btnR, inflateY: cy - gap, deflateY: cy + gap,
-        gaugeX: cx - gaugeW / 2, gaugeY: cy - gaugeH / 2, gaugeW, gaugeH };
+        indicatorX: cx - size / 2, indicatorY: cy - size / 2, indicatorSize: size };
 }
 export function getBCDInflateBtn() { const L = getBCDLayout(); return { cx: L.cx, cy: L.inflateY, r: L.btnR + 6 }; }
 export function getBCDDeflateBtn() { const L = getBCDLayout(); return { cx: L.cx, cy: L.deflateY, r: L.btnR + 6 }; }
 
-/** 体积改变的是整只柔性气囊的宽高，不是固定管子里的液面。 */
-export function getBCDBladderDimensions(fill: number, width: number, height: number) {
-    const expansion = Math.sqrt(Math.max(0, Math.min(1, fill)));
-    return { width: width * (.30 + .70 * expansion), height: height * (.58 + .42 * expansion) };
+/**
+ * 只读实际气囊体积，不读净浮力或中性体积。
+ * 同样的轮廓在不同配重/深度下可以有不同的浮沉状态，没有“配平形状”。
+ */
+export function getBCDInflationShape(volumeL: number, capacityL: number, size: number) {
+    const inflation = Math.max(0, Math.min(1, volumeL / Math.max(.1, capacityL)));
+    return { halfWidth: size * .36, halfHeight: size * (.065 + .225 * Math.sqrt(inflation)) };
 }
-function bladderPath(c: CanvasRenderingContext2D, w: number, h: number) {
-    const x = w / 2, y = h / 2;
-    c.beginPath(); c.moveTo(0, -y * .86);
-    c.bezierCurveTo(x * .35, -y * 1.08, x, -y, x, -y * .58);
-    c.bezierCurveTo(x, -y * .22, x * .65, -y * .12, x * .76, y * .22);
-    c.bezierCurveTo(x * 1.05, y * .72, x * .8, y * 1.02, 0, y * .87);
-    c.bezierCurveTo(-x * .8, y * 1.02, -x * 1.05, y * .72, -x * .76, y * .22);
-    c.bezierCurveTo(-x * .65, -y * .12, -x, -y * .22, -x, -y * .58);
-    c.bezierCurveTo(-x, -y, -x * .35, -y * 1.08, 0, -y * .86); c.closePath();
-}
-export function drawBCDController(time: number): void {
+
+export function drawBCDController(_time: number): void {
     if (!isBCDUIVisible()) return;
-    const rt = getBCDRuntime(), g = getBCDGaugeInfo(), L = getBCDLayout();
-    const fill = Math.max(0, Math.min(1, g.volumeL / Math.max(.1, cfg().capacityL)));
-    const size = getBCDBladderDimensions(fill, L.gaugeW, L.gaugeH);
-    ctx.save(); ctx.translate(L.cx, L.cy);
-    // 很淡的最大容量轮廓，让压缩后的气囊有参照物，不添加第二个量表。
-    bladderPath(ctx, L.gaugeW, L.gaugeH);
-    ctx.strokeStyle = 'rgba(135,171,188,.18)'; ctx.lineWidth = 1; ctx.setLineDash([2, 5]); ctx.stroke(); ctx.setLineDash([]);
-    bladderPath(ctx, size.width, size.height);
-    const grad = ctx.createLinearGradient(-size.width / 2, 0, size.width / 2, 0);
-    grad.addColorStop(0, '#29434e'); grad.addColorStop(.28, '#629caa');
-    grad.addColorStop(.5, '#355966'); grad.addColorStop(.76, '#74b9bc'); grad.addColorStop(1, '#29434e');
-    ctx.fillStyle = grad; ctx.fill();
-    ctx.strokeStyle = rt.overflow ? '#efb56c' : 'rgba(174,224,218,.8)'; ctx.lineWidth = 1.3; ctx.stroke();
-    // 缝线、腰带与压瘪时更明显的布料褶皱。
-    ctx.strokeStyle = 'rgba(8,24,32,.7)'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(0, -size.height * .39); ctx.lineTo(0, size.height * .39); ctx.stroke();
-    ctx.fillStyle = 'rgba(12,26,34,.65)'; ctx.fillRect(-size.width * .43, -3, size.width * .86, 6);
-    ctx.strokeStyle = `rgba(180,222,224,${.12 + (1 - fill) * .35})`; ctx.lineWidth = .8;
-    for (const side of [-1, 1]) for (const y of [-.28, .22, .32]) {
-        ctx.beginPath(); ctx.moveTo(side * size.width * .13, size.height * y);
-        ctx.quadraticCurveTo(side * size.width * .2, size.height * y - (1 - fill) * 5, side * size.width * .38, size.height * y + 3); ctx.stroke();
-    }
-    ctx.restore();
+    const rt = getBCDRuntime(), L = getBCDLayout();
     ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.font = 'bold 8px Arial'; ctx.fillStyle = 'rgba(178,205,210,.75)'; ctx.fillText('BCD', L.cx, L.gaugeY - 11);
-    ctx.font = 'bold 10px Arial'; ctx.fillStyle = '#d6ebe8';
-    ctx.fillText(g.volumeL.toFixed(1) + ' L', L.cx, L.gaugeY + L.gaugeH + 10);
-    // 唯一的绝对气量进度条，以真实容量为满格。
-    ctx.fillStyle = 'rgba(180,214,217,.15)'; ctx.fillRect(L.cx - 18, L.gaugeY + L.gaugeH + 20, 36, 3);
-    ctx.fillStyle = '#9be2d1'; ctx.fillRect(L.cx - 18, L.gaugeY + L.gaugeH + 20, 36 * fill, 3);
-    drawInflateBtn(L, rt.inflating, rt.overflow, time);
-    drawDeflateBtn(L, rt.deflating, g.volumeL <= .001, time);
-    ctx.font = '8px Arial'; ctx.fillStyle = 'rgba(178,205,210,.65)';
-    ctx.fillText(g.pressureAtm.toFixed(1) + ' ATA', L.cx, L.deflateY + L.btnR + 15); ctx.restore();
+    ctx.fillStyle = 'rgba(185,209,210,.65)'; ctx.font = 'bold 8px Arial'; ctx.fillText('BCD', L.cx, L.cy - L.indicatorSize * .6);
+    drawBCDBladder(L.cx, L.cy, rt.volumeL, cfg().capacityL || 4, L.indicatorSize);
+    drawBCDButton(L.cx, L.inflateY, L.btnR, 1, rt.inflating, rt.overflow);
+    drawBCDButton(L.cx, L.deflateY, L.btnR, -1, rt.deflating, false);
+    ctx.restore();
 }
 
-function drawInflateBtn(L: BCDLayout, active: boolean, overflow: boolean, time: number): void {
-    const { cx, inflateY: cy, btnR: r } = L;
-    const pulse = 0.5 + 0.5 * Math.sin(time * 12);
-
-    // 按下时的外扩光环
-    if (active) {
-        ctx.fillStyle = `rgba(120, 215, 255, ${0.16 + 0.14 * pulse})`;
-        ctx.beginPath();
-        ctx.arc(cx, cy, r + 5 + pulse * 2.5, 0, Math.PI * 2);
-        ctx.fill();
-    }
-
-    const grad = ctx.createRadialGradient(cx - r * 0.35, cy - r * 0.4, r * 0.2, cx, cy, r);
-    if (active) {
-        grad.addColorStop(0, 'rgba(190, 245, 255, 0.98)');
-        grad.addColorStop(1, 'rgba(45, 145, 200, 0.95)');
-    } else {
-        grad.addColorStop(0, 'rgba(70, 110, 135, 0.9)');
-        grad.addColorStop(1, 'rgba(22, 48, 68, 0.92)');
-    }
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.strokeStyle = overflow
-        ? 'rgba(255, 165, 100, 0.95)'
-        : (active ? 'rgba(215, 250, 255, 0.95)' : 'rgba(150, 200, 225, 0.5)');
-    ctx.lineWidth = overflow ? 2 : 1.2;
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.stroke();
-
-    // 图标：向上箭头 + 上方三小道"进气流"短线（气从软管压进来）
-    const ic = active ? 'rgba(255,255,255,0.98)' : 'rgba(205, 235, 250, 0.9)';
-    ctx.strokeStyle = ic;
-    ctx.fillStyle = ic;
-    ctx.lineWidth = 2.2;
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.moveTo(cx, cy + 6.5);
-    ctx.lineTo(cx, cy - 3.5);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(cx, cy - 8.5);
-    ctx.lineTo(cx - 5.5, cy - 2.5);
-    ctx.lineTo(cx + 5.5, cy - 2.5);
+/** 扁平气囊：一笔柔软外缘、两侧封口和少量反光；没有容器、刻度或填充进度。 */
+function drawBCDBladder(cx: number, cy: number, volumeL: number, capacityL: number, size: number): void {
+    const { halfWidth: w, halfHeight: h } = getBCDInflationShape(volumeL, capacityL, size);
+    const seam = size * .045;
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(cx - w, cy - seam);
+    ctx.bezierCurveTo(cx - w, cy - h, cx - w * .55, cy - h, cx, cy - h);
+    ctx.bezierCurveTo(cx + w * .55, cy - h, cx + w, cy - h, cx + w, cy - seam);
+    ctx.lineTo(cx + w, cy + seam);
+    ctx.bezierCurveTo(cx + w, cy + h, cx + w * .55, cy + h, cx, cy + h);
+    ctx.bezierCurveTo(cx - w * .55, cy + h, cx - w, cy + h, cx - w, cy + seam);
     ctx.closePath();
-    ctx.fill();
-    ctx.lineWidth = 1.4;
+    ctx.fillStyle = 'rgba(21,47,50,.8)'; ctx.fill();
+    ctx.strokeStyle = 'rgba(170,218,206,.9)'; ctx.stroke();
+
+    // 封口不会变长，鼓胀只体现在柔软轮廓上。
     ctx.beginPath();
-    for (let i = -1; i <= 1; i++) {
-        const lx = cx + i * 6.5;
-        const jitter = active ? Math.sin(time * 18 + i) * 1.2 : 0;
-        ctx.moveTo(lx, cy + 11 + jitter);
-        ctx.lineTo(lx, cy + 14.5 + jitter);
-    }
-    ctx.stroke();
-    ctx.lineCap = 'butt';
+    ctx.moveTo(cx - w - 2.5, cy - seam); ctx.lineTo(cx - w - 2.5, cy + seam);
+    ctx.moveTo(cx + w + 2.5, cy - seam); ctx.lineTo(cx + w + 2.5, cy + seam);
+    ctx.strokeStyle = 'rgba(170,218,206,.4)'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx - w * .58, cy - h * .5);
+    ctx.quadraticCurveTo(cx - w * .42, cy - h * .72, cx - w * .14, cy - h * .72);
+    ctx.strokeStyle = 'rgba(196,230,219,.38)'; ctx.stroke();
 }
 
-function drawDeflateBtn(L: BCDLayout, active: boolean, empty: boolean, time: number): void {
-    const { cx, deflateY: cy, btnR: r } = L;
-    const pulse = 0.5 + 0.5 * Math.sin(time * 12);
-
-    if (active) {
-        ctx.fillStyle = `rgba(255, 190, 130, ${0.14 + 0.12 * pulse})`;
-        ctx.beginPath();
-        ctx.arc(cx, cy, r + 5 + pulse * 2.5, 0, Math.PI * 2);
-        ctx.fill();
-    }
-
-    const grad = ctx.createRadialGradient(cx - r * 0.35, cy - r * 0.4, r * 0.2, cx, cy, r);
-    if (active) {
-        grad.addColorStop(0, 'rgba(255, 232, 195, 0.98)');
-        grad.addColorStop(1, 'rgba(190, 110, 45, 0.95)');
-    } else {
-        grad.addColorStop(0, 'rgba(105, 92, 78, 0.9)');
-        grad.addColorStop(1, 'rgba(48, 38, 28, 0.92)');
-    }
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.fill();
-
-    // 已经完全排空时描边变灰，暗示"再按也没用了"
-    ctx.strokeStyle = empty
-        ? 'rgba(130, 140, 145, 0.4)'
-        : (active ? 'rgba(255, 235, 200, 0.95)' : 'rgba(215, 175, 130, 0.5)');
-    ctx.lineWidth = 1.2;
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.stroke();
-
-    // 图标：向下箭头 + 下方三个上浮的小气泡（气被排进水里）
-    const ic = empty
-        ? 'rgba(160, 168, 172, 0.7)'
-        : (active ? 'rgba(255,255,255,0.98)' : 'rgba(250, 225, 195, 0.9)');
-    ctx.strokeStyle = ic;
-    ctx.fillStyle = ic;
-    ctx.lineWidth = 2.2;
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.moveTo(cx, cy - 6.5);
-    ctx.lineTo(cx, cy + 3.5);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(cx, cy + 8.5);
-    ctx.lineTo(cx - 5.5, cy + 2.5);
-    ctx.lineTo(cx + 5.5, cy + 2.5);
-    ctx.closePath();
-    ctx.fill();
-    // 气泡：排气时向上飘动
-    ctx.lineWidth = 1.2;
-    for (let i = 0; i < 3; i++) {
-        const bx = cx - 6 + i * 6;
-        const drift = active ? ((time * 26 + i * 5) % 9) : 0;
-        const br = 1.5 + (i === 1 ? 0.7 : 0);
-        ctx.beginPath();
-        ctx.arc(bx, cy - 11 - drift, br, 0, Math.PI * 2);
-        ctx.stroke();
-    }
-    ctx.lineCap = 'butt';
+function drawBCDButton(cx: number, cy: number, radius: number, direction: number, active: boolean, overflow: boolean): void {
+    const color = overflow ? '#efb56c' : direction > 0 ? '#9be2d1' : '#efb56c';
+    ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.fillStyle = active ? 'rgba(100,171,166,.18)' : 'rgba(12,26,33,.5)'; ctx.fill();
+    ctx.strokeStyle = active || overflow ? color : 'rgba(167,193,195,.42)'; ctx.lineWidth = active ? 2 : 1; ctx.stroke();
+    ctx.strokeStyle = active ? color : '#d6e3df'; ctx.lineWidth = 1.7;
+    ctx.beginPath(); ctx.moveTo(cx, cy + direction * 7); ctx.lineTo(cx, cy - direction * 7);
+    ctx.moveTo(cx - 5, cy - direction * 2); ctx.lineTo(cx, cy - direction * 7); ctx.lineTo(cx + 5, cy - direction * 2); ctx.stroke();
 }
 
 // =============================================

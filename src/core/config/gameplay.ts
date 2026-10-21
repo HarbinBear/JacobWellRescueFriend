@@ -397,7 +397,7 @@ export const gameplayConfig = {
     //   充到显示满格、30m  a=-0.0120 → 上浮 0.60 px/frame ≈ 18 m/min（危险阈值）
     //   充到容量上限、30m  a=-0.0303 → 上浮 1.50 px/frame ≈ 45 m/min（严重失控）
     //
-    // 中性所需体积随深度上升（湿衣越深越不给力），UI 上的中性刻度线因此会动：
+    // 中性所需体积随深度上升（湿衣越深越不给力），玩家需结合气囊形态和实际浮沉配平：
     //   水面 1.14 L  →  30m 1.51 L
     //
     // 惩罚闭环：失控上浮时每秒往减压系统的 nitrogenLoad 追加 ascentNitrogenPerSec，
@@ -408,7 +408,7 @@ export const gameplayConfig = {
         // ---- 物理 ----
         depthPerAtmMeters: 10,           // 每多少米增加 1 atm（真实海水约 10m）
         capacityL: 4.0,                  // 气囊最大实际体积（升）；超过即触发溢流阀
-        displayMaxL: 2.5,                // 气量表满格对应体积（大于此值条顶格 + 溢流警示）
+        displayMaxL: 2.5,                // GM 诊断数据的归一化量程；气囊符号按实际容量变形
         baseSinkAccel: 0.050,            // 配重+装备的恒定负浮力加速度（像素/帧²，>0 向下）
         liftAccelPerLiter: 0.0322,       // 每升气囊体积抵消多少下沉加速度
         suitLiftSurfaceL: 0.5,           // 湿衣在水面提供的等效浮力升数（随深度 /P 压缩）
@@ -439,9 +439,8 @@ export const gameplayConfig = {
         uiXFromRight: 46,                // 控件竖轴距屏幕右边缘（像素）
         uiCenterYRatio: 0.52,            // 控件竖向中心占屏高比例
         uiBtnRadius: 21,                 // 充/排气按钮半径
-        uiBtnGap: 104,                    // 按钮中心到量表中心的距离
-        uiGaugeW: 56,                    // 气量表宽度
-        uiGaugeH: 112,                    // 气量表高度
+        uiBtnGap: 72,                    // 按钮中心到气囊符号中心的距离
+        uiIndicatorSize: 52,             // 气囊符号尺寸
 
         // ---- 排气气泡 ----
         ventBubbleRate: 26,              // 排气时每秒生成的气泡数

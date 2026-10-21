@@ -6,14 +6,17 @@ import { WheelSector } from '../logic/Marker';
 // ============ 自适应按钮位置计算 ============
 // 确保按钮+轮盘不超出屏幕边界
 
-export function getWheelBtnPos(): { x: number; y: number } {
+export function getWheelBtnPos(width = CONFIG.screenWidth, height = CONFIG.screenHeight): { x: number; y: number } {
     const outerR = CONFIG.marker.wheelOuterRadius;
     const margin = outerR + 12; // 轮盘外径 + 安全边距
-    const rawX = CONFIG.screenWidth * CONFIG.marker.btnXRatio;
-    const rawY = CONFIG.screenHeight * CONFIG.marker.btnYRatio;
+    const rawX = width * CONFIG.marker.btnXRatio;
+    const rawY = height * CONFIG.marker.btnYRatio;
     // 限制按钮位置，使轮盘展开后不超出屏幕
-    const x = Math.max(margin, Math.min(CONFIG.screenWidth - margin, rawX));
-    const y = Math.max(margin, Math.min(CONFIG.screenHeight - margin, rawY));
+    const x = Math.max(margin, Math.min(width - margin, rawX));
+    // 底部体力栏独占安全区上方 36px；展开轮盘与按钮文字均留在栏外。
+    const footer = CONFIG.driveMode === 'semiAuto' && CONFIG.semiAutoDrive.staminaPosition === 'bottom'
+        ? Math.max(18, CONFIG.uiSafeBottom || 18) + 36 : 0;
+    const y = Math.max(margin, Math.min(height - margin - footer, rawY));
     return { x, y };
 }
 

@@ -16,10 +16,10 @@ export function getStaminaLayout(width: number, height: number) {
     const safeTop = Math.max(62, CONFIG.uiSafeTop || 62), safeBottom = Math.max(18, CONFIG.uiSafeBottom || 18);
     if (position === 'bcd' && isBCDUIVisible()) {
         const bcd = getBCDLayout();
-        return { x: Math.min(width - 14, bcd.gaugeX + bcd.gaugeW + 10), y: bcd.gaugeY + 4, width: 7, height: bcd.gaugeH - 8, vertical: true };
+        return { x: Math.min(width - 14, bcd.cx + bcd.btnR + 14), y: bcd.inflateY, width: 7, height: bcd.deflateY - bcd.inflateY, vertical: true };
     }
     const w = Math.min(238, width - 116);
-    return { x: Math.max(92, (width - w) / 2), y: position === 'top' ? safeTop + 20 : height - safeBottom - 24,
+    return { x: Math.max(92, (width - w) / 2), y: position === 'top' ? safeTop + 20 : height - safeBottom - 10,
         width: w, height: 6, vertical: false };
 }
 
@@ -41,17 +41,11 @@ export function drawSemiAutoControls(c: CanvasRenderingContext2D, width: number,
         c.fillRect(L.x, L.y + L.height * (1 - sd.remaining), L.width, L.height * sd.remaining);
         c.textAlign = 'center'; c.font = 'bold 7px Arial'; c.fillText('STA', L.x + L.width / 2, L.y - 10);
         c.font = '8px Arial'; c.fillText(Math.round(sd.remaining * 100) + '', L.x + L.width / 2, L.y + L.height + 11);
-        // 耗空恢复门槛只是一道刻度，帮助判断何时能再次发力。
-        if (sd.exhausted) {
-            const y = L.y + L.height * (1 - CONFIG.semiAutoDrive.resumeThreshold);
-            c.fillStyle = AMBER; c.fillRect(L.x - 2, y, L.width + 4, 1);
-        }
     } else {
         c.fillRect(L.x, L.y, L.width * sd.remaining, L.height);
         c.textAlign = 'left'; c.fillText(feedback.title, L.x, L.y - 10);
         c.textAlign = 'right'; c.font = '9px Arial';
         c.fillText(feedback.hint + ' · ' + Math.round(sd.remaining * 100) + '%', L.x + L.width, L.y - 10);
-        if (sd.exhausted) c.fillRect(L.x + L.width * CONFIG.semiAutoDrive.resumeThreshold, L.y - 2, 1, L.height + 4);
     }
     c.restore();
 }

@@ -62,8 +62,7 @@ try {
     const vx = player.vx, vy = player.vy; tick(1);
     assert(Math.abs(player.vx - vx * CONFIG.waterDrag) < 1e-12);
     assert(Math.abs(player.vy - vy * CONFIG.waterDrag) < 1e-12);
-    tick(8); assert.equal(state.semiAutoDrive.remaining, remaining, 'Recovery has a short delay');
-    tick(8); assert(state.semiAutoDrive.remaining > remaining && state.semiAutoDrive.remaining < 1);
+    assert(state.semiAutoDrive.remaining > remaining && state.semiAutoDrive.remaining < 1, 'Stamina starts recovering on the very next update');
     tick(150); assert.equal(state.semiAutoDrive.remaining, 1);
     reset(); semi.updateSemiAutoJoystick(40, 0); tick(20);
     assert(1 - state.semiAutoDrive.remaining > lightCost * 1.8, 'Large input uses substantially more stamina');
@@ -97,24 +96,31 @@ try {
         semi.updateSemiAutoJoystick(0, -40); tick(1, fps);
         assert.equal(input.targetAngle, -Math.PI / 2); assert(Math.hypot(player.vx, player.vy) < speed);
         tick(fps, fps); assert.equal(depletedSounds, sounds + 1); assert.equal(state.semiAutoDrive.effort, 0);
-        semi.releaseSemiAutoDrive(); tick(Math.ceil(fps * .30), fps);
-        assert(state.semiAutoDrive.exhausted && state.semiAutoDrive.remaining < CONFIG.semiAutoDrive.resumeThreshold);
-        semi.updateSemiAutoJoystick(40, 0); tick(1, fps); assert.equal(state.semiAutoDrive.thrusting, false);
-        semi.releaseSemiAutoDrive(); tick(fps, fps);
-        assert(!state.semiAutoDrive.exhausted && state.semiAutoDrive.remaining > CONFIG.semiAutoDrive.resumeThreshold);
+        semi.releaseSemiAutoDrive(); tick(1, fps);
+        assert(!state.semiAutoDrive.exhausted && state.semiAutoDrive.remaining > 0, 'No exhaustion recovery lock after releasing');
         semi.updateSemiAutoJoystick(40, 0); tick(1, fps); assert(state.semiAutoDrive.thrusting);
     }
 
     // The painter is exercised independently of GPU/world rendering.
-    const textCalls = [], arcs = [];
+    const textCalls = [], arcs = [], rectangles = [], pathCalls = [];
     const c = new Proxy({}, { get: (_, name) => {
         if (name === 'fillText') return (...args) => textCalls.push(args);
         if (name === 'arc') return (...args) => arcs.push(args);
+        if (name === 'fillRect') return (...args) => rectangles.push(args);
+        if (['moveTo', 'lineTo', 'bezierCurveTo', 'quadraticCurveTo'].includes(name)) return (...args) => pathCalls.push([name, ...args]);
         if (name === 'createLinearGradient' || name === 'createRadialGradient') return () => ({ addColorStop() {} });
         if (name === 'measureText') return text => ({ width: text.length * 6 });
         return () => {};
     }, set: () => true });
+    const bcdRuntime = { inflating: false, deflating: false, volumeL: 1.2, netAccel: 0 };
     const bcd = compile('render/RenderBCD', name => {
+        if (name === '../core/config') return { CONFIG };
+        if (name === '../core/state') return core;
+        if (name === './Canvas') return { ctx: c };
+        if (name === '../logic/BCDSystem') return { getBCDRuntime: () => bcdRuntime, getBCDGaugeInfo: () => { throw new Error('BCD symbol must not read buoyancy/neutral gauge'); } };
+        return idle;
+    });
+    const wheel = compile('render/RenderWheel', name => {
         if (name === '../core/config') return { CONFIG };
         if (name === '../core/state') return core;
         if (name === './Canvas') return { ctx: c };
@@ -134,6 +140,11 @@ try {
             const L = feedback.getStaminaLayout(...dimensions);
             assert(L.x >= 0 && L.x + L.width <= dimensions[0] && L.y >= 62 && L.y + L.height < dimensions[1]);
             if (position === 'top') assert(L.y - 15 >= CONFIG.uiSafeTop);
+            if (position === 'bottom') {
+                const marker = wheel.getWheelBtnPos(...dimensions);
+                assert(marker.y + CONFIG.marker.wheelOuterRadius + 12 < L.y - 15, 'Expanded marker wheel stays above stamina labels');
+                assert(marker.y + CONFIG.marker.btnRadius + 22 < L.y - 15, 'Marker button and caption cannot overlap stamina');
+            }
             feedback.drawSemiAutoControls(c, ...dimensions);
         }
     }
@@ -141,8 +152,36 @@ try {
     CONFIG.semiAutoDrive.showJoystick = true; feedback.drawSemiAutoControls(c, 375, 667); assert(arcs.length > 0);
     CONFIG.semiAutoDrive.showJoystick = false; CONFIG.semiAutoDrive.staminaPosition = 'bottom';
     CONFIG.screenWidth = 375; CONFIG.screenHeight = 667;
-    const small = bcd.getBCDBladderDimensions(.1, 42, 132), large = bcd.getBCDBladderDimensions(.9, 42, 132);
-    assert(small.width < large.width && small.height < large.height, 'Compressed gas shrinks the whole bladder');
+    const emptyShape = bcd.getBCDInflationShape(0, 4, 52);
+    let previousHeight = emptyShape.halfHeight;
+    for (let volume = .05; volume <= 4; volume += .05) {
+        const shape = bcd.getBCDInflationShape(volume, 4, 52);
+        assert(shape.halfHeight > previousHeight, 'Inflation continuously rounds the contour without a neutral snap');
+        assert.equal(shape.halfWidth, emptyShape.halfWidth);
+        previousHeight = shape.halfHeight;
+    }
+    assert.deepEqual(bcd.getBCDInflationShape(6, 4, 52), bcd.getBCDInflationShape(4, 4, 52));
+    rectangles.length = 0; textCalls.length = 0;
+    const sameVolumePaths = [];
+    for (const netAccel of [-.04, 0, .04]) {
+        bcdRuntime.netAccel = netAccel;
+        pathCalls.length = 0; bcd.drawBCDController(now / 1000);
+        sameVolumePaths.push(pathCalls.slice());
+    }
+    assert.deepEqual(sameVolumePaths[0], sameVolumePaths[1], 'Same gas volume must look identical whether rising, balanced or sinking');
+    assert.deepEqual(sameVolumePaths[1], sameVolumePaths[2]);
+    bcdRuntime.volumeL = .1; pathCalls.length = 0; bcd.drawBCDController(now / 1000);
+    assert.notDeepEqual(pathCalls, sameVolumePaths[0], 'Deflating visibly collapses the contour');
+    assert(pathCalls.flat().filter(value => typeof value === 'number').every(Number.isFinite));
+    assert.equal(rectangles.length, 0, 'BCD has no progress/fill bars');
+    assert(textCalls.every(call => call[0] === 'BCD'), 'No buoyancy verdict, liters, percentage or neutral labels');
+    const tape = compile('render/TapeDeckVisual', () => idle);
+    pathCalls.length = 0; tape.cutPanel(c, 10, 20, 36, 36, 6); const outline = pathCalls.slice();
+    pathCalls.length = 0; const beforeProgressArcs = arcs.length;
+    tape.drawCutPanelProgress(c, 10, 20, 36, 36, 1, 6);
+    assert.deepEqual(pathCalls.slice(0, -1), outline, 'Full hold progress exactly follows the cut-corner button outline');
+    assert.deepEqual(pathCalls[pathCalls.length - 1].slice(1), outline[0].slice(1));
+    assert.equal(arcs.length, beforeProgressArcs, 'Square progress never draws a circular arc');
 
     // Real HUD lifecycle: compact return button cancels on release/move and cassette owns mute.
     const registry = load('extraction/core/ExtractionRegistry');
@@ -150,7 +189,7 @@ try {
         if (name === '../core/config') return { CONFIG };
         if (name === '../core/state') return core;
         if (name === './Canvas') return { ctx: c, logicW: 375, logicH: 667 };
-        if (name === './TapeDeckVisual') return { TAPE: { ink: '#111', paper: '#eee', mint: '#afa', orange: '#fa0' }, cutPanel() {}, drawTapeDeck() {} };
+        if (name === './TapeDeckVisual') return { ...tape, drawTapeDeck() {}, drawTapeSleeve() {} };
         if (name === './RescueTape') return { getRescueTapeVisual: () => ({ playing: false }) };
         if (name === './RenderAudioToggle') return { toggleMuted: () => state.audio.muted = !state.audio.muted };
         if (name === '../extraction/core/ExtractionRegistry') return registry;
@@ -190,6 +229,7 @@ try {
     depth = 25; buoyancy.updateBCDSystem(1 / 60);
     assert.equal(buoyancy.getBCDRuntime().gasNL, gas);
     assert(buoyancy.getBCDRuntime().volumeL < surfaceVolume, 'Depth compresses the same quantity of gas');
+    assert(bcd.getBCDInflationShape(buoyancy.getBCDRuntime().volumeL, 4, 52).halfHeight < bcd.getBCDInflationShape(surfaceVolume, 4, 52).halfHeight, 'Depth compression visibly flattens the symbol');
     depth = 5; buoyancy.updateBCDSystem(1 / 60);
     assert(Math.abs(buoyancy.getBCDRuntime().volumeL - surfaceVolume) < 1e-9, 'Ascending expands the bladder again');
 
@@ -227,5 +267,5 @@ try {
     for (let i = 0; i < 20; i++) { tick(5); keys.keydown({ key: 'w', code: 'KeyW', repeat: true }); }
     assert(state.semiAutoDrive.remaining < keyStamina);
     keys.blur(); assert.equal(state.semiAutoDrive.thrusting, false);
-    console.log('Passed: continuous steering/release, analog exertion, delayed recovery and exhaustion lock, anti-tap bypass, 60/120Hz, three safe HUD positions, hidden joystick, bladder deformation, glide pose and keyboard cancellation.');
+    console.log('Passed: continuous steering/release, analog exertion, immediate gradual recovery without exhaustion lock, rapid inputs, 60/120Hz, three safe HUD positions, hidden joystick, volume-only BCD silhouette without neutral cues, matching square hold progress, glide pose and keyboard cancellation.');
 } finally { Date.now = originalNow; delete global.wx; delete global.window; }

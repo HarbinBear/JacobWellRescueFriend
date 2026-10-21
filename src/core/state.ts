@@ -11,7 +11,6 @@ export function createSemiAutoDriveState() {
         lastUpdateAt: null as number | null,
         depletedAt: 0,
         recoveredAt: 0,
-        restStartedAt: null as number | null,
         inputPower: 0,
     };
 }
@@ -162,7 +161,7 @@ export const state = {
         cooldownTimer: number;  // 冷却计时（>0 表示冷却中）
         angle: number;          // 攻击方向（玩家朝向）
     },
-    // 半自动：连续输入按力度消耗体力，停止发力后延迟恢复。
+    // 半自动：连续输入按力度消耗体力，停止发力后立即逐渐恢复。
     semiAutoDrive: createSemiAutoDriveState(),
     // 手动挡（搓屏移动）运行态
     manualDrive: {

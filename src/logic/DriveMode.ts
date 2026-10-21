@@ -13,7 +13,6 @@ export function resetDriveInput(refillStamina = false): void {
     if (!refillStamina) {
         state.semiAutoDrive.remaining = previous.remaining;
         state.semiAutoDrive.exhausted = previous.exhausted;
-        state.semiAutoDrive.restStartedAt = Date.now();
         state.semiAutoDrive.lastUpdateAt = Date.now();
     }
     state.manualDrive.activeTouches = {};

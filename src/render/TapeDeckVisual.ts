@@ -11,6 +11,22 @@ export function cutPanel(c: CanvasRenderingContext2D, x: number, y: number, w: n
     c.beginPath(); c.moveTo(x + cut, y); c.lineTo(x + w, y); c.lineTo(x + w, y + h - cut);
     c.lineTo(x + w - cut, y + h); c.lineTo(x, y + h); c.lineTo(x, y + cut); c.closePath();
 }
+
+/** 沿同一切角矩形描边显示进度，与按钮轮廓完全一致。 */
+export function drawCutPanelProgress(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, progress: number, cut = 6): void {
+    const points = [[x + cut, y], [x + w, y], [x + w, y + h - cut],
+        [x + w - cut, y + h], [x, y + h], [x, y + cut], [x + cut, y]];
+    const lengths = points.slice(1).map((p, i) => Math.hypot(p[0] - points[i][0], p[1] - points[i][1]));
+    let remaining = lengths.reduce((a, b) => a + b, 0) * Math.max(0, Math.min(1, progress));
+    c.beginPath(); c.moveTo(points[0][0], points[0][1]);
+    for (let i = 0; i < lengths.length && remaining > 0; i++) {
+        const ratio = Math.min(1, remaining / lengths[i]);
+        c.lineTo(points[i][0] + (points[i + 1][0] - points[i][0]) * ratio,
+            points[i][1] + (points[i + 1][1] - points[i][1]) * ratio);
+        remaining -= lengths[i];
+    }
+    c.stroke();
+}
 /** Each newly audible instrument changes the object's motion, not an unrelated clock. */
 export function sampleTapeMotion(v: TapeVisual): { x: number; y: number; roll: number; sx: number; sy: number; drive: number; rush: number } {
     const neutral = { x: 0, y: 0, roll: 0, sx: 1, sy: 1, drive: 0, rush: 0 };

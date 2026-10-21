@@ -136,9 +136,7 @@ export const TABS: GMTab[] = [
             { type: 'bool', label: '显示虚拟摇杆', path: 'semiAutoDrive.showJoystick' },
             { type: 'number', label: '全力持续秒数', path: 'semiAutoDrive.sprintDuration', min: 1, max: 12, step: 0.5, precision: 1 },
             { type: 'number', label: '空到满恢复秒数', path: 'semiAutoDrive.recoveryDuration', min: 0.5, max: 8, step: 0.1, precision: 1 },
-            { type: 'number', label: '回气间隔(秒)', path: 'semiAutoDrive.recoveryDelay', min: 0, max: 1, step: 0.05, precision: 2 },
             { type: 'number', label: '力度耗体力曲线', path: 'semiAutoDrive.drainExponent', min: 1, max: 3, step: 0.1, precision: 1 },
-            { type: 'number', label: '耗空后恢复门槛', path: 'semiAutoDrive.resumeThreshold', min: 0.1, max: 0.5, step: 0.05, precision: 2 },
             { type: 'number', label: '踢腿收势时间(秒)', path: 'semiAutoDrive.kickFadeDuration', min: 0.03, max: 0.3, step: 0.01, precision: 2 },
         ]
     },
@@ -575,7 +573,6 @@ export const TABS: GMTab[] = [
             // ---- 物理 ----
             { type: 'number', label: '每大气压深度(m)', path: 'bcd.depthPerAtmMeters', min: 5, max: 20, step: 1 },
             { type: 'number', label: '气囊容量(L)', path: 'bcd.capacityL', min: 1, max: 12, step: 0.25, precision: 2 },
-            { type: 'number', label: '量表满格体积(L)', path: 'bcd.displayMaxL', min: 0.5, max: 8, step: 0.25, precision: 2 },
             { type: 'number', label: '基础下沉加速度', path: 'bcd.baseSinkAccel', min: 0, max: 0.1, step: 0.002, precision: 4 },
             { type: 'number', label: '每升浮力加速度', path: 'bcd.liftAccelPerLiter', min: 0.001, max: 0.06, step: 0.001, precision: 4 },
             { type: 'number', label: '湿衣水面浮力(L)', path: 'bcd.suitLiftSurfaceL', min: 0, max: 2, step: 0.05, precision: 2 },
@@ -599,8 +596,7 @@ export const TABS: GMTab[] = [
             { type: 'number', label: 'UI 竖向中心比', path: 'bcd.uiCenterYRatio', min: 0.2, max: 0.85, step: 0.02, precision: 2 },
             { type: 'number', label: 'UI 按钮半径', path: 'bcd.uiBtnRadius', min: 14, max: 44, step: 1 },
             { type: 'number', label: 'UI 按钮间距', path: 'bcd.uiBtnGap', min: 30, max: 200, step: 2 },
-            { type: 'number', label: 'UI 量表宽', path: 'bcd.uiGaugeW', min: 14, max: 48, step: 1 },
-            { type: 'number', label: 'UI 量表高', path: 'bcd.uiGaugeH', min: 50, max: 180, step: 4 },
+            { type: 'number', label: '气囊符号尺寸', path: 'bcd.uiIndicatorSize', min: 36, max: 64, step: 2 },
             // ---- 排气气泡 ----
             { type: 'number', label: '排气气泡/秒', path: 'bcd.ventBubbleRate', min: 0, max: 80, step: 2 },
             { type: 'number', label: '排气气泡尺寸倍数', path: 'bcd.ventBubbleSizeMul', min: 0.2, max: 2, step: 0.05, precision: 2 },

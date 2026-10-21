@@ -26,7 +26,7 @@
 import { CONFIG } from '../core/config';
 import { state, player } from '../core/state';
 import { ctx, logicW, logicH } from './Canvas';
-import { drawTapeDeck, drawTapeSleeve, cutPanel, TAPE } from './TapeDeckVisual';
+import { drawTapeDeck, drawTapeSleeve, cutPanel, drawCutPanelProgress, TAPE } from './TapeDeckVisual';
 import { getRescueTapeVisual } from './RescueTape';
 import { drawTapeNowPlaying } from './TapeEntry';
 import { toggleMuted as audioToggleMuted } from './RenderAudioToggle';
@@ -1078,17 +1078,17 @@ function drawDecoIcon(c: CanvasRenderingContext2D, cx: number, cy: number, size:
     c.restore();
 }
 
-// 防水随身听：与角色胸前共用同一画法、同一音频时间。
+// 撤离：长按描边沿切角方框前进。
 function drawRetreatIcon(c: CanvasRenderingContext2D, cx: number, cy: number, size: number): void {
     const r = size / 2 - 2, maze = state.mazeRescue;
-    c.save(); c.fillStyle = TAPE.ink; c.strokeStyle = TAPE.mint; c.lineWidth = 1;
+    c.save(); c.fillStyle = TAPE.ink; c.strokeStyle = maze?.retreatHolding ? 'rgba(129,227,206,.25)' : TAPE.mint; c.lineWidth = 1;
     cutPanel(c, cx - r, cy - r, r * 2, r * 2, 6); c.fill(); c.stroke();
     c.strokeStyle = TAPE.paper; c.lineWidth = 2; c.beginPath();
     c.moveTo(cx, cy + 9); c.lineTo(cx, cy - 8); c.moveTo(cx - 6, cy - 2); c.lineTo(cx, cy - 8); c.lineTo(cx + 6, cy - 2); c.stroke();
     if (maze?.retreatHolding) {
         const progress = Math.min(1, (Date.now() - maze.retreatHoldStart) / (CONFIG.maze.retreatHoldDuration * 1000));
-        c.strokeStyle = TAPE.mint; c.lineWidth = 2.5; c.beginPath();
-        c.arc(cx, cy, r + 3, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2); c.stroke();
+        c.strokeStyle = TAPE.mint; c.lineWidth = 2.5; c.lineCap = 'butt';
+        drawCutPanelProgress(c, cx - r, cy - r, r * 2, r * 2, progress, 6);
     }
     c.restore();
 }
