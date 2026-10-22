@@ -1,12 +1,15 @@
 import { CONFIG } from '../core/config';
-import { state, input, touches } from '../core/state';
+import { state, touches } from '../core/state';
 import { getBCDLayout, isBCDUIVisible } from './RenderBCD';
+import { getSemiAutoEnergyRates } from '../logic/SemiAutoDrive';
 
 const MINT = '#9be2d1', AMBER = '#efb56c';
 export function getSemiAutoFeedback() {
     const sd = state.semiAutoDrive;
-    if (sd.exhausted) return { title: '体力耗尽', hint: input.move > 0 ? '松手恢复' : '恢复中', color: AMBER };
-    if (!sd.thrusting && sd.remaining < .999) return { title: '体力', hint: '恢复中', color: MINT };
+    if (sd.exhausted) return { title: '体力耗尽', hint: '基础动力 · 仍可转向', color: AMBER };
+    if (sd.remaining < .999 && (!sd.thrusting || sd.outputPower < getSemiAutoEnergyRates().sustainablePower)) {
+        return { title: '体力', hint: sd.thrusting ? '轻推恢复' : '恢复中', color: MINT };
+    }
     return { title: '体力', hint: sd.thrusting ? '推进' : '就绪', color: sd.remaining < .25 ? AMBER : MINT };
 }
 

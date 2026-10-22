@@ -52,9 +52,10 @@ try {
     const lightPower = state.semiAutoDrive.inputPower, lightCost = 1 - state.semiAutoDrive.remaining;
     assert(player.vx > 0 && lightPower > 0 && lightPower < 1);
     const beforeTurn = state.semiAutoDrive.remaining;
-    send('move', [touch(140, 440)]); tick(1);
+    send('move', [touch(140, 440)]); tick(20);
     assert.equal(input.targetAngle, Math.PI / 2); assert(player.vy > 0);
-    assert(state.semiAutoDrive.remaining < beforeTurn, 'Steering never replenishes stamina');
+    assert(state.semiAutoDrive.remaining < beforeTurn, 'Full-power steering consumes reserve despite constant recovery');
+    assert.equal(lightCost, 0, 'Light propulsion stays at full stamina');
     const remaining = state.semiAutoDrive.remaining;
     send('end', [touch(140, 440)], []);
     assert.equal(state.semiAutoDrive.thrusting, false);
@@ -95,7 +96,9 @@ try {
         const speed = Math.hypot(player.vx, player.vy);
         semi.updateSemiAutoJoystick(0, -40); tick(1, fps);
         assert.equal(input.targetAngle, -Math.PI / 2); assert(Math.hypot(player.vx, player.vy) < speed);
-        tick(fps, fps); assert.equal(depletedSounds, sounds + 1); assert.equal(state.semiAutoDrive.effort, 0);
+        tick(fps, fps); assert.equal(depletedSounds, sounds + 1); assert(state.semiAutoDrive.effort > 0); assert(state.semiAutoDrive.thrusting);
+        assert(Math.abs(state.semiAutoDrive.outputPower - semi.getSemiAutoEnergyRates().sustainablePower) < 1e-8);
+        assert(player.vy < 0, 'Empty stamina still produces directed propulsion');
         semi.releaseSemiAutoDrive(); tick(1, fps);
         assert(!state.semiAutoDrive.exhausted && state.semiAutoDrive.remaining > 0, 'No exhaustion recovery lock after releasing');
         semi.updateSemiAutoJoystick(40, 0); tick(1, fps); assert(state.semiAutoDrive.thrusting);
@@ -267,5 +270,5 @@ try {
     for (let i = 0; i < 20; i++) { tick(5); keys.keydown({ key: 'w', code: 'KeyW', repeat: true }); }
     assert(state.semiAutoDrive.remaining < keyStamina);
     keys.blur(); assert.equal(state.semiAutoDrive.thrusting, false);
-    console.log('Passed: continuous steering/release, analog exertion, immediate gradual recovery without exhaustion lock, rapid inputs, 60/120Hz, three safe HUD positions, hidden joystick, volume-only BCD silhouette without neutral cues, matching square hold progress, glide pose and keyboard cancellation.');
+    console.log('Passed: continuous steering/release, analog exertion, constant recovery, sustainable empty-tank propulsion without exhaustion lock, rapid inputs, 60/120Hz, three safe HUD positions, hidden joystick, volume-only BCD silhouette without neutral cues, matching square hold progress, glide pose and keyboard cancellation.');
 } finally { Date.now = originalNow; delete global.wx; delete global.window; }

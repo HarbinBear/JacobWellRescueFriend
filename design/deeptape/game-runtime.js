@@ -2726,11 +2726,11 @@ exports.characterConfig = void 0;
 exports.characterConfig = {
     // HUD 循环切换：自动挡 → 手动挡 → 半自动。
     driveMode: 'semiAuto',
-    // 体力按实际输入强度消耗，松手立即逐渐恢复。
+    // 基础恢复恒定叠加；轻推可边游边恢复，空槽以收支平衡的动力继续推进。
     semiAutoDrive: {
-        sprintDuration: 4.0, // 满体力、最大推力可持续秒数
-        recoveryDuration: 1.8, // 从空到满的恢复秒数
-        drainExponent: 1.5, // 大推更费力，轻推更省力
+        sprintDuration: 4.0, // 满槽全力推进的净消耗秒数（总耗力包含基础恢复）
+        recoveryDuration: 1.8, // 恒定基础恢复：静止从空到满的秒数
+        drainExponent: 1.5, // 总耗力随实际动力的非线性曲线
         kickFadeDuration: 0.10,
         staminaPosition: 'bottom', // top / bottom / bcd，可在 GM 中实验
         showJoystick: false, // 隐藏图形时仍正常接受屏幕拖动
@@ -5188,6 +5188,7 @@ function createSemiAutoDriveState() {
         depletedAt: 0,
         recoveredAt: 0,
         inputPower: 0,
+        outputPower: 0,
     };
 }
 exports.state = {
@@ -5292,7 +5293,7 @@ exports.state = {
     fishBite: null, // 玩家被咬状态 { active, phase, timer, shakeIntensity }
     // 玩家攻击状态
     playerAttack: null,
-    // 半自动：连续输入按力度消耗体力，停止发力后立即逐渐恢复。
+    // 半自动：基础恢复恒定，按实际动力耗力；空槽仍以可维持动力推进。
     semiAutoDrive: createSemiAutoDriveState(),
     // 手动挡（搓屏移动）运行态
     manualDrive: {
@@ -21688,6 +21689,7 @@ function updateRopeSystem() {
 }
 },"/src/logic/SemiAutoDrive":function(exports,require){"use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.getSemiAutoEnergyRates = getSemiAutoEnergyRates;
 exports.releaseSemiAutoDrive = releaseSemiAutoDrive;
 exports.updateSemiAutoJoystick = updateSemiAutoJoystick;
 exports.processSemiAutoDrive = processSemiAutoDrive;
@@ -21695,12 +21697,20 @@ const config_1 = require("../core/config");
 const state_1 = require("../core/state");
 const JoystickDrive_1 = require("./JoystickDrive");
 const AudioManager_1 = require("../audio/AudioManager");
-/** 松手撤掉推力，体力在逻辑更新中逐渐恢复，绝不瞬间补满。 */
+/** 恒定基础恢复；sprintDuration 仍表示满槽全力推进的净消耗时间。 */
+function getSemiAutoEnergyRates() {
+    const cfg = config_1.CONFIG.semiAutoDrive;
+    const recovery = 1 / Math.max(.1, cfg.recoveryDuration);
+    const fullDrain = recovery + 1 / Math.max(.1, cfg.sprintDuration);
+    const exponent = Math.max(1, cfg.drainExponent);
+    return { recovery, fullDrain, exponent, sustainablePower: Math.pow(recovery / fullDrain, 1 / exponent) };
+}
+/** 松手只撤掉推力，不瞬间补满，也不改变恒定恢复速率。 */
 function releaseSemiAutoDrive() {
     const sd = state_1.state.semiAutoDrive;
     sd.pushStartedAt = null;
     sd.thrusting = false;
-    sd.inputPower = 0;
+    sd.inputPower = sd.outputPower = 0;
     state_1.input.move = 0;
     state_1.input.speedUp = false;
 }
@@ -21716,11 +21726,10 @@ function updateSemiAutoJoystick(dx, dy, speedUp) {
     state_1.input.move = 1;
     state_1.input.targetAngle = Math.atan2(dy, dx);
     state_1.input.speedUp = speedUp !== null && speedUp !== void 0 ? speedUp : distance > 35;
-    // 触屏：由行程连续映射 .3~1；键盘保留普通/Shift 两档。
     sd.inputPower = speedUp === undefined ? .3 + .7 * Math.min(1, (distance - 10) / 30) : speedUp ? 1 : .3;
     if (sd.pushStartedAt === null)
         sd.pushStartedAt = Date.now();
-    sd.thrusting = !sd.exhausted && sd.remaining > 0;
+    sd.thrusting = true;
 }
 function processSemiAutoDrive(moveSpeed = config_1.CONFIG.moveSpeed) {
     var _a, _b, _c, _d;
@@ -21734,29 +21743,37 @@ function processSemiAutoDrive(moveSpeed = config_1.CONFIG.moveSpeed) {
     const now = Date.now(), previousAt = sd.lastUpdateAt;
     const dt = previousAt === null ? 1 / 60 : Math.max(0, Math.min(.1, (now - previousAt) / 1000));
     sd.lastUpdateAt = now;
-    sd.thrusting = state_1.input.move > 0 && !sd.exhausted && sd.remaining > 0;
-    if (sd.thrusting) {
-        sd.remaining = Math.max(0, sd.remaining - dt * Math.pow(sd.inputPower, cfg.drainExponent) / Math.max(.1, cfg.sprintDuration));
-        if (sd.remaining <= 0) {
+    const rates = getSemiAutoEnergyRates();
+    const requested = state_1.input.move > 0 ? Math.max(0, Math.min(1, sd.inputPower)) : 0;
+    const wasExhausted = sd.exhausted;
+    if (dt > 0) {
+        // Include this frame's recovery before limiting work. Surplus at a full tank is discarded.
+        const budget = sd.remaining + rates.recovery * dt;
+        const affordable = Math.pow(Math.max(0, budget) / (dt * rates.fullDrain), 1 / rates.exponent);
+        sd.outputPower = Math.min(requested, affordable);
+        sd.remaining = Math.max(0, Math.min(1, budget - dt * rates.fullDrain * Math.pow(sd.outputPower, rates.exponent)));
+        if (sd.remaining < 1e-9)
             sd.remaining = 0;
-            sd.exhausted = true;
-            sd.thrusting = false;
-            sd.depletedAt = now;
-            (0, AudioManager_1.playSFX)('uiSecondary', { volume: .65, playbackRate: .7 });
-        }
+        sd.exhausted = requested > rates.sustainablePower && sd.remaining === 0;
     }
-    else if (state_1.input.move === 0) {
-        sd.remaining = Math.min(1, sd.remaining + dt / Math.max(.1, cfg.recoveryDuration));
-        if (sd.exhausted && sd.remaining > 0) {
-            sd.exhausted = false;
-            sd.recoveredAt = now;
-        }
+    else {
+        // Duplicate timestamps must not spend energy or momentarily restore full thrust.
+        sd.outputPower = sd.remaining > 0 ? requested : Math.min(requested, rates.sustainablePower);
+        sd.exhausted = requested > rates.sustainablePower && sd.remaining === 0;
     }
-    const effortTarget = sd.thrusting ? .45 + sd.inputPower * .55 : 0;
+    sd.thrusting = sd.outputPower > 0;
+    if (sd.exhausted && !wasExhausted) {
+        sd.depletedAt = now;
+        (0, AudioManager_1.playSFX)('uiSecondary', { volume: .65, playbackRate: .7 });
+    }
+    else if (!sd.exhausted && wasExhausted) {
+        sd.recoveredAt = now;
+    }
+    const effortTarget = sd.thrusting ? .45 + sd.outputPower * .55 : 0;
     sd.effort += (effortTarget - sd.effort) * (1 - Math.exp(-dt / Math.max(.01, cfg.kickFadeDuration)));
     if (sd.effort < .005)
         sd.effort = 0;
-    (0, JoystickDrive_1.processJoystickDrive)(moveSpeed, sd.thrusting, sd.inputPower);
+    (0, JoystickDrive_1.processJoystickDrive)(moveSpeed, sd.thrusting, sd.outputPower);
     return true;
 }
 },"/src/render/Canvas":function(exports,require){"use strict";
@@ -32914,13 +32931,15 @@ exports.drawSemiAutoControls = drawSemiAutoControls;
 const config_1 = require("../core/config");
 const state_1 = require("../core/state");
 const RenderBCD_1 = require("./RenderBCD");
+const SemiAutoDrive_1 = require("../logic/SemiAutoDrive");
 const MINT = '#9be2d1', AMBER = '#efb56c';
 function getSemiAutoFeedback() {
     const sd = state_1.state.semiAutoDrive;
     if (sd.exhausted)
-        return { title: '体力耗尽', hint: state_1.input.move > 0 ? '松手恢复' : '恢复中', color: AMBER };
-    if (!sd.thrusting && sd.remaining < .999)
-        return { title: '体力', hint: '恢复中', color: MINT };
+        return { title: '体力耗尽', hint: '基础动力 · 仍可转向', color: AMBER };
+    if (sd.remaining < .999 && (!sd.thrusting || sd.outputPower < (0, SemiAutoDrive_1.getSemiAutoEnergyRates)().sustainablePower)) {
+        return { title: '体力', hint: sd.thrusting ? '轻推恢复' : '恢复中', color: MINT };
+    }
     return { title: '体力', hint: sd.thrusting ? '推进' : '就绪', color: sd.remaining < .25 ? AMBER : MINT };
 }
 /** 三种实验位置均与手指无关，顶部位于刘海/微信胶囊下方。 */

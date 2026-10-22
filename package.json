@@ -5,7 +5,7 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "movement:check": "node scripts/checkSemiAutoDrive.js",
+    "movement:check": "node scripts/checkSemiAutoDrive.js && node scripts/checkStaminaEnergy.js",
     "inventory:check": "node scripts/checkInventoryHUD.js",
     "maze:check": "node scripts/checkMazeDiveLifecycle.js && node scripts/checkRescueRagdoll.js",
     "watch": "tsc --watch",

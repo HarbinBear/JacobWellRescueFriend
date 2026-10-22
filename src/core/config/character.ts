@@ -6,11 +6,11 @@ export const characterConfig = {
     // HUD 循环切换：自动挡 → 手动挡 → 半自动。
     driveMode: 'semiAuto' as DriveMode,
 
-    // 体力按实际输入强度消耗，松手立即逐渐恢复。
+    // 基础恢复恒定叠加；轻推可边游边恢复，空槽以收支平衡的动力继续推进。
     semiAutoDrive: {
-        sprintDuration: 4.0,       // 满体力、最大推力可持续秒数
-        recoveryDuration: 1.8,     // 从空到满的恢复秒数
-        drainExponent: 1.5,        // 大推更费力，轻推更省力
+        sprintDuration: 4.0,       // 满槽全力推进的净消耗秒数（总耗力包含基础恢复）
+        recoveryDuration: 1.8,     // 恒定基础恢复：静止从空到满的秒数
+        drainExponent: 1.5,        // 总耗力随实际动力的非线性曲线
         kickFadeDuration: 0.10,
         staminaPosition: 'bottom', // top / bottom / bcd，可在 GM 中实验
         showJoystick: false,       // 隐藏图形时仍正常接受屏幕拖动
