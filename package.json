@@ -18,8 +18,10 @@
     "visuals:check": "node scripts/checkTapeVisuals.js && node scripts/checkTapeEntry.js",
     "game:preview": "node scripts/buildGamePreview.js",
     "platform:check": "node scripts/checkWindowMetrics.js",
-    "cave:check": "node scripts/checkCaveRockTrial.js",
-    "cave:browser": "node scripts/checkCaveRockBrowser.js"
+    "cave:check": "node scripts/checkCaveRockTrial.js && node scripts/checkCaveRockResources.js",
+    "cave:browser": "node scripts/checkCaveRockBrowser.js",
+    "package:check": "node scripts/checkPackageBudget.js",
+    "prebuild": "npm run package:check"
   },
   "devDependencies": {
     "typescript": "^5.3.3"

@@ -108,6 +108,15 @@ export function registerImages(entries: { key: string; path: string }[]): void {
     for (const it of entries) registerImage(it.key, it.path);
 }
 
+/** Release only named transient scene assets; persistent home assets stay intact. */
+export function releaseImages(keys:string[]):void {
+    for(const key of keys){
+        const e=_entries[key];if(!e)continue;
+        if(e.img){e.img.onload=null;e.img.onerror=null;}
+        e.img=null;e.processed={};delete _entries[key];
+    }
+}
+
 // ===========================================================
 // 预处理：色键抠图
 //

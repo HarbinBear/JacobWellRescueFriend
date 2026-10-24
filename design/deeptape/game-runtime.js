@@ -2612,7 +2612,7 @@ const WindowMetrics_1 = require("../WindowMetrics");
 const systemInfo = (0, WindowMetrics_1.getWindowMetrics)();
 exports.baseConfig = {
     // 版本信息
-    version: 'v1.0.18',
+    version: 'v1.0.19',
     // 画布设置 (竖屏适配)
     screenWidth: systemInfo.windowWidth,
     screenHeight: systemInfo.windowHeight,
@@ -21948,6 +21948,22 @@ function drawCaveRockTrialExit(ctx) {
     ctx.fillText('试跑关卡 · 不写入案件和装备存档', 9, 17);
     ctx.restore();
 }
+},"/src/render/CaveSurfaceBudget":function(exports,require){"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.cropCaveSurface = cropCaveSurface;
+/** Crop only discarded room fragments, preserving the original sample grid exactly. */
+function cropCaveSurface(l, r, t, b, zoom, resolution, roomX, roomY, roomWidth, roomHeight) {
+    const width = Math.ceil((r - l) * zoom * resolution), height = Math.ceil((b - t) * zoom * resolution);
+    if (width <= 0 || height <= 0)
+        return null;
+    const stepX = (r - l) / width, stepY = (b - t) / height;
+    // One full source pixel guards fractional alpha coverage at the silhouette.
+    const x0 = Math.max(0, Math.floor((roomX - l) / stepX) - 1), x1 = Math.min(width, Math.ceil((roomX + roomWidth - l) / stepX) + 1);
+    const y0 = Math.max(0, Math.floor((roomY - t) / stepY) - 1), y1 = Math.min(height, Math.ceil((roomY + roomHeight - t) / stepY) + 1);
+    if (x1 <= x0 || y1 <= y0)
+        return null;
+    return { l: l + x0 * stepX, r: l + x1 * stepX, t: t + y0 * stepY, b: t + y1 * stepY, width: x1 - x0, height: y1 - y0 };
+}
 },"/src/render/DustMotes":function(exports,require){"use strict";
 // 悬浮尘埃系统
 // 尘埃是永久存在的环境元素，不使用粒子生命周期
@@ -23341,6 +23357,7 @@ exports.getImage = getImage;
 exports.isImageReady = isImageReady;
 exports.isImageFailed = isImageFailed;
 exports.registerImages = registerImages;
+exports.releaseImages = releaseImages;
 exports.getProcessedImage = getProcessedImage;
 const _entries = {};
 // 微信小游戏 wx.createImage / 浏览器 new Image 兼容
@@ -23420,6 +23437,21 @@ function isImageFailed(key) {
 function registerImages(entries) {
     for (const it of entries)
         registerImage(it.key, it.path);
+}
+/** Release only named transient scene assets; persistent home assets stay intact. */
+function releaseImages(keys) {
+    for (const key of keys) {
+        const e = _entries[key];
+        if (!e)
+            continue;
+        if (e.img) {
+            e.img.onload = null;
+            e.img.onerror = null;
+        }
+        e.img = null;
+        e.processed = {};
+        delete _entries[key];
+    }
 }
 // ===========================================================
 // 预处理：色键抠图
@@ -24044,7 +24076,6 @@ const PerfHUD_1 = require("../debug/PerfHUD");
 let _useWebGL = false;
 // --- 预生成岩石纹理 ---
 function initTextures() {
-    (0, RenderCaveRock_1.ensureCaveRockAssets)();
     // 初始化 WebGL 光照
     _useWebGL = (0, WebGLLight_1.initWebGLLight)();
     if (_useWebGL) {
@@ -24078,6 +24109,7 @@ function drawSplashes() {
 }
 // --- 主渲染函数 ---
 function draw() {
+    (0, RenderCaveRock_1.updateCaveRockResources)();
     (0, PerfHUD_1.profileBegin)('draw.sky');
     // 每帧开始时确保dpr缩放生效
     Canvas_1.ctx.setTransform(Canvas_1.dpr, 0, 0, Canvas_1.dpr, 0, 0);
@@ -25421,12 +25453,14 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.ensureCaveRockAssets = ensureCaveRockAssets;
 exports.drawCaveRock = drawCaveRock;
 exports.drawCaveRockBase = drawCaveRockBase;
+exports.updateCaveRockResources = updateCaveRockResources;
 exports.getCaveRockStats = getCaveRockStats;
 const config_1 = require("../core/config");
 const state_1 = require("../core/state");
 const Canvas_1 = require("./Canvas");
 const ImageAssets_1 = require("./ImageAssets");
 const RenderLight_1 = require("./RenderLight");
+const CaveSurfaceBudget_1 = require("./CaveSurfaceBudget");
 let scene = null, images = [], backImage = null, surface = null;
 let gl = null, program = null;
 let textures = [], beamTexture = null, buffer = null;
@@ -25437,8 +25471,10 @@ const ORIGIN = { x: 0, y: 0 };
 let roomWidth = 720, roomHeight = 1120, textureWidth = 864, textureHeight = 1344;
 let aa = true, fallback = false, inspection = false, overlay = false, surfaceOcclusion = true, projectionCorrection = true;
 let sampling = 'balanced', polyKey = '', beamKey = '', polyCache = [], surfaceMs = 0, gpuMs = null, uploads = 0, contextGeneration = 0;
-let initRetryAfter = 0;
+let initRetryAfter = 0, assetsRegistered = false, surfaceDraws = 0, cachedDraws = 0;
+let surfaceKey = '';
 function ensureCaveRockAssets() {
+    assetsRegistered = true;
     for (const suffix of ['albedo', 'normal', 'detail', 'back'])
         (0, ImageAssets_1.registerImage)('cave-rock-' + suffix, 'images/cave-rock/room-' + suffix + '.png');
 }
@@ -25463,6 +25499,7 @@ function syncCaveRock() {
         textureHeight = images[0].height;
         polyKey = '';
         beamKey = '';
+        surfaceKey = '';
         if (gl && !gl.isContextLost())
             uploadImages();
     }
@@ -25549,9 +25586,9 @@ function setup() {
                     delete uniforms[key];
             });
         if (typeof surface.addEventListener === 'function')
-            surface.addEventListener('webglcontextrestored', () => { gl = null; program = null; initGL(); });
+            surface.addEventListener('webglcontextrestored', () => { gl = null; program = null; surfaceKey = ''; beamKey = ''; initRetryAfter = 0; });
     }
-    if (!gl && Date.now() >= initRetryAfter) {
+    if ((!gl || !program) && Date.now() >= initRetryAfter) {
         try {
             initGL();
         }
@@ -25615,6 +25652,7 @@ function initGL() {
     timerExtension = gl.getExtension('EXT_disjoint_timer_query');
     lossExtension = gl.getExtension('WEBGL_lose_context');
     contextGeneration++;
+    surfaceKey = '';
 }
 function uploadImages() {
     if (!gl || !program || images.length !== 3)
@@ -25697,6 +25735,7 @@ function drawCaveRock(ctx, l, r, t, b, zoom) {
         gl = null;
         program = null;
         beamKey = '';
+        surfaceKey = '';
         gpuMs = null;
     }
     if (gl && program && !gl.isContextLost() && !fallback) {
@@ -25707,34 +25746,47 @@ function drawCaveRock(ctx, l, r, t, b, zoom) {
         t = Math.max(t, centerY - Canvas_1.logicH / (2 * zoom) - pad);
         b = Math.min(b, centerY + Canvas_1.logicH / (2 * zoom) + pad);
         const resolution = aa ? (sampling === 'economy' ? 1 : sampling === 'sharp' ? 2 : 1.5) : .6;
-        const w = Math.ceil((r - l) * zoom * resolution), h = Math.ceil((b - t) * zoom * resolution);
-        if (surface.width !== w)
-            surface.width = w;
-        if (surface.height !== h)
-            surface.height = h;
-        gl.viewport(0, 0, w, h);
-        gl.useProgram(program);
-        uploadBeam();
-        gl.uniform4f(location('viewport'), l, t, r - l, b - t);
-        gl.uniform2f(location('origin'), ORIGIN.x, ORIGIN.y);
-        gl.uniform2f(location('light'), state_1.player.x, state_1.player.y);
-        gl.uniform1f(location('angle'), state_1.player.angle);
-        gl.uniform1f(location('fov'), config_1.CONFIG.fov * Math.PI / 180);
-        gl.uniform1f(location('range'), config_1.CONFIG.lightRange);
-        gl.uniform1f(location('on'), state_1.state.flashlightOn === false ? 0 : 1);
-        gl.uniform1f(location('inspection'), inspection ? 1 : 0);
-        gl.uniform1f(location('aa'), aa ? 1 : 0);
-        gl.uniform2f(location('roomSize'), roomWidth, roomHeight);
-        gl.uniform1f(location('surfaceOcclusion'), surfaceOcclusion ? 1 : 0);
-        gl.uniform2f(location('selfGlow'), config_1.CONFIG.selfGlowRadius, config_1.CONFIG.selfGlowIntensity);
-        gl.uniform2f(location('perception'), config_1.CONFIG.ambientPerceptionRadius, config_1.CONFIG.ambientPerceptionIntensity);
-        gl.uniform1f(location('projectionCorrection'), projectionCorrection ? 1 : 0);
-        gl.clearColor(0, 0, 0, 0);
-        gl.clear(gl.COLOR_BUFFER_BIT);
-        const query = timerStart();
-        gl.drawArrays(gl.TRIANGLES, 0, 6);
-        timerEnd(query);
-        gl.flush();
+        const bounds = (0, CaveSurfaceBudget_1.cropCaveSurface)(l, r, t, b, zoom, resolution, ORIGIN.x, ORIGIN.y, roomWidth, roomHeight);
+        if (!bounds) {
+            surfaceMs = performance.now() - start;
+            return;
+        }
+        ({ l, r, t, b } = bounds);
+        const w = bounds.width, h = bounds.height;
+        const key = [l, r, t, b, w, h, state_1.player.x, state_1.player.y, state_1.player.angle, config_1.CONFIG.lightRange, config_1.CONFIG.fov, state_1.state.flashlightOn, config_1.CONFIG.selfGlowRadius, config_1.CONFIG.selfGlowIntensity, config_1.CONFIG.ambientPerceptionRadius, config_1.CONFIG.ambientPerceptionIntensity, inspection, aa, surfaceOcclusion, projectionCorrection, contextGeneration, ORIGIN.x, ORIGIN.y, roomWidth, roomHeight, config_1.CONFIG.quality.rayCount].join('/');
+        if (key !== surfaceKey) {
+            if (surface.width !== w)
+                surface.width = w;
+            if (surface.height !== h)
+                surface.height = h;
+            gl.viewport(0, 0, w, h);
+            gl.useProgram(program);
+            uploadBeam();
+            gl.uniform4f(location('viewport'), l, t, r - l, b - t);
+            gl.uniform2f(location('origin'), ORIGIN.x, ORIGIN.y);
+            gl.uniform2f(location('light'), state_1.player.x, state_1.player.y);
+            gl.uniform1f(location('angle'), state_1.player.angle);
+            gl.uniform1f(location('fov'), config_1.CONFIG.fov * Math.PI / 180);
+            gl.uniform1f(location('range'), config_1.CONFIG.lightRange);
+            gl.uniform1f(location('on'), state_1.state.flashlightOn === false ? 0 : 1);
+            gl.uniform1f(location('inspection'), inspection ? 1 : 0);
+            gl.uniform1f(location('aa'), aa ? 1 : 0);
+            gl.uniform2f(location('roomSize'), roomWidth, roomHeight);
+            gl.uniform1f(location('surfaceOcclusion'), surfaceOcclusion ? 1 : 0);
+            gl.uniform2f(location('selfGlow'), config_1.CONFIG.selfGlowRadius, config_1.CONFIG.selfGlowIntensity);
+            gl.uniform2f(location('perception'), config_1.CONFIG.ambientPerceptionRadius, config_1.CONFIG.ambientPerceptionIntensity);
+            gl.uniform1f(location('projectionCorrection'), projectionCorrection ? 1 : 0);
+            gl.clearColor(0, 0, 0, 0);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+            const query = timerStart();
+            gl.drawArrays(gl.TRIANGLES, 0, 6);
+            timerEnd(query);
+            gl.flush();
+            surfaceDraws++;
+            surfaceKey = key;
+        }
+        else
+            cachedDraws++;
         ctx.save();
         ctx.imageSmoothingEnabled = true;
         ctx.drawImage(surface, l, t, r - l, b - t);
@@ -25802,7 +25854,53 @@ function drawCaveRockBase(ctx) {
     }
     ctx.restore();
 }
-function getCaveRockStats() { return { loaded: images.length === 3, mode: gl && !gl.isContextLost() ? 'normal-map' : 'fallback', surfacePixels: surface ? surface.width * surface.height : 0, gpuSurfaceMs: gpuMs, surfaceCPUms: surfaceMs, textureBytes: textureWidth * textureHeight * 4 * 3, contextGeneration, beamUploads: uploads }; }
+function updateCaveRockResources() {
+    var _a;
+    const active = state_1.state.screen === 'mazeRescue' && !!((_a = state_1.state.mazeRescue) === null || _a === void 0 ? void 0 : _a.caveRockRoom);
+    if (active) {
+        ensureCaveRockAssets();
+        return;
+    }
+    if (!assetsRegistered && !images.length && !program)
+        return;
+    if (gl && !gl.isContextLost()) {
+        for (const tex of textures)
+            gl.deleteTexture(tex);
+        if (beamTexture)
+            gl.deleteTexture(beamTexture);
+        if (buffer)
+            gl.deleteBuffer(buffer);
+        if (program)
+            gl.deleteProgram(program);
+        if (timerExtension)
+            for (const q of queries)
+                timerExtension.deleteQueryEXT(q);
+    }
+    textures = [];
+    beamTexture = null;
+    buffer = null;
+    program = null;
+    queries = [];
+    timerExtension = null;
+    if (surface) {
+        surface.width = 1;
+        surface.height = 1;
+    }
+    scene = null;
+    images = [];
+    backImage = null;
+    polyCache = [];
+    polyKey = '';
+    beamKey = '';
+    surfaceKey = '';
+    gpuMs = null;
+    initRetryAfter = 0;
+    for (const name of Object.keys(uniforms))
+        delete uniforms[name];
+    (0, ImageAssets_1.releaseImages)(['albedo', 'normal', 'detail', 'back'].map(s => 'cave-rock-' + s));
+    assetsRegistered = false;
+}
+function getCaveRockStats() { return { loaded: images.length === 3, mode: program && gl && !gl.isContextLost() ? 'normal-map' : 'fallback', surfacePixels: program && surface ? surface.width * surface.height : 0, gpuSurfaceMs: gpuMs, surfaceCPUms: surfaceMs, textureBytes: textures.length * textureWidth * textureHeight * 4, decodedImageBytes: images.length ? textureWidth * textureHeight * 4 * (images.length + (backImage ? 1 : 0)) : 0, contextGeneration, beamUploads: uploads, surfaceDraws, cachedDraws }; }
 },"/src/render/RenderDiver":function(exports,require){"use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.drawDiver = drawDiver;

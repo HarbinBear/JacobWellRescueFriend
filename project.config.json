@@ -15,7 +15,11 @@
       { "type": "file", "value": "package-lock.json" },
       { "type": "file", "value": "tsconfig.json" },
       { "type": "file", "value": ".DS_Store" },
-      { "type": "file", "value": ".gitignore" }
+      { "type": "file", "value": ".gitignore" },
+      { "type": "folder", "value": "texture" },
+      { "type": "file", "value": "project.private.config.json" },
+      { "type": "file", "value": "package.json" },
+      { "type": "suffix", "value": ".glsl" }
     ],
     "include": []
   },

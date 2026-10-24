@@ -1,8 +1,9 @@
 import { CONFIG } from '../core/config';
 import { state, player } from '../core/state';
 import { logicW, logicH } from './Canvas';
-import { registerImage, getImage } from './ImageAssets';
+import { registerImage, getImage, releaseImages } from './ImageAssets';
 import { getLightPolygon } from './RenderLight';
+import { cropCaveSurface } from './CaveSurfaceBudget';
 
 let scene:any=null, images:any[]=[], backImage:any=null, surface:any=null;
 let gl:WebGLRenderingContext|null=null, program:WebGLProgram|null=null;
@@ -14,8 +15,10 @@ const ORIGIN={x:0,y:0};
 let roomWidth=720,roomHeight=1120,textureWidth=864,textureHeight=1344;
 let aa=true,fallback=false,inspection=false,overlay=false,surfaceOcclusion=true,projectionCorrection=true;
 let sampling='balanced',polyKey='',beamKey='',polyCache:any[]=[],surfaceMs=0,gpuMs:number|null=null,uploads=0,contextGeneration=0;
-let initRetryAfter=0;
+let initRetryAfter=0,assetsRegistered=false,surfaceDraws=0,cachedDraws=0;
+let surfaceKey='';
 export function ensureCaveRockAssets(){
+ assetsRegistered=true;
  for(const suffix of ['albedo','normal','detail','back'])registerImage('cave-rock-'+suffix,'images/cave-rock/room-'+suffix+'.png');
 }
 function syncCaveRock(){
@@ -27,7 +30,7 @@ function syncCaveRock(){
  if(scene!==next){
   scene=next;ORIGIN.x=scene.x;ORIGIN.y=scene.y;roomWidth=scene.width;roomHeight=scene.height;
   images=loaded.slice(0,3);backImage=loaded[3];textureWidth=images[0].width;textureHeight=images[0].height;
-  polyKey='';beamKey='';if(gl&&!gl.isContextLost())uploadImages();
+  polyKey='';beamKey='';surfaceKey='';if(gl&&!gl.isContextLost())uploadImages();
  }
  const scale=Math.max(.4,Math.min(.75,CONFIG.quality.scale||.5));sampling=scale<.6?'economy':'balanced';
  return true;
@@ -100,9 +103,9 @@ function setup() {
             beamKey = ''; gpuMs = null;
             for (const key of Object.keys(uniforms)) delete uniforms[key];
         });
-        if (typeof surface.addEventListener === 'function') surface.addEventListener('webglcontextrestored', () => { gl = null; program = null; initGL(); });
+        if (typeof surface.addEventListener === 'function') surface.addEventListener('webglcontextrestored', () => { gl=null;program=null;surfaceKey='';beamKey='';initRetryAfter=0; });
     }
-    if (!gl && Date.now() >= initRetryAfter) { try { initGL(); } catch(e) { console.warn('[CaveRock] surface fallback', e); gl=null; program=null; initRetryAfter=Date.now()+3000; } }
+    if ((!gl || !program) && Date.now() >= initRetryAfter) { try { initGL(); } catch(e) { console.warn('[CaveRock] surface fallback', e); gl=null; program=null; initRetryAfter=Date.now()+3000; } }
 }
 function location(name: string) {
     if (!(name in uniforms)) uniforms[name] = gl!.getUniformLocation(program!, name);
@@ -133,7 +136,7 @@ function initGL() {
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 512, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, beamBytes);
     gl.uniform1i(location('beam'), 3); beamKey = '';
     timerExtension = gl.getExtension('EXT_disjoint_timer_query'); lossExtension = gl.getExtension('WEBGL_lose_context');
-    contextGeneration++;
+    contextGeneration++;surfaceKey='';
 }
 function uploadImages() {
     if (!gl || !program || images.length !== 3) return;
@@ -183,28 +186,34 @@ function timerEnd(q: any) {
 export function drawCaveRock(ctx: CanvasRenderingContext2D, l: number, r: number, t: number, b: number, zoom: number) {
     if (!syncCaveRock()) return;
     const start = performance.now(); setup(); background(ctx);
-    if(gl && gl.isContextLost()){gl=null;program=null;beamKey='';gpuMs=null;}
+    if(gl && gl.isContextLost()){gl=null;program=null;beamKey='';surfaceKey='';gpuMs=null;}
     if (gl && program && !gl.isContextLost() && !fallback) {
         const centerX = (l + r) / 2, centerY = (t + b) / 2;
         const pad = (Math.max(0, state.fx.shake || 0) + 2) / zoom;
         l = Math.max(l, centerX - logicW / (2 * zoom) - pad); r = Math.min(r, centerX + logicW / (2 * zoom) + pad);
         t = Math.max(t, centerY - logicH / (2 * zoom) - pad); b = Math.min(b, centerY + logicH / (2 * zoom) + pad);
         const resolution = aa ? (sampling === 'economy' ? 1 : sampling === 'sharp' ? 2 : 1.5) : .6;
-        const w = Math.ceil((r - l) * zoom * resolution), h = Math.ceil((b - t) * zoom * resolution);
-        if (surface.width !== w) surface.width = w;
-        if (surface.height !== h) surface.height = h;
-        gl.viewport(0, 0, w, h); gl.useProgram(program); uploadBeam();
-        gl.uniform4f(location('viewport'), l, t, r - l, b - t);
-        gl.uniform2f(location('origin'), ORIGIN.x, ORIGIN.y); gl.uniform2f(location('light'), player.x, player.y);
-        gl.uniform1f(location('angle'), player.angle); gl.uniform1f(location('fov'), CONFIG.fov * Math.PI / 180);
-        gl.uniform1f(location('range'), CONFIG.lightRange); gl.uniform1f(location('on'), state.flashlightOn === false ? 0 : 1);
-        gl.uniform1f(location('inspection'), inspection ? 1 : 0); gl.uniform1f(location('aa'), aa ? 1 : 0);
-        gl.uniform2f(location('roomSize'), roomWidth, roomHeight); gl.uniform1f(location('surfaceOcclusion'), surfaceOcclusion ? 1 : 0);
-        gl.uniform2f(location('selfGlow'), CONFIG.selfGlowRadius, CONFIG.selfGlowIntensity);
-        gl.uniform2f(location('perception'), CONFIG.ambientPerceptionRadius, CONFIG.ambientPerceptionIntensity);
-        gl.uniform1f(location('projectionCorrection'), projectionCorrection ? 1 : 0);
-        gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
-        const query = timerStart(); gl.drawArrays(gl.TRIANGLES, 0, 6); timerEnd(query); gl.flush();
+        const bounds=cropCaveSurface(l,r,t,b,zoom,resolution,ORIGIN.x,ORIGIN.y,roomWidth,roomHeight);
+        if(!bounds){surfaceMs=performance.now()-start;return;}
+        ({l,r,t,b}=bounds);const w=bounds.width,h=bounds.height;
+        const key=[l,r,t,b,w,h,player.x,player.y,player.angle,CONFIG.lightRange,CONFIG.fov,state.flashlightOn,CONFIG.selfGlowRadius,CONFIG.selfGlowIntensity,CONFIG.ambientPerceptionRadius,CONFIG.ambientPerceptionIntensity,inspection,aa,surfaceOcclusion,projectionCorrection,contextGeneration,ORIGIN.x,ORIGIN.y,roomWidth,roomHeight,CONFIG.quality.rayCount].join('/');
+        if(key!==surfaceKey){
+            if (surface.width !== w) surface.width = w;
+            if (surface.height !== h) surface.height = h;
+            gl.viewport(0, 0, w, h); gl.useProgram(program); uploadBeam();
+            gl.uniform4f(location('viewport'), l, t, r - l, b - t);
+            gl.uniform2f(location('origin'), ORIGIN.x, ORIGIN.y); gl.uniform2f(location('light'), player.x, player.y);
+            gl.uniform1f(location('angle'), player.angle); gl.uniform1f(location('fov'), CONFIG.fov * Math.PI / 180);
+            gl.uniform1f(location('range'), CONFIG.lightRange); gl.uniform1f(location('on'), state.flashlightOn === false ? 0 : 1);
+            gl.uniform1f(location('inspection'), inspection ? 1 : 0); gl.uniform1f(location('aa'), aa ? 1 : 0);
+            gl.uniform2f(location('roomSize'), roomWidth, roomHeight); gl.uniform1f(location('surfaceOcclusion'), surfaceOcclusion ? 1 : 0);
+            gl.uniform2f(location('selfGlow'), CONFIG.selfGlowRadius, CONFIG.selfGlowIntensity);
+            gl.uniform2f(location('perception'), CONFIG.ambientPerceptionRadius, CONFIG.ambientPerceptionIntensity);
+            gl.uniform1f(location('projectionCorrection'), projectionCorrection ? 1 : 0);
+            gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+            const query = timerStart(); gl.drawArrays(gl.TRIANGLES, 0, 6); timerEnd(query); gl.flush();
+            surfaceDraws++;surfaceKey=key;
+        }else cachedDraws++;
         ctx.save(); ctx.imageSmoothingEnabled = true; ctx.drawImage(surface, l, t, r - l, b - t); ctx.restore();
     } else {
         ctx.save(); ctx.globalAlpha = .035; ctx.drawImage(images[0], ORIGIN.x, ORIGIN.y, roomWidth, roomHeight); ctx.restore();
@@ -240,4 +249,19 @@ export function drawCaveRockBase(ctx:CanvasRenderingContext2D){
  for(const wall of maze.mazeWalls){const p=wall.rockPolygon;if(!p)continue;ctx.beginPath();p.forEach((v:any,i:number)=>i?ctx.lineTo(v.x,v.y):ctx.moveTo(v.x,v.y));ctx.closePath();ctx.fill();}
  ctx.restore();
 }
-export function getCaveRockStats(){return {loaded:images.length===3,mode:gl&&!gl.isContextLost()?'normal-map':'fallback',surfacePixels:surface?surface.width*surface.height:0,gpuSurfaceMs:gpuMs,surfaceCPUms:surfaceMs,textureBytes:textureWidth*textureHeight*4*3,contextGeneration,beamUploads:uploads};}
+export function updateCaveRockResources(){
+ const active=state.screen==='mazeRescue'&&!!state.mazeRescue?.caveRockRoom;
+ if(active){ensureCaveRockAssets();return;}
+ if(!assetsRegistered&&!images.length&&!program)return;
+ if(gl&&!gl.isContextLost()){
+  for(const tex of textures)gl.deleteTexture(tex);
+  if(beamTexture)gl.deleteTexture(beamTexture);if(buffer)gl.deleteBuffer(buffer);if(program)gl.deleteProgram(program);
+  if(timerExtension)for(const q of queries)timerExtension.deleteQueryEXT(q);
+ }
+ textures=[];beamTexture=null;buffer=null;program=null;queries=[];timerExtension=null;
+ if(surface){surface.width=1;surface.height=1;}
+ scene=null;images=[];backImage=null;polyCache=[];polyKey='';beamKey='';surfaceKey='';gpuMs=null;initRetryAfter=0;
+ for(const name of Object.keys(uniforms))delete uniforms[name];
+ releaseImages(['albedo','normal','detail','back'].map(s=>'cave-rock-'+s));assetsRegistered=false;
+}
+export function getCaveRockStats(){return {loaded:images.length===3,mode:program&&gl&&!gl.isContextLost()?'normal-map':'fallback',surfacePixels:program&&surface?surface.width*surface.height:0,gpuSurfaceMs:gpuMs,surfaceCPUms:surfaceMs,textureBytes:textures.length*textureWidth*textureHeight*4,decodedImageBytes:images.length?textureWidth*textureHeight*4*(images.length+(backImage?1:0)):0,contextGeneration,beamUploads:uploads,surfaceDraws,cachedDraws};}

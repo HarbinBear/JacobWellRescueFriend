@@ -7,7 +7,7 @@ const systemInfo = getWindowMetrics();
 
 export const baseConfig = {
     // 版本信息
-    version: 'v1.0.18',
+    version: 'v1.0.19',
 
     // 画布设置 (竖屏适配)
     screenWidth: systemInfo.windowWidth,

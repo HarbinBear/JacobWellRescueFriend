@@ -1,5 +1,5 @@
 import { CONFIG } from '../core/config';
-import { ensureCaveRockAssets,drawCaveRock,drawCaveRockBase } from './RenderCaveRock';
+import { updateCaveRockResources,drawCaveRock,drawCaveRockBase } from './RenderCaveRock';
 import { drawCaveRockTrialExit } from './CaveRockTrialUI';
 import { state, player, particles, touches } from '../core/state';
 import { canvas, ctx, dpr, logicW, logicH } from './Canvas';
@@ -39,7 +39,6 @@ let _useWebGL = false;
 
 // --- 预生成岩石纹理 ---
 export function initTextures() {
-    ensureCaveRockAssets();
     // 初始化 WebGL 光照
     _useWebGL = initWebGLLight();
     if (_useWebGL) {
@@ -75,6 +74,7 @@ function drawSplashes() {
 
 // --- 主渲染函数 ---
 export function draw() {
+    updateCaveRockResources();
     profileBegin('draw.sky');
     // 每帧开始时确保dpr缩放生效
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);

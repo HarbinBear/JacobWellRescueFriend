@@ -9,6 +9,7 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
   async function click(x,y){await b.click(rect.x+x/375*rect.w,rect.y+y/667*rect.h);}
   async function shot(name){const s=await b.evaluate('document.getElementById("game").toDataURL("image/png")');fs.writeFileSync(path.join(out,name+'.png'),Buffer.from(s.split(',')[1],'base64'));}
   const before=await b.evaluate('JSON.stringify({storage:{...localStorage},ex:DeepTapeGame.state.extraction,story:DeepTapeGame.state.story2})');
+  assert.equal(await b.evaluate('DeepTapeGame.cave.stats().loaded'),false,'Main menu must not preload cave artwork');
   await shot('menu');await click(187.5,554);
   assert.equal(await b.evaluate('DeepTapeGame.state.mazeRescue.rockTrial'),true,'Native menu must enter the actual trial');
   await shot('rewind');
@@ -46,7 +47,8 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
   const ropeCheck=await b.evaluate('(()=>{const g=DeepTapeGame,m=g.state.mazeRescue,r=g.state.rope.ropes[0];return r.path.length>1&&r.path.slice(1).every((p,i)=>g.cave.geometry.rockSegmentClear(m.mazeWalls,r.path[i],p,0))})()');assert(ropeCheck,'Actual placed rope must not cut through the drawn rock');await shot('rope-completed');
   await click(315,24);assert.equal(await b.evaluate('DeepTapeGame.state.screen'),'menu');
   const restored=await b.evaluate('JSON.stringify({storage:{...localStorage},ex:DeepTapeGame.state.extraction,story:DeepTapeGame.state.story2})');assert.equal(restored,before,'Exiting actual trial must restore inventory/story/storage');
-  await shot('returned-menu');const report={phases,initial,oxygenAfter:after,movement:moved,collision,errors:b.errors,scope:'Unmodified actual game simulation from native menu; no paused review package; desktop Chrome, not WeChat phone'};
+  await wait(100);const released=await b.evaluate('DeepTapeGame.cave.stats()');assert.equal(released.loaded,false);assert.equal(released.textureBytes,0);assert.equal(released.decodedImageBytes,0);
+  await shot('returned-menu');const report={phases,initial,oxygenAfter:after,movement:moved,collision,released,errors:b.errors,scope:'Unmodified actual game simulation from native menu; no paused review package; desktop Chrome, not WeChat phone'};
   fs.writeFileSync(path.join(out,'report.json'),JSON.stringify(report,null,2));assert.equal(b.errors.length,0);console.log(JSON.stringify({phases,initial,oxygenAfter:after,moved,errors:b.errors},null,2));
  }finally{await b.close();}
 })().catch(e=>{console.error(e);process.exitCode=1});
