@@ -12,6 +12,12 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
    const site=await b.evaluate('CaveReview.site('+i+')');assert.equal(site.blocked,false);await wait(350);await shot('site-'+i);
    const check=await b.evaluate('CaveReview.check()'),stats=await b.evaluate('CaveReview.stats()');assert.equal(check.mismatches,0);assert.equal(check.playerBlocked,false);assert(check.rayError<1e-6);assert.equal(stats.glError,0);sites.push({site,check,stats});
   }
+  const cachedBefore=await b.evaluate('CaveReview.stats()');
+  await b.evaluate('CaveReview.draw();CaveReview.draw();CaveReview.draw()');
+  assert.equal((await b.evaluate('CaveReview.stats()')).beamUploads,cachedBefore.beamUploads,'Stationary light must not upload again');
+  assert(cachedBefore.surfacePixels<650000,'Offscreen surface work should be clipped');
+  await b.evaluate('CaveReview.projection(false)');await wait(200);await shot('projection-off');
+  await b.evaluate('CaveReview.projection(true)');await wait(200);await shot('projection-on');
   await b.evaluate('CaveReview.site(0)');const initial=await b.evaluate('({x:CaveReview.player.x,y:CaveReview.player.y,angle:CaveReview.player.angle})');
   const move=await b.evaluate('CaveReview.move(-500,0)');assert.equal(move.blocked,false);assert(move.x<initial.x);assert(move.x>initial.x-500);await shot('movement-stopped-at-wall');
   await b.evaluate('CaveReview.site(0)');const on=await shot('light-on');await b.evaluate('CaveReview.state.flashlightOn=false');await wait(200);const off=await shot('light-off');assert.notEqual(on,off);await b.evaluate('CaveReview.state.flashlightOn=true');
@@ -24,7 +30,11 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
   }
   await b.evaluate('CaveReview.site(0);CaveReview.sampling("economy")');await wait(250);assert.equal(await b.evaluate('CaveReview.config.quality.skipOcclusion'),false);await shot('economy');await b.evaluate('CaveReview.sampling("balanced")');
   await b.evaluate('CaveReview.fallback(true)');await wait(250);await shot('fallback');assert.equal(await b.evaluate('CaveReview.stats().mode'),'albedo-fallback');await b.evaluate('CaveReview.fallback(false)');await wait(200);
+  const generation=await b.evaluate('CaveReview.stats().contextGeneration');
+  const uploads=await b.evaluate('CaveReview.stats().beamUploads');
   assert(await b.evaluate('CaveReview.contextLoss()'));await wait(300);await shot('context-loss');assert.equal(await b.evaluate('CaveReview.stats().mode'),'albedo-fallback');assert(await b.evaluate('CaveReview.contextLoss(true)'));await wait(500);await shot('context-restored');assert.equal(await b.evaluate('CaveReview.stats().mode'),'webgl1-normal');assert.equal(await b.evaluate('CaveReview.stats().glError'),0);
+  assert((await b.evaluate('CaveReview.stats().contextGeneration'))>generation);
+  assert((await b.evaluate('CaveReview.stats().beamUploads'))>uploads,'Restoration must refill beam texture without a manual cache reset');
   const q=a=>{a.sort((x,y)=>x-y);return{count:a.length,median:a[Math.floor(a.length*.5)],p95:a[Math.floor(a.length*.95)],max:a[a.length-1]}};
   const gpu=timing.filter(t=>t.stats.gpuSurfaceMs!==null).map(t=>t.stats.gpuSurfaceMs);
   const report={sites,colliderMovement:move,aimingTimings:{drawCPU:q(timing.map(t=>t.drawCPU)),surfaceGPU:gpu.length?q(gpu):null},final:await b.evaluate('CaveReview.stats()'),errors:b.errors,scope:'actual game-source isolated single-room art experiment, same diver/HUD and light pipeline; art acceptance not claimed',notValidated:['Full gameplay and rope','WeChat/WebKit phone','Full procedural map and peak memory','Physically complete lighting; painted AO and coarse geometry normals differ at fine scale']};

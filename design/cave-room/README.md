@@ -52,3 +52,29 @@ node design/cave-room/build.cjs
 正常画面只用游戏手电和原有近身光参数，不增设摄影棚灯。研究入口暂停正式游戏模拟，方向键移动只验证同一轮廓的身体碰撞，不代表完整绳索、救援、全图地图或手机性能。
 
 后续保留此基线，优先改善细部纹理与法线对应、岩块节奏、远景层次和资源开销。不要又退回平面换滤镜，不在未经对照的情况下直接替换正式全图。
+
+## 基线之后的小步优化
+
+已保存基线提交 `60fed3e`。后续优化不改该提交、`assets/` 或 `reference/`，保留原来的构图、配色和贴图。
+
+本轮修正烘焙投影 `P(x,y,z)=(x+.18z,y-.26z)` 后的法线受光坐标。手电光锥与实体仍在同一2D几何中，只有岩体表面光向还原到对应几何坐标；不是声称绘制纹理和所有细法线已完全一致。
+
+表面只计算屏幕可见范围加震动/采样安全边，平衡档表面像素从约112万减少到约57万，未降低屏幕内采样密度。GPU计时波动较大，因此不把像素减少直接说成手机帧率提升。
+
+GPU uniform位置缓存，射线距离纹理分配一次后局部更新；静止手电不重复上传。上下文丢失后自动清理资源缓存和计时，恢复时重新填充贴图，不依赖调试接口手工清缓存。另修正异步加载远景导致的旧请求覆盖新场景风险。
+
+资产与投影校验：
+
+```sh
+python3 design/cave-room/check_assets.py
+```
+
+单独输出优化预览，不覆盖旧目录：
+
+```sh
+node design/cave-room/build.cjs node_modules/.cache/cave-room-refined
+node design/cave-room/review.cjs node_modules/.cache/cave-room-refined
+python3 design/cave-room/summarize.py node_modules/.cache/cave-room-refined
+```
+
+构建先复制保存的参照图，浏览器检查与整理命令会更新输出目录的当前画面，`reference/` 始终保持基线不动。图库不是自动把旧图包装成优化后的新图。
