@@ -25,10 +25,10 @@ edit('/src/logic/MazeLogic','export function updateMaze() {','export function up
 const distanceOld='    float texU = (t * u_polyCount + 0.5) / POLY_TEX_SIZE;\n    vec4 s = texture2D(u_polyTex, vec2(texU, 0.25));\n    return s.r * u_maxDist;';
 const distanceNew='    float index=clamp(t,0.0,1.0)*max(0.0,u_polyCount-1.0);\n    float i=floor(index);\n    vec4 a=texture2D(u_polyTex,vec2((i+0.5)/POLY_TEX_SIZE,0.25));\n    vec4 b=texture2D(u_polyTex,vec2((min(u_polyCount-1.0,i+1.0)+0.5)/POLY_TEX_SIZE,0.25));\n    return mix(a.r,b.r,fract(index))*u_maxDist;';
 for(const name of ['maskFrag','volumetricFrag']){
- let shader=fs.readFileSync(path.join(root,'src/render/shaders/'+name+'.glsl'),'utf8');if(!shader.includes(distanceOld))throw Error('Shader distance anchor '+name);shader=shader.replace(distanceOld,distanceNew);
+ let shader=fs.readFileSync(path.join(root,'src/render/shaders/'+name+'.glsl'),'utf8');if(!shader.includes(distanceOld)&&!shader.includes(distanceNew))throw Error('Shader distance anchor '+name);shader=shader.replace(distanceOld,distanceNew);
  if(name==='maskFrag'){
-  const a=shader.indexOf('    // 被墙壁截断处的羽化'),b=shader.indexOf('    // 径向衰减',a);if(a<0||b<a)throw Error('Mask feather anchor');
-  shader=shader.slice(0,a)+'    // Continuous at the blocker; no abrupt 1.0 -> 0.5 brightness jump.\n    float occFade=1.0-smoothstep(occDist-1.0,occDist+featherDist,dist);\n    \n'+shader.slice(b);
+  const a=shader.indexOf('    // 被墙壁截断处的羽化'),b=shader.indexOf('    // 径向衰减',a);if(a>=0&&b<a)throw Error('Mask feather anchor');
+  if(a>=0)shader=shader.slice(0,a)+'    // Continuous at the blocker; no abrupt 1.0 -> 0.5 brightness jump.\n    float occFade=1.0-smoothstep(occDist-1.0,occDist+featherDist,dist);\n    \n'+shader.slice(b);
  }
  const exported=name==='maskFrag'?'MASK_FRAG_SRC':'VOLUMETRIC_FRAG_SRC';
  modules.set('/src/render/shaders/'+name+'.glsl','export const '+exported+'='+JSON.stringify(shader)+';');

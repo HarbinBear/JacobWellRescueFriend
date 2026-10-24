@@ -44,6 +44,7 @@ export function hasExtractionSave(): boolean {
  * （成功撤离会自动入仓库，死亡撤离会清空，本就不该跨 session 保留）。
  */
 export function saveExtractionProgress(): boolean {
+    if(state.mazeRescue?.rockTrial)return false;
     const ex = getExtractionState();
     if (!ex) {
         console.warn('[ExtractionSave] state.extraction 未初始化，跳过保存');
@@ -136,6 +137,7 @@ export function loadExtractionProgress(): boolean {
  * 清除撤离存档（GM 调试用 / 玩家主动重置经济）
  */
 export function clearExtractionSave(): void {
+    if(state.mazeRescue?.rockTrial)return;
     removeKey(EXTRACTION_SAVE_KEY);
     (state as any).extraction = getInitialExtractionState();
     console.log('[ExtractionSave] 撤离存档已清除并重置为新手起步状态');

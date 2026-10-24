@@ -74,6 +74,8 @@ import { getProgressBackBtnRect, getProgressCardRect, getUnlockedScenes } from '
 import { clearStoryProgress } from '../story/StoryProgressSave';
 import { clearMazeSave } from '../logic/MazeSave';
 import { playSFX } from '../audio/AudioManager';
+import { startCaveRockTrial,exitCaveRockTrial } from '../logic/MazeLogic';
+import { isCaveRockTrialExitHit } from '../render/CaveRockTrialUI';
 
 // 放弃救援按钮长按状态
 let abandonTouchId = null;
@@ -100,9 +102,12 @@ const _homeTouchStartX: { [id: number]: number } = {};
 const _homeTouchStartY: { [id: number]: number } = {};
 const _homeTouchMoved: { [id: number]: boolean } = {};
 
+function returnToMainMenu(){if(state.mazeRescue?.rockTrial)exitCaveRockTrial();else state.screen='menu';}
+
 // 主菜单按钮 → 行为
 function handleMenuButton(id: MenuButtonId, onMaze?: () => void, onMazeDive?: (kind: string) => void) {
     switch (id) {
+        case 'rockTrial': startCaveRockTrial();return;
         case 'dive':
             if (onMaze && onMazeDive) {
                 onMaze();
@@ -275,7 +280,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
 
             if(state.screen !== 'play' && !(state.screen === 'mazeRescue' && state.mazeRescue && state.mazeRescue.phase === 'play')) {
                 // 旧主线 ending 分支已废弃。
-                if(e.code === 'Space' && state.screen !== 'mazeRescue') state.screen = 'menu';
+                if(e.code === 'Space' && state.screen !== 'mazeRescue') returnToMainMenu();
                 return;
             }
             
@@ -303,6 +308,8 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
 
     wx.onTouchStart((res) => {
         warmUpAdaptiveMusic();
+        const trialTouch=res.changedTouches?.[0]||res.touches[res.touches.length-1];
+        if(trialTouch && isCaveRockTrialExitHit(trialTouch.clientX,trialTouch.clientY)){exitCaveRockTrial();return;}
         if (state.screen === 'mazeRescue' && state.mazeRescue &&
             ['tape_rewind', 'tape_play'].indexOf(state.mazeRescue.phase) >= 0) return;
 
@@ -490,14 +497,14 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
             // 竞技场死亡结算页面：等待 2 秒后可点击返回主菜单
             if (state.screen === 'fishArena' && state.fishArena && state.fishArena.phase === 'dead') {
                 if (state.fishArena.deadTimer >= 120) {
-                    state.screen = 'menu';
+                    returnToMainMenu();
                     state.fishArena = null;
                 }
                 return;
             }
             // 旧主线 ending 分支已废弃。
             // 游戏结束或失败，点击返回主菜单
-            state.screen = 'menu';
+            returnToMainMenu();
             return;
             } // else 结束
         }
@@ -850,7 +857,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                 const buttons = getTapeEntryButtons();
                 const hit = (r: any) => touch.clientX >= r.x && touch.clientX <= r.x + r.w && touch.clientY >= r.y && touch.clientY <= r.y + r.h;
                 if (buttons.retry.enabled && hit(buttons.retry)) retryAdaptiveMusic();
-                else if (buttons.back.enabled && hit(buttons.back)) { resetAdaptiveMusic(); state.screen = 'menu'; }
+                else if (buttons.back.enabled && hit(buttons.back)) { resetAdaptiveMusic(); returnToMainMenu(); }
             }
             bcdReleaseAll();
             return;
@@ -1267,7 +1274,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                 // 这里用稍宽松的 hit-test 提高可点性
                 if (tx >= 8 && tx <= 92 && ty >= 56 && ty <= 96) {
                     playSFX('uiSecondary');
-                    state.screen = 'menu';
+                    returnToMainMenu();
                     state.mazeRescue = null;
                     return;
                 }
@@ -1407,7 +1414,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
             const back = getProgressBackBtnRect();
             if (tx >= back.x && tx <= back.x + back.w && ty >= back.y && ty <= back.y + back.h) {
                 playSFX('uiSecondary');
-                state.screen = 'menu';
+                returnToMainMenu();
                 return;
             }
 

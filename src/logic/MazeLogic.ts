@@ -6,6 +6,9 @@ import { updateRescueTow } from './RescueTow';
 import { CONFIG } from '../core/config';
 import { state, player, particles, input, touches } from '../core/state';
 import { generateMazeMap } from '../world/map';
+import { createCaveRockTrialMap } from '../world/CaveRockTrial';
+import { ensureExtractionState,restoreLoadoutAfterDive } from '../extraction';
+import { resetAdaptiveMusic } from '../audio/AdaptiveMusic';
 import { getMazeMainThemeConfig, getMazeSceneThemeKeyByIndex } from '../world/mazeScene';
 import { StoryManager } from '../story/StoryManager';
 import { enterHomeScene } from '../story/HomeScene';
@@ -66,10 +69,10 @@ function buildCaseNumberFromSeed(seed: number): string {
 }
 
 // 读档只恢复案件进度；每次入场和下潜都从洞口出发。
-function placePlayerAtMazeEntrance(maze: { exitX: number; mazeTileSize: number }) {
+function placePlayerAtMazeEntrance(maze: { exitX: number; mazeTileSize: number; rockTrial?:boolean; spawnX?:number; spawnY?:number }) {
     const wallThick = CONFIG.maze.wallThickness || 5;
-    player.x = maze.exitX;
-    player.y = (wallThick + 1) * maze.mazeTileSize + maze.mazeTileSize / 2;
+    player.x = maze.rockTrial?maze.spawnX!:maze.exitX;
+    player.y = maze.rockTrial?maze.spawnY!:(wallThick + 1) * maze.mazeTileSize + maze.mazeTileSize / 2;
     player.vx = 0;
     player.vy = 0;
     player.angle = Math.PI / 2;
@@ -82,12 +85,13 @@ function placePlayerAtMazeEntrance(maze: { exitX: number; mazeTileSize: number }
 // 默认行为：优先尝试读取本地存档；读档成功则直接恢复到岸上阶段，不生成新地图。
 // 读档失败（无存档/版本不兼容/数据损坏）才走原来的流程生成新地图。
 // =============================================
-export function resetMazeLogic() {
+export function resetMazeLogic(rockTrial=false) {
+    if(rockTrialSnapshot && !rockTrial)exitCaveRockTrial();
     resetDriveInput(true);
     // === 优先尝试读取本地存档 ===
     // 注意：loadMazeProgress 成功时会直接把 state.mazeRescue / state.rope.ropes / state.markers
     // 恢复到岸上阶段；这里只需要补上相机、屏幕模式等与 state.mazeRescue 无关的运行态。
-    if (loadMazeProgress() && state.mazeRescue) {
+    if (!rockTrial && loadMazeProgress() && state.mazeRescue) {
         // 运行态杂项清理（这些字段不在存档里，或者每次进场都应该重置）
         player.silt = 0;
         player.vx = 0;
@@ -138,7 +142,7 @@ export function resetMazeLogic() {
             const fishDensSeed = ((state.mazeRescue.seed >>> 0) ^ 0xDEADBEEF) >>> 0;
             setActiveSeededRandom(fishDensSeed);
             try {
-                state.mazeRescue.fishDens = generateFishDens();
+                state.mazeRescue.fishDens = rockTrial?[]:generateFishDens();
             } finally {
                 clearActiveSeededRandom();
             }
@@ -237,7 +241,7 @@ export function resetMazeLogic() {
     };
 
     // 生成迷宫地图
-    const mazeData = generateMazeMap();
+    const mazeData = rockTrial?createCaveRockTrialMap():generateMazeMap();
 
     // 初始化相机
     state.camera = {
@@ -307,6 +311,9 @@ export function resetMazeLogic() {
         abandonTouchId: null,
         caseResultTimer: 0,
         seed: mazeData.seed,
+        rockTrial,
+        caveRockRoom: rockTrial?(mazeData as any).caveRockRoom:undefined,
+        spawnX: mazeData.spawnX,spawnY:mazeData.spawnY,
         mazeMap: mazeData.mazeMap,
         mazeWalls: mazeData.mazeWalls,
         mazeExplored: mazeData.mazeExplored,
@@ -353,19 +360,19 @@ export function resetMazeLogic() {
     const fishDensSeed = (mazeData.seed ^ 0xDEADBEEF) >>> 0;
     setActiveSeededRandom(fishDensSeed);
     try {
-        state.mazeRescue.fishDens = generateFishDens();
+        state.mazeRescue.fishDens = rockTrial?[]:generateFishDens();
     } finally {
         clearActiveSeededRandom();
     }
 
     // 氧气瓶：新地图新 seed，consumedTankIds 清空，全量生成
     state.mazeRescue.consumedTankIds = [];
-    state.mazeRescue.oxygenTanks = buildOxygenTanksForMaze(mazeData.seed);
+    state.mazeRescue.oxygenTanks = rockTrial?[]:buildOxygenTanksForMaze(mazeData.seed);
     state.mazeRescue.oxygenFeedback = createOxygenFeedback();
 
     // 图鉴物件：新地图新 seed，discoveredRelicIds 清空，按主 seed 派生生成
     // codexKinds 是"总图鉴"跨关累计，使用前面保存的 preservedCodexKinds 恢复
-    (state.mazeRescue as any).relics = buildRelicsForMaze(mazeData.seed);
+    (state.mazeRescue as any).relics = rockTrial?[]:buildRelicsForMaze(mazeData.seed);
     (state.mazeRescue as any).discoveredRelicIds = [];
     (state.mazeRescue as any).codexKinds = preservedCodexKinds;
     (state.mazeRescue as any).codexSelectedKind = null;
@@ -516,12 +523,12 @@ export function startMazeDive(diveType: string) {
     state.fx.shake = 0;
     // 每次下潜补齐全部气瓶；同一 seed 保持位置、数量、补给量和外观一致。
     maze.consumedTankIds = [];
-    maze.oxygenTanks = buildOxygenTanksForMaze(maze.seed);
+    maze.oxygenTanks = maze.rockTrial?[]:buildOxygenTanksForMaze(maze.seed);
     maze.oxygenFeedback = createOxygenFeedback();
 
     // 生成迷宫食人鱼（按聚集点分布，每个聚集点 denFishCountMin~denFishCountMax 条）
     state.fishEnemies = [];
-    if (CONFIG.maze.fishEnabled && maze.fishDens && maze.fishDens.length > 0) {
+    if (!maze.rockTrial && CONFIG.maze.fishEnabled && maze.fishDens && maze.fishDens.length > 0) {
         const perMin = (CONFIG.maze as any).denFishCountMin || 2;
         const perMax = (CONFIG.maze as any).denFishCountMax || 6;
         for (const den of maze.fishDens) {
@@ -531,7 +538,7 @@ export function startMazeDive(diveType: string) {
                 state.fishEnemies.push(createFishEnemy(pos.x, pos.y, den.x, den.y, den.radius));
             }
         }
-    } else if (CONFIG.maze.fishEnabled) {
+    } else if (!maze.rockTrial && CONFIG.maze.fishEnabled) {
         // 兜底：如果没有聚集点，退回旧的随机分布（保持兼容）
         const count = CONFIG.maze.fishCountMin + Math.floor(Math.random() * (CONFIG.maze.fishCountMax - CONFIG.maze.fishCountMin + 1));
         for (let i = 0; i < count; i++) {
@@ -801,6 +808,7 @@ export function returnToShore() {
 // 触发入口：救援成功结算页的"下一局"按钮
 // =============================================
 export function replayMazeLogic() {
+    if(state.mazeRescue?.rockTrial){startCaveRockTrial();return;}
     // 先清掉旧存档，后续 resetMazeLogic 读档会读不到，自然进入新地图生成分支
     clearMazeSave();
     resetMazeLogic();
@@ -845,6 +853,7 @@ export function abandonCase() {
 // 等价于 replayMazeLogic，但语义上是叙事动作而非重玩按钮
 // =============================================
 export function acceptNewCase() {
+    if(state.mazeRescue?.rockTrial){exitCaveRockTrial();return;}
     clearMazeSave();
     resetMazeLogic();
 }
@@ -874,6 +883,7 @@ export function stayInResolvedCase() {
 // 由 HomeScene 在入睡黑场结束后处理（见 HomeScene.returnToCampNextDay）。
 // =============================================
 export function goHome() {
+    if(state.mazeRescue?.rockTrial){exitCaveRockTrial();return;}
     if (!state.mazeRescue) return;
     saveMazeProgress(); // 进家之前先把营地进度落盘
     enterHomeScene();
@@ -1464,4 +1474,29 @@ export function updateMaze() {
     if (state.fishBite && state.fishBite.active && state.fishBite.phase === 'dead') {
         // updateFishBiteState 内部会处理迷宫模式的死亡逻辑（设置 surfacing）
     }
+}
+
+// Real gameplay trial: temporary copies isolate progression, inventory and case data.
+let rockTrialSnapshot:{maze:any;rope:any;markers:any;extraction:any;story2:any}|null=null;
+export function startCaveRockTrial(){
+ if(rockTrialSnapshot)exitCaveRockTrial();
+ const ex=ensureExtractionState();
+ rockTrialSnapshot={maze:state.mazeRescue,rope:state.rope,markers:state.markers,extraction:ex,story2:state.story2};
+ (state as any).extraction=JSON.parse(JSON.stringify(ex));
+ state.story2=JSON.parse(JSON.stringify(state.story2));
+ state.markers=[];
+ resetMazeLogic(true);
+ state.mazeRescue!.briefingShown=true;
+ state.mazeRescue!.caseNumber='岩体试跑 · 断冠双岔洞';
+ startMazeDive('scout');
+ const room=state.mazeRescue!.caveRockRoom;
+ player.angle=player.targetAngle=input.targetAngle=Math.atan2(room.y+room.aim[1]-player.y,room.x+room.aim[0]-player.x);
+}
+export function exitCaveRockTrial(){
+ if(!rockTrialSnapshot)return;
+ resetDriveInput(true);releaseBCDControls();resetBreathSystem();resetBreathO2Consumer();restoreLoadoutAfterDive();resetAdaptiveMusic();
+ const original=rockTrialSnapshot;rockTrialSnapshot=null;
+ (state as any).extraction=original.extraction;state.story2=original.story2;state.mazeRescue=original.maze;
+ state.rope=original.rope;state.markers=original.markers;state.npc.active=false;state.fishEnemies=[];state.fishBite=null;
+ particles.length=0;state.screen='menu';
 }

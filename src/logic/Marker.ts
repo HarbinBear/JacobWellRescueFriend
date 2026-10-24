@@ -1,6 +1,7 @@
 import { CONFIG } from '../core/config';
 import { state, player, input } from '../core/state';
 import { findNearestWall } from './Rope';
+import { closestRockPoint } from '../world/RockGeometry';
 import { pathLength, samplePolyline } from './Pathfinding';
 import { findNearbyOxygenTank, startInstallTank, cancelInstallTank } from './OxygenTank';
 // 撤离玩法：水下战利品拾取轮盘上下文（接入点见 detectWheelContext / executeWheelAction）
@@ -78,9 +79,10 @@ export function getMarkers(): Marker[] {
 /** 在岩石上放置标记 */
 export function placeWallMarker(type: MarkerType, wall: any): Marker | null {
     if (!wall) return null;
-    const angle = Math.atan2(player.y - wall.y, player.x - wall.x);
-    const surfaceX = wall.x + Math.cos(angle) * wall.r;
-    const surfaceY = wall.y + Math.sin(angle) * wall.r;
+    const point=closestRockPoint(wall,player.x,player.y);
+    const angle = wall.rockPolygon?Math.atan2(player.y-point.y,player.x-point.x):Math.atan2(player.y-wall.y,player.x-wall.x);
+    const surfaceX = point.x;
+    const surfaceY = point.y;
 
     // 检查该岩石上是否已有标记，如果有则替换
     const markers = getMarkers();

@@ -3,6 +3,7 @@ import { state } from '../core/state';
 import { getActiveMapContext } from '../world/Visibility';
 export { isLineOfSight } from '../world/Visibility';
 import { getMazeThemeColorByCell } from './RenderMazeScene';
+import { rayHitsRock } from '../world/RockGeometry';
 
 // 射线-圆相交检测
 export function rayCircleIntersect(ox: number, oy: number, dx: number, dy: number, cx: number, cy: number, cr: number): number {
@@ -89,7 +90,10 @@ export function getLightPolygon(sx: number, sy: number, angle: number, maxDist: 
     let fovRad = fovDeg * Math.PI / 180;
     let startAngle = angle - fovRad/2;
     let rays = (CONFIG as any).quality?.rayCount ?? CONFIG.rayCount ?? 360;
+    const rockTrial=state.screen==='mazeRescue' && !!state.mazeRescue?.caveRockRoom;
+    if(rockTrial)rays=Math.min(360,Math.max(128,rays));
     let step = fovRad / rays;
+    if(rockTrial){const walls=state.mazeRescue!.mazeWalls;for(let i=0;i<=rays;i++){const a=startAngle+i*step,dx=Math.cos(a),dy=Math.sin(a);let d=maxDist;for(const wall of walls)d=rayHitsRock(wall,sx,sy,dx,dy,d);points.push({x:sx+dx*d,y:sy+dy*d,dist:d});}return points;}
 
     // ---- 低档跳过遮挡计算（low 档位最贵的 CPU 段：每条射线对所有障碍物的求交循环）----
     // 启用后光锥不受岩壁遮挡直接延伸到 maxDist，视觉上手电会"穿墙"，但 CPU 端几乎零成本

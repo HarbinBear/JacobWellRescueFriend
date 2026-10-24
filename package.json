@@ -17,7 +17,9 @@
     "visuals:build": "node scripts/buildTapePreview.js",
     "visuals:check": "node scripts/checkTapeVisuals.js && node scripts/checkTapeEntry.js",
     "game:preview": "node scripts/buildGamePreview.js",
-    "platform:check": "node scripts/checkWindowMetrics.js"
+    "platform:check": "node scripts/checkWindowMetrics.js",
+    "cave:check": "node scripts/checkCaveRockTrial.js",
+    "cave:browser": "node scripts/checkCaveRockBrowser.js"
   },
   "devDependencies": {
     "typescript": "^5.3.3"

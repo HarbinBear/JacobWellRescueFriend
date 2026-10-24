@@ -1,4 +1,6 @@
 import { CONFIG } from '../core/config';
+import { ensureCaveRockAssets,drawCaveRock,drawCaveRockBase } from './RenderCaveRock';
+import { drawCaveRockTrialExit } from './CaveRockTrialUI';
 import { state, player, particles, touches } from '../core/state';
 import { canvas, ctx, dpr, logicW, logicH } from './Canvas';
 import { isLineOfSight, getLightPolygon } from './RenderLight';
@@ -37,6 +39,7 @@ let _useWebGL = false;
 
 // --- 预生成岩石纹理 ---
 export function initTextures() {
+    ensureCaveRockAssets();
     // 初始化 WebGL 光照
     _useWebGL = initWebGLLight();
     if (_useWebGL) {
@@ -211,6 +214,7 @@ export function draw() {
         drawGMButton(ctx);
         drawGMPanel(ctx);
         drawPerfHUD(ctx);
+        drawCaveRockTrialExit(ctx);
         profileEnd('draw.gm');
         return;
     }
@@ -235,6 +239,7 @@ export function draw() {
         drawMazeShallowCaustics(ctx, state.mazeRescue.exitX, state.mazeRescue.exitY, viewL, viewR, viewT, viewB, time);
     }
 
+    if(isMazeMode && state.mazeRescue.caveRockRoom)drawCaveRockBase(ctx);
     // 绘制实心内部填充（无缝，无网格边框）
     for(let r = viewRowMin; r <= viewRowMax; r++) {
         if(!renderMap[r]) continue;
@@ -633,6 +638,7 @@ export function draw() {
     }
 
     profileEnd('draw.lighting');
+    if(isMazeMode && state.mazeRescue.caveRockRoom){ctx.save();ctx.translate(logicW/2+shakeX,logicH/2+shakeY);ctx.scale(zoom,zoom);ctx.translate(-camX,-camY);drawCaveRock(ctx,viewL,viewR,viewT,viewB,zoom);ctx.restore();}
     if (isMazeMode) {
         ctx.save();
         ctx.translate(logicW / 2 + shakeX, logicH / 2 + shakeY);
@@ -850,6 +856,7 @@ export function draw() {
     drawGMButton(ctx);
     drawGMPanel(ctx);
     drawPerfHUD(ctx);
+    drawCaveRockTrialExit(ctx);
     profileEnd('draw.gm');
 }
 

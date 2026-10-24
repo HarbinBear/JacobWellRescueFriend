@@ -1,5 +1,6 @@
 import { CONFIG } from '../core/config';
 import { state } from '../core/state';
+import { rockSegmentClear } from './RockGeometry';
 
 export function getActiveMapContext() {
     if (state.screen === 'mazeRescue' && state.mazeRescue) {
@@ -23,6 +24,7 @@ export function getActiveMapContext() {
 export function isLineOfSight(x1: number, y1: number, x2: number, y2: number, maxDist: number): boolean {
     let dist = Math.hypot(x2-x1, y2-y1);
     if(dist > maxDist) return false;
+    if(state.screen==='mazeRescue' && state.mazeRescue?.caveRockRoom)return rockSegmentClear(state.mazeRescue.mazeWalls,{x:x1,y:y1},{x:x2,y:y2});
     const active = getActiveMapContext();
     const tileSize = active.tileSize;
     let dx=x2-x1, dy=y2-y1;

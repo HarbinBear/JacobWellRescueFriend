@@ -2,6 +2,7 @@ import { CONFIG } from '../core/config';
 import { state, player, input } from '../core/state';
 import { buildAvoidedPath } from './Pathfinding';
 import { triggerSilt } from './Particle';
+import { closestRockPoint, circleHitsRock } from '../world/RockGeometry';
 
 function getActiveWalls() {
     if (state.screen === 'mazeRescue' && state.mazeRescue) {
@@ -17,7 +18,9 @@ export function findNearestWall(x: number, y: number, maxDist: number): any {
     const walls = getActiveWalls();
     if(!walls) return null;
     for(let wall of walls) {
-        let dist = Math.hypot(x - wall.x, y - wall.y) - wall.r;
+        const point=closestRockPoint(wall,x,y);
+        if(wall.rockPolygon && walls.some(other=>other!==wall && circleHitsRock(other,point.x,point.y,0)))continue;
+        let dist = point.dist;
         if(dist < minDist) {
             minDist = dist;
             nearest = wall;
@@ -28,6 +31,7 @@ export function findNearestWall(x: number, y: number, maxDist: number): any {
 }
 
 function getAnchorPoint(wall: any, fromX: number, fromY: number) {
+    if(wall.rockPolygon){const p=closestRockPoint(wall,fromX,fromY);const d=Math.hypot(fromX-p.x,fromY-p.y)||1;return{x:p.x+(fromX-p.x)/d*.1,y:p.y+(fromY-p.y)/d*.1};}
     let angle = Math.atan2(fromY - wall.y, fromX - wall.x);
     return {
         x: wall.x + Math.cos(angle) * wall.r,
@@ -44,6 +48,7 @@ function finalizePreviewPath(endPoint: any) {
     if(!state.rope.current.start) {
         return [{ x: endPoint.x, y: endPoint.y }];
     }
+    if(state.screen==='mazeRescue' && state.mazeRescue?.caveRockRoom)return buildAvoidedPath(state.rope.current.start,endPoint,CONFIG.ropeAvoidPadding);
     if(!state.rope.current.path || state.rope.current.path.length < 2) {
         return buildAvoidedPath(state.rope.current.start, endPoint, CONFIG.ropeAvoidPadding);
     }

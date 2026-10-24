@@ -312,7 +312,7 @@ export function hasMazeSave(): boolean {
  */
 export function saveMazeProgress(): boolean {
     const maze: any = state.mazeRescue;
-    if (!maze) return false;
+    if (!maze || maze.rockTrial) return false;
     if (maze.seed == null) {
         console.warn('[MazeSave] 存档未保存：mazeRescue.seed 缺失');
         return false;
@@ -607,6 +607,7 @@ export function loadMazeProgress(): boolean {
  * 清除迷宫存档
  */
 export function clearMazeSave(): void {
+    if(state.mazeRescue?.rockTrial)return;
     removeKey(MAZE_SAVE_KEY);
     // 顺便清除老 v1 / v2 存档，避免占用空间
     removeKey('maze_save_v1');

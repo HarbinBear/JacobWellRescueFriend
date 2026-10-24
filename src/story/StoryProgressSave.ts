@@ -28,6 +28,7 @@ interface StoryProgressData {
 }
 
 export function saveStoryProgress(): boolean {
+    if(state.mazeRescue?.rockTrial)return false;
     const data: StoryProgressData = {
         version: VERSION,
         timestamp: Date.now(),
@@ -58,6 +59,7 @@ export function loadStoryProgress(): boolean {
 }
 
 export function clearStoryProgress(): void {
+    if(state.mazeRescue?.rockTrial)return;
     removeKey(KEY);
     state.story2.nightIndex = 0;
     state.story2.flags = {};

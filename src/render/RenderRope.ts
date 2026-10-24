@@ -5,6 +5,7 @@ import { pathLength, samplePolyline, polylineNormal } from '../logic/Pathfinding
 
 function generateSlackRopePoints(basePath: any[], slackFactor: number, animTime: number): any[] {
     if(!basePath || basePath.length < 2) return basePath || [];
+    if(state.screen==='mazeRescue' && state.mazeRescue?.caveRockRoom)return basePath;
     const totalLen = pathLength(basePath);
     if(totalLen < 1) return basePath;
     const segLen = CONFIG.ropeSegmentLength;
@@ -32,7 +33,9 @@ function strokeRopeLine(points: any[], color: string, width: number) {
     ctx.save();
     ctx.strokeStyle = color; ctx.lineWidth = width; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     ctx.beginPath(); ctx.moveTo(points[0].x, points[0].y);
-    if(points.length === 2) {
+    if(state.screen==='mazeRescue' && state.mazeRescue?.caveRockRoom){
+        for(let i=1;i<points.length;i++)ctx.lineTo(points[i].x,points[i].y);
+    } else if(points.length === 2) {
         ctx.lineTo(points[1].x, points[1].y);
     } else {
         for(let i=1; i<points.length-1; i++) {

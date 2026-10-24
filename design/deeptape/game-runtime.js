@@ -2612,7 +2612,7 @@ const WindowMetrics_1 = require("../WindowMetrics");
 const systemInfo = (0, WindowMetrics_1.getWindowMetrics)();
 exports.baseConfig = {
     // 版本信息
-    version: 'v1.0.17',
+    version: 'v1.0.18',
     // 画布设置 (竖屏适配)
     screenWidth: systemInfo.windowWidth,
     screenHeight: systemInfo.windowHeight,
@@ -3698,6 +3698,8 @@ const RenderProgressSelect_1 = require("../render/RenderProgressSelect");
 const StoryProgressSave_1 = require("../story/StoryProgressSave");
 const MazeSave_1 = require("../logic/MazeSave");
 const AudioManager_1 = require("../audio/AudioManager");
+const MazeLogic_1 = require("../logic/MazeLogic");
+const CaveRockTrialUI_1 = require("../render/CaveRockTrialUI");
 // 放弃救援按钮长按状态
 let abandonTouchId = null;
 // 攻击按钮独立触点 ID（多点触控：与摇杆互不干扰）
@@ -3716,10 +3718,17 @@ const _homeTouchPrev = {};
 const _homeTouchStartX = {};
 const _homeTouchStartY = {};
 const _homeTouchMoved = {};
+function returnToMainMenu() { var _a; if ((_a = state_1.state.mazeRescue) === null || _a === void 0 ? void 0 : _a.rockTrial)
+    (0, MazeLogic_1.exitCaveRockTrial)();
+else
+    state_1.state.screen = 'menu'; }
 // 主菜单按钮 → 行为
 function handleMenuButton(id, onMaze, onMazeDive) {
     var _a;
     switch (id) {
+        case 'rockTrial':
+            (0, MazeLogic_1.startCaveRockTrial)();
+            return;
         case 'dive':
             if (onMaze && onMazeDive) {
                 onMaze();
@@ -3901,7 +3910,7 @@ function initInput(onReset, onArena, onMaze, onMazeReplay, onMazeDive, onReturnT
             if (state_1.state.screen !== 'play' && !(state_1.state.screen === 'mazeRescue' && state_1.state.mazeRescue && state_1.state.mazeRescue.phase === 'play')) {
                 // 旧主线 ending 分支已废弃。
                 if (e.code === 'Space' && state_1.state.screen !== 'mazeRescue')
-                    state_1.state.screen = 'menu';
+                    returnToMainMenu();
                 return;
             }
             switch (e.key.toLowerCase()) {
@@ -3945,7 +3954,13 @@ function initInput(onReset, onArena, onMaze, onMazeReplay, onMazeDive, onReturnT
         });
     }
     wx.onTouchStart((res) => {
+        var _a;
         (0, AdaptiveMusic_1.warmUpAdaptiveMusic)();
+        const trialTouch = ((_a = res.changedTouches) === null || _a === void 0 ? void 0 : _a[0]) || res.touches[res.touches.length - 1];
+        if (trialTouch && (0, CaveRockTrialUI_1.isCaveRockTrialExitHit)(trialTouch.clientX, trialTouch.clientY)) {
+            (0, MazeLogic_1.exitCaveRockTrial)();
+            return;
+        }
         if (state_1.state.screen === 'mazeRescue' && state_1.state.mazeRescue &&
             ['tape_rewind', 'tape_play'].indexOf(state_1.state.mazeRescue.phase) >= 0)
             return;
@@ -4126,14 +4141,14 @@ function initInput(onReset, onArena, onMaze, onMazeReplay, onMazeDive, onReturnT
                 // 竞技场死亡结算页面：等待 2 秒后可点击返回主菜单
                 if (state_1.state.screen === 'fishArena' && state_1.state.fishArena && state_1.state.fishArena.phase === 'dead') {
                     if (state_1.state.fishArena.deadTimer >= 120) {
-                        state_1.state.screen = 'menu';
+                        returnToMainMenu();
                         state_1.state.fishArena = null;
                     }
                     return;
                 }
                 // 旧主线 ending 分支已废弃。
                 // 游戏结束或失败，点击返回主菜单
-                state_1.state.screen = 'menu';
+                returnToMainMenu();
                 return;
             } // else 结束
         }
@@ -4475,7 +4490,7 @@ function initInput(onReset, onArena, onMaze, onMazeReplay, onMazeDive, onReturnT
                     (0, AdaptiveMusic_1.retryAdaptiveMusic)();
                 else if (buttons.back.enabled && hit(buttons.back)) {
                     (0, AdaptiveMusic_1.resetAdaptiveMusic)();
-                    state_1.state.screen = 'menu';
+                    returnToMainMenu();
                 }
             }
             bcdReleaseAll();
@@ -4887,7 +4902,7 @@ function initInput(onReset, onArena, onMaze, onMazeReplay, onMazeDive, onReturnT
                 // 这里用稍宽松的 hit-test 提高可点性
                 if (tx >= 8 && tx <= 92 && ty >= 56 && ty <= 96) {
                     (0, AudioManager_1.playSFX)('uiSecondary');
-                    state_1.state.screen = 'menu';
+                    returnToMainMenu();
                     state_1.state.mazeRescue = null;
                     return;
                 }
@@ -5021,7 +5036,7 @@ function initInput(onReset, onArena, onMaze, onMazeReplay, onMazeDive, onReturnT
             const back = (0, RenderProgressSelect_1.getProgressBackBtnRect)();
             if (tx >= back.x && tx <= back.x + back.w && ty >= back.y && ty <= back.y + back.h) {
                 (0, AudioManager_1.playSFX)('uiSecondary');
-                state_1.state.screen = 'menu';
+                returnToMainMenu();
                 return;
             }
             // 卡片
@@ -6049,7 +6064,9 @@ function hasExtractionSave() {
  * （成功撤离会自动入仓库，死亡撤离会清空，本就不该跨 session 保留）。
  */
 function saveExtractionProgress() {
-    var _a, _b, _c;
+    var _a, _b, _c, _d;
+    if ((_a = state_1.state.mazeRescue) === null || _a === void 0 ? void 0 : _a.rockTrial)
+        return false;
     const ex = (0, ExtractionState_1.getExtractionState)();
     if (!ex) {
         console.warn('[ExtractionSave] state.extraction 未初始化，跳过保存');
@@ -6074,9 +6091,9 @@ function saveExtractionProgress() {
         consumables: Object.assign({}, (ex.consumables || {})),
         equipmentStock: Object.assign({}, (ex.equipmentStock || {})),
         equipped: {
-            bag: ((_a = ex.equipped) === null || _a === void 0 ? void 0 : _a.bag) || 'bag4',
-            fins: ((_b = ex.equipped) === null || _b === void 0 ? void 0 : _b.fins) || 'finsBasic',
-            suit: ((_c = ex.equipped) === null || _c === void 0 ? void 0 : _c.suit) || 'suitBasic',
+            bag: ((_b = ex.equipped) === null || _b === void 0 ? void 0 : _b.bag) || 'bag4',
+            fins: ((_c = ex.equipped) === null || _c === void 0 ? void 0 : _c.fins) || 'finsBasic',
+            suit: ((_d = ex.equipped) === null || _d === void 0 ? void 0 : _d.suit) || 'suitBasic',
         },
         ownedEquipment: [], // 已废弃；保留空数组兼容老代码
         // shop 是运行时态，不保存
@@ -6137,6 +6154,9 @@ function loadExtractionProgress() {
  * 清除撤离存档（GM 调试用 / 玩家主动重置经济）
  */
 function clearExtractionSave() {
+    var _a;
+    if ((_a = state_1.state.mazeRescue) === null || _a === void 0 ? void 0 : _a.rockTrial)
+        return;
     (0, SaveStorage_1.removeKey)(exports.EXTRACTION_SAVE_KEY);
     state_1.state.extraction = (0, ExtractionState_1.getInitialExtractionState)();
     console.log('[ExtractionSave] 撤离存档已清除并重置为新手起步状态');
@@ -14645,6 +14665,7 @@ exports.updateCameraSpringArm = updateCameraSpringArm;
 exports.snapCameraToPlayer = snapCameraToPlayer;
 const config_1 = require("../core/config");
 const state_1 = require("../core/state");
+const RockGeometry_1 = require("../world/RockGeometry");
 // === 自适应缩放运行态（模块内部状态，不挂全局state） ===
 let _azFrameCounter = 0; // 帧计数器，用于降频更新
 let _azOpenness = 0.5; // 当前空间开阔度（0=极狭窄，1=极空旷）
@@ -14691,6 +14712,12 @@ function castSpaceRays(px, py) {
         const dirX = Math.cos(angle);
         const dirY = Math.sin(angle);
         let hitDist = maxDist;
+        if (isMaze && state_1.state.mazeRescue.caveRockRoom) {
+            for (const wall of state_1.state.mazeRescue.mazeWalls)
+                hitDist = (0, RockGeometry_1.rayHitsRock)(wall, px, py, dirX, dirY, hitDist);
+            distances.push(hitDist);
+            continue;
+        }
         // 沿射线步进检测
         for (let d = step; d <= maxDist; d += step) {
             const sx = px + dirX * d;
@@ -14869,6 +14896,7 @@ exports.getNearestWallDist = getNearestWallDist;
 exports.checkMazeCollision = checkMazeCollision;
 const config_1 = require("../core/config");
 const state_1 = require("../core/state");
+const RockGeometry_1 = require("../world/RockGeometry");
 // --- 碰撞检测 ---
 /**
  * 主线/竞技场碰撞检测
@@ -14944,6 +14972,8 @@ function getNearestWallDist(x, y) {
  * 迷宫模式碰撞检测（使用迷宫专属地图数据）
  */
 function checkMazeCollision(x, y, maze) {
+    if (maze === null || maze === void 0 ? void 0 : maze.caveRockRoom)
+        return (0, RockGeometry_1.rockTrialCollision)(maze, x, y, config_1.CONFIG.maze.playerRadius);
     const ts = maze.mazeTileSize;
     const playerRadius = config_1.CONFIG.maze.playerRadius;
     const r = Math.floor(y / ts);
@@ -15551,6 +15581,7 @@ exports.triggerPlayerAttack = triggerPlayerAttack;
 exports.updatePlayerAttack = updatePlayerAttack;
 exports.updateAllFishEnemies = updateAllFishEnemies;
 const config_1 = require("../core/config");
+const RockGeometry_1 = require("../world/RockGeometry");
 const state_1 = require("../core/state");
 const SeededRandom_1 = require("../core/SeededRandom");
 const AudioManager_1 = require("../audio/AudioManager");
@@ -15599,6 +15630,8 @@ function checkCollisionMazeLocal(x, y) {
     const maze = state_1.state.mazeRescue;
     if (!maze)
         return false;
+    if (maze.caveRockRoom)
+        return (0, RockGeometry_1.rockTrialCollision)(maze, x, y, config_1.CONFIG.maze.playerRadius);
     const ts = maze.mazeTileSize;
     const pr = config_1.CONFIG.maze.playerRadius || config_1.CONFIG.playerRadius;
     const r = Math.floor(y / ts);
@@ -17529,6 +17562,7 @@ exports.executeWheelAction = executeWheelAction;
 const config_1 = require("../core/config");
 const state_1 = require("../core/state");
 const Rope_1 = require("./Rope");
+const RockGeometry_1 = require("../world/RockGeometry");
 const Pathfinding_1 = require("./Pathfinding");
 const OxygenTank_1 = require("./OxygenTank");
 // 撤离玩法：水下战利品拾取轮盘上下文（接入点见 detectWheelContext / executeWheelAction）
@@ -17544,9 +17578,10 @@ function getMarkers() {
 function placeWallMarker(type, wall) {
     if (!wall)
         return null;
-    const angle = Math.atan2(state_1.player.y - wall.y, state_1.player.x - wall.x);
-    const surfaceX = wall.x + Math.cos(angle) * wall.r;
-    const surfaceY = wall.y + Math.sin(angle) * wall.r;
+    const point = (0, RockGeometry_1.closestRockPoint)(wall, state_1.player.x, state_1.player.y);
+    const angle = wall.rockPolygon ? Math.atan2(state_1.player.y - point.y, state_1.player.x - point.x) : Math.atan2(state_1.player.y - wall.y, state_1.player.x - wall.x);
+    const surfaceX = point.x;
+    const surfaceY = point.y;
     // 检查该岩石上是否已有标记，如果有则替换
     const markers = getMarkers();
     const existing = markers.findIndex(m => m.attachType === 'wall' && m.wallX === wall.x && m.wallY === wall.y);
@@ -17990,6 +18025,8 @@ exports.acceptNewCase = acceptNewCase;
 exports.stayInResolvedCase = stayInResolvedCase;
 exports.goHome = goHome;
 exports.updateMaze = updateMaze;
+exports.startCaveRockTrial = startCaveRockTrial;
+exports.exitCaveRockTrial = exitCaveRockTrial;
 const JoystickDrive_1 = require("./JoystickDrive");
 const DriveMode_1 = require("./DriveMode");
 const SemiAutoDrive_1 = require("./SemiAutoDrive");
@@ -17998,6 +18035,9 @@ const RescueTow_1 = require("./RescueTow");
 const config_1 = require("../core/config");
 const state_1 = require("../core/state");
 const map_1 = require("../world/map");
+const CaveRockTrial_1 = require("../world/CaveRockTrial");
+const extraction_1 = require("../extraction");
+const AdaptiveMusic_1 = require("../audio/AdaptiveMusic");
 const mazeScene_1 = require("../world/mazeScene");
 const StoryManager_1 = require("../story/StoryManager");
 const HomeScene_1 = require("../story/HomeScene");
@@ -18014,12 +18054,12 @@ const Relic_1 = require("./Relic");
 const LifeDetector_1 = require("./LifeDetector");
 const AudioManager_1 = require("../audio/AudioManager");
 const NPCPerception_1 = require("./NPCPerception");
-const AdaptiveMusic_1 = require("../audio/AdaptiveMusic");
+const AdaptiveMusic_2 = require("../audio/AdaptiveMusic");
 const CollisionImpact_1 = require("./CollisionImpact");
 const MazeSave_1 = require("./MazeSave");
 const SeededRandom_1 = require("../core/SeededRandom");
 // 撤离玩法钩子：每次下潜开始/结束自动应用装备效果与结算战利品
-const extraction_1 = require("../extraction");
+const extraction_2 = require("../extraction");
 // 减压停留系统：氮气累积 / 减压任务 / DCS 惩罚
 const DecompressionSystem_1 = require("./DecompressionSystem");
 // BCD 浮力背心：玩家主动控制的"粗调"浮力层（呼吸浮力是微调层）
@@ -18044,8 +18084,8 @@ function buildCaseNumberFromSeed(seed) {
 // 读档只恢复案件进度；每次入场和下潜都从洞口出发。
 function placePlayerAtMazeEntrance(maze) {
     const wallThick = config_1.CONFIG.maze.wallThickness || 5;
-    state_1.player.x = maze.exitX;
-    state_1.player.y = (wallThick + 1) * maze.mazeTileSize + maze.mazeTileSize / 2;
+    state_1.player.x = maze.rockTrial ? maze.spawnX : maze.exitX;
+    state_1.player.y = maze.rockTrial ? maze.spawnY : (wallThick + 1) * maze.mazeTileSize + maze.mazeTileSize / 2;
     state_1.player.vx = 0;
     state_1.player.vy = 0;
     state_1.player.angle = Math.PI / 2;
@@ -18057,13 +18097,15 @@ function placePlayerAtMazeEntrance(maze) {
 // 默认行为：优先尝试读取本地存档；读档成功则直接恢复到岸上阶段，不生成新地图。
 // 读档失败（无存档/版本不兼容/数据损坏）才走原来的流程生成新地图。
 // =============================================
-function resetMazeLogic() {
+function resetMazeLogic(rockTrial = false) {
     var _a;
+    if (rockTrialSnapshot && !rockTrial)
+        exitCaveRockTrial();
     (0, DriveMode_1.resetDriveInput)(true);
     // === 优先尝试读取本地存档 ===
     // 注意：loadMazeProgress 成功时会直接把 state.mazeRescue / state.rope.ropes / state.markers
     // 恢复到岸上阶段；这里只需要补上相机、屏幕模式等与 state.mazeRescue 无关的运行态。
-    if ((0, MazeSave_1.loadMazeProgress)() && state_1.state.mazeRescue) {
+    if (!rockTrial && (0, MazeSave_1.loadMazeProgress)() && state_1.state.mazeRescue) {
         // 运行态杂项清理（这些字段不在存档里，或者每次进场都应该重置）
         state_1.player.silt = 0;
         state_1.player.vx = 0;
@@ -18111,7 +18153,7 @@ function resetMazeLogic() {
             const fishDensSeed = ((state_1.state.mazeRescue.seed >>> 0) ^ 0xDEADBEEF) >>> 0;
             (0, SeededRandom_1.setActiveSeededRandom)(fishDensSeed);
             try {
-                state_1.state.mazeRescue.fishDens = (0, FishEnemy_1.generateFishDens)();
+                state_1.state.mazeRescue.fishDens = rockTrial ? [] : (0, FishEnemy_1.generateFishDens)();
             }
             finally {
                 (0, SeededRandom_1.clearActiveSeededRandom)();
@@ -18211,7 +18253,7 @@ function resetMazeLogic() {
         stillTimer: 0
     };
     // 生成迷宫地图
-    const mazeData = (0, map_1.generateMazeMap)();
+    const mazeData = rockTrial ? (0, CaveRockTrial_1.createCaveRockTrialMap)() : (0, map_1.generateMazeMap)();
     // 初始化相机
     state_1.state.camera = {
         zoom: 1, targetZoom: 1,
@@ -18277,6 +18319,9 @@ function resetMazeLogic() {
         abandonTouchId: null,
         caseResultTimer: 0,
         seed: mazeData.seed,
+        rockTrial,
+        caveRockRoom: rockTrial ? mazeData.caveRockRoom : undefined,
+        spawnX: mazeData.spawnX, spawnY: mazeData.spawnY,
         mazeMap: mazeData.mazeMap,
         mazeWalls: mazeData.mazeWalls,
         mazeExplored: mazeData.mazeExplored,
@@ -18322,18 +18367,18 @@ function resetMazeLogic() {
     const fishDensSeed = (mazeData.seed ^ 0xDEADBEEF) >>> 0;
     (0, SeededRandom_1.setActiveSeededRandom)(fishDensSeed);
     try {
-        state_1.state.mazeRescue.fishDens = (0, FishEnemy_1.generateFishDens)();
+        state_1.state.mazeRescue.fishDens = rockTrial ? [] : (0, FishEnemy_1.generateFishDens)();
     }
     finally {
         (0, SeededRandom_1.clearActiveSeededRandom)();
     }
     // 氧气瓶：新地图新 seed，consumedTankIds 清空，全量生成
     state_1.state.mazeRescue.consumedTankIds = [];
-    state_1.state.mazeRescue.oxygenTanks = (0, OxygenTank_1.buildOxygenTanksForMaze)(mazeData.seed);
+    state_1.state.mazeRescue.oxygenTanks = rockTrial ? [] : (0, OxygenTank_1.buildOxygenTanksForMaze)(mazeData.seed);
     state_1.state.mazeRescue.oxygenFeedback = (0, OxygenTank_1.createOxygenFeedback)();
     // 图鉴物件：新地图新 seed，discoveredRelicIds 清空，按主 seed 派生生成
     // codexKinds 是"总图鉴"跨关累计，使用前面保存的 preservedCodexKinds 恢复
-    state_1.state.mazeRescue.relics = (0, Relic_1.buildRelicsForMaze)(mazeData.seed);
+    state_1.state.mazeRescue.relics = rockTrial ? [] : (0, Relic_1.buildRelicsForMaze)(mazeData.seed);
     state_1.state.mazeRescue.discoveredRelicIds = [];
     state_1.state.mazeRescue.codexKinds = preservedCodexKinds;
     state_1.state.mazeRescue.codexSelectedKind = null;
@@ -18368,7 +18413,7 @@ function startMazeDive(diveType) {
     const maze = state_1.state.mazeRescue;
     if (!maze)
         return;
-    (0, AdaptiveMusic_1.warmUpAdaptiveMusic)();
+    (0, AdaptiveMusic_2.warmUpAdaptiveMusic)();
     // 重置呼吸系统运行态（清除残留气泡与音频状态）
     (0, BreathSystem_1.resetBreathSystem)();
     (0, BreathSystem_1.resetBreathO2Consumer)();
@@ -18471,11 +18516,11 @@ function startMazeDive(diveType) {
     state_1.state.fx.shake = 0;
     // 每次下潜补齐全部气瓶；同一 seed 保持位置、数量、补给量和外观一致。
     maze.consumedTankIds = [];
-    maze.oxygenTanks = (0, OxygenTank_1.buildOxygenTanksForMaze)(maze.seed);
+    maze.oxygenTanks = maze.rockTrial ? [] : (0, OxygenTank_1.buildOxygenTanksForMaze)(maze.seed);
     maze.oxygenFeedback = (0, OxygenTank_1.createOxygenFeedback)();
     // 生成迷宫食人鱼（按聚集点分布，每个聚集点 denFishCountMin~denFishCountMax 条）
     state_1.state.fishEnemies = [];
-    if (config_1.CONFIG.maze.fishEnabled && maze.fishDens && maze.fishDens.length > 0) {
+    if (!maze.rockTrial && config_1.CONFIG.maze.fishEnabled && maze.fishDens && maze.fishDens.length > 0) {
         const perMin = config_1.CONFIG.maze.denFishCountMin || 2;
         const perMax = config_1.CONFIG.maze.denFishCountMax || 6;
         for (const den of maze.fishDens) {
@@ -18486,7 +18531,7 @@ function startMazeDive(diveType) {
             }
         }
     }
-    else if (config_1.CONFIG.maze.fishEnabled) {
+    else if (!maze.rockTrial && config_1.CONFIG.maze.fishEnabled) {
         // 兜底：如果没有聚集点，退回旧的随机分布（保持兼容）
         const count = config_1.CONFIG.maze.fishCountMin + Math.floor(Math.random() * (config_1.CONFIG.maze.fishCountMax - config_1.CONFIG.maze.fishCountMin + 1));
         for (let i = 0; i < count; i++) {
@@ -18584,7 +18629,7 @@ function startMazeDive(diveType) {
         state_1.state.wheel.previewAction = null;
     }
     // 撤离玩法钩子：应用装备效果（背包大小、消耗品起始 O2/电池等）+ 清空本次拾取记录
-    (0, extraction_1.onExtractionDiveStart)();
+    (0, extraction_2.onExtractionDiveStart)();
 }
 // =============================================
 // 迷宫多次下潜闭环：完成本次下潜，返回岸上
@@ -18701,7 +18746,7 @@ function finishMazeDive(returnReason) {
         }
     }
     // 撤离玩法钩子：根据 returnReason 结算背包（成功 100%/半成功 50%/失败全损）+ 还原装备覆盖 + 落盘
-    (0, extraction_1.onExtractionDiveEnd)(returnReason);
+    (0, extraction_2.onExtractionDiveEnd)(returnReason);
     // 消耗一次 DCS 惩罚计数：若之前就有未消耗的惩罚，这次下潜算掉一次
     // （本次刚写入的惩罚 remainingDives=1 或 2，这里扣 1，剩下的作用于下次及之后的下潜）
     (0, DecompressionSystem_1.consumeDecoPenaltyDive)();
@@ -18733,6 +18778,11 @@ function returnToShore() {
 // 触发入口：救援成功结算页的"下一局"按钮
 // =============================================
 function replayMazeLogic() {
+    var _a;
+    if ((_a = state_1.state.mazeRescue) === null || _a === void 0 ? void 0 : _a.rockTrial) {
+        startCaveRockTrial();
+        return;
+    }
     // 先清掉旧存档，后续 resetMazeLogic 读档会读不到，自然进入新地图生成分支
     (0, MazeSave_1.clearMazeSave)();
     resetMazeLogic();
@@ -18776,6 +18826,11 @@ function abandonCase() {
 // 等价于 replayMazeLogic，但语义上是叙事动作而非重玩按钮
 // =============================================
 function acceptNewCase() {
+    var _a;
+    if ((_a = state_1.state.mazeRescue) === null || _a === void 0 ? void 0 : _a.rockTrial) {
+        exitCaveRockTrial();
+        return;
+    }
     (0, MazeSave_1.clearMazeSave)();
     resetMazeLogic();
 }
@@ -18804,6 +18859,11 @@ function stayInResolvedCase() {
 // 由 HomeScene 在入睡黑场结束后处理（见 HomeScene.returnToCampNextDay）。
 // =============================================
 function goHome() {
+    var _a;
+    if ((_a = state_1.state.mazeRescue) === null || _a === void 0 ? void 0 : _a.rockTrial) {
+        exitCaveRockTrial();
+        return;
+    }
     if (!state_1.state.mazeRescue)
         return;
     (0, MazeSave_1.saveMazeProgress)(); // 进家之前先把营地进度落盘
@@ -18847,7 +18907,7 @@ function updateMaze() {
     }
     // 倒带期间只有磁带和音频准备在运行，世界 / 氧气 / 救援计时全部冻结。
     if (maze.phase === 'tape_rewind') {
-        if ((0, AdaptiveMusic_1.getAdaptiveMusicPreparation)().status === 'ready' && Date.now() - (maze.tapeEntryStartedAt || 0) >= 700) {
+        if ((0, AdaptiveMusic_2.getAdaptiveMusicPreparation)().status === 'ready' && Date.now() - (maze.tapeEntryStartedAt || 0) >= 700) {
             maze.phase = 'diving_in';
             maze.divingInTimer = 0;
             (0, AudioManager_1.playSFX)('diveSplash');
@@ -18868,7 +18928,7 @@ function updateMaze() {
             (0, AudioManager_1.playSFX)('uiSecondary');
         if (maze.tapeIntroTimer >= 36)
             maze.tapePlaybackStarted = true;
-        const clock = (0, AdaptiveMusic_1.getAdaptiveMusicClock)();
+        const clock = (0, AdaptiveMusic_2.getAdaptiveMusicClock)();
         const silentMode = !config_1.CONFIG.lifeDetector.enabled || !config_1.CONFIG.lifeDetector.music.enabled;
         if (maze.tapeIntroTimer >= 60 && (silentMode || (clock && clock.playing))) {
             maze.phase = 'play';
@@ -19362,7 +19422,7 @@ function updateMaze() {
     // --- 气嘴脱落动画推进（撞岩石后的"手捞气嘴塞回嘴"动画） ---
     (0, CollisionImpact_1.updateRegulatorAnim)();
     // --- 双手抱拾取物动画推进（拾取战利品 / 丢弃物时） ---
-    (0, extraction_1.updateCarryItemAnim)();
+    (0, extraction_2.updateCarryItemAnim)();
     // --- 减压停留系统：氮气吸排 / 减压任务进度 / 长按加速结算 ---
     (0, DecompressionSystem_1.updateDecompressionSystem)(1 / 60);
     if ((0, DecompressionSystem_1.consumeDecoWarningRequest)()) {
@@ -19374,6 +19434,45 @@ function updateMaze() {
     if (state_1.state.fishBite && state_1.state.fishBite.active && state_1.state.fishBite.phase === 'dead') {
         // updateFishBiteState 内部会处理迷宫模式的死亡逻辑（设置 surfacing）
     }
+}
+// Real gameplay trial: temporary copies isolate progression, inventory and case data.
+let rockTrialSnapshot = null;
+function startCaveRockTrial() {
+    if (rockTrialSnapshot)
+        exitCaveRockTrial();
+    const ex = (0, extraction_1.ensureExtractionState)();
+    rockTrialSnapshot = { maze: state_1.state.mazeRescue, rope: state_1.state.rope, markers: state_1.state.markers, extraction: ex, story2: state_1.state.story2 };
+    state_1.state.extraction = JSON.parse(JSON.stringify(ex));
+    state_1.state.story2 = JSON.parse(JSON.stringify(state_1.state.story2));
+    state_1.state.markers = [];
+    resetMazeLogic(true);
+    state_1.state.mazeRescue.briefingShown = true;
+    state_1.state.mazeRescue.caseNumber = '岩体试跑 · 断冠双岔洞';
+    startMazeDive('scout');
+    const room = state_1.state.mazeRescue.caveRockRoom;
+    state_1.player.angle = state_1.player.targetAngle = state_1.input.targetAngle = Math.atan2(room.y + room.aim[1] - state_1.player.y, room.x + room.aim[0] - state_1.player.x);
+}
+function exitCaveRockTrial() {
+    if (!rockTrialSnapshot)
+        return;
+    (0, DriveMode_1.resetDriveInput)(true);
+    (0, BCDSystem_1.releaseBCDControls)();
+    (0, BreathSystem_1.resetBreathSystem)();
+    (0, BreathSystem_1.resetBreathO2Consumer)();
+    (0, extraction_1.restoreLoadoutAfterDive)();
+    (0, AdaptiveMusic_1.resetAdaptiveMusic)();
+    const original = rockTrialSnapshot;
+    rockTrialSnapshot = null;
+    state_1.state.extraction = original.extraction;
+    state_1.state.story2 = original.story2;
+    state_1.state.mazeRescue = original.maze;
+    state_1.state.rope = original.rope;
+    state_1.state.markers = original.markers;
+    state_1.state.npc.active = false;
+    state_1.state.fishEnemies = [];
+    state_1.state.fishBite = null;
+    state_1.particles.length = 0;
+    state_1.state.screen = 'menu';
 }
 },"/src/logic/MazeSave":function(exports,require){"use strict";
 // 迷宫模式本地存档模块（v3 种子版）
@@ -19615,7 +19714,7 @@ function hasMazeSave() {
  */
 function saveMazeProgress() {
     const maze = state_1.state.mazeRescue;
-    if (!maze)
+    if (!maze || maze.rockTrial)
         return false;
     if (maze.seed == null) {
         console.warn('[MazeSave] 存档未保存：mazeRescue.seed 缺失');
@@ -19902,6 +20001,9 @@ function loadMazeProgress() {
  * 清除迷宫存档
  */
 function clearMazeSave() {
+    var _a;
+    if ((_a = state_1.state.mazeRescue) === null || _a === void 0 ? void 0 : _a.rockTrial)
+        return;
     (0, SaveStorage_1.removeKey)(exports.MAZE_SAVE_KEY);
     // 顺便清除老 v1 / v2 存档，避免占用空间
     (0, SaveStorage_1.removeKey)('maze_save_v1');
@@ -20710,6 +20812,7 @@ exports.samplePolyline = samplePolyline;
 exports.polylineNormal = polylineNormal;
 const config_1 = require("../core/config");
 const state_1 = require("../core/state");
+const CaveRockTrial_1 = require("../world/CaveRockTrial");
 function getActivePathGrid() {
     if (state_1.state.screen === 'mazeRescue' && state_1.state.mazeRescue) {
         return {
@@ -20881,6 +20984,9 @@ function simplifyPath(path) {
 }
 // 使用网格 A* 构建绕障路径
 function buildAvoidedPath(start, end, padding) {
+    var _a;
+    if (state_1.state.screen === 'mazeRescue' && ((_a = state_1.state.mazeRescue) === null || _a === void 0 ? void 0 : _a.caveRockRoom))
+        return (0, CaveRockTrial_1.buildCaveRockPath)(state_1.state.mazeRescue, start, end, padding);
     if (!lineHitsSolid(start.x, start.y, end.x, end.y)) {
         return [{ x: start.x, y: start.y }, { x: end.x, y: end.y }];
     }
@@ -21519,6 +21625,7 @@ exports.updateRopeSystem = updateRopeSystem;
 const config_1 = require("../core/config");
 const state_1 = require("../core/state");
 const Pathfinding_1 = require("./Pathfinding");
+const RockGeometry_1 = require("../world/RockGeometry");
 function getActiveWalls() {
     if (state_1.state.screen === 'mazeRescue' && state_1.state.mazeRescue) {
         return state_1.state.mazeRescue.mazeWalls;
@@ -21533,7 +21640,10 @@ function findNearestWall(x, y, maxDist) {
     if (!walls)
         return null;
     for (let wall of walls) {
-        let dist = Math.hypot(x - wall.x, y - wall.y) - wall.r;
+        const point = (0, RockGeometry_1.closestRockPoint)(wall, x, y);
+        if (wall.rockPolygon && walls.some(other => other !== wall && (0, RockGeometry_1.circleHitsRock)(other, point.x, point.y, 0)))
+            continue;
+        let dist = point.dist;
         if (dist < minDist) {
             minDist = dist;
             nearest = wall;
@@ -21544,6 +21654,11 @@ function findNearestWall(x, y, maxDist) {
     return { wall: nearest, dist: minDist };
 }
 function getAnchorPoint(wall, fromX, fromY) {
+    if (wall.rockPolygon) {
+        const p = (0, RockGeometry_1.closestRockPoint)(wall, fromX, fromY);
+        const d = Math.hypot(fromX - p.x, fromY - p.y) || 1;
+        return { x: p.x + (fromX - p.x) / d * .1, y: p.y + (fromY - p.y) / d * .1 };
+    }
     let angle = Math.atan2(fromY - wall.y, fromX - wall.x);
     return {
         x: wall.x + Math.cos(angle) * wall.r,
@@ -21556,9 +21671,12 @@ function clonePath(points) {
     return points.map(point => ({ x: point.x, y: point.y }));
 }
 function finalizePreviewPath(endPoint) {
+    var _a;
     if (!state_1.state.rope.current.start) {
         return [{ x: endPoint.x, y: endPoint.y }];
     }
+    if (state_1.state.screen === 'mazeRescue' && ((_a = state_1.state.mazeRescue) === null || _a === void 0 ? void 0 : _a.caveRockRoom))
+        return (0, Pathfinding_1.buildAvoidedPath)(state_1.state.rope.current.start, endPoint, config_1.CONFIG.ropeAvoidPadding);
     if (!state_1.state.rope.current.path || state_1.state.rope.current.path.length < 2) {
         return (0, Pathfinding_1.buildAvoidedPath)(state_1.state.rope.current.start, endPoint, config_1.CONFIG.ropeAvoidPadding);
     }
@@ -21794,6 +21912,42 @@ exports.logicW = config_1.CONFIG.screenWidth;
 exports.logicH = config_1.CONFIG.screenHeight;
 // 缩放绘图上下文，让后续所有绘制代码仍使用逻辑像素坐标
 exports.ctx.scale(exports.dpr, exports.dpr);
+},"/src/render/CaveRockTrialUI":function(exports,require){"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.caveRockTrialExitRect = caveRockTrialExitRect;
+exports.isCaveRockTrialExitHit = isCaveRockTrialExitHit;
+exports.drawCaveRockTrialExit = drawCaveRockTrialExit;
+const state_1 = require("../core/state");
+const Canvas_1 = require("./Canvas");
+function caveRockTrialExitRect() { return { x: Canvas_1.logicW - 113, y: 8, w: 104, h: 32 }; }
+function isCaveRockTrialExitHit(x, y) {
+    var _a;
+    if (state_1.state.screen !== 'mazeRescue' || !((_a = state_1.state.mazeRescue) === null || _a === void 0 ? void 0 : _a.rockTrial))
+        return false;
+    const r = caveRockTrialExitRect();
+    return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+}
+function drawCaveRockTrialExit(ctx) {
+    var _a;
+    if (state_1.state.screen !== 'mazeRescue' || !((_a = state_1.state.mazeRescue) === null || _a === void 0 ? void 0 : _a.rockTrial))
+        return;
+    const r = caveRockTrialExitRect();
+    ctx.save();
+    ctx.fillStyle = 'rgba(13,26,33,.92)';
+    ctx.fillRect(r.x, r.y, r.w, r.h);
+    ctx.strokeStyle = 'rgba(193,186,146,.65)';
+    ctx.strokeRect(r.x, r.y, r.w, r.h);
+    ctx.fillStyle = '#e4dbc0';
+    ctx.font = '12px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('退出岩体试跑', r.x + r.w / 2, r.y + r.h / 2);
+    ctx.textAlign = 'left';
+    ctx.font = '10px Arial';
+    ctx.fillStyle = '#bbb995';
+    ctx.fillText('试跑关卡 · 不写入案件和装备存档', 9, 17);
+    ctx.restore();
+}
 },"/src/render/DustMotes":function(exports,require){"use strict";
 // 悬浮尘埃系统
 // 尘埃是永久存在的环境元素，不使用粒子生命周期
@@ -23853,6 +24007,8 @@ exports.ctx = exports.canvas = void 0;
 exports.initTextures = initTextures;
 exports.draw = draw;
 const config_1 = require("../core/config");
+const RenderCaveRock_1 = require("./RenderCaveRock");
+const CaveRockTrialUI_1 = require("./CaveRockTrialUI");
 const state_1 = require("../core/state");
 const Canvas_1 = require("./Canvas");
 Object.defineProperty(exports, "canvas", { enumerable: true, get: function () { return Canvas_1.canvas; } });
@@ -23888,6 +24044,7 @@ const PerfHUD_1 = require("../debug/PerfHUD");
 let _useWebGL = false;
 // --- 预生成岩石纹理 ---
 function initTextures() {
+    (0, RenderCaveRock_1.ensureCaveRockAssets)();
     // 初始化 WebGL 光照
     _useWebGL = (0, WebGLLight_1.initWebGLLight)();
     if (_useWebGL) {
@@ -24043,6 +24200,7 @@ function draw() {
         (0, GMPanel_1.drawGMButton)(Canvas_1.ctx);
         (0, GMPanel_1.drawGMPanel)(Canvas_1.ctx);
         (0, PerfHUD_1.drawPerfHUD)(Canvas_1.ctx);
+        (0, CaveRockTrialUI_1.drawCaveRockTrialExit)(Canvas_1.ctx);
         (0, PerfHUD_1.profileEnd)('draw.gm');
         return;
     }
@@ -24063,6 +24221,8 @@ function draw() {
         // 浅水区水面焦散效果（波纹光斑）
         (0, RenderMazeScene_1.drawMazeShallowCaustics)(Canvas_1.ctx, state_1.state.mazeRescue.exitX, state_1.state.mazeRescue.exitY, viewL, viewR, viewT, viewB, time);
     }
+    if (isMazeMode && state_1.state.mazeRescue.caveRockRoom)
+        (0, RenderCaveRock_1.drawCaveRockBase)(Canvas_1.ctx);
     // 绘制实心内部填充（无缝，无网格边框）
     for (let r = viewRowMin; r <= viewRowMax; r++) {
         if (!renderMap[r])
@@ -24434,6 +24594,14 @@ function draw() {
         Canvas_1.ctx.fillRect(0, 0, Canvas_1.logicW, Canvas_1.logicH);
     }
     (0, PerfHUD_1.profileEnd)('draw.lighting');
+    if (isMazeMode && state_1.state.mazeRescue.caveRockRoom) {
+        Canvas_1.ctx.save();
+        Canvas_1.ctx.translate(Canvas_1.logicW / 2 + shakeX, Canvas_1.logicH / 2 + shakeY);
+        Canvas_1.ctx.scale(zoom, zoom);
+        Canvas_1.ctx.translate(-camX, -camY);
+        (0, RenderCaveRock_1.drawCaveRock)(Canvas_1.ctx, viewL, viewR, viewT, viewB, zoom);
+        Canvas_1.ctx.restore();
+    }
     if (isMazeMode) {
         Canvas_1.ctx.save();
         Canvas_1.ctx.translate(Canvas_1.logicW / 2 + shakeX, Canvas_1.logicH / 2 + shakeY);
@@ -24625,6 +24793,7 @@ function draw() {
     (0, GMPanel_1.drawGMButton)(Canvas_1.ctx);
     (0, GMPanel_1.drawGMPanel)(Canvas_1.ctx);
     (0, PerfHUD_1.drawPerfHUD)(Canvas_1.ctx);
+    (0, CaveRockTrialUI_1.drawCaveRockTrialExit)(Canvas_1.ctx);
     (0, PerfHUD_1.profileEnd)('draw.gm');
 }
 // =============================================
@@ -25247,6 +25416,393 @@ function drawBreathBubblesWorld(ctx, viewL, viewR, viewT, viewB) {
         ctx.restore();
     }
 }
+},"/src/render/RenderCaveRock":function(exports,require){"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ensureCaveRockAssets = ensureCaveRockAssets;
+exports.drawCaveRock = drawCaveRock;
+exports.drawCaveRockBase = drawCaveRockBase;
+exports.getCaveRockStats = getCaveRockStats;
+const config_1 = require("../core/config");
+const state_1 = require("../core/state");
+const Canvas_1 = require("./Canvas");
+const ImageAssets_1 = require("./ImageAssets");
+const RenderLight_1 = require("./RenderLight");
+let scene = null, images = [], backImage = null, surface = null;
+let gl = null, program = null;
+let textures = [], beamTexture = null, buffer = null;
+let lossExtension = null, timerExtension = null, queries = [];
+const uniforms = {};
+const beamBytes = new Uint8Array(512 * 4);
+const ORIGIN = { x: 0, y: 0 };
+let roomWidth = 720, roomHeight = 1120, textureWidth = 864, textureHeight = 1344;
+let aa = true, fallback = false, inspection = false, overlay = false, surfaceOcclusion = true, projectionCorrection = true;
+let sampling = 'balanced', polyKey = '', beamKey = '', polyCache = [], surfaceMs = 0, gpuMs = null, uploads = 0, contextGeneration = 0;
+let initRetryAfter = 0;
+function ensureCaveRockAssets() {
+    for (const suffix of ['albedo', 'normal', 'detail', 'back'])
+        (0, ImageAssets_1.registerImage)('cave-rock-' + suffix, 'images/cave-rock/room-' + suffix + '.png');
+}
+function syncCaveRock() {
+    var _a;
+    const next = state_1.state.screen === 'mazeRescue' ? (_a = state_1.state.mazeRescue) === null || _a === void 0 ? void 0 : _a.caveRockRoom : null;
+    if (!next)
+        return false;
+    ensureCaveRockAssets();
+    const loaded = ['albedo', 'normal', 'detail', 'back'].map(s => (0, ImageAssets_1.getImage)('cave-rock-' + s));
+    if (loaded.some(im => !im))
+        return false;
+    if (scene !== next) {
+        scene = next;
+        ORIGIN.x = scene.x;
+        ORIGIN.y = scene.y;
+        roomWidth = scene.width;
+        roomHeight = scene.height;
+        images = loaded.slice(0, 3);
+        backImage = loaded[3];
+        textureWidth = images[0].width;
+        textureHeight = images[0].height;
+        polyKey = '';
+        beamKey = '';
+        if (gl && !gl.isContextLost())
+            uploadImages();
+    }
+    const scale = Math.max(.4, Math.min(.75, config_1.CONFIG.quality.scale || .5));
+    sampling = scale < .6 ? 'economy' : 'balanced';
+    return true;
+}
+function reviewLightPolygon(x, y, angle, range, fov) {
+    var _a;
+    const key = [(_a = state_1.state.mazeRescue) === null || _a === void 0 ? void 0 : _a.seed, x, y, angle, range, fov, config_1.CONFIG.quality.rayCount].join('/');
+    if (key === polyKey)
+        return polyCache;
+    polyCache = (0, RenderLight_1.getLightPolygon)(x, y, angle, range, fov);
+    polyKey = key;
+    return polyCache;
+}
+const vertex = `attribute vec2 position;varying vec2 uv;void main(){uv=position*.5+.5;gl_Position=vec4(position,0.,1.);}`;
+const fragment = `precision highp float;
+varying vec2 uv;
+uniform sampler2D albedo;uniform sampler2D normals;uniform sampler2D detail;uniform sampler2D beam;
+uniform vec4 viewport;uniform vec2 origin;uniform vec2 light;uniform float angle;uniform float fov;uniform float range;
+uniform float on;uniform float inspection;uniform float aa;uniform vec2 roomSize;uniform float surfaceOcclusion;
+uniform vec2 selfGlow;uniform vec2 perception;uniform float projectionCorrection;
+float beamDistance(float t){
+ float x=clamp(t,0.,1.)*511.;float i=floor(x);vec2 a=texture2D(beam,vec2((i+.5)/512.,.5)).rg;
+ float da=(a.r*256.+a.g)/257.;if(aa<.5)return da*range;
+ vec2 b=texture2D(beam,vec2((min(511.,i+1.)+.5)/512.,.5)).rg;
+ return mix(da,(b.r*256.+b.g)/257.,fract(x))*range;
+}
+void main(){
+ vec2 world=vec2(viewport.x+uv.x*viewport.z,viewport.y+(1.-uv.y)*viewport.w),st=(world-origin)/roomSize;
+ if(st.x<0.||st.x>1.||st.y<0.||st.y>1.){gl_FragColor=vec4(0.);return;}
+ vec4 base=texture2D(albedo,st),d=texture2D(detail,st);if(base.a<.001){gl_FragColor=vec4(0.);return;}
+ vec3 n=normalize(texture2D(normals,st).rgb*2.-1.);
+ vec2 delta=world-light;float theta=atan(delta.y,delta.x)-angle;theta=atan(sin(theta),cos(theta));
+ float cone=(1.-smoothstep(fov*.29,fov*.5,abs(theta)))*on;
+ float height=d.b*100.;
+ // Match the offline projection P(x,y,z)=(x+.18z,y-.26z).
+ // Cone/collision remain in canonical 2D; only geometric surface lighting is unprojected.
+ vec2 surfaceDelta=delta+vec2(.18,-.26)*(95.-height)*projectionCorrection;
+ vec3 l=normalize(vec3(-surfaceDelta,95.-height));
+ float lambert=max(0.,dot(n,l));
+ float bands=.24+.37*smoothstep(.25,.31,lambert)+.39*smoothstep(.63,.70,lambert);
+ float diffuse=mix(.19+.81*lambert,bands,.25);
+ vec3 stone=base.rgb,color=stone*mix(vec3(.38,.49,.61),vec3(1.06,1.01,.84),diffuse)*1.30;
+ float ao=d.r;
+ vec2 towardLight=normalize(-delta+vec2(.0001));
+ float localVisibility=1.;
+ if(surfaceOcclusion>.5){
+  for(int j=0;j<3;j++){
+   float stepWorld=j==0?8.:j==1?19.:38.;
+   vec2 q=st+towardLight*stepWorld/roomSize;
+   vec4 other=texture2D(detail,q);float solid=texture2D(albedo,q).a;
+   float predicted=height+(95.-height)*stepWorld/max(1.,length(delta));
+   float obstruction=smoothstep(predicted+2.,predicted+9.,other.b*100.)*solid;
+   localVisibility=min(localVisibility,1.-obstruction*.45);
+  }
+ }
+ color*=mix(.37,1.,ao)*localVisibility;
+ float spec=pow(max(0.,dot(n,normalize(l+vec3(0,0,1)))),22.);
+ color+=vec3(.26,.33,.33)*spec*.09*ao*localVisibility;
+ float hit=beamDistance(theta/fov+.5);
+ float reach=1.-smoothstep(hit+20.,hit+190.,length(delta));
+ float incident=cone*reach*(1.-smoothstep(range*.25,range,length(delta)));
+ float dist=length(delta);
+ float proximity=selfGlow.y*(1.-smoothstep(0.,selfGlow.x,dist))+perception.y*(1.-smoothstep(0.,perception.x,dist));
+ color=stone*.012+color*(.32*proximity+.95*incident);
+ if(inspection>.5)color=(n*.5+.5)*(.04+.80*incident);
+ float coverage=aa>.5?base.a:step(.50,base.a);
+ gl_FragColor=vec4(clamp(color,0.,1.),coverage);
+}`;
+function setup() {
+    if (!surface) {
+        surface = wx.createCanvas();
+        if (typeof surface.addEventListener === 'function')
+            surface.addEventListener('webglcontextlost', e => {
+                e.preventDefault();
+                gl = null;
+                program = null;
+                queries = [];
+                beamKey = '';
+                gpuMs = null;
+                for (const key of Object.keys(uniforms))
+                    delete uniforms[key];
+            });
+        if (typeof surface.addEventListener === 'function')
+            surface.addEventListener('webglcontextrestored', () => { gl = null; program = null; initGL(); });
+    }
+    if (!gl && Date.now() >= initRetryAfter) {
+        try {
+            initGL();
+        }
+        catch (e) {
+            console.warn('[CaveRock] surface fallback', e);
+            gl = null;
+            program = null;
+            initRetryAfter = Date.now() + 3000;
+        }
+    }
+}
+function location(name) {
+    if (!(name in uniforms))
+        uniforms[name] = gl.getUniformLocation(program, name);
+    return uniforms[name];
+}
+function initGL() {
+    gl = surface.getContext('webgl', { alpha: true, premultipliedAlpha: false, antialias: false, preserveDrawingBuffer: true });
+    if (!gl || gl.isContextLost()) {
+        gl = null;
+        return;
+    }
+    const compile = (type, code) => {
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, code);
+        gl.compileShader(shader);
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS))
+            throw Error(gl.getShaderInfoLog(shader));
+        return shader;
+    };
+    const v = compile(gl.VERTEX_SHADER, vertex), f = compile(gl.FRAGMENT_SHADER, fragment);
+    program = gl.createProgram();
+    gl.attachShader(program, v);
+    gl.attachShader(program, f);
+    gl.linkProgram(program);
+    gl.deleteShader(v);
+    gl.deleteShader(f);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS))
+        throw Error(gl.getProgramInfoLog(program));
+    gl.useProgram(program);
+    for (const key of Object.keys(uniforms))
+        delete uniforms[key];
+    buffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]), gl.STATIC_DRAW);
+    const a = gl.getAttribLocation(program, 'position');
+    gl.enableVertexAttribArray(a);
+    gl.vertexAttribPointer(a, 2, gl.FLOAT, false, 0, 0);
+    textures = [];
+    uploadImages();
+    beamTexture = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE3);
+    gl.bindTexture(gl.TEXTURE_2D, beamTexture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 512, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, beamBytes);
+    gl.uniform1i(location('beam'), 3);
+    beamKey = '';
+    timerExtension = gl.getExtension('EXT_disjoint_timer_query');
+    lossExtension = gl.getExtension('WEBGL_lose_context');
+    contextGeneration++;
+}
+function uploadImages() {
+    if (!gl || !program || images.length !== 3)
+        return;
+    gl.useProgram(program);
+    textures.forEach(t => gl.deleteTexture(t));
+    textures = [];
+    ['albedo', 'normals', 'detail'].forEach((name, i) => {
+        const tex = gl.createTexture();
+        textures.push(tex);
+        gl.activeTexture(gl.TEXTURE0 + i);
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, images[i]);
+        gl.uniform1i(location(name), i);
+    });
+}
+function uploadBeam() {
+    if (!gl)
+        return;
+    const p = reviewLightPolygon(state_1.player.x, state_1.player.y, state_1.player.angle, config_1.CONFIG.lightRange, config_1.CONFIG.fov);
+    if (beamKey === polyKey)
+        return;
+    for (let i = 0; i < 512; i++) {
+        const f = i / 511 * (p.length - 1), k = Math.min(p.length - 2, Math.floor(f)), t = f - k;
+        const d = aa ? p[k].dist * (1 - t) + p[k + 1].dist * t : p[Math.min(p.length - 1, Math.round(f))].dist;
+        const value = Math.round(d / config_1.CONFIG.lightRange * 65535);
+        beamBytes[i * 4] = value >> 8;
+        beamBytes[i * 4 + 1] = value & 255;
+        beamBytes[i * 4 + 3] = 255;
+    }
+    gl.activeTexture(gl.TEXTURE3);
+    gl.bindTexture(gl.TEXTURE_2D, beamTexture);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 512, 1, gl.RGBA, gl.UNSIGNED_BYTE, beamBytes);
+    beamKey = polyKey;
+    uploads++;
+}
+function background(ctx) {
+    if (!backImage)
+        return;
+    const cam = state_1.state.camera, dx = (cam.x - ORIGIN.x - scene.player[0]) * .075, dy = (cam.y - ORIGIN.y - scene.player[1]) * .075;
+    ctx.save();
+    ctx.globalAlpha = .40;
+    ctx.drawImage(backImage, ORIGIN.x + dx, ORIGIN.y + dy, roomWidth, roomHeight);
+    ctx.restore();
+}
+function timerStart() {
+    if (!gl || !timerExtension)
+        return null;
+    const ext = timerExtension;
+    while (queries.length && ext.getQueryObjectEXT(queries[0], ext.QUERY_RESULT_AVAILABLE_EXT)) {
+        const q = queries.shift();
+        if (!gl.getParameter(ext.GPU_DISJOINT_EXT))
+            gpuMs = ext.getQueryObjectEXT(q, ext.QUERY_RESULT_EXT) / 1e6;
+        ext.deleteQueryEXT(q);
+    }
+    if (queries.length > 4)
+        return null;
+    const q = ext.createQueryEXT();
+    ext.beginQueryEXT(ext.TIME_ELAPSED_EXT, q);
+    return q;
+}
+function timerEnd(q) {
+    if (q && timerExtension) {
+        timerExtension.endQueryEXT(timerExtension.TIME_ELAPSED_EXT);
+        queries.push(q);
+    }
+}
+function drawCaveRock(ctx, l, r, t, b, zoom) {
+    if (!syncCaveRock())
+        return;
+    const start = performance.now();
+    setup();
+    background(ctx);
+    if (gl && gl.isContextLost()) {
+        gl = null;
+        program = null;
+        beamKey = '';
+        gpuMs = null;
+    }
+    if (gl && program && !gl.isContextLost() && !fallback) {
+        const centerX = (l + r) / 2, centerY = (t + b) / 2;
+        const pad = (Math.max(0, state_1.state.fx.shake || 0) + 2) / zoom;
+        l = Math.max(l, centerX - Canvas_1.logicW / (2 * zoom) - pad);
+        r = Math.min(r, centerX + Canvas_1.logicW / (2 * zoom) + pad);
+        t = Math.max(t, centerY - Canvas_1.logicH / (2 * zoom) - pad);
+        b = Math.min(b, centerY + Canvas_1.logicH / (2 * zoom) + pad);
+        const resolution = aa ? (sampling === 'economy' ? 1 : sampling === 'sharp' ? 2 : 1.5) : .6;
+        const w = Math.ceil((r - l) * zoom * resolution), h = Math.ceil((b - t) * zoom * resolution);
+        if (surface.width !== w)
+            surface.width = w;
+        if (surface.height !== h)
+            surface.height = h;
+        gl.viewport(0, 0, w, h);
+        gl.useProgram(program);
+        uploadBeam();
+        gl.uniform4f(location('viewport'), l, t, r - l, b - t);
+        gl.uniform2f(location('origin'), ORIGIN.x, ORIGIN.y);
+        gl.uniform2f(location('light'), state_1.player.x, state_1.player.y);
+        gl.uniform1f(location('angle'), state_1.player.angle);
+        gl.uniform1f(location('fov'), config_1.CONFIG.fov * Math.PI / 180);
+        gl.uniform1f(location('range'), config_1.CONFIG.lightRange);
+        gl.uniform1f(location('on'), state_1.state.flashlightOn === false ? 0 : 1);
+        gl.uniform1f(location('inspection'), inspection ? 1 : 0);
+        gl.uniform1f(location('aa'), aa ? 1 : 0);
+        gl.uniform2f(location('roomSize'), roomWidth, roomHeight);
+        gl.uniform1f(location('surfaceOcclusion'), surfaceOcclusion ? 1 : 0);
+        gl.uniform2f(location('selfGlow'), config_1.CONFIG.selfGlowRadius, config_1.CONFIG.selfGlowIntensity);
+        gl.uniform2f(location('perception'), config_1.CONFIG.ambientPerceptionRadius, config_1.CONFIG.ambientPerceptionIntensity);
+        gl.uniform1f(location('projectionCorrection'), projectionCorrection ? 1 : 0);
+        gl.clearColor(0, 0, 0, 0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        const query = timerStart();
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+        timerEnd(query);
+        gl.flush();
+        ctx.save();
+        ctx.imageSmoothingEnabled = true;
+        ctx.drawImage(surface, l, t, r - l, b - t);
+        ctx.restore();
+    }
+    else {
+        ctx.save();
+        ctx.globalAlpha = .035;
+        ctx.drawImage(images[0], ORIGIN.x, ORIGIN.y, roomWidth, roomHeight);
+        ctx.restore();
+        if (state_1.state.flashlightOn !== false) {
+            ctx.save();
+            ctx.beginPath();
+            for (const p of scene.shapes) {
+                p.forEach((v, i) => i ? ctx.lineTo(ORIGIN.x + v[0], ORIGIN.y + v[1]) : ctx.moveTo(ORIGIN.x + v[0], ORIGIN.y + v[1]));
+                ctx.closePath();
+            }
+            ctx.clip();
+            const hits = reviewLightPolygon(state_1.player.x, state_1.player.y, state_1.player.angle, config_1.CONFIG.lightRange, config_1.CONFIG.fov);
+            for (let i = 0; i < hits.length; i += 24) {
+                const p = hits[i];
+                if (p.dist >= config_1.CONFIG.lightRange)
+                    continue;
+                const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 80);
+                g.addColorStop(0, 'rgba(145,145,125,.26)');
+                g.addColorStop(1, 'rgba(145,145,125,0)');
+                ctx.fillStyle = g;
+                ctx.fillRect(p.x - 80, p.y - 80, 160, 160);
+            }
+            ctx.restore();
+        }
+    }
+    if (overlay) {
+        ctx.save();
+        ctx.strokeStyle = '#ffbf70';
+        ctx.lineWidth = 1 / zoom;
+        for (const p of scene.shapes) {
+            ctx.beginPath();
+            p.forEach((v, i) => i ? ctx.lineTo(ORIGIN.x + v[0], ORIGIN.y + v[1]) : ctx.moveTo(ORIGIN.x + v[0], ORIGIN.y + v[1]));
+            ctx.closePath();
+            ctx.stroke();
+        }
+        ctx.strokeStyle = '#8de8b1';
+        ctx.beginPath();
+        ctx.arc(state_1.player.x, state_1.player.y, config_1.CONFIG.maze.playerRadius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+    }
+    surfaceMs = performance.now() - start;
+}
+function drawCaveRockBase(ctx) {
+    const maze = state_1.state.screen === 'mazeRescue' ? state_1.state.mazeRescue : null;
+    if (!(maze === null || maze === void 0 ? void 0 : maze.caveRockRoom))
+        return;
+    ctx.save();
+    ctx.fillStyle = '#1d282c';
+    for (const wall of maze.mazeWalls) {
+        const p = wall.rockPolygon;
+        if (!p)
+            continue;
+        ctx.beginPath();
+        p.forEach((v, i) => i ? ctx.lineTo(v.x, v.y) : ctx.moveTo(v.x, v.y));
+        ctx.closePath();
+        ctx.fill();
+    }
+    ctx.restore();
+}
+function getCaveRockStats() { return { loaded: images.length === 3, mode: gl && !gl.isContextLost() ? 'normal-map' : 'fallback', surfacePixels: surface ? surface.width * surface.height : 0, gpuSurfaceMs: gpuMs, surfaceCPUms: surfaceMs, textureBytes: textureWidth * textureHeight * 4 * 3, contextGeneration, beamUploads: uploads }; }
 },"/src/render/RenderDiver":function(exports,require){"use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.drawDiver = drawDiver;
@@ -27522,6 +28078,7 @@ const Visibility_1 = require("../world/Visibility");
 var Visibility_2 = require("../world/Visibility");
 Object.defineProperty(exports, "isLineOfSight", { enumerable: true, get: function () { return Visibility_2.isLineOfSight; } });
 const RenderMazeScene_1 = require("./RenderMazeScene");
+const RockGeometry_1 = require("../world/RockGeometry");
 // 射线-圆相交检测
 function rayCircleIntersect(ox, oy, dx, dy, cx, cy, cr) {
     let fx = ox - cx, fy = oy - cy;
@@ -27617,16 +28174,30 @@ function sampleBlueNoise(u, v) {
 }
 // ============ 射线碰撞检测 ============
 function getLightPolygon(sx, sy, angle, maxDist, fovDeg = config_1.CONFIG.fov) {
-    var _a, _b, _c, _d;
+    var _a, _b, _c, _d, _e;
     let points = [];
     let fovRad = fovDeg * Math.PI / 180;
     let startAngle = angle - fovRad / 2;
     let rays = (_c = (_b = (_a = config_1.CONFIG.quality) === null || _a === void 0 ? void 0 : _a.rayCount) !== null && _b !== void 0 ? _b : config_1.CONFIG.rayCount) !== null && _c !== void 0 ? _c : 360;
+    const rockTrial = state_1.state.screen === 'mazeRescue' && !!((_d = state_1.state.mazeRescue) === null || _d === void 0 ? void 0 : _d.caveRockRoom);
+    if (rockTrial)
+        rays = Math.min(360, Math.max(128, rays));
     let step = fovRad / rays;
+    if (rockTrial) {
+        const walls = state_1.state.mazeRescue.mazeWalls;
+        for (let i = 0; i <= rays; i++) {
+            const a = startAngle + i * step, dx = Math.cos(a), dy = Math.sin(a);
+            let d = maxDist;
+            for (const wall of walls)
+                d = (0, RockGeometry_1.rayHitsRock)(wall, sx, sy, dx, dy, d);
+            points.push({ x: sx + dx * d, y: sy + dy * d, dist: d });
+        }
+        return points;
+    }
     // ---- 低档跳过遮挡计算（low 档位最贵的 CPU 段：每条射线对所有障碍物的求交循环）----
     // 启用后光锥不受岩壁遮挡直接延伸到 maxDist，视觉上手电会"穿墙"，但 CPU 端几乎零成本
     // 适合低端机极限省电；shader 端逻辑完全不用改，VPL 反弹点自动落在 maxDist 处
-    if ((_d = config_1.CONFIG.quality) === null || _d === void 0 ? void 0 : _d.skipOcclusion) {
+    if ((_e = config_1.CONFIG.quality) === null || _e === void 0 ? void 0 : _e.skipOcclusion) {
         for (let i = 0; i <= rays; i++) {
             let a = startAngle + i * step;
             points.push({
@@ -28311,6 +28882,8 @@ function getMazeParticleColorByWorld(x, y, tileSize, rows, cols, alpha) {
 }
 // 只保留圆形岩石造型
 function drawMazeWallShape(ctx, wall, row, col) {
+    if (wall.rockPolygon)
+        return;
     const maze = getMazeThemeState();
     const wallColor = maze ? getMazeThemeColorByCell(row, col, 'wallColor', '#222') : '#222';
     const wallHighlight = maze ? getMazeThemeColorByCell(row, col, 'wallHighlight', '#1a1a1a') : '#1a1a1a';
@@ -30148,13 +30721,13 @@ function getMenuButtonRects() {
             enabled: true,
         },
         {
-            id: 'settings',
+            id: 'rockTrial',
             x: cw / 2 - btnW / 2,
             y: groupTop + (btnH + gap) * 4,
             w: btnW, h: btnH,
-            label: '设置',
-            subLabel: '音频 · 画质 · GM',
-            enabled: false, // 占位，阶段 4 之后再接入
+            label: '岩体试跑',
+            subLabel: '真实下潜与绳索 · 不写入存档',
+            enabled: true,
         },
     ];
 }
@@ -32724,8 +33297,11 @@ const state_1 = require("../core/state");
 const Canvas_1 = require("./Canvas");
 const Pathfinding_1 = require("../logic/Pathfinding");
 function generateSlackRopePoints(basePath, slackFactor, animTime) {
+    var _a;
     if (!basePath || basePath.length < 2)
         return basePath || [];
+    if (state_1.state.screen === 'mazeRescue' && ((_a = state_1.state.mazeRescue) === null || _a === void 0 ? void 0 : _a.caveRockRoom))
+        return basePath;
     const totalLen = (0, Pathfinding_1.pathLength)(basePath);
     if (totalLen < 1)
         return basePath;
@@ -32749,6 +33325,7 @@ function generateSlackRopePoints(basePath, slackFactor, animTime) {
     return points;
 }
 function strokeRopeLine(points, color, width) {
+    var _a;
     if (!points || points.length < 2)
         return;
     Canvas_1.ctx.save();
@@ -32758,7 +33335,11 @@ function strokeRopeLine(points, color, width) {
     Canvas_1.ctx.lineJoin = 'round';
     Canvas_1.ctx.beginPath();
     Canvas_1.ctx.moveTo(points[0].x, points[0].y);
-    if (points.length === 2) {
+    if (state_1.state.screen === 'mazeRescue' && ((_a = state_1.state.mazeRescue) === null || _a === void 0 ? void 0 : _a.caveRockRoom)) {
+        for (let i = 1; i < points.length; i++)
+            Canvas_1.ctx.lineTo(points[i].x, points[i].y);
+    }
+    else if (points.length === 2) {
         Canvas_1.ctx.lineTo(points[1].x, points[1].y);
     }
     else {
@@ -38868,9 +39449,11 @@ float queryOcclusionDist(float fragAngle, float lightAngle, float fov) {
     da = da - floor(da / 6.2831853 + 0.5) * 6.2831853;
     float t = (da + halfFov) / fov;
     if (t < 0.0 || t > 1.0) return 0.0;
-    float texU = (t * u_polyCount + 0.5) / POLY_TEX_SIZE;
-    vec4 s = texture2D(u_polyTex, vec2(texU, 0.25));
-    return s.r * u_maxDist;
+    float index=clamp(t,0.0,1.0)*max(0.0,u_polyCount-1.0);
+    float i=floor(index);
+    vec4 a=texture2D(u_polyTex,vec2((i+0.5)/POLY_TEX_SIZE,0.25));
+    vec4 b=texture2D(u_polyTex,vec2((min(u_polyCount-1.0,i+1.0)+0.5)/POLY_TEX_SIZE,0.25));
+    return mix(a.r,b.r,fract(index))*u_maxDist;
 }
 
 
@@ -38898,13 +39481,9 @@ float computeFlashlight(vec2 worldPos, vec2 lightPos, float lightAngle, float ma
     float featherDist = maxDist * 0.25;
     if (dist > occDist + featherDist) return 0.0;
     
-    // 被墙壁截断处的羽化
-    float occFade = 1.0;
-    if (dist > occDist) {
-        float t = (dist - occDist) / featherDist;
-        occFade = (1.0 - smoothFade(t)) * 0.5;
-    }
-    
+    // Continuous blocker fade, without a 1.0 to 0.5 brightness jump.
+    float occFade=1.0-smoothstep(occDist-1.0,occDist+featherDist,dist);
+
     // 径向衰减：前 flatRatio 全亮，之后平滑衰减到 0
     float dr = dist / maxDist;
     float radialFade;
@@ -39123,9 +39702,11 @@ float queryOcclusionDist(float fragAngle, float lightAngle, float fov) {
     da = da - floor(da / 6.2831853 + 0.5) * 6.2831853;
     float t = (da + halfFov) / fov;
     if (t < 0.0 || t > 1.0) return 0.0;
-    float texU = (t * u_polyCount + 0.5) / POLY_TEX_SIZE;
-    vec4 s = texture2D(u_polyTex, vec2(texU, 0.25));
-    return s.r * u_maxDist;
+    float index=clamp(t,0.0,1.0)*max(0.0,u_polyCount-1.0);
+    float i=floor(index);
+    vec4 a=texture2D(u_polyTex,vec2((i+0.5)/POLY_TEX_SIZE,0.25));
+    vec4 b=texture2D(u_polyTex,vec2((min(u_polyCount-1.0,i+1.0)+0.5)/POLY_TEX_SIZE,0.25));
+    return mix(a.r,b.r,fract(index))*u_maxDist;
 }
 
 vec3 computeVolumetric(vec2 worldPos, vec2 lightPos, float lightAngle, float maxDist, float fov, float centerFov) {
@@ -40136,6 +40717,9 @@ const SaveStorage_1 = require("../core/SaveStorage");
 const KEY = 'story2_v1';
 const VERSION = 1;
 function saveStoryProgress() {
+    var _a;
+    if ((_a = state_1.state.mazeRescue) === null || _a === void 0 ? void 0 : _a.rockTrial)
+        return false;
     const data = {
         version: VERSION,
         timestamp: Date.now(),
@@ -40165,6 +40749,9 @@ function loadStoryProgress() {
     return true;
 }
 function clearStoryProgress() {
+    var _a;
+    if ((_a = state_1.state.mazeRescue) === null || _a === void 0 ? void 0 : _a.rockTrial)
+        return;
     (0, SaveStorage_1.removeKey)(KEY);
     state_1.state.story2.nightIndex = 0;
     state_1.state.story2.flags = {};
@@ -40355,12 +40942,683 @@ exports.night_07_milk = {
 // 每份对话脚本是一个 DialogueScene。脚本数据本身**不写代码逻辑**，只描述数据。
 // 由 src/story/DialogueRunner.ts 解释执行。
 Object.defineProperty(exports, "__esModule", { value: true });
+},"/src/world/CaveRockData":function(exports,require){"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.CAVE_ROCK_ROOM = void 0;
+exports.CAVE_ROCK_ROOM = {
+    "width": 720,
+    "height": 1120,
+    "player": [
+        358,
+        772
+    ],
+    "aim": [
+        402,
+        566
+    ],
+    "shapes": [
+        [
+            [
+                0,
+                0
+            ],
+            [
+                331,
+                0
+            ],
+            [
+                314,
+                103
+            ],
+            [
+                344,
+                177
+            ],
+            [
+                303,
+                231
+            ],
+            [
+                331,
+                302
+            ],
+            [
+                294,
+                363
+            ],
+            [
+                323,
+                423
+            ],
+            [
+                282,
+                481
+            ],
+            [
+                310,
+                527
+            ],
+            [
+                280,
+                571
+            ],
+            [
+                305,
+                616
+            ],
+            [
+                274,
+                665
+            ],
+            [
+                286,
+                708
+            ],
+            [
+                260,
+                754
+            ],
+            [
+                258,
+                830
+            ],
+            [
+                295,
+                901
+            ],
+            [
+                275,
+                960
+            ],
+            [
+                310,
+                1030
+            ],
+            [
+                290,
+                1120
+            ],
+            [
+                0,
+                1120
+            ]
+        ],
+        [
+            [
+                720,
+                0
+            ],
+            [
+                720,
+                1120
+            ],
+            [
+                452,
+                1120
+            ],
+            [
+                458,
+                1036
+            ],
+            [
+                437,
+                977
+            ],
+            [
+                460,
+                913
+            ],
+            [
+                431,
+                848
+            ],
+            [
+                451,
+                796
+            ],
+            [
+                431,
+                749
+            ],
+            [
+                471,
+                707
+            ],
+            [
+                453,
+                663
+            ],
+            [
+                494,
+                635
+            ],
+            [
+                479,
+                585
+            ],
+            [
+                523,
+                553
+            ],
+            [
+                490,
+                493
+            ],
+            [
+                513,
+                425
+            ],
+            [
+                477,
+                365
+            ],
+            [
+                504,
+                300
+            ],
+            [
+                476,
+                234
+            ],
+            [
+                510,
+                151
+            ],
+            [
+                476,
+                84
+            ],
+            [
+                518,
+                0
+            ]
+        ],
+        [
+            [
+                493,
+                460
+            ],
+            [
+                467,
+                462
+            ],
+            [
+                450,
+                481
+            ],
+            [
+                407,
+                506
+            ],
+            [
+                395,
+                541
+            ],
+            [
+                363,
+                552
+            ],
+            [
+                357,
+                582
+            ],
+            [
+                371,
+                604
+            ],
+            [
+                406,
+                615
+            ],
+            [
+                423,
+                642
+            ],
+            [
+                449,
+                631
+            ],
+            [
+                473,
+                650
+            ],
+            [
+                493,
+                620
+            ],
+            [
+                512,
+                583
+            ],
+            [
+                502,
+                533
+            ],
+            [
+                527,
+                504
+            ]
+        ]
+    ],
+    "background": [
+        [
+            [
+                331,
+                112
+            ],
+            [
+                359,
+                135
+            ],
+            [
+                397,
+                190
+            ],
+            [
+                414,
+                254
+            ],
+            [
+                400,
+                331
+            ],
+            [
+                414,
+                371
+            ],
+            [
+                401,
+                428
+            ],
+            [
+                381,
+                453
+            ],
+            [
+                365,
+                405
+            ],
+            [
+                369,
+                356
+            ],
+            [
+                351,
+                330
+            ],
+            [
+                358,
+                263
+            ],
+            [
+                334,
+                225
+            ],
+            [
+                345,
+                178
+            ]
+        ],
+        [
+            [
+                428,
+                426
+            ],
+            [
+                449,
+                409
+            ],
+            [
+                475,
+                415
+            ],
+            [
+                468,
+                451
+            ],
+            [
+                440,
+                478
+            ],
+            [
+                415,
+                479
+            ],
+            [
+                422,
+                453
+            ]
+        ],
+        [
+            [
+                336,
+                909
+            ],
+            [
+                367,
+                886
+            ],
+            [
+                396,
+                902
+            ],
+            [
+                414,
+                947
+            ],
+            [
+                403,
+                1004
+            ],
+            [
+                372,
+                1031
+            ],
+            [
+                369,
+                1089
+            ],
+            [
+                331,
+                1120
+            ],
+            [
+                311,
+                1120
+            ],
+            [
+                340,
+                1075
+            ],
+            [
+                344,
+                1010
+            ],
+            [
+                368,
+                977
+            ],
+            [
+                359,
+                943
+            ]
+        ]
+    ],
+    "sites": [
+        {
+            "name": "洞口看断冠",
+            "player": [
+                358,
+                772
+            ],
+            "aim": [
+                402,
+                566
+            ]
+        },
+        {
+            "name": "靠近左侧岩体",
+            "player": [
+                350,
+                684
+            ],
+            "aim": [
+                305,
+                569
+            ]
+        },
+        {
+            "name": "右侧回看",
+            "player": [
+                391,
+                743
+            ],
+            "aim": [
+                460,
+                685
+            ]
+        }
+    ]
+};
+},"/src/world/CaveRockTrial":function(exports,require){"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.createCaveRockTrialMap = createCaveRockTrialMap;
+exports.buildCaveRockPath = buildCaveRockPath;
+const CaveRockData_1 = require("./CaveRockData");
+const RockGeometry_1 = require("./RockGeometry");
+function createCaveRockTrialMap() {
+    const tileSize = 120, cols = 10, rows = 59, x = 240, y = 5760;
+    const room = Object.assign(Object.assign({}, CaveRockData_1.CAVE_ROCK_ROOM), { x, y });
+    const polygons = CaveRockData_1.CAVE_ROCK_ROOM.shapes.map(p => p.map(v => ({ x: x + v[0], y: y + v[1] })));
+    const exitX = x + CaveRockData_1.CAVE_ROCK_ROOM.player[0];
+    // An actual connected surface shaft, with no hidden circular collision proxies.
+    polygons.push([{ x: 0, y: 0 }, { x: exitX - 65, y: 0 }, { x: exitX - 65, y }, { x: x + 331, y }, { x, y: y + room.height }, { x: 0, y: rows * tileSize }]);
+    polygons.push([{ x: exitX + 65, y: 0 }, { x: cols * tileSize, y: 0 }, { x: cols * tileSize, y: rows * tileSize }, { x: x + room.width, y: y + room.height }, { x: x + 518, y }, { x: exitX + 65, y }]);
+    polygons.push([{ x: 0, y: y + room.height }, { x: cols * tileSize, y: y + room.height }, { x: cols * tileSize, y: rows * tileSize }, { x: 0, y: rows * tileSize }]);
+    const walls = polygons.map(p => {
+        const minX = Math.min(...p.map(v => v.x)), maxX = Math.max(...p.map(v => v.x));
+        const minY = Math.min(...p.map(v => v.y)), maxY = Math.max(...p.map(v => v.y));
+        const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+        return { x: cx, y: cy, r: Math.hypot(maxX - minX, maxY - minY) / 2, row: Math.floor(cy / tileSize), col: Math.floor(cx / tileSize), rockPolygon: p };
+    });
+    const map = [], explored = [], themes = [], blends = [], structures = [];
+    for (let r = 0; r < rows; r++) {
+        map[r] = [];
+        explored[r] = [];
+        themes[r] = [];
+        blends[r] = [];
+        structures[r] = [];
+        for (let c = 0; c < cols; c++) {
+            const cx = (c + .5) * tileSize, cy = (r + .5) * tileSize;
+            map[r][c] = walls.find(w => (0, RockGeometry_1.pointInRock)(w.rockPolygon, cx, cy)) || 0;
+            explored[r][c] = false;
+            themes[r][c] = 0;
+            blends[r][c] = { theme2: -1, blend: 0 };
+            structures[r][c] = '';
+        }
+    }
+    return {
+        seed: 0x43525631, mazeMap: map, mazeWalls: walls, mazeExplored: explored,
+        mazeCols: cols, mazeRows: rows, mazeTileSize: tileSize,
+        mazeSceneThemeKeys: ['hardRock'], mazeSceneThemeMap: themes, mazeSceneBlendMap: blends, mazeSceneStructureMap: structures,
+        exitX, exitY: 0, spawnX: exitX, spawnY: y + CaveRockData_1.CAVE_ROCK_ROOM.player[1],
+        npcInitX: x + 359, npcInitY: y + 1030, caveRockRoom: room,
+    };
+}
+/** Geometry-aware A*: the actual rope cannot use cell occupancy or circular proxies. */
+function computeCaveRockPath(maze, start, end, padding) {
+    const walls = maze.mazeWalls;
+    if ((0, RockGeometry_1.rockSegmentClear)(walls, start, end, padding))
+        return [Object.assign({}, start), Object.assign({}, end)];
+    const ts = 20, rows = Math.ceil(maze.mazeRows * maze.mazeTileSize / ts), cols = Math.ceil(maze.mazeCols * maze.mazeTileSize / ts);
+    const point = (key) => ({ x: (key % cols + .5) * ts, y: (Math.floor(key / cols) + .5) * ts });
+    const passable = new Map();
+    function allowed(key) {
+        if (passable.has(key))
+            return passable.get(key);
+        const p = point(key), value = !(0, RockGeometry_1.rockTrialCollision)(maze, p.x, p.y, padding);
+        passable.set(key, value);
+        return value;
+    }
+    function connectors(p) {
+        const out = [], r = Math.floor(p.y / ts), c = Math.floor(p.x / ts);
+        for (let dr = -2; dr <= 2; dr++)
+            for (let dc = -2; dc <= 2; dc++) {
+                if (r + dr < 0 || r + dr >= rows || c + dc < 0 || c + dc >= cols)
+                    continue;
+                const key = (r + dr) * cols + c + dc;
+                if (allowed(key) && (0, RockGeometry_1.rockSegmentClear)(walls, p, point(key), padding))
+                    out.push(key);
+            }
+        return out;
+    }
+    const starts = connectors(start), ends = new Set(connectors(end));
+    const cost = new Map(), parent = new Map(), closed = new Set();
+    const open = [];
+    const heuristic = (key) => { const p = point(key); return Math.hypot(p.x - end.x, p.y - end.y); };
+    for (const key of starts) {
+        const p = point(key), g = Math.hypot(p.x - start.x, p.y - start.y);
+        cost.set(key, g);
+        open.push({ key, f: g + heuristic(key) });
+    }
+    let found = -1;
+    for (let n = 0; n < 5000 && open.length; n++) {
+        let best = 0;
+        for (let i = 1; i < open.length; i++)
+            if (open[i].f < open[best].f)
+                best = i;
+        const key = open.splice(best, 1)[0].key;
+        if (closed.has(key))
+            continue;
+        if (ends.has(key)) {
+            found = key;
+            break;
+        }
+        closed.add(key);
+        const r = Math.floor(key / cols), c = key % cols, from = point(key);
+        for (let dr = -1; dr <= 1; dr++)
+            for (let dc = -1; dc <= 1; dc++) {
+                if ((!dr && !dc) || r + dr < 0 || r + dr >= rows || c + dc < 0 || c + dc >= cols)
+                    continue;
+                const next = (r + dr) * cols + c + dc;
+                if (closed.has(next) || !allowed(next))
+                    continue;
+                const to = point(next);
+                if (!(0, RockGeometry_1.rockSegmentClear)(walls, from, to, padding))
+                    continue;
+                const g = cost.get(key) + Math.hypot(to.x - from.x, to.y - from.y);
+                if (cost.has(next) && cost.get(next) <= g)
+                    continue;
+                cost.set(next, g);
+                parent.set(next, key);
+                open.push({ key: next, f: g + heuristic(next) });
+            }
+    }
+    // Never fall back to a known-through-wall chord when no safe route exists.
+    if (found < 0)
+        return [Object.assign({}, start)];
+    const route = [Object.assign({}, end)];
+    for (let key = found; key !== undefined; key = parent.get(key))
+        route.unshift(point(key));
+    route.unshift(Object.assign({}, start));
+    const result = [route[0]];
+    for (let i = 0; i < route.length - 1;) {
+        let next = i + 1;
+        for (let j = i + 2; j < route.length; j++)
+            if ((0, RockGeometry_1.rockSegmentClear)(walls, route[i], route[j], padding))
+                next = j;
+        result.push(route[next]);
+        i = next;
+    }
+    return result;
+}
+const ropePaths = new WeakMap();
+function buildCaveRockPath(maze, start, end, padding) {
+    const old = ropePaths.get(maze);
+    if (old && old.padding === padding && Math.hypot(start.x - old.start.x, start.y - old.start.y) < .001 && Math.hypot(end.x - old.end.x, end.y - old.end.y) < 20 && old.path.length > 1 && (0, RockGeometry_1.rockSegmentClear)(maze.mazeWalls, old.path[old.path.length - 2], end, padding)) {
+        const result = old.path.slice(0, -1).map(p => (Object.assign({}, p)));
+        result.push(Object.assign({}, end));
+        return result;
+    }
+    const result = computeCaveRockPath(maze, start, end, padding);
+    ropePaths.set(maze, { start: Object.assign({}, start), end: Object.assign({}, end), padding, path: result });
+    return result;
+}
+},"/src/world/RockGeometry":function(exports,require){"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.pointInRock = pointInRock;
+exports.closestRockPoint = closestRockPoint;
+exports.circleHitsRock = circleHitsRock;
+exports.rayHitsRock = rayHitsRock;
+exports.rockSegmentClear = rockSegmentClear;
+exports.rockTrialCollision = rockTrialCollision;
+function pointInRock(points, x, y) {
+    let inside = false;
+    for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+        const a = points[i], b = points[j];
+        if ((a.y > y) !== (b.y > y) && x < (b.x - a.x) * (y - a.y) / (b.y - a.y) + a.x)
+            inside = !inside;
+    }
+    return inside;
+}
+function closestRockPoint(wall, x, y) {
+    if (!wall.rockPolygon) {
+        const dx = x - wall.x, dy = y - wall.y, distance = Math.hypot(dx, dy) || 1;
+        return { x: wall.x + dx / distance * wall.r, y: wall.y + dy / distance * wall.r, dist: distance - wall.r };
+    }
+    const p = wall.rockPolygon;
+    let best = { x: p[0].x, y: p[0].y, dist: Infinity };
+    for (let i = 0; i < p.length; i++) {
+        const a = p[i], b = p[(i + 1) % p.length], dx = b.x - a.x, dy = b.y - a.y;
+        const t = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / (dx * dx + dy * dy || 1)));
+        const px = a.x + t * dx, py = a.y + t * dy, dist = Math.hypot(px - x, py - y);
+        if (dist < best.dist)
+            best = { x: px, y: py, dist };
+    }
+    if (pointInRock(p, x, y))
+        best.dist *= -1;
+    return best;
+}
+function circleHitsRock(wall, x, y, radius) {
+    if (!wall.rockPolygon)
+        return Math.hypot(x - wall.x, y - wall.y) < wall.r + radius;
+    if (Math.abs(x - wall.x) > wall.r + radius || Math.abs(y - wall.y) > wall.r + radius)
+        return false;
+    if (pointInRock(wall.rockPolygon, x, y))
+        return true;
+    return radius > 0 && closestRockPoint(wall, x, y).dist < radius;
+}
+function rayHitsRock(wall, x, y, dx, dy, range) {
+    const p = wall.rockPolygon;
+    if (!p)
+        return range;
+    let distance = range;
+    for (let i = 0; i < p.length; i++) {
+        const a = p[i], b = p[(i + 1) % p.length], ex = b.x - a.x, ey = b.y - a.y;
+        const det = dx * ey - dy * ex;
+        if (Math.abs(det) < 1e-9)
+            continue;
+        const ax = a.x - x, ay = a.y - y;
+        const t = (ax * ey - ay * ex) / det, u = (ax * dy - ay * dx) / det;
+        if (t > .001 && t < distance && u >= 0 && u <= 1)
+            distance = t;
+    }
+    return distance;
+}
+function rockSegmentClear(walls, a, b, padding = 0) {
+    const length = Math.hypot(b.x - a.x, b.y - a.y);
+    if (length < .001)
+        return true;
+    const dx = (b.x - a.x) / length, dy = (b.y - a.y) / length;
+    for (const wall of walls) {
+        if (!wall.rockPolygon)
+            continue;
+        if (rayHitsRock(wall, a.x, a.y, dx, dy, length) < length - .01)
+            return false;
+        // Padding is intentionally eased only at the two physical anchor endpoints.
+        for (let d = .5; d < length; d += 3) {
+            const radius = Math.min(padding, d * .45, (length - d) * .45);
+            if (circleHitsRock(wall, a.x + dx * d, a.y + dy * d, radius))
+                return false;
+        }
+    }
+    return true;
+}
+function rockTrialCollision(maze, x, y, radius) {
+    if (x < radius || x > maze.mazeCols * maze.mazeTileSize - radius || y < radius || y > maze.mazeRows * maze.mazeTileSize - radius)
+        return true;
+    for (const wall of maze.mazeWalls)
+        if (circleHitsRock(wall, x, y, radius))
+            return true;
+    return false;
+}
 },"/src/world/Visibility":function(exports,require){"use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getActiveMapContext = getActiveMapContext;
 exports.isLineOfSight = isLineOfSight;
 const config_1 = require("../core/config");
 const state_1 = require("../core/state");
+const RockGeometry_1 = require("./RockGeometry");
 function getActiveMapContext() {
     if (state_1.state.screen === 'mazeRescue' && state_1.state.mazeRescue) {
         return {
@@ -40380,9 +41638,12 @@ function getActiveMapContext() {
     };
 }
 function isLineOfSight(x1, y1, x2, y2, maxDist) {
+    var _a;
     let dist = Math.hypot(x2 - x1, y2 - y1);
     if (dist > maxDist)
         return false;
+    if (state_1.state.screen === 'mazeRescue' && ((_a = state_1.state.mazeRescue) === null || _a === void 0 ? void 0 : _a.caveRockRoom))
+        return (0, RockGeometry_1.rockSegmentClear)(state_1.state.mazeRescue.mazeWalls, { x: x1, y: y1 }, { x: x2, y: y2 });
     const active = getActiveMapContext();
     const tileSize = active.tileSize;
     let dx = x2 - x1, dy = y2 - y1;
@@ -41816,7 +43077,7 @@ function createMazeSceneData(nodes, mazeMap, rows, cols) {
 const {CONFIG}=load('/src/core/config');CONFIG.audio.cloud.enabled=false;
 load('/game');
 const {state,player,input}=load('/src/core/state'),music=load('/src/audio/AdaptiveMusic');
-window.DeepTapeGame={state,player,music,menu(){music.resetAdaptiveMusic();state.screen='menu';},nearTarget(){
+window.DeepTapeGame={state,player,music,cave:{wheelPos:load('/src/render/RenderWheel').getWheelBtnPos,stats:load('/src/render/RenderCaveRock').getCaveRockStats,collision:load('/src/logic/Collision').checkMazeCollision,nearest:load('/src/logic/Rope').findNearestWall,geometry:load('/src/world/RockGeometry'),path:load('/src/logic/Pathfinding').buildAvoidedPath},menu(){music.resetAdaptiveMusic();if(state.mazeRescue?.rockTrial)load('/src/logic/MazeLogic').exitCaveRockTrial();else state.screen='menu';},nearTarget(){
  if(!state.mazeRescue||state.mazeRescue.phase!=='play')return;
  const maze=state.mazeRescue,ts=maze.mazeTileSize,npc=state.npc;maze.npcRescued=false;maze.npcSecuredAt=0;npc.state='wait';
  let best=null,score=Infinity;for(let r=1;r<maze.mazeRows-1;r++)for(let c=1;c<maze.mazeCols-1;c++)if(maze.mazeMap[r][c]===0){const x=(c+.5)*ts,y=(r+.5)*ts,d=Math.hypot(x-npc.x,y-npc.y);if(d>45&&Math.abs(d-110)<score){best={x,y};score=Math.abs(d-110)}}

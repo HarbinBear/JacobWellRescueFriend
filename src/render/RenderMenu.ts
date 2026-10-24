@@ -33,7 +33,7 @@ function rrect(c: any, x: number, y: number, w: number, h: number, r: number) {
 // 新游戏确认框由 state._menuConfirmNewGame 状态切换。
 // =====================================================================
 
-export type MenuButtonId = 'dive' | 'continue' | 'progress' | 'newGame' | 'settings';
+export type MenuButtonId = 'dive' | 'continue' | 'progress' | 'newGame' | 'settings' | 'rockTrial';
 
 interface MenuButtonRect {
     id: MenuButtonId;
@@ -90,13 +90,13 @@ export function getMenuButtonRects(): MenuButtonRect[] {
             enabled: true,
         },
         {
-            id: 'settings',
+            id: 'rockTrial',
             x: cw / 2 - btnW / 2,
             y: groupTop + (btnH + gap) * 4,
             w: btnW, h: btnH,
-            label: '设置',
-            subLabel: '音频 · 画质 · GM',
-            enabled: false, // 占位，阶段 4 之后再接入
+            label: '岩体试跑',
+            subLabel: '真实下潜与绳索 · 不写入存档',
+            enabled: true,
         },
     ];
 }

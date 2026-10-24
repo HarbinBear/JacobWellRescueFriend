@@ -299,6 +299,10 @@ export const state = {
         mazeCols: number;
         mazeRows: number;
         mazeTileSize: number;
+        rockTrial?: boolean;
+        caveRockRoom?: any;
+        spawnX?: number;
+        spawnY?: number;
         // 出口位置（顶部）
         exitX: number;
         exitY: number;

@@ -73,9 +73,11 @@ float queryOcclusionDist(float fragAngle, float lightAngle, float fov) {
     da = da - floor(da / 6.2831853 + 0.5) * 6.2831853;
     float t = (da + halfFov) / fov;
     if (t < 0.0 || t > 1.0) return 0.0;
-    float texU = (t * u_polyCount + 0.5) / POLY_TEX_SIZE;
-    vec4 s = texture2D(u_polyTex, vec2(texU, 0.25));
-    return s.r * u_maxDist;
+    float index=clamp(t,0.0,1.0)*max(0.0,u_polyCount-1.0);
+    float i=floor(index);
+    vec4 a=texture2D(u_polyTex,vec2((i+0.5)/POLY_TEX_SIZE,0.25));
+    vec4 b=texture2D(u_polyTex,vec2((min(u_polyCount-1.0,i+1.0)+0.5)/POLY_TEX_SIZE,0.25));
+    return mix(a.r,b.r,fract(index))*u_maxDist;
 }
 
 vec3 computeVolumetric(vec2 worldPos, vec2 lightPos, float lightAngle, float maxDist, float fov, float centerFov) {

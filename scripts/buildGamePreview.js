@@ -12,7 +12,7 @@ const bundle=`(()=>{const factories={${factories}},cache={};function load(id,fro
 const {CONFIG}=load('/src/core/config');CONFIG.audio.cloud.enabled=false;
 load('/game');
 const {state,player,input}=load('/src/core/state'),music=load('/src/audio/AdaptiveMusic');
-window.DeepTapeGame={state,player,music,menu(){music.resetAdaptiveMusic();state.screen='menu';},nearTarget(){
+window.DeepTapeGame={state,player,music,cave:{wheelPos:load('/src/render/RenderWheel').getWheelBtnPos,stats:load('/src/render/RenderCaveRock').getCaveRockStats,collision:load('/src/logic/Collision').checkMazeCollision,nearest:load('/src/logic/Rope').findNearestWall,geometry:load('/src/world/RockGeometry'),path:load('/src/logic/Pathfinding').buildAvoidedPath},menu(){music.resetAdaptiveMusic();if(state.mazeRescue?.rockTrial)load('/src/logic/MazeLogic').exitCaveRockTrial();else state.screen='menu';},nearTarget(){
  if(!state.mazeRescue||state.mazeRescue.phase!=='play')return;
  const maze=state.mazeRescue,ts=maze.mazeTileSize,npc=state.npc;maze.npcRescued=false;maze.npcSecuredAt=0;npc.state='wait';
  let best=null,score=Infinity;for(let r=1;r<maze.mazeRows-1;r++)for(let c=1;c<maze.mazeCols-1;c++)if(maze.mazeMap[r][c]===0){const x=(c+.5)*ts,y=(r+.5)*ts,d=Math.hypot(x-npc.x,y-npc.y);if(d>45&&Math.abs(d-110)<score){best={x,y};score=Math.abs(d-110)}}

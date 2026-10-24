@@ -1,4 +1,5 @@
 import { CONFIG } from '../core/config';
+import { rockTrialCollision } from '../world/RockGeometry';
 import { state, player } from '../core/state';
 import { srand } from '../core/SeededRandom';
 import { playSFX } from '../audio/AudioManager';
@@ -44,6 +45,7 @@ function checkCollisionLocal(x: number, y: number): boolean {
 function checkCollisionMazeLocal(x: number, y: number): boolean {
     const maze = state.mazeRescue;
     if (!maze) return false;
+    if(maze.caveRockRoom)return rockTrialCollision(maze,x,y,CONFIG.maze.playerRadius);
     const ts = maze.mazeTileSize;
     const pr = CONFIG.maze.playerRadius || CONFIG.playerRadius;
     const r = Math.floor(y / ts);

@@ -58,6 +58,7 @@ export function drawMazeWallShape(
     row: number,
     col: number
 ) {
+    if(wall.rockPolygon)return;
     const maze = getMazeThemeState();
     const wallColor = maze ? getMazeThemeColorByCell(row, col, 'wallColor', '#222') : '#222';
     const wallHighlight = maze ? getMazeThemeColorByCell(row, col, 'wallHighlight', '#1a1a1a') : '#1a1a1a';
