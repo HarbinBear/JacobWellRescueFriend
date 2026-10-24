@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>岩体重做 · 单洞室验证</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#10181c;color:#dadbcf;font:14px -apple-system,BlinkMacSystemFont,'PingFang SC',sans-serif}main{min-height:100vh;display:flex;justify-content:center;align-items:center;gap:40px;padding:24px}.phone{height:min(845px,calc(100vh - 48px));aspect-ratio:375/667;border:1px solid #526363;box-shadow:0 25px 65px #0008}canvas{width:100%;height:100%;display:block;touch-action:none}aside{width:355px}small{font:11px monospace;color:#c7b591;letter-spacing:2px}h1{font-size:31px;font-weight:500;line-height:1.5;margin:14px 0}p{color:#a8b6b1;line-height:1.85}button,select{background:#223036;border:1px solid #506664;border-radius:3px;color:#dedccf;font:inherit;padding:9px;margin:5px 4px 5px 0}button{cursor:pointer}select{width:100%}label{font-size:12px;color:#bdc6b8}.moves{display:grid;grid-template-columns:repeat(3,65px);justify-content:center;gap:2px;margin:10px 0}.moves button{margin:0;padding:13px}.moves .empty{visibility:hidden}output{white-space:pre-wrap;display:block;font:11px monospace;line-height:1.6;border-top:1px solid #465e59;margin-top:18px;padding-top:12px}.note{font-size:12px;color:#c6b08a}a{color:#c9bea2}.gallery{max-width:1150px;margin:0 auto;padding:24px}.gallery img{width:100%;height:auto}.gallery .motion{max-width:410px}#hidden{display:none}@media(max-width:740px){main{display:block;padding:10px}.phone{height:78vh;margin:auto}aside{width:auto;max-width:460px;margin:25px auto}h1{font-size:25px}}
+</style>
+</head>
+<body>
+<main><div class="phone"><canvas id="game" aria-label="真实游戏同源岩体重做，拖动转灯，方向键移动"></canvas></div><aside>
+<small>ROCK VOLUME / ONE CHAMBER</small>
+<h1>先把一个洞室<br>做成岩体。</h1>
+<p>保留 D 的不规则断裂感，重做有高度的前面与侧面、岩块接触缝、局部遮挡。近壁、断冠和远处黑腔在同一空间，不再摆一个平面让你选滤镜。</p>
+<label>同一个洞室的三个位置</label><select id="site"><option value="0">洞口看断冠</option><option value="1">靠近左侧岩体</option><option value="2">右侧回看</option></select>
+<button id="light">关闭手电</button><button id="turn">反向照明</button><button id="normal">检查法线</button><button id="occlusion">关闭短程表面遮挡</button><button id="contour">检查实体轮廓</button>
+<p>拖动转灯。方向键或 WASD 移动；按钮可长按，使用同一实体轮廓挡住移动。</p>
+<div class="moves"><button class="empty"></button><button data-move="0,-1">上</button><button class="empty"></button><button data-move="-1,0">左</button><button data-move="0,1">下</button><button data-move="1,0">右</button></div>
+<label>采样预算</label><select id="sampling"><option value="balanced">平衡</option><option value="economy">省算，仍保留遮挡</option><option value="sharp">清晰，待真机检查</option></select>
+<output id="stats">载入实际游戏模块…</output><p class="note">本轮是岩体和洞室验证，非美术定稿。正式游戏未改。移动是隔离评审中的碰撞演示，不是完整玩法、绳索或微信真机验收。正常画面只使用游戏手电和已有近身光参数，没有新增摄影棚灯。</p><a href="#gallery">查看同源画面与移动对照</a>
+<div id="hidden"><button id="link"></button><button id="menu"></button><button id="target"></button></div>
+</aside></main>
+<section class="gallery" id="gallery"><h2>同一洞室的空间检查</h2><a href="room-comparison.png">打开三个位置的完整游戏画面</a><img src="room-comparison.png" alt="断冠双岔洞三个位置的真实同源画面"><h2>转动手电</h2><a href="moving-light.gif">查看实际运行动态图</a><img class="motion" src="moving-light.gif" alt="实际同源游戏中转动手电"><p><a href="RESEARCH.md">本轮做了什么，以及还缺什么</a></p></section>
+<script>ADAPTER_SCRIPT</script>
+<script src="game-runtime.js"></script>
+<script>
+let normal=false,contour=false,occlusion=true,motion=[0,0],keys=new Set();
+const c=document.getElementById('game');
+function aim(e){if(!window.CaveReview)return;const r=c.getBoundingClientRect(),cam=CaveReview.state.camera;CaveReview.aim(cam.x+((e.clientX-r.left)*375/r.width-187.5)/cam.zoom,cam.y+((e.clientY-r.top)*667/r.height-333.5)/cam.zoom);}
+c.addEventListener('pointerdown',aim);c.addEventListener('pointermove',e=>{if(e.buttons)aim(e)});
+document.getElementById('site').onchange=e=>CaveReview.site(+e.target.value);
+document.getElementById('sampling').onchange=e=>CaveReview.sampling(e.target.value);
+document.getElementById('light').onclick=()=>{CaveReview.state.flashlightOn=!CaveReview.state.flashlightOn;document.getElementById('light').textContent=CaveReview.state.flashlightOn?'关闭手电':'开启手电'};
+document.getElementById('turn').onclick=()=>{CaveReview.player.angle+=Math.PI;CaveReview.player.targetAngle=CaveReview.player.angle};
+document.getElementById('normal').onclick=()=>{normal=!normal;CaveReview.normals(normal)};
+document.getElementById('contour').onclick=()=>{contour=!contour;CaveReview.collision(contour)};
+document.getElementById('occlusion').onclick=()=>{occlusion=!occlusion;CaveReview.surfaceOcclusion(occlusion);document.getElementById('occlusion').textContent=occlusion?'关闭短程表面遮挡':'开启短程表面遮挡'};
+document.querySelectorAll('[data-move]').forEach(b=>{b.onpointerdown=e=>{e.preventDefault();b.setPointerCapture(e.pointerId);motion=b.dataset.move.split(',').map(Number)};b.onpointerup=b.onpointercancel=()=>motion=[0,0]});
+addEventListener('keydown',e=>{if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','w','a','s','d'].includes(e.key)){e.preventDefault();keys.add(e.key)}});addEventListener('keyup',e=>keys.delete(e.key));addEventListener('blur',()=>{motion=[0,0];keys.clear()});
+let previous=performance.now();function move(now){const dt=Math.min(.04,(now-previous)/1000);previous=now;if(window.CaveReview&&CaveReview.data){const dx=motion[0]+(keys.has('d')||keys.has('ArrowRight')?1:0)-(keys.has('a')||keys.has('ArrowLeft')?1:0),dy=motion[1]+(keys.has('s')||keys.has('ArrowDown')?1:0)-(keys.has('w')||keys.has('ArrowUp')?1:0);if(dx||dy){const l=Math.hypot(dx,dy);CaveReview.move(dx/l*dt*45,dy/l*dt*45)}}requestAnimationFrame(move)}requestAnimationFrame(move);
+CaveReview.ready.catch(e=>document.getElementById('stats').textContent=String(e));
+setInterval(()=>{if(!window.CaveReview)return;const s=CaveReview.stats();document.getElementById('stats').textContent=[s.style,s.mode+' / '+s.sampling,'表面GPU '+(s.gpuSurfaceMs===null?'未取得计时':s.gpuSurfaceMs.toFixed(2)+' ms'),'仅桌面表面pass，不代表整帧或手机性能'].join(String.fromCharCode(10));},500);
+</script>
+</body></html>

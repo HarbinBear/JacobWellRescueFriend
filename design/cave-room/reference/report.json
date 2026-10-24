@@ -1,0 +1,144 @@
+{
+  "sites": [
+    {
+      "site": {
+        "name": "洞口看断冠",
+        "blocked": false
+      },
+      "check": {
+        "samples": 1200,
+        "mismatches": 0,
+        "playerBlocked": false,
+        "rayError": 6.013223722799151e-13
+      },
+      "stats": {
+        "scene": "room",
+        "style": "断冠双岔洞 · D 岩体重做",
+        "aa": true,
+        "sampling": "balanced",
+        "surfaceCPUms": 0.09999990463256836,
+        "rayCPUms": 0.5999999046325684,
+        "gpuSurfaceMs": 0.61025,
+        "rayCount": 257,
+        "mode": "webgl1-normal",
+        "textureBytes": 13936640,
+        "surfacePixels": 1122763,
+        "glError": 0,
+        "origin": {
+          "x": 5520,
+          "y": 5760
+        },
+        "scope": "isolated same-game art study; paused simulation; not phone acceptance"
+      }
+    },
+    {
+      "site": {
+        "name": "靠近左侧岩体",
+        "blocked": false
+      },
+      "check": {
+        "samples": 1200,
+        "mismatches": 0,
+        "playerBlocked": false,
+        "rayError": 5.991612713638116e-13
+      },
+      "stats": {
+        "scene": "room",
+        "style": "断冠双岔洞 · D 岩体重做",
+        "aa": true,
+        "sampling": "balanced",
+        "surfaceCPUms": 0.09999990463256836,
+        "rayCPUms": 0.09999990463256836,
+        "gpuSurfaceMs": 0.997666,
+        "rayCount": 257,
+        "mode": "webgl1-normal",
+        "textureBytes": 13936640,
+        "surfacePixels": 1122763,
+        "glError": 0,
+        "origin": {
+          "x": 5520,
+          "y": 5760
+        },
+        "scope": "isolated same-game art study; paused simulation; not phone acceptance"
+      }
+    },
+    {
+      "site": {
+        "name": "右侧回看",
+        "blocked": false
+      },
+      "check": {
+        "samples": 1200,
+        "mismatches": 0,
+        "playerBlocked": false,
+        "rayError": 6.233696547541029e-13
+      },
+      "stats": {
+        "scene": "room",
+        "style": "断冠双岔洞 · D 岩体重做",
+        "aa": true,
+        "sampling": "balanced",
+        "surfaceCPUms": 0,
+        "rayCPUms": 0.20000004768371582,
+        "gpuSurfaceMs": 0.264999,
+        "rayCount": 257,
+        "mode": "webgl1-normal",
+        "textureBytes": 13936640,
+        "surfacePixels": 1122763,
+        "glError": 0,
+        "origin": {
+          "x": 5520,
+          "y": 5760
+        },
+        "scope": "isolated same-game art study; paused simulation; not phone acceptance"
+      }
+    }
+  ],
+  "colliderMovement": {
+    "moved": true,
+    "blocked": false,
+    "x": 5792,
+    "y": 6532
+  },
+  "aimingTimings": {
+    "drawCPU": {
+      "count": 72,
+      "median": 0.5999999046325684,
+      "p95": 0.7999999523162842,
+      "max": 0.9000000953674316
+    },
+    "surfaceGPU": {
+      "count": 72,
+      "median": 0.675875,
+      "p95": 1.241875,
+      "max": 1.93575
+    }
+  },
+  "final": {
+    "scene": "room",
+    "style": "断冠双岔洞 · D 岩体重做",
+    "aa": true,
+    "sampling": "balanced",
+    "surfaceCPUms": 0.09999990463256836,
+    "rayCPUms": 0,
+    "gpuSurfaceMs": 1.29775,
+    "rayCount": 257,
+    "mode": "webgl1-normal",
+    "textureBytes": 13936640,
+    "surfacePixels": 1122763,
+    "glError": 0,
+    "origin": {
+      "x": 5520,
+      "y": 5760
+    },
+    "scope": "isolated same-game art study; paused simulation; not phone acceptance"
+  },
+  "errors": [],
+  "scope": "actual game-source isolated single-room art experiment, same diver/HUD and light pipeline; art acceptance not claimed",
+  "notValidated": [
+    "Full gameplay and rope",
+    "WeChat/WebKit phone",
+    "Full procedural map and peak memory",
+    "Physically complete lighting; painted AO and coarse geometry normals differ at fine scale"
+  ]
+}

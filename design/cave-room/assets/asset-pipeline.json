@@ -1,0 +1,11 @@
+{
+  "normalSource": "projected 3D surface geometry baked offline; not diffuse brightness",
+  "diffuseSource": "offline image-generated stylized diffuse art blended into the same canonical coverage mask",
+  "diffuseMayContain": "painted crevices and fixed local AO, not physically complete relightable albedo",
+  "limits": "Fine painted structure need not exactly match coarse geometric normals; large-scale mesh relief and collider remain authoritative",
+  "coverageUnchanged": true,
+  "size": [
+    864,
+    1344
+  ]
+}

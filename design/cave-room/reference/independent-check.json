@@ -1,0 +1,9 @@
+{
+  "independentSamples": 1744,
+  "mismatches": 0,
+  "excludedBoundaryWorldPixels": 2.5,
+  "coverageUnchangedByArt": true,
+  "fractionalCoveragePixels": 11748,
+  "fractionalAlphaLevels": 195,
+  "scope": "Canonical 2D silhouette; not validation of fine painted crevice collision or full gameplay"
+}
