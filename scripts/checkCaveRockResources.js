@@ -23,7 +23,9 @@ const phone=vm.createContext({wx:global.wx,console});
 assert.equal(vm.runInContext('typeof performance',phone),'undefined');
 function load(file){
  if(file in overrides)return overrides[file];if(cache.has(file))return cache.get(file);
- const out={};cache.set(file,out);const code=ts.transpileModule(fs.readFileSync(path.join(root,file+'.ts'),'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2016,module:ts.ModuleKind.CommonJS}}).outputText;
+ const out={};cache.set(file,out);let source=fs.readFileSync(path.join(root,file+'.ts'),'utf8');
+ if(process.argv.includes('--sculpt')&&file==='render/RenderCaveRock')source=fs.readFileSync(path.join(root,'../design/cave-room/sculpt/RenderCaveRock.ts'),'utf8').replaceAll('../../../src/','../');
+ const code=ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2016,module:ts.ModuleKind.CommonJS}}).outputText;
  vm.runInContext('(function(exports,require){'+code+'})',phone)(out,n=>load(path.posix.normalize(path.posix.join(path.posix.dirname(file),n))));return out;
 }
 const budget=load('render/CaveSurfaceBudget'),renderer=load('render/RenderCaveRock'),assets=load('render/ImageAssets');
@@ -38,6 +40,7 @@ for(const zoom of [.7,1,1.3])for(const res of [1,1.5,2]){
 assert.equal(budget.cropCaveSurface(0,100,0,100,1,1,200,200,30,30),null);
 renderer.updateCaveRockResources();assert.equal(requests.length,0,'Menu should not decode cave textures');
 state.screen='mazeRescue';state.mazeRescue={seed:1,caveRockRoom:{x:200,y:6000,width:720,height:1120,player:[358,772],shapes:[]}};
+if(process.argv.includes('--sculpt'))state.mazeRescue.caveRockRoom={...JSON.parse(fs.readFileSync(path.join(root,'../design/cave-room/sculpt/assets/scene.json'),'utf8')),x:200,y:6000};
 renderer.updateCaveRockResources();renderer.updateCaveRockResources();assert.equal(requests.length,4);
 const ctx=new Proxy({},{get:(_,key)=>key==='createRadialGradient'?()=>({addColorStop(){}}):()=>0});
 function draw(){renderer.drawCaveRock(ctx,0,1000,5900,7400,1);}

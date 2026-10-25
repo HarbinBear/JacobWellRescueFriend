@@ -78,3 +78,9 @@ python3 design/cave-room/summarize.py node_modules/.cache/cave-room-refined
 ```
 
 构建先复制保存的参照图，浏览器检查与整理命令会更新输出目录的当前画面，`reference/` 始终保持基线不动。图库不是自动把旧图包装成优化后的新图。
+
+## 厚岩雕刻：独立推进
+
+用户确认手机v1.0.20能跑，但观感仍像平面石头花纹，要求制作方自主明确优化方向。新实验从造型、厚断面、凹槽和遮挡入手，不再依赖画死的明暗色图。详情及自主制作顺序见 [sculpt/README.md](./sculpt/README.md)。
+
+`npm run cave:sculpt:build` 生成复用实际游戏的独立实验，`npm run cave:sculpt:check` 检查对应轮廓的通路、手电/锚点/绳索、存档隔离、无performance资源与类型。实验还存在偏光滑和人为转折，未当成合格升级覆盖手机版；手机仍保留原运行资源及造型数据，包体不增加。

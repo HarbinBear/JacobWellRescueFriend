@@ -19,7 +19,9 @@ function load(file){
  if(file in overrides)return overrides[file];if(cache.has(file))return cache.get(file);
  if(!fs.existsSync(path.join(root,file+'.ts')))file+='/index';
  const exports={};cache.set(file,exports);
- const code=ts.transpileModule(fs.readFileSync(path.join(root,file+'.ts'),'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2016,module:ts.ModuleKind.CommonJS}}).outputText;
+ let source=fs.readFileSync(path.join(root,file+'.ts'),'utf8');
+ if(process.argv.includes('--sculpt')&&file==='world/CaveRockData')source='export const CAVE_ROCK_ROOM = '+fs.readFileSync(path.join(root,'../design/cave-room/sculpt/assets/scene.json'),'utf8')+';';
+ const code=ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2016,module:ts.ModuleKind.CommonJS}}).outputText;
  new Function('exports','require',code)(exports,n=>load(path.posix.normalize(path.posix.join(path.posix.dirname(file),n))));return exports;
 }
 const {state,player}=load('core/state'),{CONFIG}=load('core/config');

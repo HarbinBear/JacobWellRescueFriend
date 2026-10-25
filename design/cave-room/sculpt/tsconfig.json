@@ -1,0 +1,5 @@
+{
+  "extends": "../../../tsconfig.json",
+  "compilerOptions": { "rootDir": "../../../", "noEmit": true },
+  "include": ["RenderCaveRock.ts", "../../../src/**/*.ts", "../../../typings/**/*.d.ts"]
+}

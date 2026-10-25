@@ -1,0 +1,23 @@
+{
+  "outlineVertices": 185,
+  "baselineVertices": 59,
+  "heightScale": 220,
+  "lampHeight": 205,
+  "meshFaces": 735,
+  "heightPercentiles": [
+    19.14050295426035,
+    45.54694818512062,
+    96.24449691186985,
+    141.42649260592566,
+    171.57031465362397
+  ],
+  "normalZPercentiles": [
+    0.47074730630374906,
+    0.8954290893816435,
+    0.9861507258791822
+  ],
+  "albedo": "restrained neutral pigment; no baked key light or painted stone blocks",
+  "geometry": "eroded continuous wall depth plus independently tilted 3D fractured slabs",
+  "limits": "single visible-depth bake: not full runtime 3D or view-dependent disocclusion",
+  "bytes": 1415849
+}
