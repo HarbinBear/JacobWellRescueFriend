@@ -160,13 +160,12 @@ def slab(perimeter, heights, floor, pigment, interiors):
     global patch_owner
     cx=float(np.mean(np.array(perimeter)[:,0]))
     patch_owner=0 if cx<350 else 1 if cx>500 else 2
-    # No forced high center; separate tilted interior points and perimeter elevations.
+    # No forced high center: broad independent fracture planes with local worn creases.
     from scipy.spatial import Delaunay
-    from scipy.interpolate import RBFInterpolator
+    from fracture_planes import FractureField,fractured_perimeter
     controls=np.array([[p[0],p[1],z] for p,z in zip(perimeter,heights)]+interiors)
-    field=RBFInterpolator(controls[:,:2],controls[:,2],kernel='thin_plate_spline',smoothing=10)
-    # Curved erosion around an independently tilted slab, with deliberately unequal corners.
-    perimeter=curved_chain(perimeter+perimeter[:1], float(controls[0,0])*.01)[:-1]
+    field=FractureField(controls,S)
+    perimeter=fractured_perimeter(perimeter)
     top=[[p[0],p[1],float(np.clip(field(np.array([p]))[0],floor+24,185))] for p in perimeter]
     perimeter_count=len(perimeter)
     bounds=np.array(perimeter)
@@ -177,7 +176,6 @@ def slab(perimeter, heights, floor, pigment, interiors):
         for x in np.arange(bounds[:,0].min()+9,bounds[:,0].max()-7,12):
             if localmask[min(H-1,max(0,int(y*S))),min(W-1,max(0,int(x*S)))]:
                 z=float(np.clip(field(np.array([[x,y]]))[0],floor+24,185))
-                z+=.65*math.sin(x*.11+y*.047)*math.sin(y*.12-x*.051)
                 top.append([float(x),float(y),z])
     faces = Delaunay(np.array(top)[:, :2]).simplices
     ppath = Image.new('L', (W, H))
@@ -206,15 +204,15 @@ def slab(perimeter, heights, floor, pigment, interiors):
         triangle(points,np.array(pigment)*(.985 if ring<2 else .97),side=True)
 
 
-slab([[411,505],[459,471],[490,490],[493,535],[462,565],[396,572],[376,554]],
-     [115,164,136,153,89,127,97], 18, [.52,.58,.57], [[431,516,177],[439,547,132]])
-slab([[389,573],[419,558],[458,584],[475,620],[446,637],[409,608],[373,600]],
-     [87,110,123,93,61,90,72], 15, [.48,.54,.55], [[419,587,109]])
-# Left wall has one long sheared shelf; right wall has a deeper buttress, not the same module.
-slab([[126,480],[215,474],[285,498],[287,540],[244,571],[146,551],[106,518]],
-     [99,143,125,161,138,107,81], 23, [.52,.57,.55], [[205,520,163],[258,538,156]])
-slab([[526,605],[582,589],[645,642],[623,711],[530,723],[481,678]],
-     [103,158,168,132,121,77], 26, [.48,.55,.57], [[571,657,181],[520,682,112]])
+slab([[411,505],[459,471],[490,490],[488,516],[496,527],[478,541],[462,563],[438,558],[397,572],[376,554]],
+     [117,169,147,145,129,103,90,116,130,97],18,[.52,.58,.57],[[426,511,155],[451,536,132]])
+slab([[389,573],[419,558],[458,584],[472,616],[449,637],[427,615],[409,608],[373,600]],
+     [87,110,123,93,61,77,90,72],15,[.48,.54,.55],[[419,587,99]])
+# A long oblique left shelf and a right buttress with a broken shoulder: unequal mass rhythms.
+slab([[126,480],[215,474],[285,498],[288,526],[276,535],[280,550],[244,571],[146,551],[106,518]],
+     [99,150,139,158,153,141,126,107,81],23,[.52,.57,.55],[[201,512,154],[254,540,144]])
+slab([[526,605],[582,589],[645,642],[632,670],[619,680],[623,711],[573,719],[552,709],[530,723],[481,678]],
+     [103,166,161,140,133,132,139,125,114,77],26,[.48,.55,.57],[[584,636,167],[536,677,125]])
 
 # The silhouette includes the real projected side geometry, not the old clipping mask.
 from shapely.geometry import Polygon
@@ -345,8 +343,8 @@ report = dict(outlineVertices=sum(map(len,shapes)), baselineVertices=sum(map(len
               heightPercentiles=np.percentile(height[mask],[1,10,50,90,99]).tolist(),
               normalZPercentiles=np.percentile(normal_map[:,:,2][mask],[10,50,90]).tolist(),
               albedo='restrained neutral pigment; no baked key light or painted stone blocks',
-              geometry='worn multi-ring thick sidewalls, finite fractures and normal-relative contact horizons',
-              revision='E03-worn-contact',
+              geometry='broad authored fracture planes, broken shoulders, worn thick sidewalls and contact horizons',
+              revision='E03-fracture-masses',
               ambientOcclusion=dict(directions=12,steps=5,visibleDepthApproximation=True,
                                     percentiles=np.percentile(ao[mask],[1,10,50,90,99]).tolist()),
               reliefRange=np.percentile(relief[mask],[1,10,50,90,99]).tolist(),

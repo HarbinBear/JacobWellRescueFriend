@@ -34,6 +34,16 @@ for vertices,ring in faces:
     assert np.linalg.norm(np.cross(actual[1]-actual[0],actual[2]-actual[0]))>1e-5
     assert points[:,2].min()>=22
 assert len(rings)==4
+from fracture_planes import FractureField,fractured_perimeter
+points=np.array([[0,0],[100,0],[100,100],[0,100],[60,30]],float)
+controls=np.column_stack([points,50+.2*points[:,0]-.1*points[:,1]])
+field=FractureField(controls,1.2)
+samples=np.array([[25,25],[45,55],[70,70],[30,60]],float)
+expected=50+.2*samples[:,0]-.1*samples[:,1]
+assert np.max(abs(field(samples)-expected))<1e-5,'A broad inclined fracture must not turn into a high-center mound'
+outline=fractured_perimeter([[0,0],[85,5],[95,70],[15,100]])
+assert np.isfinite(outline).all()
+assert np.linalg.norm(np.diff(np.asarray(outline),axis=0),axis=1).min()>.01
 print(json.dumps({'slopedPlaneDoesNotSelfDarken':True,'contactOccludes':True,
-                  'waterDoesNotOcclude':True,'sidewallBands':4,'physicalProjectionMatches':True,
+                  'noForcedHighCenter':True,'waterDoesNotOcclude':True,'sidewallBands':4,'physicalProjectionMatches':True,
                   'scope':'Side geometry and approximate visible-depth AO, not hidden geometry or phone acceptance'},indent=2))
