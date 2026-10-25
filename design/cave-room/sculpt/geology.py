@@ -50,11 +50,11 @@ def sculpt_relief(x,y,scale):
     grain=continuous_noise(shape,1.25,75,scale)
     wx=x+macro*5.5+middle*1.6
     wy=y+macro*4+middle*1.8
-    # Unequal tilted strata, interrupted by fracture zones. No Voronoi stone tiling.
-    coordinate=wy*.052+wx*.020+macro*.45
-    band=np.sin(coordinate)+.31*np.sin(coordinate*2.23+.8)
-    strata=5.1*np.tanh(band*1.7)*( .60+.25*np.tanh(macro*.6))
-    relief=strata+middle*1.9+small*.68+grain*.16
+    # Subordinate relief: retain broad mass planes instead of covering them in lumps.
+    coordinate=wy*.044+wx*.016+macro*.25
+    band=np.sin(coordinate)+.16*np.sin(coordinate*2.23+.8)
+    strata=2.7*np.tanh(band*1.05)*(.60+.25*np.tanh(macro*.6))
+    relief=strata+middle*.58+small*.11+grain*.035
     cracks=[
         ([[104,473],[166,488],[204,481],[246,513],[290,520]],3.2,13),
         ([[225,508],[215,542],[233,568],[219,598]],2.3,10),

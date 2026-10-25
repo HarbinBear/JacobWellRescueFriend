@@ -223,9 +223,17 @@ slab([[526,605],[582,589],[645,642],[623,711],[530,723],[481,678]],
 from shapely.geometry import Polygon
 from shapely.ops import unary_union
 expanded=[]
+from shapely.geometry import Point
+from shapely.affinity import scale as scale_polygon
+# Sparse authored edge breaks, not a universal wavy edge or random pixel teeth.
+edge_breaks=[[(309,531,6,9)],[(458,658,6,7)],[(445,661,8,5),(509,588,5,8)]]
 for owner,p in enumerate(shapes):
     faces=[Polygon(np.array(ps)[:,:2]).buffer(0) for ps,n,pigment,smooth,tag in triangles if tag==owner]
-    merged=unary_union([Polygon(p).buffer(0)]+faces).simplify(.95,preserve_topology=True)
+    merged=unary_union([Polygon(p).buffer(0)]+faces)
+    for cx,cy,rx,ry in edge_breaks[owner]:
+        cutter=scale_polygon(Point(cx,cy).buffer(1,resolution=12),rx,ry,origin=(cx,cy))
+        merged=merged.difference(cutter)
+    merged=merged.simplify(.85,preserve_topology=True)
     if merged.geom_type!='Polygon':
         merged=max(merged.geoms,key=lambda p:p.area)
     expanded.append([[round(x,2),round(y,2)] for x,y in list(merged.exterior.coords)[:-1]])
@@ -307,16 +315,27 @@ material=np.clip(material+mineral_pigment+grain[:,:,None],0,1)
 material[~mask] = 0
 
 
-def write_rgba(name, rgb, a):
-    data = np.dstack([np.clip(np.rint(rgb*255),0,255).astype(np.uint8), a.astype(np.uint8)])
+def write_rgba(name, rgb, a, quantized_channels=()):
+    # Bounded quantization; not lossless. Alpha and depth retain all eight bits.
+    rgb=np.clip(rgb,0,1).copy()
+    for k in quantized_channels:
+        rgb[:,:,k]=np.rint(rgb[:,:,k]*63)/63
+    data = np.dstack([np.rint(rgb*255).astype(np.uint8), a.astype(np.uint8)])
     Image.fromarray(data).save(OUT/name, optimize=True, compress_level=9)
+    return data
 
 
-write_rgba('room-albedo.png', material, alpha)
-write_rgba('room-normal.png', normal_map*.5+.5, np.full((H,W),255))
-# Existing three runtime channels: no extra decoded image/GPU texture.
-detail = np.stack([ao, np.clip(cavity/100,0,1), np.clip(height/HEIGHT_SCALE,0,1)], axis=2)
-write_rgba('room-detail.png', detail, np.full((H,W),255))
+write_rgba('room-albedo.png', material, alpha, (0,1,2))
+encoded_normal=write_rgba('room-normal.png', normal_map*.5+.5, np.full((H,W),255), (0,1,2))
+decoded_normal=encoded_normal[:,:,:3].astype(float)/255*2-1
+normal_length=np.linalg.norm(decoded_normal,axis=2)
+decoded_normal/=np.maximum(1e-8,normal_length)[:,:,None]
+angular_error=np.degrees(np.arccos(np.clip(np.sum(decoded_normal*normal_map,axis=2),-1,1)))[mask]
+assert angular_error.max()<1.8,'Normal export must keep bounded angular error'
+# G is not read by the renderer. Keep the slot zero instead of redundant cavity data.
+# AO is six-bit; depth remains eight-bit with no downsampling or edge thresholding.
+detail = np.stack([ao, np.zeros_like(ao), np.clip(height/HEIGHT_SCALE,0,1)], axis=2)
+write_rgba('room-detail.png', detail, np.full((H,W),255), (0,))
 shutil.copyfile(ROOT/'images/cave-rock/room-back.png', OUT/'room-back.png')
 scene = dict(BASE)
 scene.update(shapes=shapes, heightScale=HEIGHT_SCALE, lampHeight=LAMP_HEIGHT, projection=[PX,PY])
@@ -330,6 +349,9 @@ report = dict(outlineVertices=sum(map(len,shapes)), baselineVertices=sum(map(len
               revision='E02-geological-relief',
               reliefRange=np.percentile(relief[mask],[1,10,50,90,99]).tolist(),
               fissureSamples=int(np.count_nonzero((fracture_depth<-5)&mask)),
+              export=dict(lossless=False,normalAngularP99=float(np.percentile(angular_error,99)),
+                          normalAngularMax=float(angular_error.max()),
+                          normalChannels=64,AOChannels=64,depthBits=8,alphaBits=8,unusedGreen=0),
               limits='single visible-depth bake: not full runtime 3D or view-dependent disocclusion',
               bytes=sum(p.stat().st_size for p in OUT.glob('*.png')))
 (OUT/'report.json').write_text(json.dumps(report, indent=2))

@@ -49,7 +49,12 @@ for h in [8,29,70,110,140,185]:
 assert scene['heightScale']>report['heightPercentiles'][-1]
 mask=albedo[:,:,3]>250
 n=normal[:,:,:3].astype(float)/255*2-1
-assert np.percentile(abs(np.linalg.norm(n[mask],axis=1)-1),99)<.013
+export=report.get('export')
+assert np.percentile(abs(np.linalg.norm(n[mask],axis=1)-1),99)<(.029 if export else .013)
+if export:
+    assert export['normalAngularMax']<1.8 and export['normalAngularP99']<1.6
+    assert export['alphaBits']==export['depthBits']==8
+    assert (detail[:,:,1]==0).all(),'Unused channel must not cost entropy or affect lighting'
 assert report['meshFaces']>50
 assert len(list(OUT.glob('room-*.png')))==4,'No extra runtime image or GPU texture'
 print(json.dumps(dict(coverageSamples=samples,outlineVertices=report['outlineVertices'],fractionalCoverage=True,sharedDepthAndNormal=True,faces=report['meshFaces'],scope='Geometry/resource invariants; aesthetic and real-phone acceptance still separate'),indent=2))

@@ -1,32 +1,42 @@
 {
-  "outlineVertices": 185,
+  "outlineVertices": 207,
   "baselineVertices": 59,
   "heightScale": 220,
   "lampHeight": 205,
   "meshFaces": 735,
   "heightPercentiles": [
-    18.434651002254125,
-    44.85028401173171,
-    96.52207306996189,
-    140.99625364661532,
-    170.39573115632174
+    19.138878420987762,
+    45.583916299147845,
+    96.08413600118944,
+    140.80140733112526,
+    170.58898772658998
   ],
   "normalZPercentiles": [
-    0.29686753574506347,
-    0.7963722061878855,
-    0.9628234904239202
+    0.43163363759607015,
+    0.8812076318034747,
+    0.9841901742397482
   ],
   "albedo": "restrained neutral pigment; no baked key light or painted stone blocks",
   "geometry": "thick fractured slabs with finite fissures, unequal strata and eroded cavities",
   "revision": "E02-geological-relief",
   "reliefRange": [
-    -8.363257826081625,
-    -4.23848733637043,
-    -0.14807362586092718,
-    3.8802917588530557,
-    6.389518929437897
+    -6.74968155429023,
+    -1.6373005434724688,
+    -0.04849083655077345,
+    1.487277364174627,
+    2.3614153469060852
   ],
   "fissureSamples": 10961,
+  "export": {
+    "lossless": false,
+    "normalAngularP99": 1.3682863277455168,
+    "normalAngularMax": 1.7904037472139014,
+    "normalChannels": 64,
+    "AOChannels": 64,
+    "depthBits": 8,
+    "alphaBits": 8,
+    "unusedGreen": 0
+  },
   "limits": "single visible-depth bake: not full runtime 3D or view-dependent disocclusion",
-  "bytes": 3091308
+  "bytes": 1234764
 }
