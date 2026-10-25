@@ -2612,7 +2612,7 @@ const WindowMetrics_1 = require("../WindowMetrics");
 const systemInfo = (0, WindowMetrics_1.getWindowMetrics)();
 exports.baseConfig = {
     // 版本信息
-    version: 'v1.0.19',
+    version: 'v1.0.20',
     // 画布设置 (竖屏适配)
     screenWidth: systemInfo.windowWidth,
     screenHeight: systemInfo.windowHeight,
@@ -25473,6 +25473,18 @@ let aa = true, fallback = false, inspection = false, overlay = false, surfaceOcc
 let sampling = 'balanced', polyKey = '', beamKey = '', polyCache = [], surfaceMs = 0, gpuMs = null, uploads = 0, contextGeneration = 0;
 let initRetryAfter = 0, assetsRegistered = false, surfaceDraws = 0, cachedDraws = 0;
 let surfaceKey = '';
+// Diagnostics must never stop drawing on Mini Game hosts without browser performance.
+function surfaceNow() {
+    if (typeof performance !== 'undefined' && performance && typeof performance.now === 'function') {
+        try {
+            const value = performance.now();
+            if (Number.isFinite(value))
+                return value;
+        }
+        catch (_) { }
+    }
+    return Date.now();
+}
 function ensureCaveRockAssets() {
     assetsRegistered = true;
     for (const suffix of ['albedo', 'normal', 'detail', 'back'])
@@ -25550,16 +25562,21 @@ void main(){
  float localVisibility=1.;
  if(surfaceOcclusion>.5){
   for(int j=0;j<3;j++){
-   float stepWorld=j==0?8.:j==1?19.:38.;
+   float stepWorld=min(j==0?8.:j==1?19.:38.,max(0.,length(delta)-.5));
    vec2 q=st+towardLight*stepWorld/roomSize;
    vec4 other=texture2D(detail,q);float solid=texture2D(albedo,q).a;
+   solid*=step(0.,q.x)*step(q.x,1.)*step(0.,q.y)*step(q.y,1.);
+   solid*=smoothstep(0.,1.,stepWorld);
    float predicted=height+(95.-height)*stepWorld/max(1.,length(delta));
    float obstruction=smoothstep(predicted+2.,predicted+9.,other.b*100.)*solid;
    localVisibility=min(localVisibility,1.-obstruction*.45);
   }
  }
  color*=mix(.37,1.,ao)*localVisibility;
- float spec=pow(max(0.,dot(n,normalize(l+vec3(0,0,1)))),22.);
+ // The baked orthographic view is the kernel of P, not a straight +Z camera.
+ vec3 viewDirection=normalize(vec3(-.18,.26,1.));
+ float spec=pow(max(0.,dot(n,normalize(l+viewDirection))),22.);
+ spec*=smoothstep(0.,.12,lambert)*mix(.30,1.,ao);
  color+=vec3(.26,.33,.33)*spec*.09*ao*localVisibility;
  float hit=beamDistance(theta/fov+.5);
  float reach=1.-smoothstep(hit+20.,hit+190.,length(delta));
@@ -25728,7 +25745,7 @@ function timerEnd(q) {
 function drawCaveRock(ctx, l, r, t, b, zoom) {
     if (!syncCaveRock())
         return;
-    const start = performance.now();
+    const start = surfaceNow();
     setup();
     background(ctx);
     if (gl && gl.isContextLost()) {
@@ -25748,7 +25765,7 @@ function drawCaveRock(ctx, l, r, t, b, zoom) {
         const resolution = aa ? (sampling === 'economy' ? 1 : sampling === 'sharp' ? 2 : 1.5) : .6;
         const bounds = (0, CaveSurfaceBudget_1.cropCaveSurface)(l, r, t, b, zoom, resolution, ORIGIN.x, ORIGIN.y, roomWidth, roomHeight);
         if (!bounds) {
-            surfaceMs = performance.now() - start;
+            surfaceMs = Math.max(0, surfaceNow() - start);
             return;
         }
         ({ l, r, t, b } = bounds);
@@ -25835,7 +25852,7 @@ function drawCaveRock(ctx, l, r, t, b, zoom) {
         ctx.stroke();
         ctx.restore();
     }
-    surfaceMs = performance.now() - start;
+    surfaceMs = Math.max(0, surfaceNow() - start);
 }
 function drawCaveRockBase(ctx) {
     const maze = state_1.state.screen === 'mazeRescue' ? state_1.state.mazeRescue : null;

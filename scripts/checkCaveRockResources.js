@@ -1,4 +1,4 @@
-const fs=require('fs'),path=require('path'),assert=require('assert/strict'),ts=require('typescript');
+const fs=require('fs'),path=require('path'),assert=require('assert/strict'),ts=require('typescript'),vm=require('vm');
 const root=path.resolve(__dirname,'../src'),cache=new Map(),requests=[],calls={},handlers={};
 const state={screen:'menu',mazeRescue:null,camera:{x:500,y:6500},fx:{shake:0},flashlightOn:true};
 const player={x:500,y:6500,angle:-1.2};
@@ -19,10 +19,12 @@ const overrides={
  'core/config':{CONFIG},'core/state':{state,player},'render/Canvas':{logicW:375,logicH:667},
  'render/RenderLight':{getLightPolygon:(x,y,a,range)=>[{dist:range*.55},{dist:range*.6},{dist:range*.7}]},
 };
+const phone=vm.createContext({wx:global.wx,console});
+assert.equal(vm.runInContext('typeof performance',phone),'undefined');
 function load(file){
  if(file in overrides)return overrides[file];if(cache.has(file))return cache.get(file);
  const out={};cache.set(file,out);const code=ts.transpileModule(fs.readFileSync(path.join(root,file+'.ts'),'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2016,module:ts.ModuleKind.CommonJS}}).outputText;
- new Function('exports','require',code)(out,n=>load(path.posix.normalize(path.posix.join(path.posix.dirname(file),n))));return out;
+ vm.runInContext('(function(exports,require){'+code+'})',phone)(out,n=>load(path.posix.normalize(path.posix.join(path.posix.dirname(file),n))));return out;
 }
 const budget=load('render/CaveSurfaceBudget'),renderer=load('render/RenderCaveRock'),assets=load('render/ImageAssets');
 for(const zoom of [.7,1,1.3])for(const res of [1,1.5,2]){
@@ -41,8 +43,10 @@ const ctx=new Proxy({},{get:(_,key)=>key==='createRadialGradient'?()=>({addColor
 function draw(){renderer.drawCaveRock(ctx,0,1000,5900,7400,1);}
 draw();assert.equal(renderer.getCaveRockStats().mode,'normal-map');assert.equal(renderer.getCaveRockStats().textureBytes,864*1344*4*3);
 const submitted=calls.drawArrays;draw();assert.equal(calls.drawArrays,submitted,'Identical light and viewport should reuse surface');
-player.angle+=.1;draw();assert.equal(calls.drawArrays,submitted+1);
-state.flashlightOn=false;draw();assert.equal(calls.drawArrays,submitted+2);state.flashlightOn=true;
+for(const perf of [null,{}, {now:0}, {now(){throw Error('Unsupported host timer')}}, {now(){return NaN}}]){phone.performance=perf;player.angle+=.01;assert.doesNotThrow(draw);assert(Number.isFinite(renderer.getCaveRockStats().surfaceCPUms));}
+delete phone.performance;const afterTimerChecks=calls.drawArrays;
+player.angle+=.1;draw();assert.equal(calls.drawArrays,afterTimerChecks+1);
+state.flashlightOn=false;draw();assert.equal(calls.drawArrays,afterTimerChecks+2);state.flashlightOn=true;
 contextLost=true;handlers.webglcontextlost({preventDefault(){}});draw();assert.equal(renderer.getCaveRockStats().mode,'fallback');
 contextLost=false;handlers.webglcontextrestored();draw();assert.equal(renderer.getCaveRockStats().mode,'normal-map');
 assets.registerImage('home-keep','images/home/living_room_night.png');const keep=assets.getImage('home-keep');
@@ -50,4 +54,4 @@ state.screen='menu';renderer.updateCaveRockResources();assert.equal(renderer.get
 for(const name of ['albedo','normal','detail','back'])assert.equal(assets.getImage('cave-rock-'+name),null);
 assert.equal(assets.getImage('home-keep'),keep,'Do not unload unrelated home artwork');assert(calls.deleteTexture>=4&&calls.deleteProgram>0&&calls.deleteBuffer>0);
 state.screen='mazeRescue';renderer.updateCaveRockResources();draw();assert.equal(renderer.getCaveRockStats().mode,'normal-map');assert.equal(requests.filter(s=>s.includes('cave-rock')).length,8,'Re-entry should reload once, not reuse dangling images');
-console.log('Cave resource budget passed: same sample grid, lazy images, cached lighting, release/re-entry, context restoration and unchanged home cache.');
+console.log('Cave resource budget passed: no browser performance, incomplete/throwing timers, same sample grid, lazy images, cached lighting, release/re-entry, context restoration and unchanged home cache.');
