@@ -44,6 +44,21 @@ assert np.max(abs(field(samples)-expected))<1e-5,'A broad inclined fracture must
 outline=fractured_perimeter([[0,0],[85,5],[95,70],[15,100]])
 assert np.isfinite(outline).all()
 assert np.linalg.norm(np.diff(np.asarray(outline),axis=0),axis=1).min()>.01
+from mesh_clip import clipped_top
+from shapely.geometry import Polygon
+boundary=Polygon([[0,0],[80,0],[80,65],[53,65],[53,24],[27,24],[27,65],[0,65]])
+xy=np.array([[-10,-10],[200,-10],[-10,200]],float)
+vertices=np.column_stack([xy,75+.2*xy[:,0]-.3*xy[:,1]])
+normals=np.broadcast_to(np.array([-.2,.3,1]),(3,3)).copy()
+pieces=clipped_top(vertices,normals,boundary)
+assert len(pieces)>1
+covered=0
+for ps,ns in pieces:
+    ps=np.asarray(ps);p=Polygon(ps[:,:2])
+    assert boundary.buffer(1e-7).covers(p),'Top triangle must never bridge a concave open slot'
+    assert np.max(abs(ps[:,2]-(75+.2*ps[:,0]-.3*ps[:,1])))<1e-10
+    covered+=p.area
+assert abs(covered-boundary.area)<1e-6
 print(json.dumps({'slopedPlaneDoesNotSelfDarken':True,'contactOccludes':True,
-                  'noForcedHighCenter':True,'waterDoesNotOcclude':True,'sidewallBands':4,'physicalProjectionMatches':True,
+                  'concaveTopNoSpillOrGaps':True,'noForcedHighCenter':True,'waterDoesNotOcclude':True,'sidewallBands':4,'physicalProjectionMatches':True,
                   'scope':'Side geometry and approximate visible-depth AO, not hidden geometry or phone acceptance'},indent=2))

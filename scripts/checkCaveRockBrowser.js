@@ -1,9 +1,10 @@
 const fs=require('fs'),path=require('path'),assert=require('assert/strict');
 const{openReviewBrowser}=require('../design/cave-room/browser.cjs');
-const root=path.resolve(__dirname,'..'),out=path.join(root,'node_modules/.cache/cave-native-game');fs.mkdirSync(out,{recursive:true});
+const study=process.argv.includes('--sculpt');
+const root=path.resolve(__dirname,'..'),out=path.join(root,study?'node_modules/.cache/cave-sculpt-game':'node_modules/.cache/cave-native-game');fs.mkdirSync(out,{recursive:true});
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 (async()=>{
- const b=await openReviewBrowser('http://127.0.0.1:60972/design/deeptape/game.html',1100,940);
+ const b=await openReviewBrowser('http://127.0.0.1:60972/'+(study?'node_modules/.cache/cave-sculpt-study/live/game.html':'design/deeptape/game.html'),1100,940);
  try{
   await b.evaluate('Object.defineProperty(window,"performance",{value:undefined,configurable:true});true');
   assert.equal(await b.evaluate('typeof performance'),'undefined');

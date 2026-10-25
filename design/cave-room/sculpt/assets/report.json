@@ -1,47 +1,81 @@
 {
-  "outlineVertices": 208,
+  "outlineVertices": 206,
   "baselineVertices": 59,
   "heightScale": 220,
   "lampHeight": 205,
-  "meshFaces": 1777,
+  "meshFaces": 1717,
   "heightPercentiles": [
-    19.058132717916486,
-    45.286098861244604,
-    95.74637185355938,
-    137.99011999662463,
-    166.93265248924055
+    19.06682612473466,
+    45.283345737546526,
+    95.74522224731368,
+    137.98050969999088,
+    166.932602516717
   ],
   "normalZPercentiles": [
-    0.4635410692526133,
-    0.8844609636119096,
-    0.9845655876768943
+    0.4630520174926462,
+    0.8843748617825047,
+    0.984572632722742
   ],
   "albedo": "restrained neutral pigment; no baked key light or painted stone blocks",
   "geometry": "broad authored fracture planes, broken shoulders, worn thick sidewalls and contact horizons",
-  "revision": "E03-fracture-masses",
+  "revision": "E03-clipped-fracture-masses",
+  "topBoundaries": [
+    {
+      "owner": 2,
+      "boundaryArea": 6914.876581241639,
+      "coveredArea": 6914.876581241639,
+      "boundaryTriangles": 0,
+      "oldCentroidRuleSpill": 0.0,
+      "newSpill": 0.0
+    },
+    {
+      "owner": 2,
+      "boundaryArea": 3952.021538652743,
+      "coveredArea": 3952.0215386527425,
+      "boundaryTriangles": 0,
+      "oldCentroidRuleSpill": 0.0,
+      "newSpill": 0.0
+    },
+    {
+      "owner": 0,
+      "boundaryArea": 12855.267712532393,
+      "coveredArea": 12855.267712532379,
+      "boundaryTriangles": 2,
+      "oldCentroidRuleSpill": 0.0,
+      "newSpill": 0.0
+    },
+    {
+      "owner": 1,
+      "boundaryArea": 14353.309569592078,
+      "coveredArea": 14353.309569592078,
+      "boundaryTriangles": 0,
+      "oldCentroidRuleSpill": 0.0,
+      "newSpill": 0.0
+    }
+  ],
   "ambientOcclusion": {
     "directions": 12,
     "steps": 5,
     "visibleDepthApproximation": true,
     "percentiles": [
       0.36,
-      0.6335793303803694,
-      0.9397558112880309,
-      0.9999836606684999,
+      0.6336845425111717,
+      0.9397460242856986,
+      0.9999836035995222,
       1.0
     ]
   },
   "reliefRange": [
-    -6.760734006398392,
-    -1.6349968658996643,
-    -0.04579548197095315,
-    1.4886000008313098,
-    2.362425499898498
+    -6.76058886133264,
+    -1.6349457466147896,
+    -0.04583654652502746,
+    1.4885944255133707,
+    2.362425443462182
   ],
   "fissureSamples": 10957,
   "export": {
     "lossless": false,
-    "normalAngularP99": 1.3673100826963736,
+    "normalAngularP99": 1.3674625379544951,
     "normalAngularMax": 1.7904037472139014,
     "normalChannels": 64,
     "AOChannels": 64,
@@ -50,5 +84,5 @@
     "unusedGreen": 0
   },
   "limits": "single visible-depth bake: not full runtime 3D or view-dependent disocclusion",
-  "bytes": 1398820
+  "bytes": 1398375
 }

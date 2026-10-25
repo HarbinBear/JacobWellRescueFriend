@@ -136,6 +136,7 @@ def unproject(q):
 
 triangles = []
 patch_owner = 0
+top_clip_stats = []
 
 
 def triangle(points, pigment, smooth=None, side=False):
@@ -183,11 +184,22 @@ def slab(perimeter, heights, floor, pigment, interiors):
     occupancy = np.asarray(ppath)
     shared = np.zeros((len(top),3))
     valid = []
+    from shapely.geometry import Polygon
+    from mesh_clip import clipped_top
+    boundary=Polygon(perimeter).buffer(0)
+    old_spill=0.
+    touched=0
     for face in faces:
         ps = [top[i] for i in face]
-        cx, cy = np.mean(np.asarray(ps)[:, :2], axis=0)*S
-        if not occupancy[min(H-1,max(0,int(cy))), min(W-1,max(0,int(cx)))]:
+        footprint=Polygon(np.asarray(ps)[:,:2])
+        intersection=footprint.intersection(boundary)
+        if intersection.is_empty or intersection.area<1e-7:
             continue
+        spill=footprint.area-intersection.area
+        if spill>1e-5:
+            touched+=1
+            cx,cy=np.mean(np.asarray(ps)[:,:2],axis=0)*S
+            if occupancy[min(H-1,max(0,int(cy))),min(W-1,max(0,int(cx)))]:old_spill+=spill
         actual = np.array([unproject(p) for p in ps])
         n = np.cross(actual[1]-actual[0], actual[2]-actual[0])
         if n[2]-PX*n[0]-PY*n[1]<0:
@@ -196,8 +208,15 @@ def slab(perimeter, heights, floor, pigment, interiors):
         shared[face] += n
         valid.append(face)
     shared /= np.maximum(1e-8,np.linalg.norm(shared,axis=1))[:,None]
+    covered_area=0.
     for face in valid:
-        triangle([top[i] for i in face], pigment, shared[face])
+        for points,normals in clipped_top([top[i] for i in face],shared[face],boundary):
+            triangle(points,pigment,normals)
+            covered_area+=Polygon(np.asarray(points)[:,:2]).area
+    assert abs(covered_area-boundary.area)<max(.002,boundary.area*1e-6),'Top must fill the concave footprint exactly'
+    top_clip_stats.append(dict(owner=patch_owner,boundaryArea=float(boundary.area),
+                               coveredArea=float(covered_area),boundaryTriangles=touched,
+                               oldCentroidRuleSpill=float(old_spill),newSpill=0.))
     # Multi-ring physical erosion replaces the perfectly vertical extruded strips.
     from sidewalls import sidewall_mesh
     for points,ring in sidewall_mesh(top[:len(perimeter)],floor,PX,PY):
@@ -344,7 +363,8 @@ report = dict(outlineVertices=sum(map(len,shapes)), baselineVertices=sum(map(len
               normalZPercentiles=np.percentile(normal_map[:,:,2][mask],[10,50,90]).tolist(),
               albedo='restrained neutral pigment; no baked key light or painted stone blocks',
               geometry='broad authored fracture planes, broken shoulders, worn thick sidewalls and contact horizons',
-              revision='E03-fracture-masses',
+              revision='E03-clipped-fracture-masses',
+              topBoundaries=top_clip_stats,
               ambientOcclusion=dict(directions=12,steps=5,visibleDepthApproximation=True,
                                     percentiles=np.percentile(ao[mask],[1,10,50,90,99]).tolist()),
               reliefRange=np.percentile(relief[mask],[1,10,50,90,99]).tolist(),

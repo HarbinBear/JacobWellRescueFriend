@@ -92,3 +92,20 @@ python3 design/cave-room/sculpt/review.py
 本轮真实游戏采样标签是sculpt-e02-refined，上一轮sculpt-depth仍保留；python3 design/cave-room/sculpt/progress.py生成node_modules/.cache/cave-forward/index.html，提供旧实验与新实验、转灯和单色对照。该对照缓存不是正式备份，各版源码和资产以Git标签为准。
 
 当前自检：主裂缝与粗糙度比E01明确，但整体断面和侧面仍有人工构造感。继续优化主形、层次与遮挡，不用细节堆叠掩盖大形，不将实验当成手机美术定稿。
+
+
+## E03：宽断面、磨损侧面与接触层次
+
+先锁住用户本轮认可进步的E02（cave/art-progress-e02），再做三遍独立实验：cave/sculpt-e03-contact、cave/sculpt-e03-masses、cave/sculpt-e03。所有版本源资源完整提交；旧标签不移动，手机版与私人配置不变。
+
+sidewalls.py生成多段真实侧面，fracture_planes.py用独立不等高宽结构面替换容易鼓成光滑块的薄板样条，并混合保留硬断口和局部侵蚀。contact_ao.py从相同可见深度和物理法线离线估计局部遮挡；平斜面不自黑，开放水域不作为遮挡物。遮挡采样的深度与覆盖率使用同一线性权重归一化，避免水域未用深度漏入岩缘。
+
+mesh_clip.py对凹口顶面进行多边形真实裁剪并保持高度和法线插值。当前报告表明旧重心规则在这些块上没有已接受三角面的明显越界，因此不能把所有人为碎折归因于该规则；本轮主要收益仍是宽断面和侧面结构，该裁剪作为完整性防护。四块顶面覆盖面积全部与实际边界一致，无新漏面或越界。
+
+check_structure.py覆盖宽倾面不自动鼓起中心、侧面真实投影、凹口裁剪、水域与倾面遮挡边界。实际游戏完整移动与轮盘铺绳验收通过scripts/checkCaveRockBrowser.js --sculpt执行，普通入口验收保留原路径。几何检查还核对手电、碰撞、锚点、绳段与通路。
+
+本轮仍用四张864x1344运行图，约1.33MiB；相对E02增加约0.15MiB，但全部在手机打包排除目录，当前手机包仍约7.75MiB。新增侧面三角形和12方向接触采样仅在离线烘焙阶段使用，没有增加运行图、运行三角网格或GPU采样次数。法线和材质为有损但误差受控导出，高度与抗锯齿透明覆盖率保留8位。
+
+对照采样标识为sculpt-e03-refined。python3 design/cave-room/sculpt/progress_e03.py生成node_modules/.cache/cave-forward-e03/index.html；旧E02进展页不覆盖。reference-e03保留紧凑实际游戏对照图与范围报告，不把缓存当作备份。
+
+自检仍未美术定稿：宽倾面和破肩更明确，但侧面仍有人工折面，深岩与近景整体衔接、真正多层遮挡需要继续推进。保持单色、转灯和实际移动评审，不拿程序通过冒充优秀观感或真机性能验收。

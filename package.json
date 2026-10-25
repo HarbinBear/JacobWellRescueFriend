@@ -25,7 +25,8 @@
     "cave:sculpt:build": "node scripts/buildGamePreview.js --sculpt",
     "cave:sculpt:check": "node scripts/checkCaveRockTrial.js --sculpt && node scripts/checkCaveRockResources.js --sculpt && tsc --noEmit -p design/cave-room/sculpt/tsconfig.json",
     "cave:versions": "node scripts/buildCaveVersions.js",
-    "cave:versions:check": "node scripts/checkCaveVersions.js"
+    "cave:versions:check": "node scripts/checkCaveVersions.js",
+    "cave:sculpt:browser": "node scripts/checkCaveRockBrowser.js --sculpt"
   },
   "devDependencies": {
     "typescript": "^5.3.3"

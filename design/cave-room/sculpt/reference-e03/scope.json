@@ -1,0 +1,12 @@
+{
+  "old": "cave/sculpt-e02",
+  "new": "cave/sculpt-e03",
+  "sites": [
+    0,
+    1,
+    2
+  ],
+  "scope": "Actual running game; top row full screenshots, bottom E03 detail; fixed observation placement, simulation not paused; desktop, not phone acceptance",
+  "assetBytes": 1398375,
+  "limitations": "Single visible-depth bake, not full realtime 3D"
+}

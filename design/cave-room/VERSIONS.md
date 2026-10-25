@@ -9,6 +9,10 @@
 | `cave/sculpt-e01` | 上一轮厚岩雕刻、投影侧面与不规则轮廓 | 独立实验，偏光滑 |
 | `cave/sculpt-e02-rough` | 第二轮地质雕刻第一遍、未量化全精度资源 | 独立初稿，细碎凹凸太多 |
 | `cave/sculpt-e02` | 第二轮收敛版：主裂缝、有限凹槽、局部轮廓破口与受控资源导出 | 独立实验，未替换手机版 |
+| `cave/art-progress-e02` | 用户认可E02正在进步的检查点，含历史版本试跑验收 | 认可进步，非最终验收 |
+| `cave/sculpt-e03-contact` | 多段磨损侧面、法线相对接触遮挡及水域边界采样修正 | E03首遍独立留档 |
+| `cave/sculpt-e03-masses` | 宽断面、局部破肩与小范围侵蚀，不统一中心鼓起 | E03第二遍独立留档 |
+| `cave/sculpt-e03` | 宽断面和接触收敛版，增加凹口顶面完整裁剪 | 本轮当前独立实验，未替换手机版 |
 
 普通手机版仍为v1.0.20，不因开发实验增加资源包或变更存档。用户的私有开发者工具配置不在本轮提交或快照导出范围内。所有提交和标签均为本地保存，未自动推送远端；这不是异地备份。
 
@@ -29,6 +33,9 @@ npm run cave:versions -- --build mobile-v120
 npm run cave:versions -- --build sculpt-e01
 npm run cave:versions -- --build sculpt-e02-rough
 npm run cave:versions -- --build sculpt-e02
+npm run cave:versions -- --build sculpt-e03-contact
+npm run cave:versions -- --build sculpt-e03-masses
+npm run cave:versions -- --build sculpt-e03
 ```
 
 版本库是Git提交与标签，不是node_modules缓存。缓存可以删除后重新生成；若本地没有对应标签，先恢复仓库/标签再重建，不改目录ID去冒充旧版本。
@@ -39,7 +46,7 @@ npm run cave:versions -- --build sculpt-e02
 npm run cave:versions:check
 ```
 
-检查四张岩体资产的内容来自各自提交、无私有配置拷入、无performance时游戏继续绘制与扣氧，退出释放资源，并确认当前工作区未被历史构建修改。手机帧率与最终美术验收仍单独进行。
+检查每版四张岩体资产的内容来自各自提交、无私有配置拷入、无performance时游戏继续绘制与扣氧，退出释放资源，并确认当前工作区未被历史构建修改。手机帧率与最终美术验收仍单独进行。
 
 ## 真正回退代码时
 

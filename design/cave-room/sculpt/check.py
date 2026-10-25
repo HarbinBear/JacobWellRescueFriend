@@ -56,5 +56,10 @@ if export:
     assert export['alphaBits']==export['depthBits']==8
     assert (detail[:,:,1]==0).all(),'Unused channel must not cost entropy or affect lighting'
 assert report['meshFaces']>50
+if 'topBoundaries' in report:
+    assert len(report['topBoundaries'])==4
+    for top in report['topBoundaries']:
+        assert top['newSpill']==0
+        assert abs(top['coveredArea']-top['boundaryArea'])<max(.002,top['boundaryArea']*1e-6),'No top gaps or triangles across concave slots'
 assert len(list(OUT.glob('room-*.png')))==4,'No extra runtime image or GPU texture'
 print(json.dumps(dict(coverageSamples=samples,outlineVertices=report['outlineVertices'],fractionalCoverage=True,sharedDepthAndNormal=True,faces=report['meshFaces'],scope='Geometry/resource invariants; aesthetic and real-phone acceptance still separate'),indent=2))
