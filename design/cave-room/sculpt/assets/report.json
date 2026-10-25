@@ -5,19 +5,28 @@
   "lampHeight": 205,
   "meshFaces": 735,
   "heightPercentiles": [
-    19.14050295426035,
-    45.54694818512062,
-    96.24449691186985,
-    141.42649260592566,
-    171.57031465362397
+    18.434651002254125,
+    44.85028401173171,
+    96.52207306996189,
+    140.99625364661532,
+    170.39573115632174
   ],
   "normalZPercentiles": [
-    0.47074730630374906,
-    0.8954290893816435,
-    0.9861507258791822
+    0.29686753574506347,
+    0.7963722061878855,
+    0.9628234904239202
   ],
   "albedo": "restrained neutral pigment; no baked key light or painted stone blocks",
-  "geometry": "eroded continuous wall depth plus independently tilted 3D fractured slabs",
+  "geometry": "thick fractured slabs with finite fissures, unequal strata and eroded cavities",
+  "revision": "E02-geological-relief",
+  "reliefRange": [
+    -8.363257826081625,
+    -4.23848733637043,
+    -0.14807362586092718,
+    3.8802917588530557,
+    6.389518929437897
+  ],
+  "fissureSamples": 10961,
   "limits": "single visible-depth bake: not full runtime 3D or view-dependent disocclusion",
-  "bytes": 1415849
+  "bytes": 3091308
 }

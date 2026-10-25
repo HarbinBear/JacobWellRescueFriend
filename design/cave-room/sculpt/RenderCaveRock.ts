@@ -101,7 +101,7 @@ void main(){
  vec3 viewDirection=normalize(vec3(-projection.x,-projection.y,1.));
  float spec=pow(max(0.,dot(n,normalize(l+viewDirection))),22.);
  spec*=smoothstep(0.,.12,lambert)*mix(.30,1.,ao);
- color+=vec3(.26,.33,.33)*spec*.09*ao*localVisibility;
+ color+=vec3(.26,.33,.33)*spec*.035*ao*localVisibility;
  float hit=beamDistance(theta/fov+.5);
  float reach=1.-smoothstep(hit+20.,hit+190.,length(delta));
  float incident=cone*reach*(1.-smoothstep(range*.25,range,length(delta)));

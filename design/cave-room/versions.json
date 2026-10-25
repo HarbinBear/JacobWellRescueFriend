@@ -1,0 +1,18 @@
+{
+  "versions": [
+    {
+      "id": "mobile-v120",
+      "ref": "cave/mobile-v1.0.20",
+      "title": "v1.0.20 · 手机已跑通基线",
+      "mode": "native",
+      "note": "保留用户确认手机可运行的岩体、玩法和资源，不被美术实验覆盖。"
+    },
+    {
+      "id": "sculpt-e01",
+      "ref": "cave/sculpt-e01",
+      "title": "E01 · 厚断面雕刻实验",
+      "mode": "sculpt",
+      "note": "上一轮独立实验：厚侧面与投影轮廓，但仍偏光滑、有人工折面感，未定稿。"
+    }
+  ]
+}

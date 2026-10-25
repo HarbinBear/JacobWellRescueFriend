@@ -273,6 +273,17 @@ for ps, n, pigment, smooth, owner in triangles:
         normal_map[sl][take] = shading[take]
     material[sl][take] = pigment
 
+# Physical geological relief, applied to the same visible depth and normal differential.
+from geology import sculpt_relief, displaced_normal
+relief, mineral_pigment, fracture_depth = sculpt_relief(X,Y,S)
+relief *= mask
+relief_for_normal = relief.copy()
+relief_for_normal[~mask] = relief_for_normal[tuple(indices[:,~mask])]
+normal_map = displaced_normal(normal_map,relief_for_normal,S,PX,PY)
+normal_map[~mask] = [0,0,1]
+height[mask] += relief[mask]
+height[mask] = np.clip(height[mask],4,200)
+
 # AO is geometric cavity/nearby occlusion, stored separately from the neutral material.
 nearest_height = height.copy()
 nearest_height[~mask] = nearest_height[tuple(indices[:, ~mask])]
@@ -292,7 +303,7 @@ chroma=np.clip(paint/luminance[:,:,None]*.53,.38,.67)
 material=np.clip(material*.58+chroma*.42+tint,0,1)
 # Very restrained mineral wear, not an illuminated stone-pattern atlas.
 grain=(np.sin(X*.31+Y*.047)*np.sin(Y*.24-X*.017))*.007
-material=np.clip(material+grain[:,:,None],0,1)
+material=np.clip(material+mineral_pigment+grain[:,:,None],0,1)
 material[~mask] = 0
 
 
@@ -315,7 +326,10 @@ report = dict(outlineVertices=sum(map(len,shapes)), baselineVertices=sum(map(len
               heightPercentiles=np.percentile(height[mask],[1,10,50,90,99]).tolist(),
               normalZPercentiles=np.percentile(normal_map[:,:,2][mask],[10,50,90]).tolist(),
               albedo='restrained neutral pigment; no baked key light or painted stone blocks',
-              geometry='eroded continuous wall depth plus independently tilted 3D fractured slabs',
+              geometry='thick fractured slabs with finite fissures, unequal strata and eroded cavities',
+              revision='E02-geological-relief',
+              reliefRange=np.percentile(relief[mask],[1,10,50,90,99]).tolist(),
+              fissureSamples=int(np.count_nonzero((fracture_depth<-5)&mask)),
               limits='single visible-depth bake: not full runtime 3D or view-dependent disocclusion',
               bytes=sum(p.stat().st_size for p in OUT.glob('*.png')))
 (OUT/'report.json').write_text(json.dumps(report, indent=2))
