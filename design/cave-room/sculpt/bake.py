@@ -200,13 +200,10 @@ def slab(perimeter, heights, floor, pigment, interiors):
     shared /= np.maximum(1e-8,np.linalg.norm(shared,axis=1))[:,None]
     for face in valid:
         triangle([top[i] for i in face], pigment, shared[face])
-    for i, a in enumerate(top[:len(perimeter)]):
-        b = top[(i+1) % len(perimeter)]
-        # Lower rock is behind the lip; asymmetric 3D projection exposes substantial sides.
-        a0 = [a[0]-PX*(a[2]-floor), a[1]-PY*(a[2]-floor), floor]
-        b0 = [b[0]-PX*(b[2]-floor), b[1]-PY*(b[2]-floor), floor]
-        triangle([a0,b0,b], np.array(pigment)*.97, side=True)
-        triangle([a0,b,a], np.array(pigment)*.97, side=True)
+    # Multi-ring physical erosion replaces the perfectly vertical extruded strips.
+    from sidewalls import sidewall_mesh
+    for points,ring in sidewall_mesh(top[:len(perimeter)],floor,PX,PY):
+        triangle(points,np.array(pigment)*(.985 if ring<2 else .97),side=True)
 
 
 slab([[411,505],[459,471],[490,490],[493,535],[462,565],[396,572],[376,554]],
@@ -297,7 +294,10 @@ nearest_height = height.copy()
 nearest_height[~mask] = nearest_height[tuple(indices[:, ~mask])]
 broad = gaussian_filter(nearest_height, 9*S)
 cavity = np.maximum(0, broad-nearest_height)
-ao = np.clip(1-cavity/72, .30, 1)
+from contact_ao import contact_ao
+# Physical normal relative horizon: adjacent higher faces create local contact.
+horizon_ao=contact_ao(height,normal_map,mask,S,PX,PY)
+ao=np.minimum(horizon_ao,np.clip(1-cavity/130,.48,1))
 # A few restrained mineral seams follow an actual large groove direction; not thick outlines.
 seam_phase = X*.034 + Y*.012 + .24*np.sin(Y*.020)
 seam = np.exp(-(np.sin(seam_phase)/.09)**2) * .04
@@ -345,8 +345,10 @@ report = dict(outlineVertices=sum(map(len,shapes)), baselineVertices=sum(map(len
               heightPercentiles=np.percentile(height[mask],[1,10,50,90,99]).tolist(),
               normalZPercentiles=np.percentile(normal_map[:,:,2][mask],[10,50,90]).tolist(),
               albedo='restrained neutral pigment; no baked key light or painted stone blocks',
-              geometry='thick fractured slabs with finite fissures, unequal strata and eroded cavities',
-              revision='E02-geological-relief',
+              geometry='worn multi-ring thick sidewalls, finite fractures and normal-relative contact horizons',
+              revision='E03-worn-contact',
+              ambientOcclusion=dict(directions=12,steps=5,visibleDepthApproximation=True,
+                                    percentiles=np.percentile(ao[mask],[1,10,50,90,99]).tolist()),
               reliefRange=np.percentile(relief[mask],[1,10,50,90,99]).tolist(),
               fissureSamples=int(np.count_nonzero((fracture_depth<-5)&mask)),
               export=dict(lossless=False,normalAngularP99=float(np.percentile(angular_error,99)),

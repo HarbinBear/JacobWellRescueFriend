@@ -1,35 +1,47 @@
 {
-  "outlineVertices": 207,
+  "outlineVertices": 209,
   "baselineVertices": 59,
   "heightScale": 220,
   "lampHeight": 205,
-  "meshFaces": 735,
+  "meshFaces": 955,
   "heightPercentiles": [
-    19.138878420987762,
-    45.583916299147845,
-    96.08413600118944,
-    140.80140733112526,
-    170.58898772658998
+    19.120043431157207,
+    45.544239159991776,
+    96.06217639838962,
+    140.8311527059012,
+    170.5939471568566
   ],
   "normalZPercentiles": [
-    0.43163363759607015,
-    0.8812076318034747,
-    0.9841901742397482
+    0.4450604038366475,
+    0.8820577321655013,
+    0.9842783366480868
   ],
   "albedo": "restrained neutral pigment; no baked key light or painted stone blocks",
-  "geometry": "thick fractured slabs with finite fissures, unequal strata and eroded cavities",
-  "revision": "E02-geological-relief",
+  "geometry": "worn multi-ring thick sidewalls, finite fractures and normal-relative contact horizons",
+  "revision": "E03-worn-contact",
+  "ambientOcclusion": {
+    "directions": 12,
+    "steps": 5,
+    "visibleDepthApproximation": true,
+    "percentiles": [
+      0.36,
+      0.6408004726834957,
+      0.9416620575101813,
+      0.9999937961272476,
+      1.0
+    ]
+  },
   "reliefRange": [
-    -6.74968155429023,
-    -1.6373005434724688,
-    -0.04849083655077345,
-    1.487277364174627,
-    2.3614153469060852
+    -6.756188795209678,
+    -1.6360224660899902,
+    -0.04730967554662409,
+    1.4880108989593648,
+    2.36201252607305
   ],
-  "fissureSamples": 10961,
+  "fissureSamples": 10960,
   "export": {
     "lossless": false,
-    "normalAngularP99": 1.3682863277455168,
+    "normalAngularP99": 1.3674680008604025,
     "normalAngularMax": 1.7904037472139014,
     "normalChannels": 64,
     "AOChannels": 64,
@@ -38,5 +50,5 @@
     "unusedGreen": 0
   },
   "limits": "single visible-depth bake: not full runtime 3D or view-dependent disocclusion",
-  "bytes": 1234764
+  "bytes": 1392673
 }
