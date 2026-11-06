@@ -12,7 +12,7 @@ import { processManualDrive } from './ManualDrive';
 import { checkCollision, getNearestWallDist, checkMazeCollision } from './Collision';
 
 import { updateCameraSpringArm, snapCameraToPlayer, getAdaptiveZoom } from './CameraLogic';
-import { updateMarkers, updateWheelButtonVisibility } from './Marker';
+import { updateWheelButtonVisibility } from './Marker';
 import { triggerCollisionImpact, resetCollisionImpact, updateRegulatorAnim } from './CollisionImpact';
 
 // 从拆分模块重新导出，保持外部导入路径不变
@@ -175,15 +175,6 @@ export function update() {
 
     checkZones();
 
-    if(state.rope && state.rope.hold && state.rope.hold.active) {
-        input.move = 0;
-        input.speedUp = false;
-        player.vx = 0;
-        player.vy = 0;
-        // 手动挡：清空脉冲队列，防止松手后突然冲出
-        if (state.manualDrive) state.manualDrive.activeTouches = {};
-    }
-
     // 被凶猛鱼咬住或死亡过场期间冻结玩家（动不了，正在被撕咬）
     if (state.fishBite && state.fishBite.active) {
         input.move = 0;
@@ -269,7 +260,6 @@ export function update() {
     updateRopeSystem();
 
     // 标记系统更新
-    updateMarkers();
     updateWheelButtonVisibility();
 
     // 轮盘展开动画

@@ -21,6 +21,7 @@ type DiverMotion = {
     dancePose?: RescueDancePose;
     limpPose?: RescueLimpPose;
     rescueStrike?: number;
+    ropeStruggle?: { phase: number; strength: number; pull: number };
     tapeVisual?: TapeVisual;
     resonanceVisual?: TapeVisual;
     resonanceEcho?: boolean;
@@ -729,6 +730,10 @@ export function drawDiver(
     const dance = motion.dancePose;
     const limp = motion.limpPose;
     const time = motion.animTime ?? Date.now() / 150;
+    const struggle = motion.ropeStruggle;
+    const struggleAmount = struggle ? clamp(struggle.strength * .72 + struggle.pull * .4, 0, 1) : 0;
+    const struggleBeat = (struggle?.phase ?? 0) * .46;
+    const yank = Math.sin(struggleBeat) * struggleAmount;
     // tankCount 优先：传 0/1/2 直接生效；不传则按 hasTank 推（true→1, false→0）
     const tankCount = motion.tankCount != null
         ? Math.max(0, Math.min(2, motion.tankCount | 0))
@@ -806,14 +811,14 @@ export function drawDiver(
     const bodyRoll = turnVisual * cfg.rollTurnFactor
                    + turnAmount * 0.08
                    + bodyWave * bodySwayAmp * cfg.rollWaveFactor
-                   + kickWave * 0.02;
+                   + kickWave * 0.02 + yank * .28;
 
     // ===== 身体 yaw（俯视下的左右扭动，驱动 S 型曲线） =====
     // 转向时强烈偏向输入侧，前进时周期性左右扭动，idle 时低频漂动
     const bodyYaw = turnAmount * 1.0
                   + turnVisual * cfg.yawTurnFactor
                   + bodyWave * bodySwayAmp * cfg.yawWaveFactor
-                  + kickWave * 0.22;
+                  + kickWave * 0.22 + yank * .46;
 
     // ===== 躯干前后呼吸压缩 =====
     // forward 时随腿部相位做呼吸，idle 时随 bodyWave2 轻微起伏
@@ -905,16 +910,17 @@ export function drawDiver(
         ? Math.sin((wa!.timer / Math.max(1, wa!.duration)) * Math.PI * 4) * 0.05 * welcomeBlend
         : 0;
 
-    const leftArmTargetUpper  = Math.PI + 0.95 + welcomeBreath;
-    const leftArmTargetLower  = leftArmTargetUpper + 0.18;
-    const rightArmTargetUpper = Math.PI - 0.95 - welcomeBreath;
-    const rightArmTargetLower = rightArmTargetUpper - 0.18;
+    const armBlend = Math.max(welcomeBlend, struggleAmount);
+    const leftArmTargetUpper  = Math.PI + .95 + welcomeBreath + yank * .58;
+    const leftArmTargetLower  = leftArmTargetUpper + .18 + struggleAmount * .96;
+    const rightArmTargetUpper = Math.PI - .95 - welcomeBreath + yank * .58;
+    const rightArmTargetLower = rightArmTargetUpper - .18 - struggleAmount * .96;
 
     const strike = motion.rescueStrike || 0;
-    const leftArmUpper = limp ? limp.lu : dance ? dance.lu : leftArmUpperBase + (leftArmTargetUpper - leftArmUpperBase) * welcomeBlend;
-    const leftArmLower = limp ? limp.ll : dance ? dance.ll : leftArmLowerBase + (leftArmTargetLower - leftArmLowerBase) * welcomeBlend;
-    const rightArmUpper = limp ? limp.ru : strike ? -1.8 + strike * 2.1 : dance ? dance.ru : rightArmUpperBase + (rightArmTargetUpper - rightArmUpperBase) * welcomeBlend;
-    const rightArmLower = limp ? limp.rl : strike ? -.9 + strike * .9 : dance ? dance.rl : rightArmLowerBase + (rightArmTargetLower - rightArmLowerBase) * welcomeBlend;
+    const leftArmUpper = limp ? limp.lu : dance ? dance.lu : leftArmUpperBase + (leftArmTargetUpper - leftArmUpperBase) * armBlend;
+    const leftArmLower = limp ? limp.ll : dance ? dance.ll : leftArmLowerBase + (leftArmTargetLower - leftArmLowerBase) * armBlend;
+    const rightArmUpper = limp ? limp.ru : strike ? -1.8 + strike * 2.1 : dance ? dance.ru : rightArmUpperBase + (rightArmTargetUpper - rightArmUpperBase) * armBlend;
+    const rightArmLower = limp ? limp.rl : strike ? -.9 + strike * .9 : dance ? dance.rl : rightArmLowerBase + (rightArmTargetLower - rightArmLowerBase) * armBlend;
 
     renderCtx.save();
     renderCtx.translate(x + (limp ? 0 : dance ? dance.sway : driftX), y + (limp ? 0 : dance ? dance.bounce : driftY));
@@ -963,12 +969,15 @@ export function drawDiver(
             : freq;
         clock.phase = (clock.phase + effectiveFreq) % 1;
     }
-    const legPhaseVal = dance ? dance.legPhase : clock.phase;
+    const legPhaseVal = dance ? dance.legPhase : struggle ? (struggleBeat / (Math.PI * 2)) % 1 : clock.phase;
+    const legAmp = limp ? 0 : Math.max(ampNorm, struggleAmount);
+    const leftBend = dance ? dance.leftBend : Math.max(0, yank * .9);
+    const rightBend = dance ? dance.rightBend : Math.max(0, -yank * .9);
 
-    drawLegAndFin(renderCtx, -8.2, -4.2, -1, legPhaseVal, limp ? 0 : ampNorm, leftTurnProgress, leftTurnStrength, limp ? 0 : bodyYaw, c, dance ? dance.leftBend : 0,
+    drawLegAndFin(renderCtx, -8.2, -4.2, -1, legPhaseVal, legAmp, leftTurnProgress, leftTurnStrength, limp ? 0 : bodyYaw, c, leftBend,
         limp ? { thigh: limp.leftThigh, shin: limp.leftShin } : undefined);
     // 右腿相位 +0.5，实现左右交替鞭打
-    drawLegAndFin(renderCtx, -8.2, 4.2, 1, (legPhaseVal + 0.5) % 1, limp ? 0 : ampNorm, rightTurnProgress, rightTurnStrength, limp ? 0 : bodyYaw, c, dance ? dance.rightBend : 0,
+    drawLegAndFin(renderCtx, -8.2, 4.2, 1, (legPhaseVal + 0.5) % 1, legAmp, rightTurnProgress, rightTurnStrength, limp ? 0 : bodyYaw, c, rightBend,
         limp ? { thigh: limp.rightThigh, shin: limp.rightShin } : undefined);
 
     renderCtx.save();

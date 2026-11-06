@@ -1,18 +1,34 @@
 import { CONFIG } from '../core/config';
 import { state, player } from '../core/state';
 import { FishEnemy } from '../logic/FishEnemy';
+import { getRopeContact } from '../logic/Rope';
+import { drawRopeContactWorld } from './RenderRope';
 
 // =============================================
 // 绘制单条凶猛鱼（世界坐标系，已在摄像机变换内调用）
 // =============================================
-export function drawFishEnemy(ctx: CanvasRenderingContext2D, fish: FishEnemy) {
+export function drawFishEnemy(ctx: CanvasRenderingContext2D, fish: FishEnemy, contact = getRopeContact(fish)) {
+    const caught = contact?.kind === 'snag';
+    const effort = caught ? .54 + contact.pull * .46 : 0;
+    const strain = caught ? Math.sin(contact.phase * .6) * effort : 0;
     ctx.save();
     ctx.translate(fish.x, fish.y);
-    ctx.rotate(fish.angle);
+    ctx.rotate(fish.angle + strain * .31);
+    if (caught) ctx.scale(1 - Math.abs(strain) * .11, 1 + Math.abs(strain) * .16);
 
     const cfg = CONFIG.fishEnemy;
     const t = fish.animTime;
     const state_ = fish.state;
+    if (fish.kind === 'curious') {
+        drawCuriousFish(ctx, cfg.size, t, state_ === 'inspect', strain);
+        ctx.restore();
+        return;
+    }
+    const provoked = fish.kind === 'provoked';
+    if (provoked) {
+        const charging = state_ === 'lunge' && fish.lungeCharge < 1;
+        ctx.scale(charging ? 1.13 - fish.lungeCharge * .19 : 1.16, 1.22);
+    }
 
     // --- 身体摆动幅度根据状态变化 ---
     let bodySwayAmp = 0.12;   // 身体左右摆动幅度
@@ -41,14 +57,14 @@ export function drawFishEnemy(ctx: CanvasRenderingContext2D, fish: FishEnemy) {
         swaySpeed = 0.3;
     }
 
-    const bodySway = Math.sin(t * swaySpeed) * bodySwayAmp;
-    const tailSway = Math.sin(t * swaySpeed + 0.5) * tailSwayAmp;
+    const bodySway = caught ? strain * .27 : Math.sin(t * swaySpeed) * bodySwayAmp;
+    const tailSway = caught ? Math.sin(contact.phase * .83 + .6) * effort : Math.sin(t * swaySpeed + 0.5) * tailSwayAmp;
 
     // --- 颜色主题（深灰蓝+暗红腹部，凶残感）---
-    const bodyColor1 = '#1a2535';   // 背部深色
-    const bodyColor2 = '#2d3d52';   // 侧面中间色
-    const bellyColor = '#3d1a1a';   // 腹部暗红
-    const finColor   = '#0f1a28';   // 鳍颜色
+    const bodyColor1 = provoked ? '#482728' : '#1a2535';   // 背部深色
+    const bodyColor2 = provoked ? '#8f4b3c' : '#2d3d52';   // 侧面中间色
+    const bellyColor = provoked ? '#613834' : '#3d1a1a';   // 腹部暗红
+    const finColor   = provoked ? '#6e372f' : '#0f1a28';   // 鳍颜色
     const teethColor = '#e8e0d0';   // 牙齿颜色
     const eyeWhite   = '#c8c0b0';   // 眼白（偏黄，凶残）
     const eyePupil   = '#000';      // 瞳孔
@@ -102,6 +118,16 @@ export function drawFishEnemy(ctx: CanvasRenderingContext2D, fish: FishEnemy) {
     ctx.save();
     ctx.rotate(bodySway);
 
+    if (provoked) {
+        ctx.fillStyle = '#ad654d';
+        ctx.beginPath();
+        ctx.moveTo(-size * .7, -size * .2);
+        ctx.lineTo(-size * .48, -size * .59);
+        ctx.lineTo(-size * .34, -size * .42);
+        ctx.lineTo(-size * .11, -size * .73);
+        ctx.lineTo(size * .27, -size * .19);
+        ctx.fill();
+    }
     // 腹部渐变（背部深，腹部暗红）
     const bodyGrad = ctx.createLinearGradient(0, -size * 0.4, 0, size * 0.4);
     bodyGrad.addColorStop(0, bodyColor1);
@@ -402,6 +428,31 @@ export function drawFishBiteEffect(ctx: CanvasRenderingContext2D, canvasW: numbe
     }
 }
 
+function drawCuriousFish(ctx: CanvasRenderingContext2D, size: number, time: number, inspecting: boolean, strain: number) {
+    const tail = Math.sin(time * .8) * (inspecting ? .08 : .3) + strain * .72;
+    ctx.save();
+    ctx.translate(-size * .64, 0);
+    ctx.rotate(tail);
+    ctx.fillStyle = '#59918b';
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.bezierCurveTo(-size * .65, -size * .57, -size * .77, -size * .39, -size * .64, 0);
+    ctx.bezierCurveTo(-size * .77, size * .39, -size * .65, size * .57, 0, 0);
+    ctx.fill();
+    ctx.restore();
+
+    ctx.fillStyle = '#83aba0';
+    ctx.beginPath(); ctx.ellipse(0, 0, size * .78, size * .49, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#bbcf9e';
+    ctx.beginPath(); ctx.ellipse(size * .12, size * .14, size * .55, size * .28, -.11, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#659b93';
+    ctx.beginPath(); ctx.ellipse(-size * .21, size * .17, size * .23, size * .1, -.45 + tail, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#e7eacb';
+    ctx.beginPath(); ctx.arc(size * .42, -size * .14, size * .16, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#223f3e';
+    ctx.beginPath(); ctx.arc(size * .47, -size * .14, size * .085, 0, Math.PI * 2); ctx.fill();
+}
+
 // =============================================
 // 绘制所有凶猛鱼（在世界坐标系内调用）
 // =============================================
@@ -412,9 +463,11 @@ export function drawAllFishEnemies(ctx: CanvasRenderingContext2D) {
             // 死亡动画：翻肚皮淡出
             drawDyingFish(ctx, fish);
         } else if (!fish.dead) {
-            drawFishEnemy(ctx, fish);
+            const contact = getRopeContact(fish);
+            drawFishEnemy(ctx, fish, contact);
+            drawRopeContactWorld(ctx, fish, contact, CONFIG.fishEnemy.size * .43);
             // 绘制状态变化提示图标（问号/感叹号）
-            if (fish.alertTimer > 0 && fish.alertIcon) {
+            if (contact?.kind !== 'snag' && fish.alertTimer > 0 && fish.alertIcon) {
                 drawFishAlertIcon(ctx, fish);
             }
         }

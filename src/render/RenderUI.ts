@@ -204,10 +204,7 @@ export function drawControls() {
             ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = 1; ctx.stroke();
         }
     }
-    // 迷宫由自身 HUD 绘制攻击和手电按钮。
-    if (isMazePlay) return;
-    // 绘制攻击按鈕
-    drawAttackButton();
+    if (!isMazePlay) drawAttackButton();
     // 绘制手电筒开关按钮
     drawFlashlightButton();
 }

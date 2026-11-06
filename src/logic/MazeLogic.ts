@@ -4,7 +4,7 @@ import { processSemiAutoDrive } from './SemiAutoDrive';
 import { updateRescueLink } from './RescueLink';
 import { updateRescueTow } from './RescueTow';
 import { CONFIG } from '../core/config';
-import { state, player, particles, input, touches } from '../core/state';
+import { state, player, particles, input, touches, createRopeState } from '../core/state';
 import { generateMazeMap } from '../world/map';
 import { createCaveRockTrialMap } from '../world/CaveRockTrial';
 import { ensureExtractionState,restoreLoadoutAfterDive } from '../extraction';
@@ -14,11 +14,11 @@ import { StoryManager } from '../story/StoryManager';
 import { enterHomeScene } from '../story/HomeScene';
 import { triggerSilt, updateParticles, updateSplashes } from './Particle';
 import { updateBreathSystem, resetBreathSystem, consumeBreathO2, resetBreathO2Consumer, computeBuoyancyOffset } from './BreathSystem';
-import { updateRopeSystem } from './Rope';
+import { cancelRopePlacement, resetRopeMotion, resolveWovenRopeContact, updateRopeMotion, updateRopeSystem } from './Rope';
 import { processManualDrive } from './ManualDrive';
 import { checkMazeCollision } from './Collision';
 import { updateCameraSpringArm, snapCameraToPlayer, getAdaptiveZoom } from './CameraLogic';
-import { updateMarkers, updateWheelButtonVisibility } from './Marker';
+import { updateWheelButtonVisibility } from './Marker';
 import { createFishEnemy, findMazeFishSpawnPosition, updateAllFishEnemies, generateFishDens } from './FishEnemy';
 import { buildOxygenTanksForMaze, updateOxygenTanks, createOxygenFeedback, triggerO2LossFlash } from './OxygenTank';
 import { buildRelicsForMaze, updateRelicDiscovery, resetRelicDiscoveryForDive, getThisDiveNewRelicIds, getThisDiveNewCodexCount } from './Relic';
@@ -211,34 +211,7 @@ export function resetMazeLogic(rockTrial=false) {
         angle: 0,
     };
     // 重置绳索
-    state.rope = {
-        ropes: [],
-        active: false,
-        current: {
-            start: null,
-            startWall: null,
-            end: null,
-            path: [],
-            basePoints: [],
-            slackFactor: 1,
-            mode: 'loose',
-            time: 0
-        },
-        ui: {
-            visible: false,
-            type: null,
-            progress: 0,
-            anchor: null
-        },
-        hold: {
-            active: false,
-            type: null,
-            timer: 0,
-            touchId: null,
-            anchor: null
-        },
-        stillTimer: 0
-    };
+    state.rope = createRopeState();
 
     // 生成迷宫地图
     const mazeData = rockTrial?createCaveRockTrialMap():generateMazeMap();
@@ -531,11 +504,12 @@ export function startMazeDive(diveType: string) {
     if (!maze.rockTrial && CONFIG.maze.fishEnabled && maze.fishDens && maze.fishDens.length > 0) {
         const perMin = (CONFIG.maze as any).denFishCountMin || 2;
         const perMax = (CONFIG.maze as any).denFishCountMax || 6;
-        for (const den of maze.fishDens) {
+        for (const [index, den] of maze.fishDens.entries()) {
             const fishCount = perMin + Math.floor(Math.random() * (perMax - perMin + 1));
             for (let i = 0; i < fishCount; i++) {
                 const pos = findMazeFishSpawnPosition(den.x, den.y, den.radius);
-                state.fishEnemies.push(createFishEnemy(pos.x, pos.y, den.x, den.y, den.radius));
+                const kind = i === 0 ? (index % 2 === 0 ? 'curious' : 'provoked') : 'piranha';
+                state.fishEnemies.push(createFishEnemy(pos.x, pos.y, den.x, den.y, den.radius, kind));
             }
         }
     } else if (!maze.rockTrial && CONFIG.maze.fishEnabled) {
@@ -543,7 +517,8 @@ export function startMazeDive(diveType: string) {
         const count = CONFIG.maze.fishCountMin + Math.floor(Math.random() * (CONFIG.maze.fishCountMax - CONFIG.maze.fishCountMin + 1));
         for (let i = 0; i < count; i++) {
             const pos = findMazeFishSpawnPosition();
-            state.fishEnemies.push(createFishEnemy(pos.x, pos.y));
+            const kind = i === 0 ? 'curious' : i === 1 ? 'provoked' : 'piranha';
+            state.fishEnemies.push(createFishEnemy(pos.x, pos.y, undefined, undefined, undefined, kind));
         }
     }
 
@@ -601,34 +576,9 @@ export function startMazeDive(diveType: string) {
     maze.currentThemeKey = '';
     maze.playerPath = [{x: player.x, y: player.y}];
 
-    // 绳索系统保留已有绳索，只重置当前铺设状态
-    if (state.rope) {
-        state.rope.active = false;
-        state.rope.current = {
-            start: null,
-            startWall: null,
-            end: null,
-            path: [],
-            basePoints: [],
-            slackFactor: 1,
-            mode: 'loose',
-            time: 0
-        };
-        state.rope.ui = {
-            visible: false,
-            type: null,
-            progress: 0,
-            anchor: null
-        };
-        state.rope.hold = {
-            active: false,
-            type: null,
-            timer: 0,
-            touchId: null,
-            anchor: null
-        };
-        state.rope.stillTimer = 0;
-    }
+    // Preserve placed lines and clear the loose end and loads for the new dive.
+    cancelRopePlacement();
+    resetRopeMotion();
 
     // 标记系统保留已有标记（跨下潜持久化）
     // 轮盘状态重置
@@ -1077,15 +1027,7 @@ export function updateMaze() {
     // 更新剧情文字（复用 storyManager）
     storyManager.update();
 
-    // 绳索长按时冻结玩家
-    if (state.rope && state.rope.hold && state.rope.hold.active) {
-        input.move = 0;
-        input.speedUp = false;
-        player.vx = 0;
-        player.vy = 0;
-        // 手动挡：清空脉冲队列，防止松手后突然冲出
-        if (state.manualDrive) state.manualDrive.activeTouches = {};
-    }
+    updateRopeMotion();
 
     // 撤离长按时也冻结玩家
     if (maze.retreatHolding) {
@@ -1125,6 +1067,7 @@ export function updateMaze() {
     updateBCDSystem(1 / 60);
     player.vy += computeBCDBuoyancyAccel();
     // 碰撞检测（使用迷宫专属地图）
+    const from = { x: player.x, y: player.y };
     const nextX = player.x + player.vx;
     const nextY = player.y + player.vy;    // 记录撞前速度，用于撞击强度判定（必须在 vx/vy 反弹衰减前采样）
     const preVx = player.vx;
@@ -1140,6 +1083,13 @@ export function updateMaze() {
     if (hitX || hitY) {
         triggerCollisionImpact(preVx, preVy, player.x, player.y);
     }
+
+    const steering = input.move > 0 || state.manualDrive.hasInput;
+    const driveAngle = CONFIG.driveMode === 'manual' ? player.angle : input.targetAngle;
+    const effort = steering ? 8 * (CONFIG.driveMode === 'semiAuto' ? state.semiAutoDrive.inputPower : 1) : 0;
+    resolveWovenRopeContact(player, from, CONFIG.maze.playerRadius,
+        { x: Math.cos(driveAngle) * effort, y: Math.sin(driveAngle) * effort },
+        (x, y) => !checkMazeCollision(x, y, maze));
 
     // 顶部边界：不能游出迷宫
     if (player.y < maze.mazeTileSize / 2) {
@@ -1176,8 +1126,7 @@ export function updateMaze() {
     // --- 绳索系统 ---
     updateRopeSystem();
 
-    // --- 标记系统 ---
-    updateMarkers();
+    // --- 补给与拾取交互 ---
     updateWheelButtonVisibility();
 
     // --- 氧气瓶系统（进度/飞瓶/气泡爆发/屏幕辉光动画） ---

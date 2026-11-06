@@ -4,7 +4,8 @@ const study=process.argv.includes('--sculpt');
 const root=path.resolve(__dirname,'..'),out=path.join(root,study?'node_modules/.cache/cave-sculpt-game':'node_modules/.cache/cave-native-game');fs.mkdirSync(out,{recursive:true});
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 (async()=>{
- const b=await openReviewBrowser('http://127.0.0.1:60972/'+(study?'node_modules/.cache/cave-sculpt-study/live/game.html':'design/deeptape/game.html'),1100,940);
+ const url = process.env.JWR_PREVIEW_URL || 'http://127.0.0.1:60972/'+(study?'node_modules/.cache/cave-sculpt-study/live/game.html':'design/deeptape/game.html');
+ const b=await openReviewBrowser(url,1100,940);
  try{
   await b.evaluate('Object.defineProperty(window,"performance",{value:undefined,configurable:true});true');
   assert.equal(await b.evaluate('typeof performance'),'undefined');
@@ -35,20 +36,50 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
   await b.command('Input.dispatchKeyEvent',{type:'keyDown',key:'a',code:'KeyA',windowsVirtualKeyCode:65});await wait(700);await b.command('Input.dispatchKeyEvent',{type:'keyUp',key:'a',code:'KeyA',windowsVirtualKeyCode:65});await wait(150);
   const moved=await b.evaluate('({x:DeepTapeGame.player.x,y:DeepTapeGame.player.y,blocked:DeepTapeGame.cave.collision(DeepTapeGame.player.x,DeepTapeGame.player.y,DeepTapeGame.state.mazeRescue)})');
   assert(!moved.blocked);assert(Math.hypot(position.x-moved.x,position.y-moved.y)>.2,'Actual game controls must move the diver');await shot('moved');
-  for(let i=0;i<80;i++){if(await b.evaluate('DeepTapeGame.state.wheel.btnActive'))break;await wait(100);}
-  if(!(await b.evaluate('DeepTapeGame.state.wheel.btnActive'))){await b.command('Input.dispatchKeyEvent',{type:'keyDown',key:'a',code:'KeyA',windowsVirtualKeyCode:65});await wait(220);await b.command('Input.dispatchKeyEvent',{type:'keyUp',key:'a',code:'KeyA',windowsVirtualKeyCode:65});await wait(1600);}
-  async function wheelAction(action){
-   const p=await b.evaluate('DeepTapeGame.cave.wheelPos()');const x=rect.x+p.x/375*rect.w,y=rect.y+p.y/667*rect.h;
-   await b.mouse('mousePressed',x,y);await wait(180);
-   const sector=await b.evaluate('(()=>{const w=DeepTapeGame.state.wheel,s=w.sectors.find(s=>s.action==='+JSON.stringify(action)+');return s?{angle:(s.startAngle+s.endAngle)/2,x:w.centerX,y:w.centerY}:null})()');assert(sector,'Actual wheel action missing: '+action);
-   const tx=sector.x+Math.cos(sector.angle)*70,ty=sector.y+Math.sin(sector.angle)*70;
-   await b.mouse('mouseMoved',rect.x+tx/375*rect.w,rect.y+ty/667*rect.h);await wait(120);await b.mouse('mouseReleased',rect.x+tx/375*rect.w,rect.y+ty/667*rect.h);await wait(300);
+  // Pick two real wall locations with visible, reachable anchor directions.
+  const anchors=await b.evaluate(`(()=>{
+   const g=DeepTapeGame,m=g.state.mazeRescue,room=m.caveRockRoom,geometry=g.cave.geometry;
+   const candidates=[];
+   for(const site of room.sites) for(let dy=-36;dy<=36;dy+=12) for(let dx=-36;dx<=36;dx+=12){
+    const p={x:room.x+site.player[0]+dx,y:room.y+site.player[1]+dy};
+    if(g.cave.collision(p.x,p.y,m))continue;
+    const near=g.cave.nearest(p.x,p.y,g.cave.config.ropeAnchorDistance-4);
+    if(!near||near.dist<22)continue;
+    const q=geometry.closestRockPoint(near.wall,p.x,p.y);
+    const anchor={x:q.x+(p.x-q.x)/near.dist*.6,y:q.y+(p.y-q.y)/near.dist*.6};
+    if(!geometry.rockSegmentClear(m.mazeWalls,p,anchor))continue;
+    candidates.push({p,anchor});
+   }
+   for(const a of candidates) for(const b of candidates){
+    if(Math.hypot(a.anchor.x-b.anchor.x,a.anchor.y-b.anchor.y)<32)continue;
+    if(geometry.rockSegmentClear(m.mazeWalls,a.anchor,b.anchor,g.cave.config.ropeAvoidPadding))return [a,b];
+   }
+   return null;
+  })()`);
+  assert(anchors,'The cave must have a reachable pair of rock anchors');
+  async function wheelPlace({p,anchor}) {
+   const from = await b.evaluate(`(()=>{
+    const g=DeepTapeGame,p=${JSON.stringify(p)},a=${JSON.stringify(anchor)};
+    Object.assign(g.player,{x:p.x,y:p.y,vx:0,vy:0});
+    const c=g.cave.wheelPos(),cfg=g.cave.config;
+    const dx=a.x-p.x,dy=a.y-p.y,d=Math.hypot(dx,dy);
+    const r=cfg.marker.wheelInnerRadius+(cfg.marker.wheelOuterRadius-cfg.marker.wheelInnerRadius)*d/cfg.ropeAnchorDistance;
+    return {c,target:{x:c.x+dx/d*r,y:c.y+dy/d*r}};
+   })()`);
+   const screen = p => ({x:rect.x+p.x/375*rect.w,y:rect.y+p.y/667*rect.h});
+   const press=screen(from.c), drag=screen(from.target);
+   await b.mouse('mousePressed',press.x,press.y);
+   assert(await b.evaluate('DeepTapeGame.state.wheel.open'),'Actual wheel must open');
+   await b.mouse('mouseMoved',drag.x,drag.y);
+   await b.mouse('mouseReleased',drag.x,drag.y);
+   assert.equal(await b.evaluate('DeepTapeGame.state.wheel.open'),false);
   }
-  await wheelAction('startRope');assert(await b.evaluate('DeepTapeGame.state.rope.active'),'Actual wheel must anchor on the polygon');await shot('rope-started');
-  await b.command('Input.dispatchKeyEvent',{type:'keyDown',key:'d',code:'KeyD',windowsVirtualKeyCode:68});await wait(240);await b.command('Input.dispatchKeyEvent',{type:'keyUp',key:'d',code:'KeyD',windowsVirtualKeyCode:68});await wait(1800);
-  if(await b.evaluate('DeepTapeGame.state.wheel.nearbyInfo?.context!==\'ropingWall\'')){await b.command('Input.dispatchKeyEvent',{type:'keyDown',key:'a',code:'KeyA',windowsVirtualKeyCode:65});await wait(450);await b.command('Input.dispatchKeyEvent',{type:'keyUp',key:'a',code:'KeyA',windowsVirtualKeyCode:65});}
-  for(let i=0;i<100;i++){if(await b.evaluate('DeepTapeGame.state.wheel.btnActive&&DeepTapeGame.state.wheel.nearbyInfo?.context===\'ropingWall\''))break;await wait(100);}
-  await wheelAction('endRope');assert.equal(await b.evaluate('DeepTapeGame.state.rope.ropes.length'),1,'Wheel end action must lock a real rope');
+  await wheelPlace(anchors[0]);
+  const start=await b.evaluate('DeepTapeGame.state.rope.current.start');
+  assert(start&&Math.hypot(start.x-anchors[0].anchor.x,start.y-anchors[0].anchor.y)<5,'Directional wheel must pick the intended rock point');
+  await shot('rope-started');
+  await wheelPlace(anchors[1]);
+  assert.equal(await b.evaluate('DeepTapeGame.state.rope.ropes.length'),1,'Directional wheel must finish the strand');
   const ropeCheck=await b.evaluate('(()=>{const g=DeepTapeGame,m=g.state.mazeRescue,r=g.state.rope.ropes[0];return r.path.length>1&&r.path.slice(1).every((p,i)=>g.cave.geometry.rockSegmentClear(m.mazeWalls,r.path[i],p,0))})()');assert(ropeCheck,'Actual placed rope must not cut through the drawn rock');await shot('rope-completed');
   await click(315,24);assert.equal(await b.evaluate('DeepTapeGame.state.screen'),'menu');
   const restored=await b.evaluate('JSON.stringify({storage:{...localStorage},ex:DeepTapeGame.state.extraction,story:DeepTapeGame.state.story2})');assert.equal(restored,before,'Exiting actual trial must restore inventory/story/storage');

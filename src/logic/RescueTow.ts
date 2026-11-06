@@ -1,6 +1,7 @@
 import { CONFIG } from '../core/config';
 import { state, player } from '../core/state';
 import { checkMazeCollision } from './Collision';
+import { getRopeContact, traceWovenRopes } from './Rope';
 import { createRescueRagdoll, stepRescueRagdoll } from './RescueRagdoll';
 
 function canMove(x: number, y: number, tx: number, ty: number): boolean {
@@ -59,7 +60,18 @@ export function updateRescueTow(): void {
         else npcCorrection = 0;
         const pull = over - npcCorrection;
         const px = player.x - nx * pull, py = player.y - ny * pull;
-        if (canMove(player.x, player.y, px, py)) { player.x = px; player.y = py; }
+        const contact = getRopeContact(player);
+        if (canMove(player.x, player.y, px, py)) {
+            if (contact?.kind === 'glide' || (!contact && !traceWovenRopes(player, { x: px, y: py }, CONFIG.maze.playerRadius))) {
+                player.x = px;
+                player.y = py;
+            } else if (!contact) {
+                // Pull into the mesh through normal movement, where its load can stretch the strands.
+                const acceleration = Math.min(1.4, pull * .08);
+                player.vx -= nx * acceleration;
+                player.vy -= ny * acceleration;
+            }
+        }
         const away = player.vx * nx + player.vy * ny;
         if (away > 0) { player.vx -= nx * away * .35; player.vy -= ny * away * .35; }
     }

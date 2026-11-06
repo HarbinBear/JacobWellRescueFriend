@@ -11,9 +11,11 @@ import { handleHUDTouchStart, handleHUDTouchMove, handleHUDTouchEnd } from '../r
 // BCD 浮力背心：右侧竖直 inflator 控件（充气钮 / 排气钮）
 import { getBCDInflateBtn, getBCDDeflateBtn, isBCDUIVisible } from '../render/RenderBCD';
 import { setBCDInflate, setBCDDeflate, releaseBCDControls } from '../logic/BCDSystem';
-import { buildWheelSectors, executeWheelAction } from '../logic/Marker';
+import { performDiveSupply } from '../logic/Marker';
+import type { DiveSupply } from '../logic/Marker';
+import { canUseRopeWheel, finishRopeWheelGesture, moveRopeWheelGesture, startRopeWheelGesture } from '../logic/RopeWheel';
 import { ALL_RELIC_KINDS } from '../logic/Relic';
-import { getWheelBtnPos } from '../render/RenderWheel';
+import { getDiveSupplyButton, getWheelBtnPos } from '../render/RenderWheel';
 // 撤离玩法：UI hit-test 入口集中导入
 import {
     getSellAllBtnRect,
@@ -82,6 +84,7 @@ let abandonTouchId = null;
 
 // 攻击按钮独立触点 ID（多点触控：与摇杆互不干扰）
 let attackTouchId: number | null = null;
+let supplyTouch: { id: number; x: number; y: number; radius: number; supply: DiveSupply } | null = null;
 
 // 迷宫救援长按触点 ID
 let mazeRescueTouchId: number | null = null;
@@ -309,7 +312,12 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
     wx.onTouchStart((res) => {
         warmUpAdaptiveMusic();
         const trialTouch=res.changedTouches?.[0]||res.touches[res.touches.length-1];
-        if(trialTouch && isCaveRockTrialExitHit(trialTouch.clientX,trialTouch.clientY)){exitCaveRockTrial();return;}
+        if (trialTouch && isCaveRockTrialExitHit(trialTouch.clientX, trialTouch.clientY)) {
+            if (state.wheel.touchId !== null) finishRopeWheelGesture(state.wheel.touchId, 0, 0, true);
+            exitCaveRockTrial();
+            return;
+        }
+        if (state.wheel.open && canUseRopeWheel()) return;
         if (state.screen === 'mazeRescue' && state.mazeRescue &&
             ['tape_rewind', 'tape_play'].indexOf(state.mazeRescue.phase) >= 0) return;
 
@@ -509,41 +517,21 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
             } // else 结束
         }
 
-        // 轮盘交互按钮检测（替代旧绳索按钮）
-        // 仅在 btnActive 为 true 时响应点击；灰态（btnVisible=true 但 btnActive=false）不响应
-        if (state.wheel && state.wheel.btnVisible && state.wheel.btnActive && !state.wheel.open) {
-            const { x: btnX, y: btnY } = getWheelBtnPos();
-            for (let t of res.touches) {
-                const dx = t.clientX - btnX;
-                const dy = t.clientY - btnY;
-                if (Math.hypot(dx, dy) <= CONFIG.marker.btnRadius) {
-                    // 打开轮盘
-                    const nearbyInfo = state.wheel.nearbyInfo;
-                    if (nearbyInfo) {
-                        const sectors = buildWheelSectors(nearbyInfo.context, !!nearbyInfo.existingMarker);
-                        // 撤离玩法：拾取扇区的 label 替换为带具体物品名（"拾取 · 黄铜指南针"）
-                        if (nearbyInfo.context === 'pickupRelic' && (nearbyInfo as any).pickupRelicLabel && sectors.length > 0) {
-                            sectors[0].label = (nearbyInfo as any).pickupRelicLabel;
-                        }
-                        state.wheel.open = true;
-                        state.wheel.sectors = sectors;
-                        state.wheel.highlightIndex = -1;
-                        state.wheel.expandProgress = 0;
-                        state.wheel.touchId = t.identifier;
-                        state.wheel.centerX = btnX;
-                        state.wheel.centerY = btnY;
-                        resetDriveInput();
-                    }
-                    return;
-                }
+        // 绳盘只捕获发起这次拖动的手指，世界里的结点随方向连续更新。
+        for (const t of res.changedTouches) {
+            const { x, y } = getWheelBtnPos();
+            if (Math.hypot(t.clientX - x, t.clientY - y) <= CONFIG.marker.btnRadius &&
+                startRopeWheelGesture(t.identifier, t.clientX, t.clientY, x, y)) {
+                resetDriveInput();
+                return;
             }
         }
-
         // 遍历所有新增触点，多点触控：摇杆和攻击按钮互不干扰
         for (const t of res.changedTouches) {
             // 检测攻击按钮（右下角常驻，游戏进行中或竞技场战斗中，任意触点均可触发）
             // 被咬死亡过场期间禁止攻击
             const isBiting = state.fishBite && state.fishBite.active;
+            const isMazePlay = state.screen === 'mazeRescue' && state.mazeRescue?.phase === 'play';
             const isGameActive = !isBiting && (
                 state.screen === 'play' ||
                 (state.screen === 'fishArena' && state.fishArena && state.fishArena.phase === 'fight')
@@ -560,7 +548,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
             }
 
             // 检测手电筒开关按钮（游戏进行中或竞技场战斗中均可切换）
-            if (isGameActive) {
+            if (isGameActive || (isMazePlay && !isBiting)) {
                 const flBtn = FLASHLIGHT_BTN;
                 const fdx = t.clientX - flBtn.x;
                 const fdy = t.clientY - flBtn.y;
@@ -612,6 +600,11 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
 
                 // 左上角 HUD 按住检测：由 HUDTopLeft 管理器统一接管（四项按钮全部采用短按=主操作+弹 tip）
                 if (handleHUDTouchStart(t.identifier, t.clientX, t.clientY)) {
+                    continue;
+                }
+                const supply = getDiveSupplyButton();
+                if (!supplyTouch && supply && Math.hypot(t.clientX - supply.x, t.clientY - supply.y) <= supply.radius) {
+                    supplyTouch = { id: t.identifier, ...supply };
                     continue;
                 }
             }
@@ -730,69 +723,11 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
 
         // 放弃按钮长按计时（在 update 循环中处理，这里不需要）
         // 旧"章节选择"页滑动逻辑已废弃。
-        // 轮盘打开时：滑动更新高亮扇区
-        if (state.wheel && state.wheel.open && state.wheel.touchId !== null) {
-            for (let t of res.touches) {
-                if (t.identifier === state.wheel.touchId) {
-                    const dx = t.clientX - state.wheel.centerX;
-                    const dy = t.clientY - state.wheel.centerY;
-                    const dist = Math.hypot(dx, dy);
-                    if (dist < CONFIG.marker.wheelInnerRadius) {
-                        state.wheel.highlightIndex = -1; // 在死区内，无高亮
-                        state.wheel.previewAction = null;
-                    } else {
-                        // 计算角度，匹配扇区
-                        let angle = Math.atan2(dy, dx);
-                        const sectors = state.wheel.sectors;
-                        let found = -1;
-                        for (let i = 0; i < sectors.length; i++) {
-                            let start = sectors[i].startAngle;
-                            let end = sectors[i].endAngle;
-                            // 规范化角度到 [-PI, PI]
-                            let a = angle;
-                            while (a < start) a += Math.PI * 2;
-                            while (a > end) a -= Math.PI * 2;
-                            if (a >= start && a <= end) {
-                                found = i;
-                                break;
-                            }
-                        }
-                        // 备用：用最近扇区中心角
-                        if (found < 0) {
-                            let minDiff = Infinity;
-                            for (let i = 0; i < sectors.length; i++) {
-                                const mid = (sectors[i].startAngle + sectors[i].endAngle) / 2;
-                                let diff = Math.abs(angle - mid);
-                                if (diff > Math.PI) diff = Math.PI * 2 - diff;
-                                if (diff < minDiff) {
-                                    minDiff = diff;
-                                    found = i;
-                                }
-                            }
-                        }
-                        state.wheel.highlightIndex = found;
-                        // 同步更新预览操作类型
-                        if (found >= 0 && sectors[found]) {
-                            state.wheel.previewAction = sectors[found].action;
-                        } else {
-                            state.wheel.previewAction = null;
-                        }
-                    }
-                    input.move = 0;
-                    input.speedUp = false;
-                    return;
-                }
+        if (state.wheel.open) {
+            for (const t of res.touches) {
+                if (moveRopeWheelGesture(t.identifier, t.clientX, t.clientY)) break;
             }
-        }
-
-        if (state.rope && state.rope.hold && state.rope.hold.active) {
-            for (let t of res.touches) {
-                if (t.identifier === state.rope.hold.touchId) {
-                    input.move = 0;
-                    input.speedUp = false;
-                    return;
-                }
-            }
+            return;
         }
 
         // 手动挡模式：touchMove 只更新当前位置，prev 由逻辑层推进
@@ -850,6 +785,11 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
     });
 
     wx.onTouchEnd((res) => {
+        const remaining = res.changedTouches.filter(t => !finishDiveActionTouch(t.identifier, t.clientX, t.clientY, false));
+        if (remaining.length !== res.changedTouches.length) {
+            handleTouchEnd(remaining);
+            return;
+        }
         if (state.screen === 'mazeRescue' && state.mazeRescue &&
             ['tape_rewind', 'tape_play'].indexOf(state.mazeRescue.phase) >= 0) {
             const touch = res.changedTouches[0];
@@ -1444,8 +1384,22 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
             }
             return;
         }
+        for (const t of res.changedTouches) finishDiveActionTouch(t.identifier, t.clientX, t.clientY, true);
         handleTouchEnd(res.changedTouches);
     });
+}
+
+function finishDiveActionTouch(id: number, tx: number, ty: number, cancelled: boolean) {
+    if (state.wheel.open && state.wheel.touchId === id) {
+        const placed = finishRopeWheelGesture(id, tx, ty, cancelled);
+        if (!cancelled) playSFX(placed ? 'uiPrimary' : 'uiSecondary');
+        return true;
+    }
+    if (supplyTouch?.id !== id) return false;
+    const { x, y, radius, supply } = supplyTouch;
+    supplyTouch = null;
+    if (!cancelled && Math.hypot(tx - x, ty - y) <= radius && performDiveSupply(supply)) playSFX('uiPrimary');
+    return true;
 }
 
 function handleTouchEnd(changedTouches) {
@@ -1470,29 +1424,6 @@ function handleTouchEnd(changedTouches) {
         // 攻击按钮触点释放
         if(t.identifier === attackTouchId) {
             attackTouchId = null;
-        }
-        // 轮盘松手：执行选中操作或取消
-        if (state.wheel && state.wheel.open && t.identifier === state.wheel.touchId) {
-            if (state.wheel.highlightIndex >= 0 && state.wheel.sectors[state.wheel.highlightIndex]) {
-                playSFX('uiPrimary');
-                executeWheelAction(state.wheel.sectors[state.wheel.highlightIndex].action);
-            } else {
-                playSFX('uiSecondary');
-            }
-            // 关闭轮盘
-            state.wheel.open = false;
-            state.wheel.sectors = [];
-            state.wheel.highlightIndex = -1;
-            state.wheel.expandProgress = 0;
-            state.wheel.touchId = null;
-            state.wheel.previewAction = null;
-        }
-        if(state.rope && state.rope.hold && t.identifier === state.rope.hold.touchId) {
-            state.rope.hold.active = false;
-            state.rope.hold.type = null;
-            state.rope.hold.timer = 0;
-            state.rope.hold.touchId = null;
-            state.rope.ui.progress = 0;
         }
         // 手动挡模式：滑动结束时清除触点
         if (CONFIG.driveMode === 'manual' && state.manualDrive) {

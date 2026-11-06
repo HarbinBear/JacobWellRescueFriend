@@ -1,5 +1,6 @@
 import { CONFIG } from './config';
 import type { RescueRagdollState } from '../logic/RescueRagdoll';
+import type { RopePoint } from '../logic/RopeNet';
 
 export function createSemiAutoDriveState() {
     return {
@@ -14,6 +15,21 @@ export function createSemiAutoDriveState() {
         inputPower: 0,
         outputPower: 0,
     };
+}
+
+export function createLooseRope() {
+    return {
+        start: null as RopePoint | null,
+        startWall: null as any,
+        startOnRope: false,
+        path: [] as RopePoint[],
+        slackFactor: 1,
+        time: 0,
+    };
+}
+
+export function createRopeState() {
+    return { ropes: [] as any[], active: false, current: createLooseRope() };
 }
 
 export const state = {
@@ -397,34 +413,7 @@ export const state = {
         nearbyInfo: null as any, // 当前附近可交互对象信息
         previewAction: null as string | null, // 当前预览的操作类型（用于场景中预览标记）
     },
-    rope: {
-        ropes: [],
-        active: false,
-        current: {
-            start: null,
-            startWall: null,
-            end: null,
-            path: [],
-            basePoints: [],
-            slackFactor: 1,
-            mode: 'loose',
-            time: 0
-        },
-        ui: {
-            visible: false,
-            type: null,
-            progress: 0,
-            anchor: null
-        },
-        hold: {
-            active: false,
-            type: null,
-            timer: 0,
-            touchId: null,
-            anchor: null
-        },
-        stillTimer: 0
-    },
+    rope: createRopeState(),
     // 全局音频状态（持久态，跨模式保留）
     // muted=true 时仅把音量淡到 0，不真正暂停音频，保留时间轴
     audio: {
@@ -601,34 +590,7 @@ export function resetState() {
         nearbyInfo: null,
         previewAction: null,
     };
-    state.rope = {
-        ropes: [],
-        active: false,
-        current: {
-            start: null,
-            startWall: null,
-            end: null,
-            path: [],
-            basePoints: [],
-            slackFactor: 1,
-            mode: 'loose',
-            time: 0
-        },
-        ui: {
-            visible: false,
-            type: null,
-            progress: 0,
-            anchor: null
-        },
-        hold: {
-            active: false,
-            type: null,
-            timer: 0,
-            touchId: null,
-            anchor: null
-        },
-        stillTimer: 0
-    };
+    state.rope = createRopeState();
 
     // 初始位置：使用地图入口水道坐标，找不到时 fallback 到中央
     const entrance = state.landmarks.entrance;

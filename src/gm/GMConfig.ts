@@ -313,20 +313,12 @@ export const TABS: GMTab[] = [
         ]
     },
     {
-        name: '标记',
+        name: '绳盘',
         items: [
             { type: 'number', label: '按钮半径', path: 'marker.btnRadius', min: 20, max: 50, step: 2 },
-            { type: 'number', label: '轮盘外径', path: 'marker.wheelOuterRadius', min: 50, max: 120, step: 5 },
-            { type: 'number', label: '轮盘内径', path: 'marker.wheelInnerRadius', min: 10, max: 40, step: 2 },
-            { type: 'number', label: '岩石牌面宽', path: 'marker.wallSignWidth', min: 6, max: 20, step: 1 },
-            { type: 'number', label: '岩石牌面高', path: 'marker.wallSignHeight', min: 4, max: 16, step: 1 },
-            { type: 'number', label: '岩石短杆长', path: 'marker.wallStakeLength', min: 4, max: 16, step: 1 },
-            { type: 'number', label: '绳索标签宽', path: 'marker.ropeTagWidth', min: 4, max: 16, step: 1 },
-            { type: 'number', label: '绳索标签高', path: 'marker.ropeTagHeight', min: 4, max: 14, step: 1 },
-            { type: 'number', label: '放置动画帧', path: 'marker.placeAnimDuration', min: 5, max: 40, step: 1 },
-            { type: 'number', label: '拆除动画帧', path: 'marker.removeAnimDuration', min: 5, max: 30, step: 1 },
-            { type: 'number', label: '绳索标记摆速', path: 'marker.ropeTagSwaySpeed', min: 0.5, max: 3, step: 0.1, precision: 1 },
-            { type: 'number', label: '绳索标记摆幅', path: 'marker.ropeTagSwayAmplitude', min: 0.05, max: 0.4, step: 0.01, precision: 2 },
+            { type: 'number', label: '外圈半径', path: 'marker.wheelOuterRadius', min: 50, max: 120, step: 5 },
+            { type: 'number', label: '内圈半径', path: 'marker.wheelInnerRadius', min: 10, max: 40, step: 2 },
+            { type: 'number', label: '锚点可达距离', path: 'ropeAnchorDistance', min: 30, max: 120, step: 5 },
         ]
     },
     {
@@ -373,7 +365,7 @@ export const TABS: GMTab[] = [
     {
         name: '迷宫鱼',
         items: [
-            { type: 'bool', label: '启用食人鱼', path: 'maze.fishEnabled' },
+            { type: 'bool', label: '启用迷宫鱼类', path: 'maze.fishEnabled' },
             // 聚集点数量
             { type: 'number', label: '聚集点最少', path: 'maze.denCountMin', min: 1, max: 6, step: 1 },
             { type: 'number', label: '聚集点最多', path: 'maze.denCountMax', min: 1, max: 8, step: 1 },
@@ -396,6 +388,8 @@ export const TABS: GMTab[] = [
             { type: 'number', label: '感知距离', path: 'fishEnemy.detectRange', min: 100, max: 800, step: 20 },
             // 快捷动作
             { type: 'action', label: '🐟 生成一条食人鱼', actionId: 'spawnMazeFish' },
+            { type: 'action', label: '生成好奇鱼（附近）', actionId: 'spawnCuriousFish' },
+            { type: 'action', label: '生成激怒鱼（附近）', actionId: 'spawnProvokedFish' },
             { type: 'action', label: '💀 杀死所有食人鱼', actionId: 'killAllFish' },
             { type: 'action', label: '🧹 清除所有食人鱼', actionId: 'removeAllFish' },
         ]

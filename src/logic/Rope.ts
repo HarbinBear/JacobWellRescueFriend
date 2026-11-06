@@ -1,8 +1,12 @@
 import { CONFIG } from '../core/config';
-import { state, player, input } from '../core/state';
+import { state, player, createLooseRope } from '../core/state';
 import { buildAvoidedPath } from './Pathfinding';
-import { triggerSilt } from './Particle';
 import { closestRockPoint, circleHitsRock } from '../world/RockGeometry';
+import { isLineOfSight } from '../world/Visibility';
+import { getRopeNet, pointOnStrand, sweepRopeNet } from './RopeNet';
+import { deformNetPoint, moveThroughNet, netResponseAlong, resetNetMotion, stepNetMotion, viewNetContact } from './RopeDynamics';
+import type { RopeBody } from './RopeDynamics';
+import type { RopePoint } from './RopeNet';
 
 function getActiveWalls() {
     if (state.screen === 'mazeRescue' && state.mazeRescue) {
@@ -30,152 +34,118 @@ export function findNearestWall(x: number, y: number, maxDist: number): any {
     return { wall: nearest, dist: minDist };
 }
 
-function getAnchorPoint(wall: any, fromX: number, fromY: number) {
-    if(wall.rockPolygon){const p=closestRockPoint(wall,fromX,fromY);const d=Math.hypot(fromX-p.x,fromY-p.y)||1;return{x:p.x+(fromX-p.x)/d*.1,y:p.y+(fromY-p.y)/d*.1};}
-    let angle = Math.atan2(fromY - wall.y, fromX - wall.x);
-    return {
-        x: wall.x + Math.cos(angle) * wall.r,
-        y: wall.y + Math.sin(angle) * wall.r
-    };
+export interface RopeAnchor {
+    point: RopePoint;
+    wall?: any;
+    onRope?: boolean;
 }
 
-function clonePath(points: any[]) {
-    if(!points) return [];
-    return points.map(point => ({ x: point.x, y: point.y }));
-}
-
-function finalizePreviewPath(endPoint: any) {
-    if(!state.rope.current.start) {
-        return [{ x: endPoint.x, y: endPoint.y }];
-    }
-    if(state.screen==='mazeRescue' && state.mazeRescue?.caveRockRoom)return buildAvoidedPath(state.rope.current.start,endPoint,CONFIG.ropeAvoidPadding);
-    if(!state.rope.current.path || state.rope.current.path.length < 2) {
-        return buildAvoidedPath(state.rope.current.start, endPoint, CONFIG.ropeAvoidPadding);
-    }
-    const path = clonePath(state.rope.current.path);
-    path[0] = { x: state.rope.current.start.x, y: state.rope.current.start.y };
-    path[path.length - 1] = { x: endPoint.x, y: endPoint.y };
-    return path;
-}
-
-// 开始铺绳：将锚点固定在锁定岩石上
-function startRope(anchorWall: any) {
-    if(!anchorWall) return;
-    const anchorPoint = getAnchorPoint(anchorWall, player.x, player.y);
+function startRopeAt(anchor: RopeAnchor) {
+    const { point, wall, onRope } = anchor;
     state.rope.active = true;
-    state.rope.current.start = anchorPoint;
-    state.rope.current.startWall = anchorWall;
-    state.rope.current.end = null;
-    state.rope.current.path = buildAvoidedPath(anchorPoint, { x: player.x, y: player.y }, CONFIG.ropeAvoidPadding);
-    state.rope.current.basePoints = state.rope.current.path;
-    state.rope.current.slackFactor = 1;
-    state.rope.current.mode = 'loose';
-    state.rope.current.time = 0;
-    state.rope.stillTimer = 0;
-}
-
-// 结束铺绳：将末端固定在岩石上，拉紧并锁定
-function endRope(anchorWall: any) {
-    if(!state.rope.active || !state.rope.current.start || !anchorWall) return;
-    const endPoint = getAnchorPoint(anchorWall, player.x, player.y);
-    const path = finalizePreviewPath(endPoint);
-    state.rope.ropes.push({
-        start: state.rope.current.start,
-        startWall: state.rope.current.startWall,
-        end: endPoint,
-        endWall: anchorWall,
-        path,
-        slackFactor: 0,
-        mode: 'tight'
-    });
-    state.rope.active = false;
     state.rope.current = {
-        start: null,
-        startWall: null,
-        end: null,
-        path: [],
-        basePoints: [],
-        slackFactor: 1,
-        mode: 'loose',
-        time: 0
+        start: point, startWall: wall || null, startOnRope: !!onRope,
+        path: buildAvoidedPath(point, { x: player.x, y: player.y }, CONFIG.ropeAvoidPadding),
+        slackFactor: 1, time: 0,
     };
-    state.rope.stillTimer = 0;
 }
 
-// 绳索系统主更新
-export function updateRopeSystem() {
-    if(!state.rope) return;
-    const dt = 1 / 60;
+export function cancelRopePlacement() {
+    state.rope.active = false;
+    state.rope.current = createLooseRope();
+}
 
-    if(state.rope.current) {
-        if(!state.rope.current.time) state.rope.current.time = 0;
-        state.rope.current.time += dt;
+function endRopeAt(anchor: RopeAnchor): boolean {
+    const { start, startWall, startOnRope } = state.rope.current;
+    if (!state.rope.active || !start || Math.hypot(start.x - anchor.point.x, start.y - anchor.point.y) < 12) return false;
+    const path = buildAvoidedPath(start, anchor.point, CONFIG.ropeAvoidPadding);
+    if (path.length < 2) return false;
+    if (path.slice(1).some((p, i) =>
+        !isLineOfSight(path[i].x, path[i].y, p.x, p.y, Infinity))) return false;
+    const ropes = state.rope.ropes;
+    const strands = getRopeNet(ropes).strands;
+    if (startOnRope && !strands.some(s => pointOnStrand(start, s.a, s.b))) {
+        cancelRopePlacement();
+        return false;
     }
-
-    if(state.rope.hold.active) {
-        state.rope.hold.timer += dt;
-        state.rope.ui.visible = true;
-        state.rope.ui.type = state.rope.hold.type;
-        state.rope.ui.anchor = state.rope.hold.anchor;
-        state.rope.ui.progress = Math.min(1, state.rope.hold.timer / CONFIG.ropeHoldDuration);
-    }
-
-    if(state.rope.active && state.rope.current.start) {
-        let endPoint = { x: player.x, y: player.y };
-        if(state.rope.hold.active && state.rope.hold.type === 'end' && state.rope.hold.anchor) {
-            endPoint = getAnchorPoint(state.rope.hold.anchor, player.x, player.y);
-            state.rope.current.end = endPoint;
-            state.rope.current.mode = 'tightening';
-            state.rope.current.slackFactor += (0 - state.rope.current.slackFactor) * CONFIG.ropeTightenLerp;
-        } else if(state.rope.current.mode === 'tightening') {
-            state.rope.current.slackFactor += (1 - state.rope.current.slackFactor) * 0.2;
-            if(state.rope.current.slackFactor > 0.95) {
-                state.rope.current.slackFactor = 1;
-                state.rope.current.mode = 'loose';
+    if (path.slice(1).every((b, i) => strands.some(s => pointOnStrand(path[i], s.a, s.b) && pointOnStrand(b, s.a, s.b)))) return false;
+    // Insert selected endpoints into their parent paths so the exact join survives saving.
+    for (const p of [startOnRope && start, anchor.onRope && anchor.point]) {
+        if (!p) continue;
+        for (const rope of ropes) {
+            for (let i = rope.path.length - 1; i > 0; i--) {
+                const a = rope.path[i - 1], b = rope.path[i];
+                if (pointOnStrand(p, a, b) && Math.hypot(p.x - a.x, p.y - a.y) > .025 &&
+                    Math.hypot(p.x - b.x, p.y - b.y) > .025) rope.path.splice(i, 0, p);
             }
         }
-        state.rope.current.path = buildAvoidedPath(state.rope.current.start, endPoint, CONFIG.ropeAvoidPadding);
-        state.rope.current.basePoints = state.rope.current.path;
     }
+    // Replace the list so the collision geometry is rebuilt, even after a remove/add pair.
+    state.rope.ropes = ropes.concat({
+        start, startWall, startOnRope, end: anchor.point, endWall: anchor.wall || null,
+        endOnRope: anchor.onRope, path, slackFactor: 0, mode: 'tight',
+    });
+    cancelRopePlacement();
+    return true;
+}
 
-    if(state.rope.hold.active && state.rope.hold.timer >= CONFIG.ropeHoldDuration) {
-        if(state.rope.hold.type === 'start') {
-            startRope(state.rope.hold.anchor);
-        } else if(state.rope.hold.type === 'end') {
-            endRope(state.rope.hold.anchor);
-        }
-        state.rope.hold.active = false;
-        state.rope.hold.type = null;
-        state.rope.hold.timer = 0;
-        state.rope.hold.touchId = null;
-        state.rope.hold.anchor = null;
-        state.rope.ui.progress = 0;
-    }
+export function placeRopeAt(anchor: RopeAnchor): boolean {
+    if (state.rope.active) return endRopeAt(anchor);
+    startRopeAt(anchor);
+    return true;
+}
 
-    if(state.rope.hold.active) return;
+export function traceWovenRopes(from: RopePoint, to: RopePoint, radius: number) {
+    if (state.screen !== 'mazeRescue' || !state.rope.ropes.length) return null;
+    return sweepRopeNet(getRopeNet(state.rope.ropes), from, to, radius);
+}
 
-    if(player.y <= 0) {
-        state.rope.ui.visible = false;
-        state.rope.ui.type = null;
-        state.rope.ui.anchor = null;
-        state.rope.stillTimer = 0;
-        return;
-    }
+// The diver's sustained kick and a fish's burst use different speed ranges.
+const impactReference = (body: RopePoint) => body === player ? 3.6 : 13;
 
-    let nearest = findNearestWall(player.x, player.y, CONFIG.ropeAnchorDistance);
-    let speedThreshold = CONFIG.ropeStillSpeedThreshold || 1.5;
-    let isStill = input.move === 0 && Math.hypot(player.vx, player.vy) < speedThreshold;
+export function resolveWovenRopeContact(
+    body: RopeBody, from: RopePoint, radius: number, intent: RopePoint,
+    canOccupy: (x: number, y: number) => boolean,
+) {
+    if (state.screen !== 'mazeRescue' || !state.rope.ropes.length) return null;
+    return moveThroughNet(getRopeNet(state.rope.ropes), body, from, radius, impactReference(body), intent, canOccupy);
+}
 
-    if(nearest && isStill) state.rope.stillTimer += dt;
-    else state.rope.stillTimer = 0;
+export function getRopeContact(body: RopeBody) {
+    if (state.screen !== 'mazeRescue' || !state.rope.ropes.length) return null;
+    return viewNetContact(getRopeNet(state.rope.ropes), body);
+}
 
-    if(nearest && state.rope.stillTimer >= CONFIG.ropeStillTimeToShow) {
-        state.rope.ui.visible = true;
-        state.rope.ui.type = state.rope.active ? 'end' : 'start';
-        state.rope.ui.anchor = nearest.wall;
-    } else {
-        state.rope.ui.visible = false;
-        state.rope.ui.type = null;
-        state.rope.ui.anchor = null;
-    }
+export function getRopeApproach(body: RopeBody, radius: number) {
+    const speed = Math.hypot(body.vx, body.vy);
+    if (state.screen !== 'mazeRescue' || !state.rope.ropes.length || speed < .7 || getRopeContact(body)) return null;
+    const ahead = Math.min(34, 108 / speed);
+    const aim = { x: body.x + body.vx * ahead, y: body.y + body.vy * ahead };
+    const result = getRopeResponseAlong(body, aim, radius, body.vx, body.vy);
+    return result && isLineOfSight(body.x, body.y, result.x, result.y, 120) ? result : null;
+}
+
+export function getRopeResponseAlong(from: RopePoint, to: RopePoint, radius: number, vx: number, vy: number) {
+    if (state.screen !== 'mazeRescue' || !state.rope.ropes.length) return null;
+    return netResponseAlong(getRopeNet(state.rope.ropes), from, to, radius, vx, vy, impactReference(from));
+}
+
+export function getRopeDeformedPoint(point: RopePoint, ropeIndex: number) {
+    if (state.screen !== 'mazeRescue') return point;
+    return deformNetPoint(getRopeNet(state.rope.ropes), point, ropeIndex);
+}
+
+export function updateRopeMotion() {
+    if (state.rope.ropes.length) stepNetMotion(getRopeNet(state.rope.ropes));
+}
+
+export function resetRopeMotion() {
+    if (state.rope.ropes.length) resetNetMotion(getRopeNet(state.rope.ropes));
+}
+
+export function updateRopeSystem() {
+    if (!state.rope.active || !state.rope.current.start) return;
+    const current = state.rope.current;
+    current.time += 1 / 60;
+    current.path = buildAvoidedPath(current.start, { x: player.x, y: player.y }, CONFIG.ropeAvoidPadding);
 }

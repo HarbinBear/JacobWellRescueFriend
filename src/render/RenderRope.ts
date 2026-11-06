@@ -1,6 +1,9 @@
 import { CONFIG } from '../core/config';
 import { state, player } from '../core/state';
-import { ctx, canvas } from './Canvas';
+import { ctx } from './Canvas';
+import { getRopeNet, pointOnStrand } from '../logic/RopeNet';
+import type { RopePoint } from '../logic/RopeNet';
+import { getRopeApproach, getRopeContact, getRopeDeformedPoint } from '../logic/Rope';
 import { pathLength, samplePolyline, polylineNormal } from '../logic/Pathfinding';
 
 function generateSlackRopePoints(basePath: any[], slackFactor: number, animTime: number): any[] {
@@ -28,12 +31,12 @@ function generateSlackRopePoints(basePath: any[], slackFactor: number, animTime:
     return points;
 }
 
-function strokeRopeLine(points: any[], color: string, width: number) {
+function strokeRopeLine(points: any[], color: string, width: number, exact = false) {
     if(!points || points.length < 2) return;
     ctx.save();
     ctx.strokeStyle = color; ctx.lineWidth = width; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     ctx.beginPath(); ctx.moveTo(points[0].x, points[0].y);
-    if(state.screen==='mazeRescue' && state.mazeRescue?.caveRockRoom){
+    if(exact || (state.screen==='mazeRescue' && state.mazeRescue?.caveRockRoom)){
         for(let i=1;i<points.length;i++)ctx.lineTo(points[i].x,points[i].y);
     } else if(points.length === 2) {
         ctx.lineTo(points[1].x, points[1].y);
@@ -83,59 +86,227 @@ function drawReelIndicator(x: number, y: number, angle: number) {
     ctx.restore();
 }
 
-export function drawRopesWorld() {
-    if(!state.rope) return;
-    const time = Date.now()/1000;
-    for(let rope of state.rope.ropes) {
-        if(!rope.path || rope.path.length < 2) continue;
-        let visualPts = generateSlackRopePoints(rope.path, rope.slackFactor||0, time);
-        strokeRopeLine(visualPts, CONFIG.ropeTightColor, CONFIG.ropeTightWidth);
-        if(rope.start && rope.startWall) { drawNail(rope.start.x, rope.start.y, rope.startWall.x, rope.startWall.y); drawKnot(rope.start.x, rope.start.y); }
-        if(rope.end && rope.endWall) { drawNail(rope.end.x, rope.end.y, rope.endWall.x, rope.endWall.y); drawKnot(rope.end.x, rope.end.y); }
+type RopeNet = ReturnType<typeof getRopeNet>;
+type RopeContact = NonNullable<ReturnType<typeof getRopeContact>>;
+type ViewBounds = { left: number; right: number; top: number; bottom: number };
+
+// Include each junction in the sampled lines. Every branch then has the same
+// position at the junction while the impact travels through the net.
+const cachedPaths = new WeakMap<RopeNet, Map<number, RopePoint[]>>();
+function getWovenPath(net: RopeNet, index: number, path: RopePoint[]) {
+    let cache = cachedPaths.get(net);
+    if (!cache) { cache = new Map(); cachedPaths.set(net, cache); }
+    const existing = cache.get(index);
+    if (existing) return existing;
+    const knots = net.knots.filter(knot => knot.ropes.has(index));
+    const sampled = [path[0]];
+    for (let i = 1; i < path.length; i++) {
+        const a = path[i - 1], b = path[i];
+        const inner = knots.filter(knot => pointOnStrand(knot, a, b));
+        inner.sort((p, q) => Math.hypot(p.x - a.x, p.y - a.y) - Math.hypot(q.x - a.x, q.y - a.y));
+        for (const end of [...inner, b]) {
+            const start = sampled[sampled.length - 1];
+            const distance = Math.hypot(end.x - start.x, end.y - start.y);
+            if (distance < .01) continue;
+            const pieces = Math.ceil(distance / 8);
+            for (let step = 1; step < pieces; step++) {
+                const t = step / pieces;
+                sampled.push({ x: start.x + (end.x - start.x) * t, y: start.y + (end.y - start.y) * t });
+            }
+            sampled.push(end);
+        }
     }
-    if(state.rope.active && state.rope.current && state.rope.current.start) {
-        let cur = state.rope.current;
-        if(!cur.path || cur.path.length < 2) return;
-        let visualPts = generateSlackRopePoints(cur.path, cur.slackFactor!==undefined?cur.slackFactor:1, cur.time||time);
-        strokeRopeLine(visualPts, CONFIG.ropeColor, CONFIG.ropeWidth);
-        if(cur.start && cur.startWall) { drawNail(cur.start.x, cur.start.y, cur.startWall.x, cur.startWall.y); drawKnot(cur.start.x, cur.start.y); }
-    }
-    if(state.rope.active && player.y > 0) drawReelIndicator(player.x, player.y, player.angle);
+    cache.set(index, sampled);
+    return sampled;
 }
 
-export function drawRopeButton() {
-    // 主线模式和迷宫模式都显示绳索按钮
-    if(state.screen !== 'play' && state.screen !== 'mazeRescue') return;
-    if(!state.rope || !state.rope.ui || !state.rope.ui.visible) return;
-    const btnX = CONFIG.screenWidth * CONFIG.ropeButtonXRatio;
-    const btnY = CONFIG.screenHeight * CONFIG.ropeButtonYRatio;
-    const radius = CONFIG.ropeButtonRadius;
-    const progress = state.rope.ui.progress || 0;
-    const isEnd = state.rope.ui.type === 'end';
-    const time = Date.now()/1000;
+function visiblePoint(point: RopePoint, view: ViewBounds, pad: number) {
+    return point.x >= view.left - pad && point.x <= view.right + pad &&
+        point.y >= view.top - pad && point.y <= view.bottom + pad;
+}
+
+function visibleSegment(a: RopePoint, b: RopePoint, view: ViewBounds, pad: number) {
+    return Math.max(a.x, b.x) >= view.left - pad && Math.min(a.x, b.x) <= view.right + pad &&
+        Math.max(a.y, b.y) >= view.top - pad && Math.min(a.y, b.y) <= view.bottom + pad;
+}
+
+function strokeWovenPath(path: RopePoint[], ropeIndex: number, view: ViewBounds) {
+    const pad = 68; // Make room for spring deflection outside the camera bounds.
+    let previous: RopePoint | null = null;
+    let maxDeflection = 0;
+    let visible = false;
     ctx.save();
-    if(progress === 0) {
-        let glowAlpha = 0.15 + Math.sin(time*3)*0.1;
-        ctx.beginPath(); ctx.arc(btnX, btnY, radius+8, 0, Math.PI*2);
-        ctx.fillStyle = `rgba(230,220,170,${glowAlpha})`; ctx.fill();
+    ctx.beginPath();
+    for (let i = 1; i < path.length; i++) {
+        const a = path[i - 1], b = path[i];
+        if (!visibleSegment(a, b, view, pad)) { previous = null; continue; }
+        if (!previous) {
+            const first = getRopeDeformedPoint(a, ropeIndex);
+            ctx.moveTo(first.x, first.y);
+        }
+        previous = getRopeDeformedPoint(b, ropeIndex);
+        ctx.lineTo(previous.x, previous.y);
+        maxDeflection = Math.max(maxDeflection, Math.hypot(b.x - previous.x, b.y - previous.y));
+        visible = true;
     }
-    ctx.beginPath(); ctx.arc(btnX, btnY, radius, 0, Math.PI*2);
-    ctx.fillStyle = 'rgba(20,30,40,0.85)'; ctx.fill();
-    ctx.strokeStyle = isEnd ? 'rgba(255,180,80,0.7)' : 'rgba(200,220,255,0.6)'; ctx.lineWidth = 2; ctx.stroke();
-    if(progress > 0) {
-        ctx.strokeStyle = isEnd ? 'rgba(255,200,100,0.95)' : 'rgba(230,220,170,0.95)'; ctx.lineWidth = 4;
-        ctx.beginPath(); ctx.arc(btnX, btnY, radius-5, -Math.PI/2, -Math.PI/2+progress*Math.PI*2); ctx.stroke();
+    if (visible) {
+        ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        ctx.lineWidth = 4.2; ctx.strokeStyle = 'rgba(19,31,29,.82)'; ctx.stroke();
+        ctx.lineWidth = 2.4; ctx.strokeStyle = '#9eab86'; ctx.stroke();
+        ctx.lineWidth = 1.1;
+        ctx.setLineDash?.([2, 3]);
+        ctx.strokeStyle = `rgba(244,223,165,${.5 + .42 * Math.min(1, maxDeflection / 22)})`;
+        ctx.stroke();
     }
-    ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.strokeStyle = 'rgba(255,255,255,0.9)';
-    if(isEnd) {
-        ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(btnX, btnY-3, 5, 0, Math.PI*2); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(btnX, btnY+2); ctx.lineTo(btnX, btnY+10); ctx.stroke();
-    } else {
-        ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(btnX, btnY, 7, 0, Math.PI*2); ctx.stroke();
-        ctx.beginPath(); ctx.arc(btnX, btnY, 3, 0, Math.PI*2); ctx.fill();
-    }
-    ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.font = '10px Arial';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    ctx.fillText(isEnd ? '结束布线' : '开始布线', btnX, btnY+radius+6);
     ctx.restore();
+}
+
+function drawNetKnot(x: number, y: number, connections: number, selected = false) {
+    const radius = selected ? 5 : 3 + Math.min(2, (connections - 2) * .75);
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(-.48);
+    ctx.beginPath(); ctx.ellipse(0, 0, radius, radius * .76, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#7b8063'; ctx.fill();
+    ctx.lineWidth = 1; ctx.strokeStyle = '#273b34'; ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-radius * .68, -.9); ctx.quadraticCurveTo(0, -radius, radius * .65, -.6);
+    ctx.moveTo(-radius * .66, 1.1); ctx.quadraticCurveTo(0, -radius * .34, radius * .65, 1.2);
+    ctx.strokeStyle = '#c0bb88'; ctx.stroke();
+    ctx.restore();
+}
+
+export function drawRopesWorld(left: number, right: number, top: number, bottom: number) {
+    if (!state.rope) return;
+    const view = { left, right, top, bottom };
+    const time = Date.now() / 1000;
+    const net = state.screen === 'mazeRescue' ? getRopeNet(state.rope.ropes) : null;
+    for (const [i, rope] of state.rope.ropes.entries()) {
+        if (!rope.path || rope.path.length < 2) continue;
+        if (net?.woven.has(i)) strokeWovenPath(getWovenPath(net, i, rope.path), i, view);
+        else if (rope.path.some((p, index) => index > 0 && visibleSegment(rope.path[index - 1], p, view, 24))) {
+            strokeRopeLine(rope.path, CONFIG.ropeTightColor, CONFIG.ropeTightWidth, true);
+        }
+        for (const [point, wall] of [[rope.start, rope.startWall], [rope.end, rope.endWall]]) {
+            if (!point || !wall || !visiblePoint(point, view, 12)) continue;
+            drawNail(point.x, point.y, wall.x, wall.y);
+            drawKnot(point.x, point.y);
+        }
+    }
+    if (net) for (const knot of net.knots) {
+        if (!visiblePoint(knot, view, 68)) continue;
+        const point = getRopeDeformedPoint(knot, knot.ropes.values().next().value);
+        drawNetKnot(point.x, point.y, knot.ropes.size);
+    }
+    const cur = state.rope.current;
+    if (!state.rope.active || !cur?.start) return;
+    const parent = cur.startOnRope && net?.strands.find(s => pointOnStrand(cur.start, s.a, s.b));
+    const start = parent ? getRopeDeformedPoint(cur.start, parent.rope) : cur.start;
+    if (cur.path?.length >= 2) {
+        const previewPath = [start, ...cur.path.slice(1)];
+        const visualPts = generateSlackRopePoints(previewPath, cur.slackFactor ?? 1, cur.time || time);
+        strokeRopeLine(visualPts, CONFIG.ropeColor, CONFIG.ropeWidth);
+    }
+    if (cur.startOnRope) drawNetKnot(start.x, start.y, 2, true);
+    if (cur.startWall) {
+        drawNail(start.x, start.y, cur.startWall.x, cur.startWall.y);
+        drawKnot(start.x, start.y);
+    }
+    if (player.y > 0) drawReelIndicator(player.x, player.y, player.angle);
+}
+
+/** Front part of the loaded strand, drawn over the body that is pulling it. */
+export function drawRopeContactWorld(c: CanvasRenderingContext2D, body: RopePoint, contact: RopeContact | null, radius: number) {
+    if (!contact) return;
+    const caught = contact.kind === 'snag';
+    const fading = caught ? 1 : Math.max(0, 1 - contact.phase / 19);
+    const load = contact.strength * fading;
+    if (load < .04) return;
+    const sx = body.x - contact.x, sy = body.y - contact.y;
+    const distance = Math.hypot(sx, sy);
+    if (distance > radius * (caught ? 4 : 2.2)) return;
+    const wiggle = caught ? Math.sin(contact.phase * .45) * (2 + 3 * contact.pull) : 0;
+    const ax = contact.x + sx * (caught ? .68 : .28), ay = contact.y + sy * (caught ? .68 : .28);
+    c.save();
+    c.globalAlpha *= fading;
+    if (caught || contact.kind === 'rebound') {
+        c.lineWidth = .9;
+        for (let i = 0; i < 3; i++) {
+            const age = (contact.phase + i * 6) % 22 / 22;
+            const x = body.x + Math.sin(i * 2.4 + age * 3) * radius * (.45 + age * .4);
+            const y = body.y - radius * .45 - age * (13 + load * 9);
+            c.beginPath(); c.arc(x, y, .75 + age * 1.8, 0, Math.PI * 2);
+            c.strokeStyle = `rgba(176,219,205,${(1 - age) * load * .62})`; c.stroke();
+        }
+    }
+    c.translate(ax, ay);
+    c.rotate(Math.atan2(contact.ny, contact.nx));
+    c.lineCap = 'round'; c.lineJoin = 'round';
+    c.beginPath();
+    const width = radius * (caught ? 1.58 : 1.02);
+    const bulge = radius * (.2 + load * (caught ? .9 : .5));
+    c.moveTo(-radius * .32, -width);
+    c.bezierCurveTo(bulge, -width * .65, bulge + wiggle, width * .7, -radius * .32, width);
+    if (caught) {
+        c.moveTo(-radius * .62, -width * .97);
+        c.bezierCurveTo(-radius * .43, -width * .55, bulge + wiggle, width * .55, radius * .7, width * .78);
+    }
+    c.lineWidth = 4.2; c.strokeStyle = '#26342d'; c.stroke();
+    c.lineWidth = 2.1; c.strokeStyle = caught ? '#debd85' : '#afc297'; c.stroke();
+    c.lineWidth = .8; c.setLineDash?.([2, 2.4]);
+    c.strokeStyle = '#f5dab0'; c.stroke();
+    c.restore();
+}
+
+function drawResistanceLabel(c: CanvasRenderingContext2D, label: string, color: string, y: number, escape?: number) {
+    c.font = '11px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+    const w = Math.ceil(c.measureText(label).width) + 14;
+    c.fillStyle = 'rgba(13,27,29,.9)'; c.fillRect(-w / 2, y - 10, w, 19);
+    c.fillStyle = color; c.fillText(label, 0, y);
+    if (escape !== undefined) {
+        c.fillStyle = 'rgba(242,188,121,.22)'; c.fillRect(-w / 2, y + 10, w, 2);
+        c.fillStyle = color; c.fillRect(-w / 2, y + 10, w * escape, 2);
+    }
+}
+
+/** Show where the current momentum will load the net and how strongly it will hold. */
+export function drawRopeApproachWorld(c: CanvasRenderingContext2D, zoom: number) {
+    if (state.screen !== 'mazeRescue' || state.mazeRescue?.phase !== 'play' || state.wheel?.open) return;
+    const contact = getRopeContact(player);
+    if (contact) {
+        if (contact.kind !== 'snag' || contact.phase < 8) return;
+        c.save();
+        c.translate(player.x, player.y);
+        c.scale(1 / zoom, 1 / zoom);
+        c.globalAlpha *= Math.min(1, (contact.phase - 8) / 8);
+        drawResistanceLabel(c, '沿来路退', '#f2bc79', 42, contact.escape);
+        c.strokeStyle = '#f2bc79'; c.lineWidth = 1.5; c.lineCap = 'round';
+        c.rotate(Math.atan2(-contact.ny, -contact.nx));
+        c.beginPath();
+        c.moveTo(21, -5); c.lineTo(27, 0); c.lineTo(21, 5);
+        c.stroke();
+        c.restore();
+        return;
+    }
+    const approach = getRopeApproach(player, CONFIG.maze.playerRadius);
+    if (!approach || Math.hypot(player.x - approach.x, player.y - approach.y) > 150) return;
+    const { kind, x, y, nx, ny, strength } = approach;
+    const risk = kind === 'snag';
+    const color = risk ? '#f2bc79' : kind === 'rebound' ? '#d2d5a1' : '#a9cfbb';
+    const label = risk ? '易缠住' : kind === 'rebound' ? '会回弹' : '可挤过';
+    c.save();
+    c.translate(x, y);
+    c.scale(1 / zoom, 1 / zoom);
+    c.strokeStyle = color; c.lineWidth = 1.5; c.lineCap = 'round';
+    c.globalAlpha *= .55 + strength * .4;
+    c.save();
+    c.rotate(Math.atan2(ny, nx));
+    const spread = 8 + 8 * strength;
+    c.beginPath();
+    c.moveTo(-6, -spread - 5); c.lineTo(0, -spread); c.lineTo(-6, -spread + 5);
+    c.moveTo(-6, spread - 5); c.lineTo(0, spread); c.lineTo(-6, spread + 5);
+    c.stroke();
+    c.restore();
+    drawResistanceLabel(c, label, color, -27);
+    c.restore();
 }

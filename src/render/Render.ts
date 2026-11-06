@@ -7,10 +7,10 @@ import { isLineOfSight, getLightPolygon } from './RenderLight';
 import { initWebGLLight, isWebGLAvailable, uploadPolyData, uploadVPLData, renderLightMask, renderVolumetricLight, getGLCanvas, getVolGLCanvas, getGLCanvasPixelSize } from './WebGLLight';
 import { drawDiver } from './RenderDiver';
 import { drawUI, drawControls, drawSlashEffect } from './RenderUI';
-import { drawRopesWorld, drawRopeButton } from './RenderRope';
+import { drawRopesWorld, drawRopeApproachWorld, drawRopeContactWorld } from './RenderRope';
+import { getRopeContact } from '../logic/Rope';
 import { drawRescueRopeWorld, drawNPCDistressWorld } from './RenderRescueRope';
-import { drawMarkersWorld, drawMarkerPreview } from './RenderMarker';
-import { drawWheelButton, drawWheel } from './RenderWheel';
+import { drawWheelButton, drawWheel, drawRopeAimWorld } from './RenderWheel';
 import { drawAllFishEnemies, drawFishBiteEffect } from './RenderFishEnemy';
 import { drawMazeWallShape, getMazeParticleColorByWorld, getMazeThemeColorByCell, drawMazeShallowSky, drawMazeShallowWaterTint, drawMazeShallowCaustics, getMazeShallowMaskAlpha, drawFishDenSkulls } from './RenderMazeScene';
 import { drawOxygenTanksWorld, drawOxygenFeedbackWorld } from './RenderOxygenTank';
@@ -409,27 +409,10 @@ export function draw() {
     profileEnd('draw.scene');
     profileBegin('draw.worldObjects');
     // --- 绘制绳索（世界空间，在角色之前）---
-    drawRopesWorld();
+    drawRopesWorld(viewL, viewR, viewT, viewB);
 
     // --- 绘制救援绳（玩家↔NPC，仅迷宫模式绑绳后）---
     drawRescueRopeWorld(ctx);
-
-    // --- 绘制标记（世界空间，在绳索之后）---
-    drawMarkersWorld(ctx);
-
-    // --- 绘制标记预览（轮盘高亮时在场景中显示半透明预览）---
-    if (state.wheel && state.wheel.open && state.wheel.previewAction && state.wheel.nearbyInfo) {
-        const pa = state.wheel.previewAction;
-        const info = state.wheel.nearbyInfo;
-        if (pa === 'markDanger' || pa === 'markUnknown' || pa === 'markSafe') {
-            const mType = pa === 'markDanger' ? 'danger' : pa === 'markUnknown' ? 'unknown' : 'safe';
-            if (info.context === 'ropeMid' || info.context === 'ropeMarkedMid') {
-                drawMarkerPreview(ctx, mType, null, info.ropeIndex, info.ropeT);
-            } else if (info.wall) {
-                drawMarkerPreview(ctx, mType, info.wall);
-            }
-        }
-    }
 
     // --- 绘制凶猛鱼敌人（在角色之前）---
     drawAllFishEnemies(ctx);
@@ -479,7 +462,9 @@ export function draw() {
     const tankCountForDiver = hasTank
         ? (state.screen === 'mazeRescue' ? Math.max(1, activeTanks.length) : 1)
         : 0;
+    const ropeContact = isMazeMode ? getRopeContact(player) : null;
     drawDiver(ctx, player.x, player.y, player.angle, playerColors, {
+        ropeStruggle: ropeContact?.kind === 'snag' ? { phase: ropeContact.phase, strength: ropeContact.strength, pull: ropeContact.pull } : undefined,
         animTime: player.animTime,
         hasTank,
         tankCount: tankCountForDiver,
@@ -513,6 +498,8 @@ export function draw() {
                 ? 1 - (Date.now() - state.mazeRescue.npcStunnedAt) / 240 : 0,
     });
 
+
+    drawRopeContactWorld(ctx, player, ropeContact, CONFIG.maze.playerRadius);
 
     // --- 绘制 NPC 呼救表现（气泡、挥手、闪光圈，仅迷宫未被救时）---
     if (!targetDance && !(isMazeMode && state.mazeRescue.npcStunned)) drawNPCDistressWorld(ctx);
@@ -689,6 +676,16 @@ export function draw() {
         ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); ctx.fill();
     }
     ctx.restore();
+
+    if (isMazeMode && state.mazeRescue.phase === 'play') {
+        ctx.save();
+        ctx.translate(logicW / 2 + shakeX, logicH / 2 + shakeY);
+        ctx.scale(zoom, zoom);
+        ctx.translate(-camX, -camY);
+        drawRopeApproachWorld(ctx, zoom);
+        drawRopeAimWorld(ctx);
+        ctx.restore();
+    }
 
     // 旧主线 blackScreen（开场黑屏过渡）已废弃。
 

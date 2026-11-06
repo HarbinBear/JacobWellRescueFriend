@@ -37,7 +37,7 @@ export function updateSemiAutoJoystick(dx: number, dy: number, speedUp?: boolean
 
 export function processSemiAutoDrive(moveSpeed = CONFIG.moveSpeed): boolean {
     if (CONFIG.driveMode !== 'semiAuto') return false;
-    const blocked = state.rope?.hold?.active || state.fishBite?.active ||
+    const blocked = state.fishBite?.active ||
         (state.screen === 'mazeRescue' && state.mazeRescue?.retreatHolding);
     if (blocked || input.move === 0) releaseSemiAutoDrive();
     const sd = state.semiAutoDrive, cfg = CONFIG.semiAutoDrive;

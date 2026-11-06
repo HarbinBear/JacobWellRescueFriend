@@ -3,6 +3,8 @@ import { rockTrialCollision } from '../world/RockGeometry';
 import { state, player } from '../core/state';
 import { srand } from '../core/SeededRandom';
 import { playSFX } from '../audio/AudioManager';
+import { isLineOfSight } from '../world/Visibility';
+import { getRopeContact, getRopeResponseAlong, resolveWovenRopeContact } from './Rope';
 
 // =============================================
 // 判断当前是否处于迷宫模式
@@ -77,8 +79,12 @@ function checkCollisionMazeLocal(x: number, y: number): boolean {
 // =============================================
 // 凶猛鱼敌人状态枚举
 // =============================================
+export type FishKind = 'piranha' | 'curious' | 'provoked';
+
 export type FishEnemyState =
     | 'roam'        // 自由游弋
+    | 'inspect'     // 好奇鱼转头观察
+    | 'approach'    // 好奇鱼追随光源
     | 'detect'      // 发现目标（短暂停顿）
     | 'stalk'       // 悄悄靠近
     | 'circle'      // 在目标附近徘徊
@@ -95,6 +101,10 @@ export type FishEnemyState =
 // 凶猛鱼实体数据结构
 // =============================================
 export interface FishEnemy {
+    kind: FishKind;
+    lightFrames: number;
+    lightTargetX: number;
+    lightTargetY: number;
     x: number;
     y: number;
     vx: number;
@@ -161,9 +171,10 @@ const CFG = () => CONFIG.fishEnemy;
 // =============================================
 // 工厂函数：创建一条凶猛鱼
 // =============================================
-export function createFishEnemy(x: number, y: number, denX?: number, denY?: number, denRadius?: number): FishEnemy {
+export function createFishEnemy(x: number, y: number, denX?: number, denY?: number, denRadius?: number, kind: FishKind = 'piranha'): FishEnemy {
     const angle = Math.random() * Math.PI * 2;
     return {
+        kind, lightFrames: 0, lightTargetX: x, lightTargetY: y,
         x, y,
         vx: Math.cos(angle) * 0.5,
         vy: Math.sin(angle) * 0.5,
@@ -218,6 +229,19 @@ export function findSafeSpawnPosition(centerX: number, centerY: number): { x: nu
     }
     // 兜底：直接在玩家正右方 300px
     return { x: centerX + 300, y: centerY };
+}
+
+/** Spawn a test fish in reachable water, including the polygonal rock trial. */
+export function findVisibleFishSpawnPosition(): { x: number; y: number } | null {
+    for (const distance of [145, 205, 95, 55]) {
+        for (const offset of [0, .24, -.24, .5, -.5, .9, -.9, 1.5, -1.5, Math.PI]) {
+            const angle = player.angle + offset;
+            const x = player.x + Math.cos(angle) * distance, y = player.y + Math.sin(angle) * distance;
+            if (!checkCollisionLocal(x, y) && isLineOfSight(player.x, player.y, x, y, distance + 1) &&
+                !state.fishEnemies.some(fish => Math.hypot(x - fish.x, y - fish.y) < 36)) return { x, y };
+        }
+    }
+    return null;
 }
 
 // =============================================
@@ -405,51 +429,76 @@ function lerpAngle(current: number, target: number, factor: number): number {
     return current + diff * factor;
 }
 
-// =============================================
-// 检测玩家手电筒是否照到凶猛鱼（考虑亮度与距离）
-// =============================================
-function isFlashlightHittingFish(fish: FishEnemy): boolean {
-    const cfg = CFG();
-    // 迷宫模式和竞技场模式手电始终可用；主线模式在深水才开启
-    const alwaysOn = state.screen === 'mazeRescue' || state.screen === 'fishArena';
-    if (!alwaysOn && player.y <= 600) return false;
-
-    // 手电筒未开启时无效
-    if (!state.flashlightOn) return false;
-
-    // 旧主线第三关 flashlightFixedOff 已废弃。
-
-    // 计算鱼与玩家的距离
-    const dx = fish.x - player.x;
-    const dy = fish.y - player.y;
+function flashlightExposure(fish: FishEnemy, threshold: number, maxDistance = CONFIG.lightRange): number {
+    if (!state.flashlightOn || (!isMazeMode() && state.screen !== 'fishArena' && player.y <= 600)) return 0;
+    const dx = fish.x - player.x, dy = fish.y - player.y;
     const dist = Math.hypot(dx, dy);
+    if (dist >= CONFIG.lightRange || dist > maxDistance) return 0;
+    const halfFov = CONFIG.fov * Math.PI / 360;
+    const angle = Math.atan2(dy, dx) - player.angle;
+    const diff = Math.abs(Math.atan2(Math.sin(angle), Math.cos(angle)));
+    if (diff >= halfFov) return 0;
+    const brightness = (1 - dist / CONFIG.lightRange) * (1 - diff / halfFov);
+    return brightness >= threshold && isLineOfSight(player.x, player.y, fish.x, fish.y, maxDistance) ? brightness : 0;
+}
 
-    // 超出手电筒射程
-    if (dist > CONFIG.lightRange) return false;
+function isFlashlightHittingFish(fish: FishEnemy): boolean {
+    const { lightFearThreshold, lightFearMaxDistance } = CFG();
+    return flashlightExposure(fish, lightFearThreshold, lightFearMaxDistance || CONFIG.lightRange) > 0;
+}
 
-    // 超出怕光有效距离（远距离照到也不怕：迷宫食人鱼更胆大）
-    const lightFearMax = cfg.lightFearMaxDistance || 0;
-    if (lightFearMax > 0 && dist > lightFearMax) return false;
+function updateCuriousFish(fish: FishEnemy) {
+    const cfg = CFG().curious;
+    const lit = flashlightExposure(fish, cfg.lightThreshold) > 0;
+    if (lit) {
+        fish.lightTargetX = player.x;
+        fish.lightTargetY = player.y;
+        fish.lightFrames = cfg.memoryFrames;
+        if (fish.state === 'roam') {
+            fish.state = 'inspect';
+            fish.stateTimer = 0;
+            fish.alertIcon = '?';
+            fish.alertIconColor = '#c3f5cc';
+            fish.alertTimer = cfg.noticeFrames + 15;
+        }
+    } else if (fish.lightFrames > 0 && --fish.lightFrames === 0) {
+        fish.state = 'roam';
+        fish.roamTimer = 0;
+    }
+    if (fish.state === 'roam') {
+        updateRoam(fish, CFG());
+        return;
+    }
+    const dx = fish.lightTargetX - fish.x, dy = fish.lightTargetY - fish.y;
+    if (fish.state === 'inspect' && fish.stateTimer >= cfg.noticeFrames) fish.state = 'approach';
+    if (fish.state === 'approach' && Math.hypot(dx, dy) > cfg.standOff) {
+        moveToward(fish, fish.lightTargetX, fish.lightTargetY, cfg.speed, .075);
+    } else {
+        fish.angle = lerpAngle(fish.angle, Math.atan2(dy, dx), .09);
+        fish.vx *= .85;
+        fish.vy *= .85;
+    }
+}
 
-    // 计算鱼相对玩家的角度
-    const angleToFish = Math.atan2(dy, dx);
-    let angleDiff = angleToFish - player.angle;
-    while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-    while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-
-    // 是否在手电筒视野角内
-    const halfFov = (CONFIG.fov / 2) * (Math.PI / 180);
-    if (Math.abs(angleDiff) > halfFov) return false;
-
-    // 计算有效亮度：距离越近越亮，中心光束更亮
-    const distFactor = 1 - dist / CONFIG.lightRange;
-    const angleFactor = 1 - Math.abs(angleDiff) / halfFov;
-    let brightness = distFactor * angleFactor;
-
-    // 旧主线第三关 flashlightBroken 闪烁打折已废弃。
-
-    // 只有亮度超过阈值才能驱赶
-    return brightness >= cfg.lightFearThreshold;
+function updateProvokedFish(fish: FishEnemy) {
+    const cfg = CFG().provoked;
+    if (fish.state === 'retreat') {
+        updateRetreat(fish, { turnSpeedRoam: .085, retreatDuration: cfg.recoverFrames });
+        return;
+    }
+    if (flashlightExposure(fish, cfg.lightThreshold) > 0) fish.lightFrames++;
+    else fish.lightFrames = Math.max(0, fish.lightFrames - 2);
+    if (fish.lightFrames >= cfg.exposureFrames) {
+        fish.state = 'lunge';
+        fish.stateTimer = 0;
+        fish.lungeCharge = 0;
+        fish.lightFrames = 0;
+        fish.alertIcon = '!';
+        fish.alertIconColor = '#ff996d';
+        fish.alertTimer = cfg.chargeFrames;
+        return;
+    }
+    updateRoam(fish, CFG());
 }
 
 // =============================================
@@ -457,13 +506,20 @@ function isFlashlightHittingFish(fish: FishEnemy): boolean {
 // =============================================
 export function updateFishEnemy(fish: FishEnemy, dt: number) {
     if (fish.dead) return;
+    if (fish.state === 'dying') { updateDying(fish, CFG()); return; }
 
     const cfg = CFG();
     fish.stateTimer++;
     fish.animTime += 0.08;
+    const contact = getRopeContact(fish);
+    if (contact && contact.kind !== 'glide') {
+        const wriggle = Math.sin(contact.phase * .66) * 5;
+        applyMovement(fish, { x: -contact.nx * 1.8 - contact.ny * wriggle, y: -contact.ny * 1.8 + contact.nx * wriggle });
+        return;
+    }
 
     // --- 检测手电筒照射（任何状态下都优先响应，除非已在逃跑）---
-    if (fish.state !== 'flee' && fish.state !== 'fear') {
+    if (fish.kind !== 'curious' && fish.kind !== 'provoked' && fish.state !== 'flee' && fish.state !== 'fear') {
         if (isFlashlightHittingFish(fish)) {
             // 进入怕光状态
             const dx = fish.x - player.x;
@@ -483,24 +539,32 @@ export function updateFishEnemy(fish: FishEnemy, dt: number) {
     // 衰减状态提示图标
     if (fish.alertTimer > 0) fish.alertTimer--;
 
-    switch (fish.state) {
-        case 'roam':      updateRoam(fish, cfg);      break;
+    if (fish.kind === 'curious') {
+        updateCuriousFish(fish);
+    } else switch (fish.state) {
+        case 'roam':      if (fish.kind === 'provoked') updateProvokedFish(fish); else updateRoam(fish, cfg); break;
         case 'detect':    updateDetect(fish, cfg);    break;
         case 'stalk':     updateStalk(fish, cfg);     break;
         case 'circle':    updateCircle(fish, cfg);    break;
         case 'lunge':     updateLunge(fish, cfg);     break;
         case 'bite':      updateBite(fish, cfg);      break;
         case 'devour':    updateDevour(fish, cfg);    break;
-        case 'retreat':   updateRetreat(fish, cfg);   break;
+        case 'retreat':   if (fish.kind === 'provoked') updateProvokedFish(fish); else updateRetreat(fish, cfg); break;
         case 'flee':      updateFlee(fish, cfg);      break;
         case 'fear':      updateFear(fish, cfg);      break;
         case 'hit':       updateHit(fish, cfg);       break;
         case 'returning': updateReturning(fish, cfg); break;
-        case 'dying':     updateDying(fish, cfg);     return; // 死亡动画不做碰撞移动
     }
 
     // 应用速度并做碰撞检测
-    applyMovement(fish);
+    const ropeContact = applyMovement(fish);
+    if (ropeContact && ropeContact !== 'glide') {
+        if (fish.state === 'lunge') {
+            fish.state = 'retreat';
+            fish.stateTimer = 0;
+            fish.lungeCharge = 0;
+        } else if (fish.state === 'roam') fish.roamTimer = 0;
+    }
 }
 
 // =============================================
@@ -533,6 +597,8 @@ function updateRoam(fish: FishEnemy, cfg: any) {
     // 向目标缓慢游动
     moveToward(fish, fish.roamTargetX, fish.roamTargetY, cfg.roamSpeed, cfg.turnSpeedRoam);
 
+    // Passive fish only leave their patrol in response to light.
+    if (fish.kind === 'curious' || fish.kind === 'provoked') return;
     // 检测玩家是否进入感知范围
     const distToPlayer = Math.hypot(player.x - fish.x, player.y - fish.y);
     if (distToPlayer < cfg.detectRange) {
@@ -660,23 +726,29 @@ function updateLunge(fish: FishEnemy, cfg: any) {
         return;
     }
 
+    const provoked = fish.kind === 'provoked' ? CFG().provoked : null;
     // 蓄力阶段：减速并对准玩家，眼睛发光（通过 lungeCharge < 1 判断）
     if (fish.lungeCharge < 1) {
-        fish.lungeCharge += 1 / cfg.lungeChargeDuration;
+        fish.lungeCharge = provoked
+            ? Math.min(1, fish.stateTimer / provoked.chargeFrames)
+            : Math.min(1, fish.lungeCharge + 1 / cfg.lungeChargeDuration);
         fish.targetAngle = Math.atan2(dy, dx);
-        fish.angle = lerpAngle(fish.angle, fish.targetAngle, 0.15);
+        fish.angle = provoked && fish.lungeCharge >= 1 ? fish.targetAngle : lerpAngle(fish.angle, fish.targetAngle, 0.15);
         fish.vx *= 0.7;
         fish.vy *= 0.7;
         return;
     }
 
     // 冲刺阶段：高速向玩家冲去（此阶段为弹反窗口）
-    const speed = cfg.lungeSpeed;
+    const speed = provoked?.speed ?? cfg.lungeSpeed;
     fish.vx = Math.cos(fish.angle) * speed;
     fish.vy = Math.sin(fish.angle) * speed;
 
     // 命中检测
-    if (dist < cfg.biteRange) {
+    const ahead = dx * Math.cos(fish.angle) + dy * Math.sin(fish.angle);
+    if (dist < cfg.biteRange && (!provoked || (ahead >= dist * .55 &&
+        isLineOfSight(fish.x, fish.y, player.x, player.y, cfg.biteRange))) &&
+        !netWillHoldLunge(fish)) {
         fish.state = 'bite';
         fish.stateTimer = 0;
         fish.biteCount = 0;
@@ -686,8 +758,8 @@ function updateLunge(fish: FishEnemy, cfg: any) {
     }
 
     // 冲刺超时未命中，切回徘徊
-    if (fish.stateTimer >= cfg.lungeMaxDuration) {
-        fish.state = 'circle';
+    if (fish.stateTimer >= (provoked ? provoked.chargeFrames + provoked.lungeFrames : cfg.lungeMaxDuration)) {
+        fish.state = provoked ? 'retreat' : 'circle';
         fish.stateTimer = 0;
     }
 }
@@ -970,7 +1042,17 @@ function moveToward(fish: FishEnemy, tx: number, ty: number, speed: number, turn
 // =============================================
 // 辅助：应用速度并做简单碰撞
 // =============================================
-function applyMovement(fish: FishEnemy) {
+function fishCollisionRadius(fish: FishEnemy): number {
+    return CFG().size * (fish.kind === 'provoked' ? .48 : .38);
+}
+
+function netWillHoldLunge(fish: FishEnemy): boolean {
+    const response = getRopeResponseAlong(fish, player, fishCollisionRadius(fish), fish.vx, fish.vy);
+    return !!response && response.kind !== 'glide';
+}
+
+function applyMovement(fish: FishEnemy, effort = { x: fish.vx, y: fish.vy }) {
+    const from = { x: fish.x, y: fish.y };
     const nextX = fish.x + fish.vx;
     const nextY = fish.y + fish.vy;
 
@@ -986,6 +1068,8 @@ function applyMovement(fish: FishEnemy) {
         fish.vy *= -0.5;
     }
 
+    const ropeContact = resolveWovenRopeContact(fish, from, fishCollisionRadius(fish), effort,
+        (x, y) => !checkCollisionLocal(x, y));
     // 防止游出地图边界（适配迷宫模式）
     if (isMazeMode()) {
         const maze = state.mazeRescue!;
@@ -997,6 +1081,7 @@ function applyMovement(fish: FishEnemy) {
         fish.x = Math.max(0, Math.min(CONFIG.cols * CONFIG.tileSize, fish.x));
         fish.y = Math.max(60, Math.min(CONFIG.rows * CONFIG.tileSize, fish.y));
     }
+    return ropeContact;
 }
 
 // =============================================

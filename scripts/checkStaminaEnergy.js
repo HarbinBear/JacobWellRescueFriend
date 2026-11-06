@@ -22,7 +22,7 @@ Date.now = () => now;
 function setup(stamina, power) {
     CONFIG.driveMode = 'semiAuto';
     state.screen = 'mazeRescue'; state.mazeRescue = { phase: 'play', retreatHolding: false };
-    state.rope.hold.active = false; state.fishBite = { active: false };
+    state.fishBite = { active: false };
     state.semiAutoDrive = createSemiAutoDriveState();
     state.semiAutoDrive.remaining = stamina;
     state.semiAutoDrive.lastUpdateAt = now;

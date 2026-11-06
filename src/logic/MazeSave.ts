@@ -19,7 +19,7 @@
 //
 // 版本号：MAZE_SAVE_VERSION = 3；老 v1 / v2 存档自动丢弃（用户已确认不保留老档）
 
-import { state, player } from '../core/state';
+import { state, player, createRopeState } from '../core/state';
 import { saveJSON, loadJSON, removeKey } from '../core/SaveStorage';
 import { generateMazeMap } from '../world/map';
 
@@ -109,11 +109,11 @@ function unpackBoolMap(b64: string, rows: number, cols: number): boolean[][] {
 }
 
 // 玩家路径 {x,y}[] → 扁平 int（坐标范围 0~12000，int32 足够）
-function packPath(path: {x: number, y: number}[] | null | undefined): number[] {
+function packPath(path: {x: number, y: number}[] | null | undefined, precision = 1): number[] {
     if (!path || path.length === 0) return [];
     const out: number[] = [];
     for (let i = 0; i < path.length; i++) {
-        out.push(Math.round(path[i].x), Math.round(path[i].y));
+        out.push(Math.round(path[i].x * precision) / precision, Math.round(path[i].y * precision) / precision);
     }
     return out;
 }
@@ -148,6 +148,8 @@ interface PackedLiveRope {
     end: {x: number, y: number} | null;
     startWall: PackedWallRef | null;
     endWall: PackedWallRef | null;
+    startOnRope?: boolean;
+    endOnRope?: boolean;
     path: number[];          // 扁平 [x,y,...]
     slackFactor: number;
     mode: string;
@@ -213,7 +215,10 @@ function packLiveRope(rope: any): PackedLiveRope {
         end: packPoint(rope && rope.end),
         startWall: packWallRef(rope && rope.startWall),
         endWall: packWallRef(rope && rope.endWall),
-        path: packPath(rope && rope.path),
+        startOnRope: rope?.startOnRope || undefined,
+        endOnRope: rope?.endOnRope || undefined,
+        // Live paths retain the same precision as their tied endpoints.
+        path: packPath(rope?.path, 100),
         slackFactor: (rope && typeof rope.slackFactor === 'number') ? rope.slackFactor : 0,
         mode: (rope && typeof rope.mode === 'string') ? rope.mode : 'tight',
     };
@@ -226,6 +231,8 @@ function unpackLiveRope(p: PackedLiveRope, newMazeWalls: any[]): any {
         end: p.end ? { x: p.end.x, y: p.end.y } : null,
         startWall: findWallByRef(newMazeWalls, p.startWall),
         endWall: findWallByRef(newMazeWalls, p.endWall),
+        startOnRope: p.startOnRope,
+        endOnRope: p.endOnRope,
         path: unpackPath(p.path),
         slackFactor: p.slackFactor,
         mode: p.mode,
@@ -570,19 +577,7 @@ export function loadMazeProgress(): boolean {
     state.mazeRescue = maze;
 
     // 恢复绳索
-    if (!state.rope) {
-        state.rope = {
-            ropes: [],
-            active: false,
-            current: {
-                start: null, startWall: null, end: null, path: [],
-                basePoints: [], slackFactor: 1, mode: 'loose', time: 0,
-            },
-            ui: { visible: false, type: null, progress: 0, anchor: null },
-            hold: { active: false, type: null, timer: 0, touchId: null, anchor: null },
-            stillTimer: 0,
-        } as any;
-    }
+    if (!state.rope) state.rope = createRopeState();
     // 活绳子解包 + wall 最近匹配回挂
     const restoredRopes: any[] = [];
     if (Array.isArray(data.ropes)) {

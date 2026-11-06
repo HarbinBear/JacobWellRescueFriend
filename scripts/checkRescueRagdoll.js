@@ -8,11 +8,12 @@ function compile(file, deps) {
 const physics = compile('logic/RescueRagdoll', {});
 const state = { mazeRescue: { npcStunned: true, npcRescued: false }, npc: { active: true, x: 0, y: 0, vx: 0, vy: 0, angle: 0 } };
 const player = { x: 500, y: 0, vx: 0, vy: 0, angle: 0 };
-let wall = false;
+let wall = false, netBlocks = false;
 const CONFIG = { maze: { npcTetherIdealDist: 70, npcTetherMaxDist: 220 } };
 const tow = compile('logic/RescueTow', {
     '../core/config': { CONFIG }, '../core/state': { state, player }, './RescueRagdoll': physics,
     './Collision': { checkMazeCollision: x => wall && x > 3 && x < 175 },
+    './Rope': { getRopeContact: () => null, traceWovenRopes: () => netBlocks },
 });
 // No rope means no self-propulsion, even with a distant diver.
 for (let i = 0; i < 90; i++) tow.updateRescueTow();
@@ -48,6 +49,13 @@ for (let i = 0; i < 60; i++) tow.updateRescueTow();
 assert(root.x <= 3, 'A taut rope cannot pull the casualty through rock');
 assert(player.x < 500, 'When rock blocks the casualty the diver feels the rope');
 wall = false;
+netBlocks = true;
+player.x = root.x + 500;
+const blockedX = player.x;
+tow.updateRescueTow();
+assert.equal(player.x, blockedX, 'A rescue line does not teleport the diver through a woven net');
+assert(player.vx < 0, 'A taut rescue line still pulls the diver into the net through ordinary movement');
+netBlocks = false;
 player.x = root.x + 500;
 tow.updateRescueTow();
 assert(Math.hypot(player.x - root.x, player.y - root.y) <= CONFIG.maze.npcTetherMaxDist + 1e-6);

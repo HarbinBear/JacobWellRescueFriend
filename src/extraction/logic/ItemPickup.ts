@@ -1,15 +1,4 @@
-// 水下战利品（Relic）拾取交互
-//
-// 阶段 1 设计：
-// - 玩家走近 Relic（< pickupRange） → 走轮盘按钮（与氧气瓶轮盘范式一致）
-// - 轮盘扇区显示 "拾取 XX"
-// - 选中后立刻：(a) roll 品相 (b) 入背包 (c) 把 relic 加入 diveSession.pickedRelicIds
-// - 当次下潜内不再出现该 relic；下次下潜按 seed 重刷
-//
-// 与 Marker.ts 的接入：
-// - Marker.ts 的 detectWheelContext() 会被扩展一个 'pickupRelic' 上下文
-// - executeWheelAction() 会被扩展一个 'pickupRelic' 动作分支
-// - 这两处是阶段 1 仅有的"对现有代码的扩展"
+// 靠近战利品时，补给按钮显示「拾取」。确认后入包，物件在下次下潜按种子重刷。
 
 import { state, player } from '../../core/state';
 import { CONFIG } from '../../core/config';

@@ -78,12 +78,6 @@ export const baseConfig = {
 
     // 绳索系统参数
     ropeAnchorDistance: 60,        // 靠近岩石多近才能锚定（距岩石表面的像素距离）
-    ropeStillTimeToShow: 0.8,      // 静止多少秒后显示铺线按钮
-    ropeStillSpeedThreshold: 1.5,  // 判定静止的速度阈值（低于此值视为静止）
-    ropeHoldDuration: 0.6,         // 长按多少秒完成铺线/结束操作
-    ropeButtonRadius: 32,          // UI按钮半径
-    ropeButtonXRatio: 0.82,        // UI按钮X位置比例（占屏幕宽度）
-    ropeButtonYRatio: 0.75,        // UI按钮Y位置比例（占屏幕高度）
     ropeSlackAmplitude: 14,        // 松弛绳子垂坠幅度（垂直于路径的偏移）
     ropeSlackGravity: 10,          // 绳子在水中的重力下坠量
     ropeWaveAmplitude: 6,          // 绳子波浪动画幅度
@@ -102,7 +96,6 @@ export const baseConfig = {
     ropeNailColor: '#888',         // 钉子颜色
     ropeKnotRadius: 3,             // 绳结半径
     ropeKnotColor: 'rgba(230, 220, 170, 0.95)', // 绳结颜色
-    ropeTightenLerp: 0.12,         // 收紧绳子的插值系数
     ropeReelRadius: 8,             // 玩家身上线轮指示器半径
     ropeReelColor: 'rgba(200, 190, 140, 0.7)', // 线轮指示器颜色
 

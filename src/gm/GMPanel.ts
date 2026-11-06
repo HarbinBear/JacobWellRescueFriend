@@ -11,7 +11,7 @@ import {
     ITEM_H, ITEM_PAD, LABEL_W_RATIO, INPUT_H,
 } from './GMConfig';
 import { state, player } from '../core/state';
-import { createFishEnemy, findMazeFishSpawnPosition, findSafeSpawnPosition } from '../logic/FishEnemy';
+import { createFishEnemy, findMazeFishSpawnPosition, findSafeSpawnPosition, findVisibleFishSpawnPosition } from '../logic/FishEnemy';
 import { setPreset, onItemEdited as qualityOnItemEdited, setAuto as qualitySetAuto } from '../render/QualityManager';
 import { playSFX } from '../audio/AudioManager';
 // GM 调试：扣氧时同步触发氧气环红色损失动画
@@ -415,20 +415,18 @@ function _applyEditingValue(item: GMNumberItem): void {
 
 function _executeAction(actionId: string): void {
     switch (actionId) {
+        case 'spawnCuriousFish':
+        case 'spawnProvokedFish':
         case 'spawnMazeFish': {
-            // 在迷宫模式下生成一条食人鱼
-            if (state.screen === 'mazeRescue' && state.mazeRescue) {
-                const pos = findMazeFishSpawnPosition();
-                state.fishEnemies.push(createFishEnemy(pos.x, pos.y));
-                console.log(`[GM] 生成食人鱼 @ (${pos.x.toFixed(0)}, ${pos.y.toFixed(0)})，当前共 ${state.fishEnemies.length} 条`);
-            } else if (state.screen === 'fishArena' || state.screen === 'play') {
-                // 主线/竞技场模式：在玩家附近生成
-                const pos = findSafeSpawnPosition(player.x, player.y);
-                state.fishEnemies.push(createFishEnemy(pos.x, pos.y));
-                console.log(`[GM] 生成食人鱼 @ (${pos.x.toFixed(0)}, ${pos.y.toFixed(0)})，当前共 ${state.fishEnemies.length} 条`);
-            } else {
-                console.log('[GM] 当前不在游戏中，无法生成食人鱼');
+            const kind = actionId === 'spawnCuriousFish' ? 'curious' : actionId === 'spawnProvokedFish' ? 'provoked' : 'piranha';
+            let pos: { x: number; y: number } | null = null;
+            if (state.screen === 'mazeRescue' && state.mazeRescue?.phase === 'play') {
+                pos = kind === 'piranha' && !state.mazeRescue.rockTrial ? findMazeFishSpawnPosition() : findVisibleFishSpawnPosition();
+            } else if (kind === 'piranha' && (state.screen === 'fishArena' || state.screen === 'play')) {
+                pos = findSafeSpawnPosition(player.x, player.y);
             }
+            if (pos) state.fishEnemies.push(createFishEnemy(pos.x, pos.y, undefined, undefined, undefined, kind));
+            else console.log('[GM] 进入潜水区域并靠近开阔水域后再生成鱼');
             break;
         }
         case 'killAllFish': {

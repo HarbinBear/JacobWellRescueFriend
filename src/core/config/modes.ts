@@ -28,6 +28,8 @@ export const modesConfig = {
     // ===== 凶猛鱼（敌人）配置 =====
     fishEnemy: {
         size: 28,                   // 鱼体基础尺寸（像素）
+        curious: { lightThreshold: .16, noticeFrames: 25, memoryFrames: 70, standOff: 54, speed: 2.2 },
+        provoked: { lightThreshold: .22, exposureFrames: 22, chargeFrames: 42, lungeFrames: 33, recoverFrames: 95, speed: 14 },
 
         // 感知与探测
         detectRange: 320,           // 感知玩家的距离（像素）
