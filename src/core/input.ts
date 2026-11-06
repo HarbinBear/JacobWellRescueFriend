@@ -13,7 +13,7 @@ import { getBCDInflateBtn, getBCDDeflateBtn, isBCDUIVisible } from '../render/Re
 import { setBCDInflate, setBCDDeflate, releaseBCDControls } from '../logic/BCDSystem';
 import { performDiveSupply } from '../logic/Marker';
 import type { DiveSupply } from '../logic/Marker';
-import { canUseRopeWheel, finishRopeWheelGesture, moveRopeWheelGesture, startRopeWheelGesture } from '../logic/RopeWheel';
+import { cancelRopeWheelPress, canUseRopeWheel, finishRopeWheelGesture, moveRopeWheelGesture, passRopePressToSwim, startRopeWheelPress } from '../logic/RopeWheel';
 import { ALL_RELIC_KINDS } from '../logic/Relic';
 import { getDiveSupplyButton, getWheelBtnPos } from '../render/RenderWheel';
 // 撤离玩法：UI hit-test 入口集中导入
@@ -138,6 +138,33 @@ function consumeNextManualStrokeSide() {
     const side = md.nextStrokeSide;
     md.nextStrokeSide = side > 0 ? -1 : 1;
     return side;
+}
+
+function beginSwimTouch(id: number, x: number, y: number) {
+    if (CONFIG.driveMode === 'manual') {
+        const md = state.manualDrive;
+        if (Object.keys(md.activeTouches).length >= CONFIG.manualDrive.maxTouchPoints) return;
+        md.activeTouches[id] = {
+            startX: x,
+            startY: y,
+            prevX: x,
+            prevY: y,
+            currX: x,
+            currY: y,
+            strokeSide: consumeNextManualStrokeSide(),
+            consumedDistance: 0,
+            finished: false,
+        };
+        return;
+    }
+    // 自动挡与半自动共用摇杆，只绑定第一个尚未分配的触点。
+    if (touches.joystickId !== null) return;
+    if (CONFIG.driveMode === 'semiAuto') releaseSemiAutoDrive();
+    touches.joystickId = id;
+    touches.start = { x, y };
+    touches.curr = { x, y };
+    input.move = 0;
+    input.speedUp = false;
 }
 
 // =============================================
@@ -269,6 +296,8 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
 
         window.addEventListener('blur', () => {
             keys.w = keys.a = keys.s = keys.d = keys.shift = false;
+            cancelRopeWheelPress();
+            if (state.wheel.touchId !== null) finishRopeWheelGesture(state.wheel.touchId, 0, 0, true);
             resetDriveInput();
         });
 
@@ -313,6 +342,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
         warmUpAdaptiveMusic();
         const trialTouch=res.changedTouches?.[0]||res.touches[res.touches.length-1];
         if (trialTouch && isCaveRockTrialExitHit(trialTouch.clientX, trialTouch.clientY)) {
+            cancelRopeWheelPress();
             if (state.wheel.touchId !== null) finishRopeWheelGesture(state.wheel.touchId, 0, 0, true);
             exitCaveRockTrial();
             return;
@@ -324,6 +354,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
         // GM 面板优先消费触摸事件（面板本身或 HUD 栏的 GM 齿轮按钮）
         const gmTouch = res.touches[res.touches.length - 1];
         if (gmTouch && handleGMTouchStart(gmTouch.clientX, gmTouch.clientY)) {
+            cancelRopeWheelPress();
             // GM 面板吃掉触摸后不会再回调 touchEnd 给我们，顺手松开 BCD 双钮
             bcdReleaseAll();
             return;
@@ -517,17 +548,12 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
             } // else 结束
         }
 
-        // 绳盘只捕获发起这次拖动的手指，世界里的结点随方向连续更新。
-        for (const t of res.changedTouches) {
-            const { x, y } = getWheelBtnPos();
-            if (Math.hypot(t.clientX - x, t.clientY - y) <= CONFIG.marker.btnRadius &&
-                startRopeWheelGesture(t.identifier, t.clientX, t.clientY, x, y)) {
-                resetDriveInput();
-                return;
-            }
-        }
         // 遍历所有新增触点，多点触控：摇杆和攻击按钮互不干扰
+        const ropeButton = getWheelBtnPos();
         for (const t of res.changedTouches) {
+            if (Math.hypot(t.clientX - ropeButton.x, t.clientY - ropeButton.y) <= CONFIG.marker.btnRadius &&
+                startRopeWheelPress(t.identifier, t.clientX, t.clientY, ropeButton.x, ropeButton.y)) continue;
+
             // 检测攻击按钮（右下角常驻，游戏进行中或竞技场战斗中，任意触点均可触发）
             // 被咬死亡过场期间禁止攻击
             const isBiting = state.fishBite && state.fishBite.active;
@@ -611,34 +637,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
 
             // 旧主线第三关放弃按钮已废弃（迷宫的"放弃救援"是另外一个按钮，由 abandonHolding 管理）
 
-            // 手动挡模式：记录滑动起始点，实时跟踪
-            if (CONFIG.driveMode === 'manual') {
-                const md = state.manualDrive;
-                const activeCount = Object.keys(md.activeTouches).length;
-                if (activeCount < CONFIG.manualDrive.maxTouchPoints) {
-                    md.activeTouches[t.identifier] = {
-                        startX: t.clientX,
-                        startY: t.clientY,
-                        prevX: t.clientX,
-                        prevY: t.clientY,
-                        currX: t.clientX,
-                        currY: t.clientY,
-                        strokeSide: consumeNextManualStrokeSide(),
-                        consumedDistance: 0,
-                        finished: false,
-                    };
-                }
-            } else {
-                // 自动挡/半自动共用摇杆：只绑定第一个未被其他功能占用的触点
-                if (touches.joystickId === null) {
-                    if (CONFIG.driveMode === 'semiAuto') releaseSemiAutoDrive();
-                    touches.joystickId = t.identifier;
-                    touches.start = { x: t.clientX, y: t.clientY };
-                    touches.curr = { x: t.clientX, y: t.clientY };
-                    input.move = 0;
-                    input.speedUp = false;
-                }
-            }
+            beginSwimTouch(t.identifier, t.clientX, t.clientY);
         }
     });
 
@@ -728,6 +727,11 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                 if (moveRopeWheelGesture(t.identifier, t.clientX, t.clientY)) break;
             }
             return;
+        }
+
+        for (const t of res.changedTouches) {
+            const origin = passRopePressToSwim(t.identifier, t.clientX, t.clientY);
+            if (origin) beginSwimTouch(t.identifier, origin.x, origin.y);
         }
 
         // 手动挡模式：touchMove 只更新当前位置，prev 由逻辑层推进
@@ -1390,6 +1394,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
 }
 
 function finishDiveActionTouch(id: number, tx: number, ty: number, cancelled: boolean) {
+    if (cancelRopeWheelPress(id)) return true;
     if (state.wheel.open && state.wheel.touchId === id) {
         const placed = finishRopeWheelGesture(id, tx, ty, cancelled);
         if (!cancelled) playSFX(placed ? 'uiPrimary' : 'uiSecondary');

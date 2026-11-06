@@ -101,7 +101,11 @@ export function traceWovenRopes(from: RopePoint, to: RopePoint, radius: number) 
 }
 
 // The diver's sustained kick and a fish's burst use different speed ranges.
-const impactReference = (body: RopePoint) => body === player ? 3.6 : 13;
+const impactReference = (body: RopePoint & { kind?: string }) => {
+    if (body === player) return 3.6;
+    // A curious fish's broad fins load the mesh even on a slow approach.
+    return body.kind === 'curious' ? 2.55 : 13;
+};
 
 export function resolveWovenRopeContact(
     body: RopeBody, from: RopePoint, radius: number, intent: RopePoint,
@@ -119,7 +123,7 @@ export function getRopeContact(body: RopeBody) {
 export function getRopeApproach(body: RopeBody, radius: number) {
     const speed = Math.hypot(body.vx, body.vy);
     if (state.screen !== 'mazeRescue' || !state.rope.ropes.length || speed < .7 || getRopeContact(body)) return null;
-    const ahead = Math.min(34, 108 / speed);
+    const ahead = Math.min(42, 112 / speed);
     const aim = { x: body.x + body.vx * ahead, y: body.y + body.vy * ahead };
     const result = getRopeResponseAlong(body, aim, radius, body.vx, body.vy);
     return result && isLineOfSight(body.x, body.y, result.x, result.y, 120) ? result : null;

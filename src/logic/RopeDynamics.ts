@@ -64,6 +64,7 @@ function densityAt(group: RopeGroup, point: RopePoint, nx: number, ny: number): 
     let density = .045;
     for (const knot of group.knots) {
         density += Math.max(0, 1 - Math.hypot(point.x - knot.x, point.y - knot.y) / densityRadius) * .16;
+        if (density >= 1) return 1;
     }
     for (const { a, b } of group.strands) {
         const len = Math.hypot(b.x - a.x, b.y - a.y);
@@ -76,8 +77,9 @@ function densityAt(group: RopeGroup, point: RopePoint, nx: number, ny: number): 
         const localLength = Math.max(0, Math.min(len, along + halfChord) - Math.max(0, along - halfChord));
         const across = .35 + .65 * Math.abs(nx * uy - ny * ux);
         density += .14 * localLength / (2 * densityRadius) * (1 - distance / densityRadius) * across;
+        if (density >= 1) return 1;
     }
-    return unit(density);
+    return density;
 }
 
 function response(net: RopeNet, hit: RopeHit, vx: number, vy: number, referenceSpeed: number): NetApproach {
@@ -93,9 +95,14 @@ function movingNetHit(net: RopeNet, from: RopePoint, to: RopePoint, radius: numb
     return sweepRopeNet(net, from, to, radius, hasLoad ? (p, i) => deformNetPoint(net, p, i) : undefined);
 }
 
-export function netResponseAlong(net: RopeNet, from: RopePoint, to: RopePoint, radius: number, vx: number, vy: number, referenceSpeed: number): NetApproach | null {
+export function netResponseAlong(net: RopeNet, from: RopePoint, to: RopePoint, radius: number, vx: number, vy: number, referenceSpeed: number) {
     const hit = movingNetHit(net, from, to, radius);
-    return hit ? response(net, hit, vx, vy, referenceSpeed) : null;
+    if (!hit) return null;
+    return {
+        ...response(net, hit, vx, vy, referenceSpeed),
+        ropeIndex: hit.rope,
+        entry: { x: from.x + (to.x - from.x) * hit.time, y: from.y + (to.y - from.y) * hit.time },
+    };
 }
 
 export function stepNetMotion(net: RopeNet) {

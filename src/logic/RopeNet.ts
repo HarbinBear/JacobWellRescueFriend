@@ -8,6 +8,7 @@ export interface NetRope {
 const KNOT_EPSILON = 0.025;
 const STRAND_RADIUS = 2;
 const KNOT_RADIUS = 5;
+const MAX_POSE_OFFSET = 48;
 const cross = (ax: number, ay: number, bx: number, by: number) => ax * by - ay * bx;
 
 export function projectOntoStrand(p: RopePoint, a: RopePoint, b: RopePoint): RopePoint {
@@ -32,6 +33,7 @@ export interface RopeNet {
     groups: Map<number, RopeGroup>;
 }
 const nets = new WeakMap<NetRope[], { length: number; net: RopeNet }>();
+const collisionBounds = new WeakMap<RopeNet, { left: number; right: number; top: number; bottom: number }>();
 
 function crossing(a: Strand, b: Strand): RopePoint | null {
     const ax = a.b.x - a.a.x, ay = a.b.y - a.a.y;
@@ -56,9 +58,28 @@ export function getRopeNet(ropes: NetRope[]): RopeNet {
             if (Math.hypot(a.x - b.x, a.y - b.y) > KNOT_EPSILON) strands.push({ a, b, rope: index });
         }
     });
+    const knotBins = new Map<string, number[]>();
     const join = (p: RopePoint, a: number, b: number) => {
-        let knot = knots.find(k => Math.hypot(p.x - k.x, p.y - k.y) <= KNOT_EPSILON);
-        if (!knot) { knot = { ...p, ropes: new Set() }; knots.push(knot); }
+        let index = knots.length;
+        // An epsilon-sized search visits only the one-pixel bins touching the point.
+        for (let x = Math.floor(p.x - KNOT_EPSILON); x <= Math.floor(p.x + KNOT_EPSILON); x++) {
+            for (let y = Math.floor(p.y - KNOT_EPSILON); y <= Math.floor(p.y + KNOT_EPSILON); y++) {
+                const candidates = knotBins.get(`${x}:${y}`);
+                if (!candidates) continue;
+                for (const candidate of candidates) {
+                    const knot = knots[candidate];
+                    if (candidate < index && Math.hypot(p.x - knot.x, p.y - knot.y) <= KNOT_EPSILON) index = candidate;
+                }
+            }
+        }
+        if (index === knots.length) {
+            const cell = `${Math.floor(p.x)}:${Math.floor(p.y)}`;
+            const candidates = knotBins.get(cell);
+            if (candidates) candidates.push(index);
+            else knotBins.set(cell, [index]);
+            knots.push({ ...p, ropes: new Set() });
+        }
+        const knot = knots[index];
         knot.ropes.add(a); knot.ropes.add(b);
         woven.add(a); woven.add(b);
     };
@@ -114,6 +135,21 @@ export function getRopeNet(ropes: NetRope[]): RopeNet {
     }
     for (const strand of strands) groups.get(strand.rope)?.strands.push(strand);
     const net = { strands, knots, woven, groups };
+    const bounds = { left: Infinity, right: -Infinity, top: Infinity, bottom: -Infinity };
+    for (const { a, b, rope } of strands) {
+        if (!woven.has(rope)) continue;
+        bounds.left = Math.min(bounds.left, a.x, b.x);
+        bounds.right = Math.max(bounds.right, a.x, b.x);
+        bounds.top = Math.min(bounds.top, a.y, b.y);
+        bounds.bottom = Math.max(bounds.bottom, a.y, b.y);
+    }
+    for (const knot of knots) {
+        bounds.left = Math.min(bounds.left, knot.x);
+        bounds.right = Math.max(bounds.right, knot.x);
+        bounds.top = Math.min(bounds.top, knot.y);
+        bounds.bottom = Math.max(bounds.bottom, knot.y);
+    }
+    collisionBounds.set(net, bounds);
     nets.set(ropes, { length: ropes.length, net });
     return net;
 }
@@ -124,6 +160,13 @@ type StrandPose = (p: RopePoint, rope: number) => RopePoint;
 // A moving circle against the sides and round caps of each strand, and against knots.
 export function sweepRopeNet(net: RopeNet, from: RopePoint, to: RopePoint, radius: number, pose?: StrandPose): RopeHit | null {
     if (!net.woven.size) return null;
+    const left = Math.min(from.x, to.x), right = Math.max(from.x, to.x);
+    const top = Math.min(from.y, to.y), bottom = Math.max(from.y, to.y);
+    const posePadding = pose ? MAX_POSE_OFFSET : 0;
+    const knotPadding = radius + KNOT_RADIUS + posePadding;
+    const bounds = collisionBounds.get(net);
+    if (bounds && (right + knotPadding < bounds.left || left - knotPadding > bounds.right ||
+        bottom + knotPadding < bounds.top || top - knotPadding > bounds.bottom)) return null;
     const dx = to.x - from.x, dy = to.y - from.y;
     const speedSquared = dx * dx + dy * dy;
     if (speedSquared < 1e-8) return null;
@@ -144,8 +187,8 @@ export function sweepRopeNet(net: RopeNet, from: RopePoint, to: RopePoint, radiu
     };
     const r = radius + STRAND_RADIUS;
     const nearSweep = (a: RopePoint, b: RopePoint, padding: number) =>
-        Math.max(from.x, to.x) + padding >= Math.min(a.x, b.x) && Math.min(from.x, to.x) - padding <= Math.max(a.x, b.x) &&
-        Math.max(from.y, to.y) + padding >= Math.min(a.y, b.y) && Math.min(from.y, to.y) - padding <= Math.max(a.y, b.y);
+        right + padding >= Math.min(a.x, b.x) && left - padding <= Math.max(a.x, b.x) &&
+        bottom + padding >= Math.min(a.y, b.y) && top - padding <= Math.max(a.y, b.y);
     const test = (restA: RopePoint, restB: RopePoint, a: RopePoint, b: RopePoint, rope: number) => {
         if (!nearSweep(a, b, r)) return;
         const len = Math.hypot(b.x - a.x, b.y - a.y);
@@ -170,12 +213,31 @@ export function sweepRopeNet(net: RopeNet, from: RopePoint, to: RopePoint, radiu
     for (const { a, b, rope } of net.strands) {
         if (!net.woven.has(rope)) continue;
         if (!pose) { test(a, b, a, b, rope); continue; }
-        if (!nearSweep(a, b, r + 48)) continue;
-        const pieces = Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / 8);
-        let previous = a, posedPrevious = pose(a, rope);
-        for (let i = 1; i <= pieces; i++) {
+        const padding = r + posePadding;
+        if (!nearSweep(a, b, padding)) continue;
+        const spanX = b.x - a.x, spanY = b.y - a.y;
+        let enter = 0, exit = 1;
+        if (spanX !== 0) {
+            const t1 = (left - padding - a.x) / spanX, t2 = (right + padding - a.x) / spanX;
+            enter = Math.max(enter, Math.min(t1, t2));
+            exit = Math.min(exit, Math.max(t1, t2));
+        }
+        if (spanY !== 0) {
+            const t1 = (top - padding - a.y) / spanY, t2 = (bottom + padding - a.y) / spanY;
+            enter = Math.max(enter, Math.min(t1, t2));
+            exit = Math.min(exit, Math.max(t1, t2));
+        }
+        if (enter > exit + 1e-8) continue;
+        // Preserve the strand's fixed 8 px sampling lattice so clipping cannot change its posed curve.
+        const pieces = Math.ceil(Math.hypot(spanX, spanY) / 8);
+        const first = Math.max(1, Math.ceil(enter * pieces - 1e-8));
+        const last = Math.min(pieces, Math.floor(exit * pieces + 1e-8) + 1);
+        const start = (first - 1) / pieces;
+        let previous = first === 1 ? a : { x: a.x + spanX * start, y: a.y + spanY * start };
+        let posedPrevious = pose(previous, rope);
+        for (let i = first; i <= last; i++) {
             const t = i / pieces;
-            const point = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+            const point = { x: a.x + spanX * t, y: a.y + spanY * t };
             const posed = pose(point, rope);
             test(previous, point, posedPrevious, posed, rope);
             previous = point;
@@ -183,8 +245,8 @@ export function sweepRopeNet(net: RopeNet, from: RopePoint, to: RopePoint, radiu
         }
     }
     for (const knot of net.knots) {
-        const rope = knot.ropes.values().next().value;
-        if (nearSweep(knot, knot, radius + KNOT_RADIUS + (pose ? 48 : 0))) {
+        if (nearSweep(knot, knot, knotPadding)) {
+            const rope = knot.ropes.values().next().value;
             circle(knot, radius + KNOT_RADIUS, rope, pose ? pose(knot, rope) : knot);
         }
     }

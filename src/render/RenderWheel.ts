@@ -2,7 +2,7 @@ import { CONFIG } from '../core/config';
 import { player, state } from '../core/state';
 import type { DiveSupply } from '../logic/Marker';
 import { getRopeDeformedPoint } from '../logic/Rope';
-import { canUseRopeWheel, getRopeCancelProgress, getRopeWheelAim } from '../logic/RopeWheel';
+import { canUseRopeWheel, getRopeCancelProgress, getRopePressProgress, getRopeWheelAim } from '../logic/RopeWheel';
 import { ctx } from './Canvas';
 
 const INK = '#0d2028';
@@ -63,6 +63,14 @@ export function drawWheelButton() {
     circle(ctx, 0, 0, radius + 2);
     ctx.stroke();
     ctx.globalAlpha = 1;
+    const progress = getRopePressProgress();
+    if (progress > 0) {
+        ctx.lineWidth = 3;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.arc(0, 0, radius + 2, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress);
+        ctx.stroke();
+    }
     ctx.save();
     ctx.translate(0, -8);
     drawSpool();
@@ -72,6 +80,9 @@ export function drawWheelButton() {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(active ? '收绳' : '起绳', 0, 12);
+    ctx.fillStyle = '#b8cbc9';
+    ctx.font = '10px Arial';
+    ctx.fillText('稍按再拖', 0, radius + 12);
     ctx.restore();
     drawDiveSupplyButton();
 }

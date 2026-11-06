@@ -12,6 +12,8 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
   await b.evaluate('(()=>{window.__CaveUiProbe={count:0};const original=CanvasRenderingContext2D.prototype.fillText;CanvasRenderingContext2D.prototype.fillText=function(...args){if(DeepTapeGame.state.mazeRescue?.phase==="play")__CaveUiProbe.count++;return original.apply(this,args)};return true})()');
   const rect=await b.evaluate('(()=>{const r=document.getElementById("game").getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height}})()');
   async function click(x,y){await b.click(rect.x+x/375*rect.w,rect.y+y/667*rect.h);}
+  const screen=p=>({x:rect.x+p.x/375*rect.w,y:rect.y+p.y/667*rect.h});
+  const touch=(type,point)=>b.command('Input.dispatchTouchEvent',{type,touchPoints:point?[{...screen(point),id:1}]:[]});
   async function shot(name){const s=await b.evaluate('document.getElementById("game").toDataURL("image/png")');fs.writeFileSync(path.join(out,name+'.png'),Buffer.from(s.split(',')[1],'base64'));}
   const before=await b.evaluate('JSON.stringify({storage:{...localStorage},ex:DeepTapeGame.state.extraction,story:DeepTapeGame.state.story2})');
   assert.equal(await b.evaluate('DeepTapeGame.cave.stats().loaded'),false,'Main menu must not preload cave artwork');
@@ -36,6 +38,15 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
   await b.command('Input.dispatchKeyEvent',{type:'keyDown',key:'a',code:'KeyA',windowsVirtualKeyCode:65});await wait(700);await b.command('Input.dispatchKeyEvent',{type:'keyUp',key:'a',code:'KeyA',windowsVirtualKeyCode:65});await wait(150);
   const moved=await b.evaluate('({x:DeepTapeGame.player.x,y:DeepTapeGame.player.y,blocked:DeepTapeGame.cave.collision(DeepTapeGame.player.x,DeepTapeGame.player.y,DeepTapeGame.state.mazeRescue)})');
   assert(!moved.blocked);assert(Math.hypot(position.x-moved.x,position.y-moved.y)>.2,'Actual game controls must move the diver');await shot('moved');
+  const button=await b.evaluate('DeepTapeGame.cave.wheelPos()');
+  await touch('touchStart',button);
+  assert.equal(await b.evaluate('DeepTapeGame.state.wheel.open'),false,'Touchdown must not capture the rope wheel immediately');
+  await touch('touchMove',{x:button.x-42,y:button.y-8});
+  assert(await b.evaluate('DeepTapeGame.state.semiAutoDrive.inputPower > 0'),'A quick drag from the rope button must hand off to swimming');
+  await wait(220);
+  assert.equal(await b.evaluate('DeepTapeGame.state.wheel.open'),false,'The swim handoff must not open the wheel later');
+  await touch('touchEnd');
+  assert.equal(await b.evaluate('DeepTapeGame.state.semiAutoDrive.inputPower'),0,'Releasing a handed-off touch must stop thrust');
   // Pick two real wall locations with visible, reachable anchor directions.
   const anchors=await b.evaluate(`(()=>{
    const g=DeepTapeGame,m=g.state.mazeRescue,room=m.caveRockRoom,geometry=g.cave.geometry;
@@ -66,12 +77,11 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
     const r=cfg.marker.wheelInnerRadius+(cfg.marker.wheelOuterRadius-cfg.marker.wheelInnerRadius)*d/cfg.ropeAnchorDistance;
     return {c,target:{x:c.x+dx/d*r,y:c.y+dy/d*r}};
    })()`);
-   const screen = p => ({x:rect.x+p.x/375*rect.w,y:rect.y+p.y/667*rect.h});
-   const press=screen(from.c), drag=screen(from.target);
-   await b.mouse('mousePressed',press.x,press.y);
-   assert(await b.evaluate('DeepTapeGame.state.wheel.open'),'Actual wheel must open');
-   await b.mouse('mouseMoved',drag.x,drag.y);
-   await b.mouse('mouseReleased',drag.x,drag.y);
+   await touch('touchStart',from.c);
+   for(let i=0;i<15 && !await b.evaluate('DeepTapeGame.state.wheel.open');i++) await wait(40);
+   assert(await b.evaluate('DeepTapeGame.state.wheel.open'),'Holding the actual rope button must arm the wheel');
+   await touch('touchMove',from.target);
+   await touch('touchEnd');
    assert.equal(await b.evaluate('DeepTapeGame.state.wheel.open'),false);
   }
   await wheelPlace(anchors[0]);

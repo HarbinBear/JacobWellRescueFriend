@@ -269,8 +269,71 @@ function drawResistanceLabel(c: CanvasRenderingContext2D, label: string, color: 
     }
 }
 
-/** Show where the current momentum will load the net and how strongly it will hold. */
-export function drawRopeApproachWorld(c: CanvasRenderingContext2D, zoom: number) {
+type RopeApproach = NonNullable<ReturnType<typeof getRopeApproach>>;
+
+const forecastColors = { glide: '#82f7d8', rebound: '#ffce73', snag: '#ff9989' };
+
+/** Light only the nearby strands of the net the player is about to hit. */
+function drawForecastStrands(c: CanvasRenderingContext2D, approach: RopeApproach, zoom: number) {
+    const net = getRopeNet(state.rope.ropes);
+    const group = net.groups.get(approach.ropeIndex);
+    if (!group) return;
+    const { x, y, kind } = approach;
+    const extent = (kind === 'snag' ? 49 : 40) / zoom;
+    const patch = { left: x - extent, right: x + extent, top: y - extent, bottom: y + extent };
+    const glow = c.createRadialGradient(x, y, extent * .22, x, y, extent);
+    const color = forecastColors[kind];
+    glow.addColorStop(0, color);
+    glow.addColorStop(.64, color + 'b3');
+    glow.addColorStop(1, color + '00');
+    c.save();
+    c.lineCap = 'round';
+    c.lineJoin = 'round';
+    c.beginPath();
+    for (const index of group.indices) {
+        const path = getWovenPath(net, index, state.rope.ropes[index].path);
+        let started = false;
+        for (let i = 1; i < path.length; i++) {
+            const a = path[i - 1], b = path[i];
+            if (!visibleSegment(a, b, patch, 48)) { started = false; continue; }
+            const end = getRopeDeformedPoint(b, index);
+            if (!started) {
+                const start = getRopeDeformedPoint(a, index);
+                c.moveTo(start.x, start.y);
+                started = true;
+            }
+            c.lineTo(end.x, end.y);
+        }
+    }
+    c.strokeStyle = glow;
+    c.globalAlpha = .24;
+    c.lineWidth = (kind === 'snag' ? 12 : 9) / zoom;
+    c.stroke();
+    c.globalAlpha = .95;
+    c.lineWidth = 2.8 / zoom;
+    c.stroke();
+    c.restore();
+}
+
+function arrowTip(c: CanvasRenderingContext2D, x: number, y: number) {
+    c.moveTo(x - 6, y - 5); c.lineTo(x, y); c.lineTo(x - 6, y + 5);
+}
+
+function drawForecastTrack(c: CanvasRenderingContext2D, approach: RopeApproach, zoom: number) {
+    const dx = approach.entry.x - player.x, dy = approach.entry.y - player.y;
+    const distance = Math.hypot(dx, dy) * zoom;
+    if (distance <= 32) return;
+    c.save();
+    c.translate(player.x, player.y);
+    c.rotate(Math.atan2(dy, dx));
+    c.scale(1 / zoom, 1 / zoom);
+    c.beginPath(); c.moveTo(22, 0); c.lineTo(distance - 3, 0);
+    c.setLineDash?.([4, 5]);
+    c.lineWidth = 1.5; c.strokeStyle = forecastColors[approach.kind]; c.stroke();
+    c.restore();
+}
+
+export function drawRopeApproachWorld(c: CanvasRenderingContext2D, zoom: number, view: ViewBounds) {
     if (state.screen !== 'mazeRescue' || state.mazeRescue?.phase !== 'play' || state.wheel?.open) return;
     const contact = getRopeContact(player);
     if (contact) {
@@ -279,34 +342,15 @@ export function drawRopeApproachWorld(c: CanvasRenderingContext2D, zoom: number)
         c.translate(player.x, player.y);
         c.scale(1 / zoom, 1 / zoom);
         c.globalAlpha *= Math.min(1, (contact.phase - 8) / 8);
-        drawResistanceLabel(c, '沿来路退', '#f2bc79', 42, contact.escape);
-        c.strokeStyle = '#f2bc79'; c.lineWidth = 1.5; c.lineCap = 'round';
+        drawResistanceLabel(c, '沿来路退', forecastColors.snag, 42, contact.escape);
+        c.strokeStyle = forecastColors.snag; c.lineWidth = 1.5; c.lineCap = 'round';
         c.rotate(Math.atan2(-contact.ny, -contact.nx));
-        c.beginPath();
-        c.moveTo(21, -5); c.lineTo(27, 0); c.lineTo(21, 5);
-        c.stroke();
+        c.beginPath(); arrowTip(c, 27, 0); c.stroke();
         c.restore();
         return;
     }
     const approach = getRopeApproach(player, CONFIG.maze.playerRadius);
-    if (!approach || Math.hypot(player.x - approach.x, player.y - approach.y) > 150) return;
-    const { kind, x, y, nx, ny, strength } = approach;
-    const risk = kind === 'snag';
-    const color = risk ? '#f2bc79' : kind === 'rebound' ? '#d2d5a1' : '#a9cfbb';
-    const label = risk ? '易缠住' : kind === 'rebound' ? '会回弹' : '可挤过';
-    c.save();
-    c.translate(x, y);
-    c.scale(1 / zoom, 1 / zoom);
-    c.strokeStyle = color; c.lineWidth = 1.5; c.lineCap = 'round';
-    c.globalAlpha *= .55 + strength * .4;
-    c.save();
-    c.rotate(Math.atan2(ny, nx));
-    const spread = 8 + 8 * strength;
-    c.beginPath();
-    c.moveTo(-6, -spread - 5); c.lineTo(0, -spread); c.lineTo(-6, -spread + 5);
-    c.moveTo(-6, spread - 5); c.lineTo(0, spread); c.lineTo(-6, spread + 5);
-    c.stroke();
-    c.restore();
-    drawResistanceLabel(c, label, color, -27);
-    c.restore();
+    if (!approach || !visiblePoint(approach, view, 24 / zoom)) return;
+    drawForecastStrands(c, approach, zoom);
+    drawForecastTrack(c, approach, zoom);
 }

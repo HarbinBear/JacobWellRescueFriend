@@ -3,6 +3,7 @@ import { state, player } from '../core/state';
 import { FishEnemy } from '../logic/FishEnemy';
 import { getRopeContact } from '../logic/Rope';
 import { drawRopeContactWorld } from './RenderRope';
+import { isLineOfSight } from '../world/Visibility';
 
 // =============================================
 // 绘制单条凶猛鱼（世界坐标系，已在摄像机变换内调用）
@@ -24,10 +25,10 @@ export function drawFishEnemy(ctx: CanvasRenderingContext2D, fish: FishEnemy, co
         ctx.restore();
         return;
     }
-    const provoked = fish.kind === 'provoked';
-    if (provoked) {
-        const charging = state_ === 'lunge' && fish.lungeCharge < 1;
-        ctx.scale(charging ? 1.13 - fish.lungeCharge * .19 : 1.16, 1.22);
+    if (fish.kind === 'provoked') {
+        drawProvokedFish(ctx, fish, strain);
+        ctx.restore();
+        return;
     }
 
     // --- 身体摆动幅度根据状态变化 ---
@@ -61,10 +62,10 @@ export function drawFishEnemy(ctx: CanvasRenderingContext2D, fish: FishEnemy, co
     const tailSway = caught ? Math.sin(contact.phase * .83 + .6) * effort : Math.sin(t * swaySpeed + 0.5) * tailSwayAmp;
 
     // --- 颜色主题（深灰蓝+暗红腹部，凶残感）---
-    const bodyColor1 = provoked ? '#482728' : '#1a2535';   // 背部深色
-    const bodyColor2 = provoked ? '#8f4b3c' : '#2d3d52';   // 侧面中间色
-    const bellyColor = provoked ? '#613834' : '#3d1a1a';   // 腹部暗红
-    const finColor   = provoked ? '#6e372f' : '#0f1a28';   // 鳍颜色
+    const bodyColor1 = '#1a2535';   // 背部深色
+    const bodyColor2 = '#2d3d52';   // 侧面中间色
+    const bellyColor = '#3d1a1a';   // 腹部暗红
+    const finColor   = '#0f1a28';   // 鳍颜色
     const teethColor = '#e8e0d0';   // 牙齿颜色
     const eyeWhite   = '#c8c0b0';   // 眼白（偏黄，凶残）
     const eyePupil   = '#000';      // 瞳孔
@@ -118,16 +119,6 @@ export function drawFishEnemy(ctx: CanvasRenderingContext2D, fish: FishEnemy, co
     ctx.save();
     ctx.rotate(bodySway);
 
-    if (provoked) {
-        ctx.fillStyle = '#ad654d';
-        ctx.beginPath();
-        ctx.moveTo(-size * .7, -size * .2);
-        ctx.lineTo(-size * .48, -size * .59);
-        ctx.lineTo(-size * .34, -size * .42);
-        ctx.lineTo(-size * .11, -size * .73);
-        ctx.lineTo(size * .27, -size * .19);
-        ctx.fill();
-    }
     // 腹部渐变（背部深，腹部暗红）
     const bodyGrad = ctx.createLinearGradient(0, -size * 0.4, 0, size * 0.4);
     bodyGrad.addColorStop(0, bodyColor1);
@@ -428,6 +419,127 @@ export function drawFishBiteEffect(ctx: CanvasRenderingContext2D, canvasW: numbe
     }
 }
 
+/** Cave eel: bone plate at the nose, a long taper, and a single ribbed ribbon fin. */
+function drawProvokedFish(ctx: CanvasRenderingContext2D, fish: FishEnemy, strain: number, dying = false) {
+    const charging = !dying && fish.state === 'lunge' && fish.lungeCharge < 1;
+    const surging = !dying && fish.state === 'lunge' && !charging;
+    const snap = !dying && (fish.state === 'bite' || fish.state === 'devour');
+    const coil = charging ? Math.sin(Math.min(1, fish.lungeCharge / .77) * Math.PI) : 0;
+    const stroke = fish.animTime * (surging ? 3 : 1.48);
+    const flex = (dying ? .08 : .23 + Math.abs(strain) * .54) * (surging ? 1.18 : 1);
+    const curlSign = Math.sin(fish.circleAngle) < 0 ? -1 : 1;
+    const neck = Math.sin(stroke + .7) * flex * .12;
+    const mid = Math.sin(stroke - .45) * flex * .68 + coil * curlSign * .43;
+    const tail = Math.sin(stroke - 1.6) * flex * 1.4 + coil * curlSign * 1.20;
+    const tip = Math.sin(stroke - 2.1) * flex * 1.78 + coil * curlSign * 1.37;
+    ctx.save();
+    const size = CONFIG.fishEnemy.size;
+    ctx.scale(size * (1 - coil * .11), size);
+
+    // Long membranes are continuous with the eel, with ribs following the same bend.
+    ctx.fillStyle = surging ? '#8c8eb1' : '#6a6e90';
+    ctx.strokeStyle = '#343648';
+    ctx.lineWidth = .045;
+    ctx.beginPath();
+    ctx.moveTo(.25, -.30);
+    ctx.quadraticCurveTo(-.06, -.72 - coil * .14, -.62, mid - .54);
+    ctx.bezierCurveTo(-1.08, mid - .68, -1.74, tail - .36, -2.25, tip - .04);
+    ctx.quadraticCurveTo(-1.46, tail + .06, -.43, mid - .13);
+    ctx.quadraticCurveTo(-.06, neck - .17, .25, -.30);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#535776';
+    ctx.beginPath();
+    ctx.moveTo(.14, .29);
+    ctx.quadraticCurveTo(-.53, mid + .40, -1.17, mid + .46);
+    ctx.quadraticCurveTo(-1.75, tail + .32, -2.25, tip - .04);
+    ctx.quadraticCurveTo(-1.48, tail + .09, -.42, mid + .12);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.strokeStyle = 'rgba(215,218,222,.52)';
+    ctx.lineWidth = .033;
+    ctx.beginPath();
+    ctx.moveTo(-.24, mid - .17); ctx.quadraticCurveTo(-.29, mid - .36, -.39, mid - .55);
+    ctx.moveTo(-.54, mid - .14); ctx.quadraticCurveTo(-.65, mid - .34, -.77, mid - .55);
+    ctx.moveTo(-.84, mid - .09); ctx.quadraticCurveTo(-.93, mid - .31, -1.11, mid - .49);
+    ctx.moveTo(-1.14, mid - .03); ctx.quadraticCurveTo(-1.27, (mid + tail) / 2 - .24, -1.45, (mid + tail) / 2 - .39);
+    ctx.stroke();
+
+    const skin = ctx.createLinearGradient(0, -.38, 0, .44);
+    skin.addColorStop(0, '#36374c');
+    skin.addColorStop(.53, '#7a7795');
+    skin.addColorStop(1, dying ? '#c0b9ad' : '#a4a0a2');
+    ctx.fillStyle = skin;
+    ctx.strokeStyle = '#292b3a';
+    ctx.lineWidth = .042;
+    ctx.beginPath();
+    ctx.moveTo(1.02, .06);
+    ctx.quadraticCurveTo(.82, -.31, .49, -.36);
+    ctx.bezierCurveTo(.02, neck - .38, -.34, mid - .25, -.76, mid - .15);
+    ctx.bezierCurveTo(-1.24, (mid + tail) / 2 - .10, -1.82, tail - .08, -2.25, tip - .04);
+    ctx.bezierCurveTo(-1.77, tail + .09, -1.19, (mid + tail) / 2 + .16, -.74, mid + .19);
+    ctx.quadraticCurveTo(-.14, neck + .30, .53, .32);
+    ctx.quadraticCurveTo(.83, .26, 1.02, .06);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#888aa1';
+    ctx.beginPath();
+    ctx.moveTo(.17, .14);
+    ctx.quadraticCurveTo(-.02, .24, -.18, .56 + neck * 2);
+    ctx.quadraticCurveTo(-.30, .38, -.44, .19);
+    ctx.quadraticCurveTo(-.12, .14, .17, .14);
+    ctx.fill();
+
+    // The plate takes light before the dark ribbon is fully visible.
+    ctx.fillStyle = '#b9b4ae';
+    ctx.beginPath();
+    ctx.moveTo(1.02, .06);
+    ctx.quadraticCurveTo(.84, -.30, .50, -.31);
+    ctx.lineTo(.27, -.13);
+    ctx.lineTo(.34, .13);
+    ctx.lineTo(.59, .27);
+    ctx.quadraticCurveTo(.91, .22, 1.02, .06);
+    ctx.fill();
+
+    ctx.strokeStyle = '#535569';
+    ctx.lineWidth = .044;
+    ctx.beginPath();
+    ctx.moveTo(.24, -.19); ctx.quadraticCurveTo(.13, -.01, .26, .20);
+    ctx.moveTo(.12, -.18); ctx.quadraticCurveTo(.02, -.01, .13, .19);
+    ctx.stroke();
+    ctx.fillStyle = charging ? '#fff4c4' : '#ddc49e';
+    if (charging) {
+        ctx.shadowColor = '#ffb277';
+        ctx.shadowBlur = 7 + fish.lungeCharge * 10;
+    }
+    ctx.beginPath();
+    ctx.ellipse(.70, -.116, .085, .052, -.15, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#303141';
+    ctx.beginPath(); ctx.ellipse(.735, -.12, .022, .044, .16, 0, Math.PI * 2); ctx.fill();
+
+    const jaw = surging ? .17 : snap ? .13 + Math.sin(stroke * 3) * .12 : .014;
+    ctx.fillStyle = '#302b3d';
+    ctx.beginPath();
+    ctx.moveTo(.59, .083);
+    ctx.quadraticCurveTo(.81, .106, 1.015, .06);
+    ctx.quadraticCurveTo(.91, .09 + jaw, .59, .083);
+    ctx.fill();
+    if (jaw > .05) {
+        ctx.fillStyle = '#ded5c4';
+        ctx.beginPath();
+        ctx.moveTo(.91, .08); ctx.lineTo(.87, .08 + jaw * .54); ctx.lineTo(.83, .096);
+        ctx.moveTo(.78, .097); ctx.lineTo(.74, .097 + jaw * .44); ctx.lineTo(.70, .10);
+        ctx.fill();
+    }
+    ctx.restore();
+}
+
 function drawCuriousFish(ctx: CanvasRenderingContext2D, size: number, time: number, inspecting: boolean, strain: number) {
     const tail = Math.sin(time * .8) * (inspecting ? .08 : .3) + strain * .72;
     ctx.save();
@@ -456,9 +568,11 @@ function drawCuriousFish(ctx: CanvasRenderingContext2D, size: number, time: numb
 // =============================================
 // 绘制所有凶猛鱼（在世界坐标系内调用）
 // =============================================
-export function drawAllFishEnemies(ctx: CanvasRenderingContext2D) {
+export function drawAllFishEnemies(ctx: CanvasRenderingContext2D,
+    left = -Infinity, right = Infinity, top = -Infinity, bottom = Infinity) {
     if (!state.fishEnemies || state.fishEnemies.length === 0) return;
     for (const fish of state.fishEnemies) {
+        if (fish.x < left || fish.x > right || fish.y < top || fish.y > bottom) continue;
         if (fish.state === 'dying') {
             // 死亡动画：翻肚皮淡出
             drawDyingFish(ctx, fish);
@@ -472,6 +586,71 @@ export function drawAllFishEnemies(ctx: CanvasRenderingContext2D) {
             }
         }
     }
+}
+
+/** A short edge signal for the nearest visible threat that has begun an attack. */
+export function drawFishThreatDirection(ctx: CanvasRenderingContext2D,
+    width: number, height: number, cameraX: number, cameraY: number, zoom: number) {
+    if (state.screen !== 'mazeRescue' || state.mazeRescue?.phase !== 'play' ||
+        state.fishBite?.active || state.wheel.open) return;
+    const halfW = width / 2, halfH = height / 2;
+    const maxRange = 315;
+    let nearest = maxRange, candidate: FishEnemy | null = null;
+    for (const fish of state.fishEnemies) {
+        if (fish.dead || fish.kind === 'curious' || fish.state !== 'lunge') continue;
+        const screenX = Math.abs(fish.x - cameraX) * zoom, screenY = Math.abs(fish.y - cameraY) * zoom;
+        if (screenX < halfW + 15 && screenY < halfH + 15) continue;
+        const dx = player.x - fish.x, dy = player.y - fish.y;
+        const distance = Math.hypot(dx, dy);
+        if (distance >= nearest || getRopeContact(fish)?.kind === 'snag') continue;
+        if (fish.lungeCharge >= 1 && (dx * Math.cos(fish.angle) + dy * Math.sin(fish.angle)) < distance * .3) continue;
+        if (!isLineOfSight(player.x, player.y, fish.x, fish.y, maxRange)) continue;
+        candidate = fish;
+        nearest = distance;
+    }
+    if (!candidate) return;
+
+    const dx = candidate.x - cameraX, dy = candidate.y - cameraY;
+    const angle = Math.atan2(dy, dx);
+    const ux = Math.cos(angle), uy = Math.sin(angle);
+    // Place the warning just inside the controls and respect the top and bottom safe areas.
+    const edgeX = halfW - Math.min(63, width * .17);
+    const edgeY = Math.max(halfH * .45, halfH - Math.max(86, CONFIG.uiSafeTop + 17, CONFIG.uiSafeBottom + 68));
+    const edge = Math.min(edgeX / (Math.abs(ux) || .001), edgeY / (Math.abs(uy) || .001));
+    const closeness = 1 - nearest / maxRange;
+    const urgent = candidate.lungeCharge >= 1;
+    const size = 8 + closeness * 6;
+    ctx.save();
+    ctx.translate(halfW + ux * edge, halfH + uy * edge);
+    ctx.rotate(angle);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = urgent ? '#ffb08d' : '#f4d29e';
+    ctx.fillStyle = 'rgba(20,27,31,.9)';
+    ctx.lineWidth = urgent ? 2.2 : 1.7;
+    ctx.beginPath();
+    ctx.moveTo(size * .9, 0);
+    ctx.quadraticCurveTo(size * .18, -size * .78, -size * .62, -size * .7);
+    ctx.lineTo(-size * .43, 0);
+    ctx.lineTo(-size * .62, size * .7);
+    ctx.quadraticCurveTo(size * .18, size * .78, size * .9, 0);
+    ctx.fill();
+    ctx.stroke();
+    ctx.globalAlpha = .54 + closeness * .3;
+    ctx.beginPath();
+    ctx.moveTo(-size * .95, -size * .46);
+    ctx.lineTo(-size * .83, 0);
+    ctx.lineTo(-size * .95, size * .46);
+    ctx.stroke();
+    if (urgent) {
+        ctx.globalAlpha = .48 + Math.sin(candidate.animTime * 4) * .16;
+        ctx.beginPath();
+        ctx.moveTo(-size * 1.26, -size * .38);
+        ctx.lineTo(-size * 1.15, 0);
+        ctx.lineTo(-size * 1.26, size * .38);
+        ctx.stroke();
+    }
+    ctx.restore();
 }
 
 // =============================================
@@ -538,9 +717,17 @@ function drawDyingFish(ctx: CanvasRenderingContext2D, fish: FishEnemy) {
     ctx.rotate(fish.angle);
     ctx.scale(1, scaleY);
     // 翻转后腹部朝上（白色腹部）
-    const cfg = CONFIG.fishEnemy;
-    const size = cfg.size;
-    const t = fish.animTime;
+    const size = CONFIG.fishEnemy.size;
+    if (fish.kind === 'provoked') {
+        drawProvokedFish(ctx, fish, 0, true);
+        ctx.restore();
+        return;
+    }
+    if (fish.kind === 'curious') {
+        drawCuriousFish(ctx, size, fish.animTime, true, 0);
+        ctx.restore();
+        return;
+    }
 
     // 简化绘制：死亡状态下身体不摆动
     // 腹部（白色，翻转后显示）

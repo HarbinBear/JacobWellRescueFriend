@@ -4,17 +4,30 @@ import { circleHitsRock, closestRockPoint, rayHitsRock } from '../world/RockGeom
 import type { RockWall } from '../world/RockGeometry';
 import { getActiveMapContext, isLineOfSight } from '../world/Visibility';
 import { cancelRopePlacement, placeRopeAt } from './Rope';
+import { resetDriveInput } from './DriveMode';
 import type { RopeAnchor } from './Rope';
 import { getRopeNet, projectOntoStrand } from './RopeNet';
 import type { RopePoint } from './RopeNet';
 
 const CANCEL_HOLD_MS = 650;
 const DRAG_THRESHOLD = 9;
+const OPEN_HOLD_MS = 170;
+// Hand a drag to swimming before it reaches the joystick's 10 px dead zone.
+const SWIM_HANDOFF_DISTANCE = 8;
 
 type AnchorKind = 'rock' | 'strand' | 'knot';
 interface AimTarget { kind: AnchorKind; anchor: RopeAnchor; ropeIndex?: number }
 interface RopeAim { angle: number; reach: number; pointer: RopePoint; target: AimTarget | null }
 interface Gesture { touchId: number; x: number; y: number; startX: number; startY: number; dragged: boolean; openedAt: number }
+interface RopePress {
+    touchId: number;
+    start: RopePoint;
+    center: RopePoint;
+    startedAt: number;
+    screen: string;
+    maze: typeof state.mazeRescue;
+}
+let press: RopePress | null = null;
 let gesture: Gesture | null = null;
 let aim: RopeAim | null = null;
 
@@ -86,16 +99,47 @@ export function aimRopeAnchor(angle: number, reach: number): RopeAim {
     return { angle, reach, pointer, target };
 }
 
-export function startRopeWheelGesture(touchId: number, x: number, y: number, centerX: number, centerY: number) {
-    if (!canUseRopeWheel() || state.wheel.open) return false;
+export function startRopeWheelPress(touchId: number, x: number, y: number, centerX: number, centerY: number) {
+    if (!canUseRopeWheel() || state.wheel.open || press) return false;
+    press = { touchId, start: { x, y }, center: { x: centerX, y: centerY }, startedAt: Date.now(),
+        screen: state.screen, maze: state.mazeRescue };
+    return true;
+}
+
+export function cancelRopeWheelPress(touchId?: number) {
+    if (!press || (touchId !== undefined && press.touchId !== touchId)) return false;
+    press = null;
+    return true;
+}
+
+export function passRopePressToSwim(touchId: number, x: number, y: number) {
+    if (press?.touchId !== touchId || Math.hypot(x - press.start.x, y - press.start.y) <= SWIM_HANDOFF_DISTANCE) return null;
+    const origin = press.start;
+    press = null;
+    return origin;
+}
+
+export function getRopePressProgress(now = Date.now()) {
+    return press ? Math.max(0, Math.min(1, (now - press.startedAt) / OPEN_HOLD_MS)) : 0;
+}
+
+export function advanceRopeWheelPress() {
+    if (!press) return;
+    if (!canUseRopeWheel() || press.screen !== state.screen || press.maze !== state.mazeRescue) {
+        press = null;
+        return;
+    }
+    if (getRopePressProgress() < 1) return;
+    const { touchId, start: { x, y }, center, startedAt } = press;
+    press = null;
     state.wheel.open = true;
     state.wheel.expandProgress = 0;
     state.wheel.touchId = touchId;
-    state.wheel.centerX = centerX;
-    state.wheel.centerY = centerY;
-    gesture = { touchId, x, y, startX: x, startY: y, dragged: false, openedAt: Date.now() };
+    state.wheel.centerX = center.x;
+    state.wheel.centerY = center.y;
+    gesture = { touchId, x, y, startX: x, startY: y, dragged: false, openedAt: startedAt };
     aim = null;
-    return true;
+    resetDriveInput();
 }
 
 export function refreshRopeWheelAim() {

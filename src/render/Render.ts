@@ -11,7 +11,7 @@ import { drawRopesWorld, drawRopeApproachWorld, drawRopeContactWorld } from './R
 import { getRopeContact } from '../logic/Rope';
 import { drawRescueRopeWorld, drawNPCDistressWorld } from './RenderRescueRope';
 import { drawWheelButton, drawWheel, drawRopeAimWorld } from './RenderWheel';
-import { drawAllFishEnemies, drawFishBiteEffect } from './RenderFishEnemy';
+import { drawAllFishEnemies, drawFishBiteEffect, drawFishThreatDirection } from './RenderFishEnemy';
 import { drawMazeWallShape, getMazeParticleColorByWorld, getMazeThemeColorByCell, drawMazeShallowSky, drawMazeShallowWaterTint, drawMazeShallowCaustics, getMazeShallowMaskAlpha, drawFishDenSkulls } from './RenderMazeScene';
 import { drawOxygenTanksWorld, drawOxygenFeedbackWorld } from './RenderOxygenTank';
 import { drawBreathBubblesWorld } from './RenderBreath';
@@ -415,7 +415,7 @@ export function draw() {
     drawRescueRopeWorld(ctx);
 
     // --- 绘制凶猛鱼敌人（在角色之前）---
-    drawAllFishEnemies(ctx);
+    drawAllFishEnemies(ctx, viewL, viewR, viewT, viewB);
 
     // --- 迷宫模式：绘制氧气瓶（静态位点 + 交互环）+ 拾取反馈（飞瓶/气泡爆发）---
     if (isMazeMode && state.mazeRescue && state.mazeRescue.phase === 'play') {
@@ -682,7 +682,10 @@ export function draw() {
         ctx.translate(logicW / 2 + shakeX, logicH / 2 + shakeY);
         ctx.scale(zoom, zoom);
         ctx.translate(-camX, -camY);
-        drawRopeApproachWorld(ctx, zoom);
+        drawRopeApproachWorld(ctx, zoom, {
+            left: camX - logicW / (2 * zoom), right: camX + logicW / (2 * zoom),
+            top: camY - logicH / (2 * zoom), bottom: camY + logicH / (2 * zoom),
+        });
         drawRopeAimWorld(ctx);
         ctx.restore();
     }
@@ -726,6 +729,8 @@ export function draw() {
             );
         }
     }
+
+    drawFishThreatDirection(ctx, logicW, logicH, camX, camY, zoom);
 
     // 绘制凶猛鱼被咬特效（在 UI 之上，屏幕空间）
     drawFishBiteEffect(ctx, logicW, logicH);

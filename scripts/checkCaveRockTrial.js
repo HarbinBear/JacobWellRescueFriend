@@ -200,6 +200,19 @@ fishLogic.updateFishEnemy(curious, 1);
 assert.equal(curious.lightTargetX, lastLitTarget); assert.equal(curious.state, 'approach');
 for (let i = 0; i < CONFIG.fishEnemy.curious.memoryFrames; i++) fishLogic.updateFishEnemy(curious, 1);
 assert.equal(curious.state, 'roam');
+// A glow on a rock can draw in a fish outside the direct beam.
+Object.assign(player, {x: 315, y: 300, angle: 0});
+state.flashlightOn = true;
+openMaze.mazeMap[2][4] = 2;
+const rockWatcher = Object.assign(fishLogic.createFishEnemy(450, 411, undefined, undefined, undefined, 'curious'), {
+ angle: -Math.PI / 2, vx: 0, vy: 0, roamTimer: 1000,
+});
+for (let i = 0; i < 37; i++) fishLogic.updateFishEnemy(rockWatcher, 1);
+assert.equal(rockWatcher.lightInterest, 'rock');
+assert(Math.abs(rockWatcher.lightTargetX - 450) < 15 && rockWatcher.lightTargetY === 300 && rockWatcher.y < 411);
+openMaze.mazeMap[2][4] = 0;
+state.flashlightOn = false;
+
 // A bursting fish uses the same deformable contact instead of biting across a dense pocket.
 state.fishBite = null;
 state.rope.ropes = [
@@ -214,4 +227,17 @@ assert.equal(state.fishBite, null);
 assert.equal(rope.getRopeContact(charging)?.kind, 'snag');
 for (let i = 0; i < 12; i++) { rope.updateRopeMotion(); fishLogic.updateFishEnemy(charging, 1); }
 assert(rope.getRopeContact(charging)?.pull > .45, 'A captured fish bends and loads the net while struggling');
+// Fins catch a dense weave at the curious fish's real approach speed. The same
+// approach still slips through a sparse crossing and leaves the diver calibration alone.
+const denseRopes = state.rope.ropes;
+function curiousContact(ropes) {
+ state.rope.ropes = ropes.slice();
+ const fish = fishLogic.createFishEnemy(449, 566, undefined, undefined, undefined, 'curious');
+ fish.vy = 2.2;
+ const from = point(fish.x, fish.y);
+ fish.y += fish.vy;
+ return rope.resolveWovenRopeContact(fish, from, CONFIG.fishEnemy.size * .38, point(0, 2.2), () => true);
+}
+assert.equal(curiousContact(denseRopes), 'snag');
+assert.equal(curiousContact([denseRopes[0], denseRopes[7]]), 'glide');
 console.log('Fish and rope net: directional aim, saved knots, local density, glide, rebound, snag, escape and light responses passed');
