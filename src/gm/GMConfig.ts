@@ -365,6 +365,14 @@ export const TABS: GMTab[] = [
     {
         name: '迷宫鱼',
         items: [
+            // 当前重点：先显示生成和清理入口，再显示参数。
+            { type: 'action', label: '生成盾首鳗·顶撞（附近）', actionId: 'spawnRammerFish' },
+            { type: 'action', label: '生成好奇鱼（附近）', actionId: 'spawnCuriousFish' },
+            { type: 'action', label: '生成银鳞鱼群（附近）', actionId: 'spawnFishSchool' },
+            { type: 'action', label: '🐟 生成一条食人鱼', actionId: 'spawnMazeFish' },
+            { type: 'action', label: '生成猎鲨·危险（附近）', actionId: 'spawnProvokedFish' },
+            { type: 'action', label: '🧹 清除所有鱼', actionId: 'removeAllFish' },
+            { type: 'action', label: '💀 杀死所有鱼', actionId: 'killAllFish' },
             { type: 'bool', label: '启用迷宫鱼类', path: 'maze.fishEnabled' },
             // 聚集点数量
             { type: 'number', label: '聚集点最少', path: 'maze.denCountMin', min: 1, max: 6, step: 1 },
@@ -386,14 +394,6 @@ export const TABS: GMTab[] = [
             { type: 'number', label: '怕光最大距离', path: 'fishEnemy.lightFearMaxDistance', min: 50, max: 600, step: 10 },
             { type: 'number', label: '怕光亮度阈值', path: 'fishEnemy.lightFearThreshold', min: 0.05, max: 1, step: 0.05, precision: 2 },
             { type: 'number', label: '感知距离', path: 'fishEnemy.detectRange', min: 100, max: 800, step: 20 },
-            // 快捷动作
-            { type: 'action', label: '🐟 生成一条食人鱼', actionId: 'spawnMazeFish' },
-            { type: 'action', label: '生成好奇鱼（附近）', actionId: 'spawnCuriousFish' },
-            { type: 'action', label: '生成盾首鳗·顶撞（附近）', actionId: 'spawnRammerFish' },
-            { type: 'action', label: '生成银鳞鱼群（附近）', actionId: 'spawnFishSchool' },
-            { type: 'action', label: '生成猎鲨·危险（附近）', actionId: 'spawnProvokedFish' },
-            { type: 'action', label: '💀 杀死所有鱼', actionId: 'killAllFish' },
-            { type: 'action', label: '🧹 清除所有鱼', actionId: 'removeAllFish' },
         ]
     },
     {
@@ -614,10 +614,9 @@ export const TABS: GMTab[] = [
     },
 ];
 
-// 把 Debug / 性能 两个 Tab 置顶（用户偏好：调试和画质入口放最前面，避免每次都要左滑一堆 Tab）
-// 用后置重排的方式实现，不用搬动上面的大段字面量，未来新增 Tab 只要不叫这俩名字都不受影响
+// 当前优先测试鱼类互动；其后保留 Debug / 性能的快捷入口。
 (() => {
-    const topOrder = ['性能', 'Debug']; // 倒序 unshift，结果是 Debug 在第 0 位、性能在第 1 位
+    const topOrder = ['性能', 'Debug', '迷宫鱼']; // 倒序 unshift，鱼类最终排在首位
     for (const name of topOrder) {
         const idx = TABS.findIndex(t => t.name === name);
         if (idx > 0) {

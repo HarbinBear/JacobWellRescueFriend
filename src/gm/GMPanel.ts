@@ -117,6 +117,10 @@ export function isGMEditing(): boolean {
 // 取代旧的屏幕顶部独立 GM 按钮 hit-test
 export function toggleGMOpen(): void {
     _open = !_open;
+    if (_open) {
+        _activeTab = 0;
+        _tabScrollX = 0;
+    }
     _editingItem = null;
     _editingValue = '';
     _scrollY = 0;
