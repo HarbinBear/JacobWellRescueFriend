@@ -17,7 +17,7 @@
 import { CONFIG } from '../core/config';
 import { state, player } from '../core/state';
 import { playSonarLow, playSonarHigh } from '../audio/LifeDetectorSynth';
-import { isAdaptiveMusicReady, getAdaptiveMusicClock, resetAdaptiveMusic } from '../audio/AdaptiveMusic';
+import { getRescueMusicRange, getAdaptiveMusicClock, resetAdaptiveMusic } from '../audio/AdaptiveMusic';
 
 // 运行态（模块级单例；整局游戏共享）
 interface DetectorRuntime {
@@ -82,7 +82,7 @@ export function updateLifeDetector(): void {
     runtime.distance = dist;
 
     // 最大探知半径：以 npcRescueRange 为基准的倍数
-    const maxDist = (CONFIG.maze.npcRescueRange || 80) * (cfg.rangeMultiplier || 4);
+    const maxDist = cfg.music.enabled ? getRescueMusicRange() : (CONFIG.maze.npcRescueRange || 80) * (cfg.rangeMultiplier || 4);
     const minDist = CONFIG.maze.npcRescueRange || 80;  // 到达 NPC 呼救反馈范围时达到最大节奏
 
     if (dist > maxDist) {
@@ -102,7 +102,8 @@ export function updateLifeDetector(): void {
     runtime.currentIntensity = tCurve;
     runtime.active = true;
 
-    if (cfg.music.enabled && isAdaptiveMusicReady()) {
+    // 音轨准备中或失败时保持静默，不用旧双音把入水静默又打破。
+    if (cfg.music.enabled) {
         runtime.currentIntensity = t; // 音乐使用线性距离分档，不沿用旧探测音的指数间隔
         runtime.pendingHighAt = 0;
         runtime.nextGroupAt = 0;

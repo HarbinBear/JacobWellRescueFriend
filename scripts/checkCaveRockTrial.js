@@ -52,7 +52,7 @@ const originalMaze=state.mazeRescue,originalEx=load('extraction/core/ExtractionS
 originalEx.coins=432;originalEx.consumables.airTankS=7;save.saveMazeProgress();exSave.saveExtractionProgress();story.saveStoryProgress();
 const originalMarkers=state.markers;originalMarkers.push({x:111,y:222,type:'arrow'});
 const saved=JSON.stringify([...storage]);const originalLight=CONFIG.lightRange;
-logic.startCaveRockTrial();assert.notEqual(state.markers,originalMarkers);assert.equal(state.markers.length,0);state.markers.push({x:999,y:999});assert(state.mazeRescue.rockTrial);assert.equal(state.mazeRescue.phase,'tape_rewind');assert.notEqual(state.extraction,originalEx);
+logic.startCaveRockTrial();assert.notEqual(state.markers,originalMarkers);assert.equal(state.markers.length,0);state.markers.push({x:999,y:999});assert(state.mazeRescue.rockTrial);assert.equal(state.mazeRescue.phase,'diving_in');assert.notEqual(state.extraction,originalEx);
 state.extraction.coins=9999;state.extraction.consumables.airTankS=0;state.story2.nightIndex=99;
 assert.equal(save.saveMazeProgress(),false);assert.equal(exSave.saveExtractionProgress(),false);assert.equal(story.saveStoryProgress(),false);
 save.clearMazeSave();exSave.clearExtractionSave();story.clearStoryProgress();assert.equal(JSON.stringify([...storage]),saved,'Trial must not mutate or delete persisted data');

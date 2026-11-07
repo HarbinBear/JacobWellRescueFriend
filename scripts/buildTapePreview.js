@@ -33,6 +33,7 @@ function load(name){const id=name.split('/').pop();
  if(id==='GMConfig')return {BTN_RADIUS:20};
  if(id==='GMPanel')return {toggleGMOpen:noop,isGMOpen:()=>false};
  if(id==='Loadout')return {getActiveAirTanks:()=>[]};
+ if(id==='ExtractionRegistry')return {getEquipmentEffects:()=>({startO2:120})};
  if(id==='BreathSystem')return {getBreathPhaseAngle:()=>0,getBreathPhase:()=> 'inhale',getBreathPressure:()=>0,getLungVolume:()=>.5};
  if(id==='DecompressionSystem')return {getDecoRuntime:()=>deco,getDecoLevel:()=>0,getCurrentStopInfo:()=>null,isDecompressionRequired:()=>false,isDecoLockActive:()=>false,setDecoBoost:noop,getCurrentDepthMeters:()=>28};
  if(!factories[id])throw Error('Missing preview module: '+name);

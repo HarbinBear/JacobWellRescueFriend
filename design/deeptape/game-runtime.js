@@ -239,10 +239,12 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.getRescueMusicRange = getRescueMusicRange;
 exports.isAdaptiveMusicReady = isAdaptiveMusicReady;
 exports.getAdaptiveMusicClock = getAdaptiveMusicClock;
 exports.getAdaptiveMusicPreparation = getAdaptiveMusicPreparation;
 exports.retryAdaptiveMusic = retryAdaptiveMusic;
+exports.unlockAdaptiveMusic = unlockAdaptiveMusic;
 exports.warmUpAdaptiveMusic = warmUpAdaptiveMusic;
 exports.updateAdaptiveMusic = updateAdaptiveMusic;
 exports.resetAdaptiveMusic = resetAdaptiveMusic;
@@ -262,14 +264,17 @@ let observedMaze = null, previousPhase = '', previousRescued = false;
 let retiring = [];
 let cueStartedAt = -Infinity;
 let lastVisibleAt = -Infinity;
-let encountered = false;
+let encountered = false, audibleEncounter = false;
 let preparationProgress = 0;
 function desiredVariant() {
     const id = config_1.CONFIG.lifeDetector.music.variant;
     return Object.prototype.hasOwnProperty.call(AdaptiveScore_1.VARIANTS, id) ? id : AdaptiveScore_1.DEFAULT_VARIANT;
 }
+function getRescueMusicRange() {
+    return (config_1.CONFIG.maze.npcRescueRange || 80) * (config_1.CONFIG.lifeDetector.music.encounterRangeMultiplier || 5);
+}
 function playCue(cue) {
-    if (!cues || hidden || state_1.state.audio.muted || !config_1.CONFIG.lifeDetector.music.eventCues)
+    if (!cues || !audibleEncounter || hidden || state_1.state.audio.muted || !config_1.CONFIG.lifeDetector.music.eventCues)
         return;
     if (cue === 'death')
         cues.stop();
@@ -297,10 +302,9 @@ function retryAdaptiveMusic() {
     failed = false;
     warmUpAdaptiveMusic();
 }
-// 必须从触摸/按键回调调用 resume；乐谱生成分块让出主线程，不读网络或云存储。
-function warmUpAdaptiveMusic() {
-    const cfg = config_1.CONFIG.lifeDetector.music;
-    if (!cfg.enabled || failed)
+// 用户手势只解锁音频；菜单、移动和工具输入不会重复触发乐谱生成。
+function unlockAdaptiveMusic() {
+    if (!config_1.CONFIG.lifeDetector.enabled || !config_1.CONFIG.lifeDetector.music.enabled || failed)
         return;
     try {
         const wxAny = typeof wx !== 'undefined' ? wx : null;
@@ -308,7 +312,7 @@ function warmUpAdaptiveMusic() {
             const Ctor = globalThis.AudioContext || globalThis.webkitAudioContext;
             ctx = wxAny && wxAny.createWebAudioContext ? wxAny.createWebAudioContext() : (Ctor ? new Ctor() : null);
             if (!ctx)
-                throw new Error('平台没有 Web Audio，继续使用原探测音');
+                throw new Error('平台没有 Web Audio');
             cues = new AdaptiveCues_1.AdaptiveCuePlayer(ctx);
         }
         if (ctx.resume && ctx.state !== 'running') {
@@ -321,67 +325,78 @@ function warmUpAdaptiveMusic() {
             wxAny.onHide(() => { hidden = true; if (engine)
                 engine.stop(true); if (cues)
                 cues.stop(); retiring.forEach(e => e.dispose()); retiring = []; });
-            wxAny.onShow(() => { hidden = false; warmUpAdaptiveMusic(); });
-        }
-        if ((!engine || loadedVariant !== desiredVariant()) && !preparing) {
-            preparing = true;
-            preparationProgress = 0;
-            prepare().catch(err => {
-                failed = true;
-                if (engine)
-                    engine.dispose();
-                engine = null;
-                if (ctx && ctx.close) {
-                    const result = ctx.close();
-                    if (result && result.catch)
-                        result.catch(() => { });
-                }
-                ctx = null;
-                cues = null;
-                loadedVariant = null;
-                console.warn('[AdaptiveMusic] 初始化失败，回退原探测音:', err);
-            }).then(() => { preparing = false; });
+            wxAny.onShow(() => { hidden = false; if (state_1.state.screen === 'mazeRescue')
+                unlockAdaptiveMusic(); });
         }
     }
     catch (err) {
         failed = true;
         ctx = null;
         cues = null;
-        console.warn('[AdaptiveMusic] 不可用，回退原探测音:', err);
+        console.warn('[AdaptiveMusic] 不可用，继续无音乐游玩:', err);
     }
+}
+// 下潜时后台准备一次，已生成的同一版本跨下潜复用；失败不阻塞游戏。
+function warmUpAdaptiveMusic() {
+    unlockAdaptiveMusic();
+    if (!ctx || failed || !config_1.CONFIG.lifeDetector.enabled || !config_1.CONFIG.lifeDetector.music.enabled || preparing
+        || (engine && loadedVariant === desiredVariant()))
+        return;
+    preparing = true;
+    preparationProgress = 0;
+    prepare().catch(err => {
+        failed = true;
+        if (engine)
+            engine.dispose();
+        engine = null;
+        if (ctx && ctx.close) {
+            const result = ctx.close();
+            if (result && result.catch)
+                result.catch(() => { });
+        }
+        ctx = null;
+        cues = null;
+        loadedVariant = null;
+        console.warn('[AdaptiveMusic] 准备失败，继续无音乐游玩:', err);
+    }).then(() => { preparing = false; });
 }
 function prepare() {
     return __awaiter(this, void 0, void 0, function* () {
         const variant = desiredVariant();
         const buffers = [];
-        for (const stem of [...AdaptiveScore_1.SCORE.stems, 'bedFound', 'bedReturn', ...AdaptiveScore_1.WARM_LAYER_TRACKS]) {
-            const pcm = yield (0, AdaptiveScore_1.renderStemAsync)(stem, variant);
+        const tracks = [...AdaptiveScore_1.SCORE.stems, 'bedFound', 'bedReturn', ...AdaptiveScore_1.WARM_LAYER_TRACKS];
+        for (const stem of tracks) {
+            const pcm = yield (0, AdaptiveScore_1.renderStemAsync)(stem, variant, progress => {
+                preparationProgress = (buffers.length + progress) / (tracks.length + 1);
+            });
             const buffer = ctx.createBuffer(1, pcm.length, AdaptiveScore_1.SCORE.sampleRate);
             buffer.getChannelData(0).set(pcm);
             buffers.push(buffer);
-            preparationProgress = buffers.length / 13;
+            preparationProgress = buffers.length / (tracks.length + 1);
         }
         // 合成期间可以继续切换；只提交最新选择，旧音乐保持播放直到替代版本就绪。
         if (variant !== desiredVariant())
             return;
+        const pcm = (0, AdaptiveCues_1.renderPhrasePickup)();
+        const pickup = ctx.createBuffer(1, pcm.length, AdaptiveScore_1.SCORE.sampleRate);
+        pickup.getChannelData(0).set(pcm);
+        const replacement = new AdaptiveMusicEngine_1.AdaptiveMusicEngine(ctx, buffers.slice(0, 6), buffers.slice(6, 8), buffers.slice(8), pickup, variant);
         if (engine) {
             engine.stop(false, 0.5);
             retiring.push(engine);
         }
-        const pcm = (0, AdaptiveCues_1.renderPhrasePickup)();
-        const pickup = ctx.createBuffer(1, pcm.length, AdaptiveScore_1.SCORE.sampleRate);
-        pickup.getChannelData(0).set(pcm);
-        engine = new AdaptiveMusicEngine_1.AdaptiveMusicEngine(ctx, buffers.slice(0, 6), buffers.slice(6, 8), buffers.slice(8), pickup, variant);
+        engine = replacement;
         loadedVariant = variant;
         preparationProgress = 1;
         selected = 0;
     });
 }
-// 主循环每帧调用，独立检查 phase，防止 updateMaze 提前 return 后音乐残留。
+// 主循环每帧调用。只有接近当前救援对象才开启音乐，不是全程底轨。
 function updateAdaptiveMusic(detector) {
     try {
         const cfg = config_1.CONFIG.lifeDetector, maze = state_1.state.mazeRescue;
-        if (ctx && !preparing && loadedVariant !== desiredVariant())
+        if (ctx && !preparing && loadedVariant !== desiredVariant() && state_1.state.screen === 'mazeRescue'
+            && maze && (maze.phase === 'diving_in' || maze.phase === 'play'))
             warmUpAdaptiveMusic();
         retiring = retiring.filter(e => { if (e.hasSources() && !hidden && !state_1.state.audio.muted)
             return true; e.dispose(); return false; });
@@ -393,7 +408,7 @@ function updateAdaptiveMusic(detector) {
         }
         if (maze !== observedMaze) {
             observedMaze = maze;
-            encountered = false;
+            encountered = audibleEncounter = false;
             lastVisibleAt = -Infinity;
             previousPhase = '';
             previousRescued = !!(maze && maze.npcRescued);
@@ -412,8 +427,13 @@ function updateAdaptiveMusic(detector) {
         }
         if (!engine)
             return;
+        const clock = engine.getClock();
+        const distance = state_1.state.npc ? Math.hypot(state_1.state.npc.x - state_1.player.x, state_1.state.npc.y - state_1.player.y) : Infinity;
+        const range = getRescueMusicRange();
+        // 外圈15%滞回防止启停抖动；绑好绳也只在目标身边保留返程和声。
+        const nearby = !!state_1.state.npc && state_1.state.npc.active && distance <= range * (engine.hasSources() ? 1.15 : 1);
         const playing = !hidden && cfg.enabled && cfg.music.enabled && state_1.state.screen === 'mazeRescue'
-            && maze && (maze.phase === 'play' || (maze.phase === 'tape_play' && maze.tapePlaybackStarted));
+            && maze && maze.phase === 'play' && nearby && (!ctx.state || ctx.state === 'running');
         if (!playing) {
             engine.stop(false, maze && maze.phase === 'failed' ? 0.06 : 0.35);
             engine.getClock();
@@ -421,30 +441,35 @@ function updateAdaptiveMusic(detector) {
             return;
         }
         engine.start();
-        // 救起后/范围外回到底轨，底轨整个下潜持续存在。
+        if (clock.playing && !state_1.state.audio.muted) {
+            audibleEncounter = true;
+            if (!maze.tapeNowPlayingAt)
+                maze.tapeNowPlayingAt = Date.now();
+        }
         const calm = !!(maze.npcRescued || maze.npcStunned);
-        const detecting = detector.active && state_1.state.npc && state_1.state.npc.active && !calm;
+        const detecting = detector.active && !calm;
         const entrySeconds = (0, NPCPerception_1.rescueTargetEntrySeconds)();
         const enteringFrame = !hidden && !calm && Number.isFinite(entrySeconds);
-        // 实际入镜后的120ms短保持消除屏幕边缘抖动；预判失效则立即撤销，避免画外误高潮。
+        // 实际入镜后的120ms短保持消除屏幕边缘抖动；预判失效则立即撤销。
         const frameHeld = !calm && ctx.currentTime - lastVisibleAt < 0.12;
         selected = calm ? 0 : (0, AdaptiveScore_1.selectRescueMusicLevel)(detecting ? detector.currentIntensity : -1, selected, !!visible || enteringFrame || frameHeld, cfg.music.hysteresis);
         const mood = calm ? 'return' : encountered || enteringFrame ? 'found' : 'search';
         engine.setLevel(selected, calm, mood, enteringFrame ? entrySeconds : undefined);
-        engine.setVolume(state_1.state.audio.muted ? 0 : cfg.music.volume * config_1.CONFIG.audio.bgmVolume * (0, AdaptiveCues_1.musicCueDuck)(ctx.currentTime - cueStartedAt));
+        const proximityGain = Math.max(0, Math.min(1, (range * 1.15 - distance) / (range * 0.4)));
+        engine.setVolume(state_1.state.audio.muted ? 0 : cfg.music.volume * config_1.CONFIG.audio.bgmVolume * proximityGain * (0, AdaptiveCues_1.musicCueDuck)(ctx.currentTime - cueStartedAt));
     }
     catch (err) {
         failed = true;
         if (engine)
             engine.dispose();
         engine = null;
-        console.warn('[AdaptiveMusic] 播放失败，回退原探测音:', err);
+        console.warn('[AdaptiveMusic] 播放失败，继续无音乐游玩:', err);
     }
 }
 function resetAdaptiveMusic() {
     selected = 0;
     cueStartedAt = lastVisibleAt = -Infinity;
-    encountered = false;
+    encountered = audibleEncounter = false;
     if (engine)
         engine.stop(true);
     if (cues)
@@ -995,6 +1020,7 @@ function stringWave(phase, t, freq, lead, rate) {
 function* renderChunks(stem, rate, out, variant, part) {
     const isMelody = (n) => ['lead', 'veil', 'horizon', 'home'].indexOf(n.voice) >= 0;
     const notes = notesFor(stem, variant).filter(n => !part || isMelody(n) === (part === 'melody')), beatSeconds = 60 / exports.SCORE.bpm;
+    let completed = 0;
     for (let n = 0; n < notes.length; n++) {
         const note = notes[n], start = Math.round(note.beat * beatSeconds * rate);
         const freq = 440 * Math.pow(2, (note.midi - 69) / 12), duration = note.length * beatSeconds;
@@ -1088,8 +1114,9 @@ function* renderChunks(stem, rate, out, variant, part) {
                 out[(start + i + Math.round(rate * 0.375)) % out.length] += value * wet * 0.7;
                 out[(start + i + Math.round(rate * 0.625)) % out.length] += value * wet * 0.4;
             }
-            if (i % 2048 === 2047)
-                yield;
+            completed++;
+            if (completed % 512 === 0)
+                yield completed;
         }
     }
 }
@@ -1112,19 +1139,32 @@ function renderStem(stem, rate = exports.SCORE.sampleRate, variant = exports.DEF
     return finishThemeLoop(out, stem, rate);
 }
 function renderStemAsync(stem_1) {
-    return __awaiter(this, arguments, void 0, function* (stem, variant = exports.DEFAULT_VARIANT) {
-        const out = new Float32Array(exports.SCORE.sampleRate * exports.SCORE.duration);
-        const chunks = renderChunks(stem, exports.SCORE.sampleRate, out, variant);
-        let done = false;
+    return __awaiter(this, arguments, void 0, function* (stem, variant = exports.DEFAULT_VARIANT, onProgress) {
+        // 第一片也推迟，触摸回调不承担任何昂贵的PCM计算。
+        yield new Promise(resolve => setTimeout(resolve, 0));
+        const rate = exports.SCORE.sampleRate, out = new Float32Array(rate * exports.SCORE.duration);
+        const totalWork = notesFor(stem, variant).reduce((sum, note) => {
+            const melodic = ['lead', 'veil', 'horizon', 'home'].indexOf(note.voice) >= 0;
+            const tail = note.voice === 'strings' ? 0.7 : melodic ? 0.24 : note.voice === 'rush' ? 0.012 : note.voice === 'cello' ? 0.18 : 0.07;
+            return sum + Math.ceil((note.length * 60 / exports.SCORE.bpm + tail) * rate);
+        }, 0);
+        const chunks = renderChunks(stem, rate, out, variant);
+        let done = false, completed = 0;
         while (!done) {
-            const deadline = Date.now() + 5;
+            const deadline = Date.now() + 2;
             do {
-                done = !!chunks.next().done;
+                const chunk = chunks.next();
+                done = !!chunk.done;
+                if (!done)
+                    completed = chunk.value;
             } while (!done && Date.now() < deadline);
+            if (onProgress)
+                onProgress(done ? 1 : completed / Math.max(1, totalWork));
+            // 每片后给渲染/输入留出时间，低端机不会连续霸占主线程。
             if (!done)
-                yield new Promise(resolve => setTimeout(resolve, 0));
+                yield new Promise(resolve => setTimeout(resolve, 8));
         }
-        return finishThemeLoop(out, stem, exports.SCORE.sampleRate);
+        return finishThemeLoop(out, stem, rate);
     });
 }
 function selectMusicLevel(intensity, previous, hysteresis = 0.03) {
@@ -2671,12 +2711,6 @@ exports.baseConfig = {
     siltSpawnMaxWallDist: 80, // 生成泥沙的最大岩壁距离（像素）
     // 绳索系统参数
     ropeAnchorDistance: 60, // 靠近岩石多近才能锚定（距岩石表面的像素距离）
-    ropeStillTimeToShow: 0.8, // 静止多少秒后显示铺线按钮
-    ropeStillSpeedThreshold: 1.5, // 判定静止的速度阈值（低于此值视为静止）
-    ropeHoldDuration: 0.6, // 长按多少秒完成铺线/结束操作
-    ropeButtonRadius: 32, // UI按钮半径
-    ropeButtonXRatio: 0.82, // UI按钮X位置比例（占屏幕宽度）
-    ropeButtonYRatio: 0.75, // UI按钮Y位置比例（占屏幕高度）
     ropeSlackAmplitude: 14, // 松弛绳子垂坠幅度（垂直于路径的偏移）
     ropeSlackGravity: 10, // 绳子在水中的重力下坠量
     ropeWaveAmplitude: 6, // 绳子波浪动画幅度
@@ -2695,7 +2729,6 @@ exports.baseConfig = {
     ropeNailColor: '#888', // 钉子颜色
     ropeKnotRadius: 3, // 绳结半径
     ropeKnotColor: 'rgba(230, 220, 170, 0.95)', // 绳结颜色
-    ropeTightenLerp: 0.12, // 收紧绳子的插值系数
     ropeReelRadius: 8, // 玩家身上线轮指示器半径
     ropeReelColor: 'rgba(200, 190, 140, 0.7)', // 线轮指示器颜色
     // ===== 第三关关键点位配置 =====
@@ -2926,44 +2959,20 @@ exports.characterConfig = {
     },
 };
 },"/src/core/config/gameplay":function(exports,require){"use strict";
-// 玩法相关子系统：标记 / 氧气瓶 / 呼吸 / 撞击反馈 / 玩家攻击 / 生命探知仪
+// 玩法相关子系统：绳盘 / 氧气瓶 / 呼吸 / 撞击反馈 / 玩家攻击 / 生命探知仪
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.gameplayConfig = void 0;
 exports.gameplayConfig = {
-    // ===== 标记系统配置 =====
+    // ===== 绳索选点轮盘 =====
     marker: {
         // 交互按钮（轮盘触发器）
         btnRadius: 36, // 交互按钮半径
         btnXRatio: 0.92, // 按钮X位置比例（右下角，getWheelBtnPos会自动clamp保证轮盘完整显示）
         btnYRatio: 0.88, // 按钮Y位置比例（右下角）
         // 轮盘
-        wheelOuterRadius: 100, // 轮盘外径
-        wheelInnerRadius: 24, // 轮盘内径（死区，松手取消）
+        wheelOuterRadius: 100, // 轮盘外圈半径
+        wheelInnerRadius: 24, // 轮盘内圈半径（松手取消选点）
         wheelExpandDuration: 150, // 轮盘展开动画时长（ms）
-        wheelCollapseDuration: 100, // 轮盘收起动画时长（ms）
-        // 标记尺寸
-        wallSignWidth: 18, // 岩石标记牌面宽度
-        wallSignHeight: 14, // 岩石标记牌面高度
-        wallStakeLength: 10, // 岩石标记短杆长度
-        ropeTagWidth: 14, // 绳索标记标签宽度
-        ropeTagHeight: 11, // 绳索标记标签高度
-        ropeTagStrapLength: 5, // 绳索标记绑带长度
-        // 标记动画
-        placeAnimDuration: 20, // 放置动画帧数
-        removeAnimDuration: 15, // 拆除动画帧数
-        // 标记颜色
-        dangerColor: 'rgba(180, 40, 40, 0.9)', // 红叉牌面底色
-        dangerBorder: 'rgba(255, 80, 80, 0.6)', // 红叉边框
-        dangerStake: 'rgba(150, 50, 50, 0.8)', // 红叉短杆
-        unknownColor: 'rgba(180, 150, 40, 0.9)', // 黄问号牌面底色
-        unknownBorder: 'rgba(255, 220, 80, 0.6)', // 黄问号边框
-        unknownStake: 'rgba(150, 130, 50, 0.8)', // 黄问号短杆
-        safeColor: 'rgba(40, 150, 80, 0.9)', // 绿圈牌面底色
-        safeBorder: 'rgba(80, 255, 150, 0.6)', // 绿圈边框
-        safeStake: 'rgba(50, 130, 80, 0.8)', // 绿圈短杆
-        // 标记摆动
-        ropeTagSwaySpeed: 1.5, // 绳索标记摆动速度
-        ropeTagSwayAmplitude: 0.15, // 绳索标记摆动幅度（弧度）
     },
     // ===== 氧气瓶配置（迷宫模式，每次下潜按同 seed 在原位全量刷新） =====
     oxygenTank: {
@@ -3117,12 +3126,13 @@ exports.gameplayConfig = {
         music: {
             enabled: true, // 原创「Signal Below」：底轨 + 五层累加节奏
             variant: 'undertow', // GM 探知仪中切换 A/B/C，按需生成，避免常驻三套缓冲
+            encounterRangeMultiplier: 5, // 只在救援对象附近播放，外圈静默
             eventCues: true, // 绑绳确认与死亡落音；入镜由主题展开反馈
             cueVolume: 0.8,
             volume: 0.78, // v2 固定总增益，保留满层混音余量
             hysteresis: 0.03, // 每档边界两侧各 3% 缓冲，防止来回跳档
         },
-        // 探知范围（以 npcRescueRange 为基准；音乐模式外圈回到底轨、内圈满层）
+        // 旧双音模式的探知范围；音乐使用上方 encounterRangeMultiplier
         rangeMultiplier: 50, // 最大探知半径 = npcRescueRange × 此值
         // 注意：上面 rangeMultiplier 实际解释为"以 npcRescueRange 为最内圈强度=1，乘 rangeMultiplier 得到最外圈强度=0"
         // 节奏
@@ -3385,6 +3395,13 @@ exports.modesConfig = {
     // ===== 凶猛鱼（敌人）配置 =====
     fishEnemy: {
         size: 28, // 鱼体基础尺寸（像素）
+        curious: { lightThreshold: .16, noticeFrames: 25, memoryFrames: 70, standOff: 54, speed: 2.15, glowRange: 390, glowInterest: 220 },
+        provoked: { lightThreshold: .22, exposureFrames: 22, chargeFrames: 42, lungeFrames: 33, recoverFrames: 95, speed: 14, trackRange: 490 },
+        rammer: {
+            lightThreshold: .16, exposureFrames: 18, chargeFrames: 38, lungeFrames: 34,
+            recoverFrames: 95, speed: 9.2, noticeRange: 210, lingerFrames: 520,
+        },
+        shoal: { speed: 1.35, fleeSpeed: 4.2, lightThreshold: .12, regroupFrames: 95 },
         // 感知与探测
         detectRange: 320, // 感知玩家的距离（像素）
         safeDistance: 60, // 非冲刺状态下鱼与玩家的最小安全距离（像素），玩家进入此范围鱼立刻逃跑
@@ -3676,7 +3693,6 @@ const SemiAutoDrive_1 = require("../logic/SemiAutoDrive");
 const DriveMode_1 = require("../logic/DriveMode");
 const config_1 = require("./config");
 const AdaptiveMusic_1 = require("../audio/AdaptiveMusic");
-const TapeEntry_1 = require("../render/TapeEntry");
 const state_1 = require("./state");
 const FishEnemy_1 = require("../logic/FishEnemy");
 const RenderUI_1 = require("../render/RenderUI");
@@ -3686,6 +3702,7 @@ const HUDTopLeft_1 = require("../render/HUDTopLeft");
 const RenderBCD_1 = require("../render/RenderBCD");
 const BCDSystem_1 = require("../logic/BCDSystem");
 const Marker_1 = require("../logic/Marker");
+const RopeWheel_1 = require("../logic/RopeWheel");
 const Relic_1 = require("../logic/Relic");
 const RenderWheel_1 = require("../render/RenderWheel");
 // 撤离玩法：UI hit-test 入口集中导入
@@ -3704,6 +3721,7 @@ const CaveRockTrialUI_1 = require("../render/CaveRockTrialUI");
 let abandonTouchId = null;
 // 攻击按钮独立触点 ID（多点触控：与摇杆互不干扰）
 let attackTouchId = null;
+let supplyTouch = null;
 // 迷宫救援长按触点 ID
 let mazeRescueTouchId = null;
 // 迷宫撤离长按触点 ID
@@ -3756,6 +3774,35 @@ function consumeNextManualStrokeSide() {
     const side = md.nextStrokeSide;
     md.nextStrokeSide = side > 0 ? -1 : 1;
     return side;
+}
+function beginSwimTouch(id, x, y) {
+    if (config_1.CONFIG.driveMode === 'manual') {
+        const md = state_1.state.manualDrive;
+        if (Object.keys(md.activeTouches).length >= config_1.CONFIG.manualDrive.maxTouchPoints)
+            return;
+        md.activeTouches[id] = {
+            startX: x,
+            startY: y,
+            prevX: x,
+            prevY: y,
+            currX: x,
+            currY: y,
+            strokeSide: consumeNextManualStrokeSide(),
+            consumedDistance: 0,
+            finished: false,
+        };
+        return;
+    }
+    // 自动挡与半自动共用摇杆，只绑定第一个尚未分配的触点。
+    if (state_1.touches.joystickId !== null)
+        return;
+    if (config_1.CONFIG.driveMode === 'semiAuto')
+        (0, SemiAutoDrive_1.releaseSemiAutoDrive)();
+    state_1.touches.joystickId = id;
+    state_1.touches.start = { x, y };
+    state_1.touches.curr = { x, y };
+    state_1.input.move = 0;
+    state_1.input.speedUp = false;
 }
 // =============================================
 // BCD 浮力背心：inflator 双钮触摸
@@ -3897,10 +3944,12 @@ function initInput(onReset, onArena, onMaze, onMazeReplay, onMazeDive, onReturnT
         };
         window.addEventListener('blur', () => {
             keys.w = keys.a = keys.s = keys.d = keys.shift = false;
+            if (state_1.state.wheel.touchId !== null)
+                (0, RopeWheel_1.finishRopeWheelGesture)(state_1.state.wheel.touchId, 0, 0, true);
             (0, DriveMode_1.resetDriveInput)();
         });
         window.addEventListener('keydown', (e) => {
-            (0, AdaptiveMusic_1.warmUpAdaptiveMusic)();
+            (0, AdaptiveMusic_1.unlockAdaptiveMusic)();
             if (state_1.state.screen === 'menu') {
                 if (e.code === 'Space' && !state_1.state._menuConfirmNewGame) {
                     handleMenuButton('dive', onMaze, onMazeDive);
@@ -3954,15 +4003,16 @@ function initInput(onReset, onArena, onMaze, onMazeReplay, onMazeDive, onReturnT
         });
     }
     wx.onTouchStart((res) => {
-        var _a;
-        (0, AdaptiveMusic_1.warmUpAdaptiveMusic)();
+        var _a, _b;
+        (0, AdaptiveMusic_1.unlockAdaptiveMusic)();
         const trialTouch = ((_a = res.changedTouches) === null || _a === void 0 ? void 0 : _a[0]) || res.touches[res.touches.length - 1];
         if (trialTouch && (0, CaveRockTrialUI_1.isCaveRockTrialExitHit)(trialTouch.clientX, trialTouch.clientY)) {
+            if (state_1.state.wheel.touchId !== null)
+                (0, RopeWheel_1.finishRopeWheelGesture)(state_1.state.wheel.touchId, 0, 0, true);
             (0, MazeLogic_1.exitCaveRockTrial)();
             return;
         }
-        if (state_1.state.screen === 'mazeRescue' && state_1.state.mazeRescue &&
-            ['tape_rewind', 'tape_play'].indexOf(state_1.state.mazeRescue.phase) >= 0)
+        if (state_1.state.wheel.open && (0, RopeWheel_1.canUseRopeWheel)())
             return;
         // GM 面板优先消费触摸事件（面板本身或 HUD 栏的 GM 齿轮按钮）
         const gmTouch = res.touches[res.touches.length - 1];
@@ -4152,40 +4202,16 @@ function initInput(onReset, onArena, onMaze, onMazeReplay, onMazeDive, onReturnT
                 return;
             } // else 结束
         }
-        // 轮盘交互按钮检测（替代旧绳索按钮）
-        // 仅在 btnActive 为 true 时响应点击；灰态（btnVisible=true 但 btnActive=false）不响应
-        if (state_1.state.wheel && state_1.state.wheel.btnVisible && state_1.state.wheel.btnActive && !state_1.state.wheel.open) {
-            const { x: btnX, y: btnY } = (0, RenderWheel_1.getWheelBtnPos)();
-            for (let t of res.touches) {
-                const dx = t.clientX - btnX;
-                const dy = t.clientY - btnY;
-                if (Math.hypot(dx, dy) <= config_1.CONFIG.marker.btnRadius) {
-                    // 打开轮盘
-                    const nearbyInfo = state_1.state.wheel.nearbyInfo;
-                    if (nearbyInfo) {
-                        const sectors = (0, Marker_1.buildWheelSectors)(nearbyInfo.context, !!nearbyInfo.existingMarker);
-                        // 撤离玩法：拾取扇区的 label 替换为带具体物品名（"拾取 · 黄铜指南针"）
-                        if (nearbyInfo.context === 'pickupRelic' && nearbyInfo.pickupRelicLabel && sectors.length > 0) {
-                            sectors[0].label = nearbyInfo.pickupRelicLabel;
-                        }
-                        state_1.state.wheel.open = true;
-                        state_1.state.wheel.sectors = sectors;
-                        state_1.state.wheel.highlightIndex = -1;
-                        state_1.state.wheel.expandProgress = 0;
-                        state_1.state.wheel.touchId = t.identifier;
-                        state_1.state.wheel.centerX = btnX;
-                        state_1.state.wheel.centerY = btnY;
-                        (0, DriveMode_1.resetDriveInput)();
-                    }
-                    return;
-                }
-            }
-        }
         // 遍历所有新增触点，多点触控：摇杆和攻击按钮互不干扰
+        const ropeButton = (0, RenderWheel_1.getWheelBtnPos)();
         for (const t of res.changedTouches) {
+            if (Math.hypot(t.clientX - ropeButton.x, t.clientY - ropeButton.y) <= config_1.CONFIG.marker.btnRadius &&
+                (0, RopeWheel_1.startRopeWheelGesture)(t.identifier, t.clientX, t.clientY, ropeButton.x, ropeButton.y))
+                continue;
             // 检测攻击按钮（右下角常驻，游戏进行中或竞技场战斗中，任意触点均可触发）
             // 被咬死亡过场期间禁止攻击
             const isBiting = state_1.state.fishBite && state_1.state.fishBite.active;
+            const isMazePlay = state_1.state.screen === 'mazeRescue' && ((_b = state_1.state.mazeRescue) === null || _b === void 0 ? void 0 : _b.phase) === 'play';
             const isGameActive = !isBiting && (state_1.state.screen === 'play' ||
                 (state_1.state.screen === 'fishArena' && state_1.state.fishArena && state_1.state.fishArena.phase === 'fight'));
             if (isGameActive && attackTouchId === null) {
@@ -4199,7 +4225,7 @@ function initInput(onReset, onArena, onMaze, onMazeReplay, onMazeDive, onReturnT
                 }
             }
             // 检测手电筒开关按钮（游戏进行中或竞技场战斗中均可切换）
-            if (isGameActive) {
+            if (isGameActive || (isMazePlay && !isBiting)) {
                 const flBtn = RenderUI_1.FLASHLIGHT_BTN;
                 const fdx = t.clientX - flBtn.x;
                 const fdy = t.clientY - flBtn.y;
@@ -4250,38 +4276,14 @@ function initInput(onReset, onArena, onMaze, onMazeReplay, onMazeDive, onReturnT
                 if ((0, HUDTopLeft_1.handleHUDTouchStart)(t.identifier, t.clientX, t.clientY)) {
                     continue;
                 }
+                const supply = (0, RenderWheel_1.getDiveSupplyButton)();
+                if (!supplyTouch && supply && Math.hypot(t.clientX - supply.x, t.clientY - supply.y) <= supply.radius) {
+                    supplyTouch = Object.assign({ id: t.identifier }, supply);
+                    continue;
+                }
             }
             // 旧主线第三关放弃按钮已废弃（迷宫的"放弃救援"是另外一个按钮，由 abandonHolding 管理）
-            // 手动挡模式：记录滑动起始点，实时跟踪
-            if (config_1.CONFIG.driveMode === 'manual') {
-                const md = state_1.state.manualDrive;
-                const activeCount = Object.keys(md.activeTouches).length;
-                if (activeCount < config_1.CONFIG.manualDrive.maxTouchPoints) {
-                    md.activeTouches[t.identifier] = {
-                        startX: t.clientX,
-                        startY: t.clientY,
-                        prevX: t.clientX,
-                        prevY: t.clientY,
-                        currX: t.clientX,
-                        currY: t.clientY,
-                        strokeSide: consumeNextManualStrokeSide(),
-                        consumedDistance: 0,
-                        finished: false,
-                    };
-                }
-            }
-            else {
-                // 自动挡/半自动共用摇杆：只绑定第一个未被其他功能占用的触点
-                if (state_1.touches.joystickId === null) {
-                    if (config_1.CONFIG.driveMode === 'semiAuto')
-                        (0, SemiAutoDrive_1.releaseSemiAutoDrive)();
-                    state_1.touches.joystickId = t.identifier;
-                    state_1.touches.start = { x: t.clientX, y: t.clientY };
-                    state_1.touches.curr = { x: t.clientX, y: t.clientY };
-                    state_1.input.move = 0;
-                    state_1.input.speedUp = false;
-                }
-            }
+            beginSwimTouch(t.identifier, t.clientX, t.clientY);
         }
     });
     wx.onTouchMove((res) => {
@@ -4362,73 +4364,12 @@ function initInput(onReset, onArena, onMaze, onMazeReplay, onMazeDive, onReturnT
         }
         // 放弃按钮长按计时（在 update 循环中处理，这里不需要）
         // 旧"章节选择"页滑动逻辑已废弃。
-        // 轮盘打开时：滑动更新高亮扇区
-        if (state_1.state.wheel && state_1.state.wheel.open && state_1.state.wheel.touchId !== null) {
-            for (let t of res.touches) {
-                if (t.identifier === state_1.state.wheel.touchId) {
-                    const dx = t.clientX - state_1.state.wheel.centerX;
-                    const dy = t.clientY - state_1.state.wheel.centerY;
-                    const dist = Math.hypot(dx, dy);
-                    if (dist < config_1.CONFIG.marker.wheelInnerRadius) {
-                        state_1.state.wheel.highlightIndex = -1; // 在死区内，无高亮
-                        state_1.state.wheel.previewAction = null;
-                    }
-                    else {
-                        // 计算角度，匹配扇区
-                        let angle = Math.atan2(dy, dx);
-                        const sectors = state_1.state.wheel.sectors;
-                        let found = -1;
-                        for (let i = 0; i < sectors.length; i++) {
-                            let start = sectors[i].startAngle;
-                            let end = sectors[i].endAngle;
-                            // 规范化角度到 [-PI, PI]
-                            let a = angle;
-                            while (a < start)
-                                a += Math.PI * 2;
-                            while (a > end)
-                                a -= Math.PI * 2;
-                            if (a >= start && a <= end) {
-                                found = i;
-                                break;
-                            }
-                        }
-                        // 备用：用最近扇区中心角
-                        if (found < 0) {
-                            let minDiff = Infinity;
-                            for (let i = 0; i < sectors.length; i++) {
-                                const mid = (sectors[i].startAngle + sectors[i].endAngle) / 2;
-                                let diff = Math.abs(angle - mid);
-                                if (diff > Math.PI)
-                                    diff = Math.PI * 2 - diff;
-                                if (diff < minDiff) {
-                                    minDiff = diff;
-                                    found = i;
-                                }
-                            }
-                        }
-                        state_1.state.wheel.highlightIndex = found;
-                        // 同步更新预览操作类型
-                        if (found >= 0 && sectors[found]) {
-                            state_1.state.wheel.previewAction = sectors[found].action;
-                        }
-                        else {
-                            state_1.state.wheel.previewAction = null;
-                        }
-                    }
-                    state_1.input.move = 0;
-                    state_1.input.speedUp = false;
-                    return;
-                }
+        if (state_1.state.wheel.open) {
+            for (const t of res.touches) {
+                if ((0, RopeWheel_1.moveRopeWheelGesture)(t.identifier, t.clientX, t.clientY))
+                    break;
             }
-        }
-        if (state_1.state.rope && state_1.state.rope.hold && state_1.state.rope.hold.active) {
-            for (let t of res.touches) {
-                if (t.identifier === state_1.state.rope.hold.touchId) {
-                    state_1.input.move = 0;
-                    state_1.input.speedUp = false;
-                    return;
-                }
-            }
+            return;
         }
         // 手动挡模式：touchMove 只更新当前位置，prev 由逻辑层推进
         if (config_1.CONFIG.driveMode === 'manual') {
@@ -4480,20 +4421,9 @@ function initInput(onReset, onArena, onMaze, onMazeReplay, onMazeDive, onReturnT
         }
     });
     wx.onTouchEnd((res) => {
-        if (state_1.state.screen === 'mazeRescue' && state_1.state.mazeRescue &&
-            ['tape_rewind', 'tape_play'].indexOf(state_1.state.mazeRescue.phase) >= 0) {
-            const touch = res.changedTouches[0];
-            if (touch) {
-                const buttons = (0, TapeEntry_1.getTapeEntryButtons)();
-                const hit = (r) => touch.clientX >= r.x && touch.clientX <= r.x + r.w && touch.clientY >= r.y && touch.clientY <= r.y + r.h;
-                if (buttons.retry.enabled && hit(buttons.retry))
-                    (0, AdaptiveMusic_1.retryAdaptiveMusic)();
-                else if (buttons.back.enabled && hit(buttons.back)) {
-                    (0, AdaptiveMusic_1.resetAdaptiveMusic)();
-                    returnToMainMenu();
-                }
-            }
-            bcdReleaseAll();
+        const remaining = res.changedTouches.filter(t => !finishDiveActionTouch(t.identifier, t.clientX, t.clientY, false));
+        if (remaining.length !== res.changedTouches.length) {
+            handleTouchEnd(remaining);
             return;
         }
         // 家场景（晚上）：完全独立的 UI 派发，不与营地/水下混用
@@ -5065,8 +4995,25 @@ function initInput(onReset, onArena, onMaze, onMazeReplay, onMazeDive, onReturnT
             }
             return;
         }
+        for (const t of res.changedTouches)
+            finishDiveActionTouch(t.identifier, t.clientX, t.clientY, true);
         handleTouchEnd(res.changedTouches);
     });
+}
+function finishDiveActionTouch(id, tx, ty, cancelled) {
+    if (state_1.state.wheel.open && state_1.state.wheel.touchId === id) {
+        const placed = (0, RopeWheel_1.finishRopeWheelGesture)(id, tx, ty, cancelled);
+        if (!cancelled)
+            (0, AudioManager_1.playSFX)(placed ? 'uiPrimary' : 'uiSecondary');
+        return true;
+    }
+    if ((supplyTouch === null || supplyTouch === void 0 ? void 0 : supplyTouch.id) !== id)
+        return false;
+    const { x, y, radius, supply } = supplyTouch;
+    supplyTouch = null;
+    if (!cancelled && Math.hypot(tx - x, ty - y) <= radius && (0, Marker_1.performDiveSupply)(supply))
+        (0, AudioManager_1.playSFX)('uiPrimary');
+    return true;
 }
 function handleTouchEnd(changedTouches) {
     for (let t of changedTouches) {
@@ -5090,30 +5037,6 @@ function handleTouchEnd(changedTouches) {
         // 攻击按钮触点释放
         if (t.identifier === attackTouchId) {
             attackTouchId = null;
-        }
-        // 轮盘松手：执行选中操作或取消
-        if (state_1.state.wheel && state_1.state.wheel.open && t.identifier === state_1.state.wheel.touchId) {
-            if (state_1.state.wheel.highlightIndex >= 0 && state_1.state.wheel.sectors[state_1.state.wheel.highlightIndex]) {
-                (0, AudioManager_1.playSFX)('uiPrimary');
-                (0, Marker_1.executeWheelAction)(state_1.state.wheel.sectors[state_1.state.wheel.highlightIndex].action);
-            }
-            else {
-                (0, AudioManager_1.playSFX)('uiSecondary');
-            }
-            // 关闭轮盘
-            state_1.state.wheel.open = false;
-            state_1.state.wheel.sectors = [];
-            state_1.state.wheel.highlightIndex = -1;
-            state_1.state.wheel.expandProgress = 0;
-            state_1.state.wheel.touchId = null;
-            state_1.state.wheel.previewAction = null;
-        }
-        if (state_1.state.rope && state_1.state.rope.hold && t.identifier === state_1.state.rope.hold.touchId) {
-            state_1.state.rope.hold.active = false;
-            state_1.state.rope.hold.type = null;
-            state_1.state.rope.hold.timer = 0;
-            state_1.state.rope.hold.touchId = null;
-            state_1.state.rope.ui.progress = 0;
         }
         // 手动挡模式：滑动结束时清除触点
         if (config_1.CONFIG.driveMode === 'manual' && state_1.state.manualDrive) {
@@ -5190,6 +5113,9 @@ function handleDetailCardAction(actionId) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.touches = exports.input = exports.particles = exports.player = exports.state = void 0;
 exports.createSemiAutoDriveState = createSemiAutoDriveState;
+exports.createLooseRope = createLooseRope;
+exports.createRopeState = createRopeState;
+exports.createFishBumpState = createFishBumpState;
 exports.resetState = resetState;
 const config_1 = require("./config");
 function createSemiAutoDriveState() {
@@ -5205,6 +5131,22 @@ function createSemiAutoDriveState() {
         inputPower: 0,
         outputPower: 0,
     };
+}
+function createLooseRope() {
+    return {
+        start: null,
+        startWall: null,
+        startOnRope: false,
+        path: [],
+        slackFactor: 1,
+        time: 0,
+    };
+}
+function createRopeState() {
+    return { ropes: [], active: false, current: createLooseRope() };
+}
+function createFishBumpState() {
+    return { timer: 0, cooldown: 0, x: 0, y: 0, nx: 0, ny: 0, strength: 0 };
 }
 exports.state = {
     screen: 'menu', // menu, progressSelect, mazeRescue, home_evening, dream（旧 play/win/lose/ending/fishArena 已废弃；fishArena 仍可由 GM 强制进入）
@@ -5304,6 +5246,7 @@ exports.state = {
         chamber23Junction: { x: config_1.CONFIG.chamber23JunctionX, y: config_1.CONFIG.chamber23JunctionY }
     },
     flashlightOn: true, // 手电筒开关（玩家手动控制）
+    fishBump: createFishBumpState(),
     fishEnemies: [], // 凶猛鱼敌人列表
     fishBite: null, // 玩家被咬状态 { active, phase, timer, shakeIntensity }
     // 玩家攻击状态
@@ -5356,34 +5299,7 @@ exports.state = {
         nearbyInfo: null, // 当前附近可交互对象信息
         previewAction: null, // 当前预览的操作类型（用于场景中预览标记）
     },
-    rope: {
-        ropes: [],
-        active: false,
-        current: {
-            start: null,
-            startWall: null,
-            end: null,
-            path: [],
-            basePoints: [],
-            slackFactor: 1,
-            mode: 'loose',
-            time: 0
-        },
-        ui: {
-            visible: false,
-            type: null,
-            progress: 0,
-            anchor: null
-        },
-        hold: {
-            active: false,
-            type: null,
-            timer: 0,
-            touchId: null,
-            anchor: null
-        },
-        stillTimer: 0
-    },
+    rope: createRopeState(),
     // 全局音频状态（持久态，跨模式保留）
     // muted=true 时仅把音量淡到 0，不真正暂停音频，保留时间轴
     audio: {
@@ -5504,6 +5420,7 @@ function resetState() {
     exports.state.splashes = [];
     exports.state.fishEnemies = [];
     exports.state.fishBite = null;
+    exports.state.fishBump = createFishBumpState();
     exports.state.flashlightOn = true; // 重置手电筒为开启状态
     // 重置屏幕特效，防止重新开始后残留红屏和震动
     exports.state.fx.redOverlay = 0;
@@ -5550,34 +5467,7 @@ function resetState() {
         nearbyInfo: null,
         previewAction: null,
     };
-    exports.state.rope = {
-        ropes: [],
-        active: false,
-        current: {
-            start: null,
-            startWall: null,
-            end: null,
-            path: [],
-            basePoints: [],
-            slackFactor: 1,
-            mode: 'loose',
-            time: 0
-        },
-        ui: {
-            visible: false,
-            type: null,
-            progress: 0,
-            anchor: null
-        },
-        hold: {
-            active: false,
-            type: null,
-            timer: 0,
-            touchId: null,
-            anchor: null
-        },
-        stillTimer: 0
-    };
+    exports.state.rope = createRopeState();
     // 初始位置：使用地图入口水道坐标，找不到时 fallback 到中央
     const entrance = exports.state.landmarks.entrance;
     exports.player.x = entrance ? entrance.x : config_1.CONFIG.tileSize * (config_1.CONFIG.cols / 2);
@@ -7141,18 +7031,7 @@ function moveBagItemToIndex(itemUniqueId, targetIndex) {
     return moveBagItemToSlot(itemUniqueId, targetIndex);
 }
 },"/src/extraction/logic/ItemPickup":function(exports,require){"use strict";
-// 水下战利品（Relic）拾取交互
-//
-// 阶段 1 设计：
-// - 玩家走近 Relic（< pickupRange） → 走轮盘按钮（与氧气瓶轮盘范式一致）
-// - 轮盘扇区显示 "拾取 XX"
-// - 选中后立刻：(a) roll 品相 (b) 入背包 (c) 把 relic 加入 diveSession.pickedRelicIds
-// - 当次下潜内不再出现该 relic；下次下潜按 seed 重刷
-//
-// 与 Marker.ts 的接入：
-// - Marker.ts 的 detectWheelContext() 会被扩展一个 'pickupRelic' 上下文
-// - executeWheelAction() 会被扩展一个 'pickupRelic' 动作分支
-// - 这两处是阶段 1 仅有的"对现有代码的扩展"
+// 靠近战利品时，补给按钮显示「拾取」。确认后入包，物件在下次下潜按种子重刷。
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.findNearbyPickupTarget = findNearbyPickupTarget;
 exports.performPickupTarget = performPickupTarget;
@@ -12152,20 +12031,12 @@ exports.TABS = [
         ]
     },
     {
-        name: '标记',
+        name: '绳盘',
         items: [
             { type: 'number', label: '按钮半径', path: 'marker.btnRadius', min: 20, max: 50, step: 2 },
-            { type: 'number', label: '轮盘外径', path: 'marker.wheelOuterRadius', min: 50, max: 120, step: 5 },
-            { type: 'number', label: '轮盘内径', path: 'marker.wheelInnerRadius', min: 10, max: 40, step: 2 },
-            { type: 'number', label: '岩石牌面宽', path: 'marker.wallSignWidth', min: 6, max: 20, step: 1 },
-            { type: 'number', label: '岩石牌面高', path: 'marker.wallSignHeight', min: 4, max: 16, step: 1 },
-            { type: 'number', label: '岩石短杆长', path: 'marker.wallStakeLength', min: 4, max: 16, step: 1 },
-            { type: 'number', label: '绳索标签宽', path: 'marker.ropeTagWidth', min: 4, max: 16, step: 1 },
-            { type: 'number', label: '绳索标签高', path: 'marker.ropeTagHeight', min: 4, max: 14, step: 1 },
-            { type: 'number', label: '放置动画帧', path: 'marker.placeAnimDuration', min: 5, max: 40, step: 1 },
-            { type: 'number', label: '拆除动画帧', path: 'marker.removeAnimDuration', min: 5, max: 30, step: 1 },
-            { type: 'number', label: '绳索标记摆速', path: 'marker.ropeTagSwaySpeed', min: 0.5, max: 3, step: 0.1, precision: 1 },
-            { type: 'number', label: '绳索标记摆幅', path: 'marker.ropeTagSwayAmplitude', min: 0.05, max: 0.4, step: 0.01, precision: 2 },
+            { type: 'number', label: '外圈半径', path: 'marker.wheelOuterRadius', min: 50, max: 120, step: 5 },
+            { type: 'number', label: '内圈半径', path: 'marker.wheelInnerRadius', min: 10, max: 40, step: 2 },
+            { type: 'number', label: '锚点可达距离', path: 'ropeAnchorDistance', min: 30, max: 120, step: 5 },
         ]
     },
     {
@@ -12212,7 +12083,7 @@ exports.TABS = [
     {
         name: '迷宫鱼',
         items: [
-            { type: 'bool', label: '启用食人鱼', path: 'maze.fishEnabled' },
+            { type: 'bool', label: '启用迷宫鱼类', path: 'maze.fishEnabled' },
             // 聚集点数量
             { type: 'number', label: '聚集点最少', path: 'maze.denCountMin', min: 1, max: 6, step: 1 },
             { type: 'number', label: '聚集点最多', path: 'maze.denCountMax', min: 1, max: 8, step: 1 },
@@ -12235,8 +12106,12 @@ exports.TABS = [
             { type: 'number', label: '感知距离', path: 'fishEnemy.detectRange', min: 100, max: 800, step: 20 },
             // 快捷动作
             { type: 'action', label: '🐟 生成一条食人鱼', actionId: 'spawnMazeFish' },
-            { type: 'action', label: '💀 杀死所有食人鱼', actionId: 'killAllFish' },
-            { type: 'action', label: '🧹 清除所有食人鱼', actionId: 'removeAllFish' },
+            { type: 'action', label: '生成好奇鱼（附近）', actionId: 'spawnCuriousFish' },
+            { type: 'action', label: '生成盾首鳗·顶撞（附近）', actionId: 'spawnRammerFish' },
+            { type: 'action', label: '生成银鳞鱼群（附近）', actionId: 'spawnFishSchool' },
+            { type: 'action', label: '生成猎鲨·危险（附近）', actionId: 'spawnProvokedFish' },
+            { type: 'action', label: '💀 杀死所有鱼', actionId: 'killAllFish' },
+            { type: 'action', label: '🧹 清除所有鱼', actionId: 'removeAllFish' },
         ]
     },
     {
@@ -12874,23 +12749,27 @@ function _applyEditingValue(item) {
 }
 // ============ Action 操作处理 ============
 function _executeAction(actionId) {
+    var _a;
     switch (actionId) {
+        case 'spawnCuriousFish':
+        case 'spawnRammerFish':
+        case 'spawnFishSchool':
+        case 'spawnProvokedFish':
         case 'spawnMazeFish': {
-            // 在迷宫模式下生成一条食人鱼
-            if (state_1.state.screen === 'mazeRescue' && state_1.state.mazeRescue) {
-                const pos = (0, FishEnemy_1.findMazeFishSpawnPosition)();
-                state_1.state.fishEnemies.push((0, FishEnemy_1.createFishEnemy)(pos.x, pos.y));
-                console.log(`[GM] 生成食人鱼 @ (${pos.x.toFixed(0)}, ${pos.y.toFixed(0)})，当前共 ${state_1.state.fishEnemies.length} 条`);
+            const kind = actionId === 'spawnCuriousFish' ? 'curious' : actionId === 'spawnProvokedFish' ? 'provoked' :
+                actionId === 'spawnRammerFish' ? 'rammer' : actionId === 'spawnFishSchool' ? 'shoal' : 'piranha';
+            let pos = null;
+            if (state_1.state.screen === 'mazeRescue' && ((_a = state_1.state.mazeRescue) === null || _a === void 0 ? void 0 : _a.phase) === 'play') {
+                pos = kind === 'piranha' && !state_1.state.mazeRescue.rockTrial ? (0, FishEnemy_1.findMazeFishSpawnPosition)() : (0, FishEnemy_1.findVisibleFishSpawnPosition)();
             }
-            else if (state_1.state.screen === 'fishArena' || state_1.state.screen === 'play') {
-                // 主线/竞技场模式：在玩家附近生成
-                const pos = (0, FishEnemy_1.findSafeSpawnPosition)(state_1.player.x, state_1.player.y);
-                state_1.state.fishEnemies.push((0, FishEnemy_1.createFishEnemy)(pos.x, pos.y));
-                console.log(`[GM] 生成食人鱼 @ (${pos.x.toFixed(0)}, ${pos.y.toFixed(0)})，当前共 ${state_1.state.fishEnemies.length} 条`);
+            else if (kind === 'piranha' && (state_1.state.screen === 'fishArena' || state_1.state.screen === 'play')) {
+                pos = (0, FishEnemy_1.findSafeSpawnPosition)(state_1.player.x, state_1.player.y);
             }
-            else {
-                console.log('[GM] 当前不在游戏中，无法生成食人鱼');
-            }
+            if (pos)
+                state_1.state.fishEnemies.push(...(kind === 'shoal' ? (0, FishEnemy_1.createFishSchool)(pos.x, pos.y) :
+                    [(0, FishEnemy_1.createFishEnemy)(pos.x, pos.y, undefined, undefined, undefined, kind)]));
+            else
+                console.log('[GM] 进入潜水区域并靠近开阔水域后再生成鱼');
             break;
         }
         case 'killAllFish': {
@@ -14448,7 +14327,7 @@ function updateBreathSystem() {
 // =============================================
 // 撞击气泡爆发（撞岩石时调用）
 // =============================================
-function spawnImpactBurst(cx, cy, strength) {
+function spawnImpactBurst(cx, cy, strength, particleScale = 1) {
     var _a, _b, _c, _d, _e;
     const cfg = config_1.CONFIG.breath;
     const impactCfg = config_1.CONFIG.collisionImpact || {};
@@ -14458,7 +14337,10 @@ function spawnImpactBurst(cx, cy, strength) {
     const spreadSpeed = (_d = impactCfg.impactBubbleSpreadSpeed) !== null && _d !== void 0 ? _d : 2.4;
     const lifeMul = (_e = impactCfg.impactBubbleLifeMul) !== null && _e !== void 0 ? _e : 0.55;
     const t = Math.max(0, Math.min(1, strength));
-    const count = Math.round(countMin + (countMax - countMin) * t);
+    // A glancing creature bump needs a small puff; hard rock collisions retain
+    // their full burst. Scale both population and size to keep the contact clear.
+    const scale = Math.max(.05, Math.min(1, particleScale));
+    const count = Math.round((countMin + (countMax - countMin) * t) * scale);
     for (let i = 0; i < count; i++) {
         const px = cx + (Math.random() - 0.5) * 12;
         const py = cy + (Math.random() - 0.5) * 12;
@@ -14467,7 +14349,7 @@ function spawnImpactBurst(cx, cy, strength) {
         const initSpeed = spreadSpeed * speedScale * (0.5 + t * 0.5);
         const vx = Math.cos(dirAngle) * initSpeed;
         const vy = Math.sin(dirAngle) * initSpeed - (cfg.buoyancyMin + Math.random() * (cfg.buoyancyMax - cfg.buoyancyMin)) * 0.6;
-        const baseR = (cfg.bubbleSizeStatic + (cfg.bubbleSizePeak - cfg.bubbleSizeStatic) * t) * sizeMul;
+        const baseR = (cfg.bubbleSizeStatic + (cfg.bubbleSizePeak - cfg.bubbleSizeStatic) * t) * sizeMul * Math.sqrt(scale);
         const radius = baseR * (0.7 + Math.random() * 0.8);
         const maxRadius = radius * (1.3 + Math.random() * 0.5);
         const lifeSec = (cfg.lifeMinSec + Math.random() * (cfg.lifeMaxSec - cfg.lifeMinSec)) * lifeMul;
@@ -15569,10 +15451,72 @@ function cycleDriveMode() {
     const modes = ['auto', 'manual', 'semiAuto'];
     setDriveMode(modes[(modes.indexOf(config_1.CONFIG.driveMode) + 1) % modes.length]);
 }
+},"/src/logic/FishBump":function(exports,require){"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.tryFishBump = tryFishBump;
+exports.stepFishBump = stepFishBump;
+const config_1 = require("../core/config");
+const state_1 = require("../core/state");
+const AudioManager_1 = require("../audio/AudioManager");
+const BreathSystem_1 = require("./BreathSystem");
+const Rope_1 = require("./Rope");
+const RopeNet_1 = require("./RopeNet");
+const Visibility_1 = require("../world/Visibility");
+/** A body collision transfers momentum and leaves the swimmer in control. */
+function tryFishBump(fish, vx, vy) {
+    var _a;
+    if (fish.kind !== 'rammer' || ((_a = state_1.state.fishBite) === null || _a === void 0 ? void 0 : _a.active))
+        return false;
+    const ux = Math.cos(fish.angle), uy = Math.sin(fish.angle);
+    const nose = { x: fish.x + ux * 20, y: fish.y + uy * 20 };
+    const next = { x: nose.x + vx, y: nose.y + vy };
+    const nearest = (0, RopeNet_1.projectOntoStrand)(state_1.player, nose, next);
+    const radius = (state_1.state.screen === 'mazeRescue' ? config_1.CONFIG.maze.playerRadius : config_1.CONFIG.playerRadius) + 10;
+    if (Math.hypot(state_1.player.x - nearest.x, state_1.player.y - nearest.y) > radius ||
+        !(0, Visibility_1.isLineOfSight)(fish.x, fish.y, state_1.player.x, state_1.player.y, radius + 34))
+        return false;
+    const hold = (0, Rope_1.getRopeResponseAlong)(fish, state_1.player, 13, vx, vy);
+    if ((hold === null || hold === void 0 ? void 0 : hold.kind) === 'snag')
+        return false;
+    const dx = state_1.player.x - fish.x, dy = state_1.player.y - fish.y, distance = Math.hypot(dx, dy) || 1;
+    const nx = dx / distance, ny = dy / distance;
+    const closing = (vx - state_1.player.vx) * nx + (vy - state_1.player.vy) * ny;
+    if (closing <= .5)
+        return false;
+    const impulse = Math.min(5.8, closing * .65);
+    fish.vx = vx - nx * impulse / .55;
+    fish.vy = vy - ny * impulse / .55;
+    if (state_1.state.fishBump.cooldown > 0)
+        return true;
+    (0, Rope_1.applyRopeBodyImpulse)(state_1.player, nx * impulse, ny * impulse);
+    const strength = Math.min(1, impulse / 5.8);
+    Object.assign(state_1.state.fishBump, {
+        timer: 26, cooldown: 65, x: state_1.player.x - nx * 11, y: state_1.player.y - ny * 11, nx, ny, strength,
+    });
+    state_1.state.fx.shake = Math.max(state_1.state.fx.shake || 0, 1.2 + strength * 1.8);
+    (0, BreathSystem_1.spawnImpactBurst)(state_1.player.x, state_1.player.y, strength * .25, .16);
+    (0, AudioManager_1.playSFX)('collisionBreath', { volume: .28 + strength * .22, playbackRate: .8 });
+    return true;
+}
+function stepFishBump() {
+    const bump = state_1.state.fishBump;
+    if (bump.cooldown > 0)
+        bump.cooldown--;
+    if (bump.timer <= 0)
+        return;
+    bump.timer--;
+    // Water catches the suddenly displaced body. Steering and propulsion continue.
+    if (bump.timer > 8) {
+        state_1.player.vx *= .94;
+        state_1.player.vy *= .94;
+    }
+}
 },"/src/logic/FishEnemy":function(exports,require){"use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.createFishEnemy = createFishEnemy;
+exports.createFishSchool = createFishSchool;
 exports.findSafeSpawnPosition = findSafeSpawnPosition;
+exports.findVisibleFishSpawnPosition = findVisibleFishSpawnPosition;
 exports.findMazeFishSpawnPosition = findMazeFishSpawnPosition;
 exports.generateFishDens = generateFishDens;
 exports.updateFishEnemy = updateFishEnemy;
@@ -15585,6 +15529,9 @@ const RockGeometry_1 = require("../world/RockGeometry");
 const state_1 = require("../core/state");
 const SeededRandom_1 = require("../core/SeededRandom");
 const AudioManager_1 = require("../audio/AudioManager");
+const FishBump_1 = require("./FishBump");
+const Visibility_1 = require("../world/Visibility");
+const Rope_1 = require("./Rope");
 // =============================================
 // 判断当前是否处于迷宫模式
 // =============================================
@@ -15686,9 +15633,10 @@ const CFG = () => config_1.CONFIG.fishEnemy;
 // =============================================
 // 工厂函数：创建一条凶猛鱼
 // =============================================
-function createFishEnemy(x, y, denX, denY, denRadius) {
+function createFishEnemy(x, y, denX, denY, denRadius, kind = 'piranha') {
     const angle = Math.random() * Math.PI * 2;
     return {
+        kind, lightFrames: 0, lightTargetX: x, lightTargetY: y,
         x, y,
         vx: Math.cos(angle) * 0.5,
         vy: Math.sin(angle) * 0.5,
@@ -15722,6 +15670,23 @@ function createFishEnemy(x, y, denX, denY, denRadius) {
         denRadius: denRadius !== undefined ? denRadius : (config_1.CONFIG.maze.denRadius || 600),
     };
 }
+let nextSchoolId = 1;
+function createFishSchool(x, y, count = 7) {
+    const schoolId = nextSchoolId++;
+    const fishes = [];
+    for (let i = 0; i < Math.min(12, count); i++) {
+        const angle = i * 2.39996;
+        const radius = 7 + Math.sqrt(i) * 13;
+        const px = x + Math.cos(angle) * radius, py = y + Math.sin(angle) * radius;
+        if (checkCollisionLocal(px, py))
+            continue;
+        const fish = createFishEnemy(px, py, x, y, 220, 'shoal');
+        fish.schoolId = schoolId;
+        fish.angle = fish.targetAngle = -.2 + i * .06;
+        fishes.push(fish);
+    }
+    return fishes;
+}
 // =============================================
 // 安全生成位置：在玩家周围找一个不在墙里的水中位置
 // =============================================
@@ -15742,6 +15707,19 @@ function findSafeSpawnPosition(centerX, centerY) {
     }
     // 兜底：直接在玩家正右方 300px
     return { x: centerX + 300, y: centerY };
+}
+/** Spawn a test fish in reachable water, including the polygonal rock trial. */
+function findVisibleFishSpawnPosition() {
+    for (const distance of [145, 205, 95, 55]) {
+        for (const offset of [0, .24, -.24, .5, -.5, .9, -.9, 1.5, -1.5, Math.PI]) {
+            const angle = state_1.player.angle + offset;
+            const x = state_1.player.x + Math.cos(angle) * distance, y = state_1.player.y + Math.sin(angle) * distance;
+            if (!checkCollisionLocal(x, y) && (0, Visibility_1.isLineOfSight)(state_1.player.x, state_1.player.y, x, y, distance + 1) &&
+                !state_1.state.fishEnemies.some(fish => Math.hypot(x - fish.x, y - fish.y) < 36))
+                return { x, y };
+        }
+    }
+    return null;
 }
 // =============================================
 // 迷宫模式专用：在指定聚集点附近找一个安全出生点
@@ -15933,60 +15911,297 @@ function lerpAngle(current, target, factor) {
         diff += Math.PI * 2;
     return current + diff * factor;
 }
-// =============================================
-// 检测玩家手电筒是否照到凶猛鱼（考虑亮度与距离）
-// =============================================
-function isFlashlightHittingFish(fish) {
-    const cfg = CFG();
-    // 迷宫模式和竞技场模式手电始终可用；主线模式在深水才开启
-    const alwaysOn = state_1.state.screen === 'mazeRescue' || state_1.state.screen === 'fishArena';
-    if (!alwaysOn && state_1.player.y <= 600)
-        return false;
-    // 手电筒未开启时无效
-    if (!state_1.state.flashlightOn)
-        return false;
-    // 旧主线第三关 flashlightFixedOff 已废弃。
-    // 计算鱼与玩家的距离
-    const dx = fish.x - state_1.player.x;
-    const dy = fish.y - state_1.player.y;
+function isLampActive() {
+    return state_1.state.flashlightOn && (isMazeMode() || state_1.state.screen === 'fishArena' || state_1.player.y > 600);
+}
+function flashlightExposure(fish, threshold, maxDistance = config_1.CONFIG.lightRange) {
+    if (!isLampActive())
+        return 0;
+    const dx = fish.x - state_1.player.x, dy = fish.y - state_1.player.y;
     const dist = Math.hypot(dx, dy);
-    // 超出手电筒射程
-    if (dist > config_1.CONFIG.lightRange)
-        return false;
-    // 超出怕光有效距离（远距离照到也不怕：迷宫食人鱼更胆大）
-    const lightFearMax = cfg.lightFearMaxDistance || 0;
-    if (lightFearMax > 0 && dist > lightFearMax)
-        return false;
-    // 计算鱼相对玩家的角度
-    const angleToFish = Math.atan2(dy, dx);
-    let angleDiff = angleToFish - state_1.player.angle;
-    while (angleDiff > Math.PI)
-        angleDiff -= Math.PI * 2;
-    while (angleDiff < -Math.PI)
-        angleDiff += Math.PI * 2;
-    // 是否在手电筒视野角内
-    const halfFov = (config_1.CONFIG.fov / 2) * (Math.PI / 180);
-    if (Math.abs(angleDiff) > halfFov)
-        return false;
-    // 计算有效亮度：距离越近越亮，中心光束更亮
-    const distFactor = 1 - dist / config_1.CONFIG.lightRange;
-    const angleFactor = 1 - Math.abs(angleDiff) / halfFov;
-    let brightness = distFactor * angleFactor;
-    // 旧主线第三关 flashlightBroken 闪烁打折已废弃。
-    // 只有亮度超过阈值才能驱赶
-    return brightness >= cfg.lightFearThreshold;
+    if (dist >= config_1.CONFIG.lightRange || dist > maxDistance)
+        return 0;
+    const halfFov = config_1.CONFIG.fov * Math.PI / 360;
+    const angle = Math.atan2(dy, dx) - state_1.player.angle;
+    const diff = Math.abs(Math.atan2(Math.sin(angle), Math.cos(angle)));
+    if (diff >= halfFov)
+        return 0;
+    const brightness = (1 - dist / config_1.CONFIG.lightRange) * (1 - diff / halfFov);
+    return brightness >= threshold && (0, Visibility_1.isLineOfSight)(state_1.player.x, state_1.player.y, fish.x, fish.y, maxDistance) ? brightness : 0;
+}
+function isFlashlightHittingFish(fish) {
+    const { lightFearThreshold, lightFearMaxDistance } = CFG();
+    return flashlightExposure(fish, lightFearThreshold, lightFearMaxDistance || config_1.CONFIG.lightRange) > 0;
+}
+/** The centre of the beam can light a surface even while the fish is outside the cone. */
+function illuminatedRockSpot() {
+    var _a;
+    if (!isLampActive())
+        return null;
+    const ux = Math.cos(state_1.player.angle), uy = Math.sin(state_1.player.angle);
+    const range = Math.min(config_1.CONFIG.lightRange * .76, CFG().curious.glowRange);
+    const maze = state_1.state.mazeRescue;
+    let hit = range;
+    if (isMazeMode() && (maze === null || maze === void 0 ? void 0 : maze.caveRockRoom)) {
+        for (const wall of maze.mazeWalls)
+            hit = (0, RockGeometry_1.rayHitsRock)(wall, state_1.player.x, state_1.player.y, ux, uy, hit);
+    }
+    else {
+        const { map, tileSize } = (0, Visibility_1.getActiveMapContext)();
+        // Test actual beam contact along the ray without the fish collision radius.
+        // The scan is shared by fish in this frame.
+        for (let d = 8; d < range; d += 8) {
+            const x = state_1.player.x + ux * d, y = state_1.player.y + uy * d;
+            const r = Math.floor(y / tileSize), c = Math.floor(x / tileSize);
+            const cell = (_a = map[r]) === null || _a === void 0 ? void 0 : _a[c];
+            if (cell === 2 || (cell && typeof cell === 'object' && Math.hypot(x - cell.x, y - cell.y) < cell.r)) {
+                hit = d;
+                break;
+            }
+        }
+    }
+    if (hit < 48 || hit >= range)
+        return null;
+    // Keep the destination in the lit water next to the surface, with clearance to turn.
+    const x = state_1.player.x + ux * (hit - 30), y = state_1.player.y + uy * (hit - 30);
+    return checkCollisionLocal(x, y) ? null : { x, y };
+}
+function updateCuriousFish(fish, getGlow) {
+    const cfg = CFG().curious;
+    const nearby = Math.hypot(fish.x - state_1.player.x, fish.y - state_1.player.y) < config_1.CONFIG.lightRange;
+    const sampleGlow = nearby && fish.stateTimer % 8 === 1 ? getGlow() : null;
+    const seesGlow = sampleGlow && (0, Visibility_1.isLineOfSight)(fish.x, fish.y, sampleGlow.x, sampleGlow.y, cfg.glowInterest);
+    const lit = !seesGlow && flashlightExposure(fish, cfg.lightThreshold) > 0;
+    if (seesGlow || lit) {
+        // Brief direct illumination shouldn't tear the fish away from a spot it is already examining.
+        if (seesGlow || fish.lightInterest !== 'rock' || fish.lightFrames < cfg.memoryFrames - 17) {
+            fish.lightTargetX = seesGlow ? sampleGlow.x : state_1.player.x;
+            fish.lightTargetY = seesGlow ? sampleGlow.y : state_1.player.y;
+            fish.lightInterest = seesGlow ? 'rock' : 'diver';
+            fish.lightFrames = cfg.memoryFrames;
+        }
+        else
+            fish.lightFrames--;
+        if (fish.state === 'roam') {
+            fish.state = 'inspect';
+            fish.stateTimer = 0;
+            fish.alertIcon = '?';
+            fish.alertIconColor = '#c3f5cc';
+            fish.alertTimer = cfg.noticeFrames + 15;
+        }
+    }
+    else if (fish.lightFrames > 0 && --fish.lightFrames === 0) {
+        fish.state = 'roam';
+        fish.roamTimer = 0;
+        fish.lightInterest = undefined;
+    }
+    if (fish.state === 'roam') {
+        updateRoam(fish, CFG());
+        return;
+    }
+    const dx = fish.lightTargetX - fish.x, dy = fish.lightTargetY - fish.y;
+    const bearing = Math.atan2(dy, dx);
+    const standOff = fish.lightInterest === 'rock' ? 18 : cfg.standOff;
+    if (fish.state === 'inspect' && fish.stateTimer >= cfg.noticeFrames)
+        fish.state = 'approach';
+    if (fish.state === 'approach' && Math.hypot(dx, dy) > standOff) {
+        const beat = Math.sin(fish.animTime * 2.25);
+        let heading = bearing + beat * .15;
+        if (hasWallAhead(fish, heading, 24)) {
+            const turn = heading + .64;
+            heading = hasWallAhead(fish, turn, 24) ? heading - .64 : turn;
+        }
+        moveToward(fish, fish.x + Math.cos(heading) * 30, fish.y + Math.sin(heading) * 30, cfg.speed + .48 * beat, .082);
+    }
+    else {
+        fish.angle = lerpAngle(fish.angle, bearing, .09);
+        fish.vx *= .85;
+        fish.vy *= .85;
+    }
+}
+function updateProvokedFish(fish) {
+    const cfg = CFG().provoked;
+    if (fish.state === 'retreat') {
+        updateRetreat(fish, { turnSpeedRoam: .085, retreatDuration: cfg.recoverFrames });
+        return;
+    }
+    const exposure = flashlightExposure(fish, cfg.lightThreshold);
+    fish.lightFrames = exposure > 0 ? fish.lightFrames + .89 + exposure * .5 : Math.max(0, fish.lightFrames - 1.3);
+    if (fish.lightFrames >= cfg.exposureFrames) {
+        fish.state = 'lunge';
+        fish.stateTimer = 0;
+        fish.lungeCharge = 0;
+        fish.lightFrames = 0;
+        fish.lightTargetX = state_1.player.x;
+        fish.lightTargetY = state_1.player.y;
+        fish.alertIcon = '!';
+        fish.alertIconColor = '#ff996d';
+        fish.alertTimer = cfg.chargeFrames;
+        return;
+    }
+    updateRoam(fish, CFG());
+}
+function updateRammer(fish) {
+    const profile = CFG().rammer;
+    const dx = state_1.player.x - fish.x, dy = state_1.player.y - fish.y;
+    const distance = Math.hypot(dx, dy);
+    const seesPlayer = distance < profile.noticeRange && (0, Visibility_1.isLineOfSight)(fish.x, fish.y, state_1.player.x, state_1.player.y, profile.noticeRange);
+    const lit = flashlightExposure(fish, profile.lightThreshold) > 0;
+    const splash = seesPlayer && Math.hypot(state_1.player.vx, state_1.player.vy) > 1.65 && distance < 150;
+    fish.awareness = lit || splash ? profile.lingerFrames : Math.max(0, (fish.awareness || 0) - 1);
+    if (fish.state === 'retreat') {
+        if (fish.stateTimer < 18) {
+            fish.vx = fish.vx * .78 - Math.cos(fish.angle) * .32;
+            fish.vy = fish.vy * .78 - Math.sin(fish.angle) * .32;
+            return;
+        }
+        const side = Math.sin(fish.circleAngle) < 0 ? -1 : 1;
+        const bearing = Math.atan2(fish.y - state_1.player.y, fish.x - state_1.player.x) + side * .6;
+        const tx = state_1.player.x + Math.cos(bearing) * 118, ty = state_1.player.y + Math.sin(bearing) * 118;
+        if (!hasWallAhead(fish, Math.atan2(ty - fish.y, tx - fish.x), 28))
+            moveToward(fish, tx, ty, 1.8, .07);
+        else {
+            fish.angle += side * .08;
+            fish.vx *= .87;
+            fish.vy *= .87;
+        }
+        if (fish.stateTimer >= profile.recoverFrames) {
+            fish.state = 'roam';
+            fish.stateTimer = 0;
+            fish.lightFrames = 0;
+        }
+        return;
+    }
+    if (fish.state === 'lunge') {
+        if (fish.lungeCharge < 1) {
+            fish.lungeCharge = Math.min(1, fish.stateTimer / profile.chargeFrames);
+            if (fish.lungeCharge < .78 && seesPlayer) {
+                fish.lightTargetX = state_1.player.x;
+                fish.lightTargetY = state_1.player.y;
+            }
+            const aim = Math.atan2(fish.lightTargetY - fish.y, fish.lightTargetX - fish.x);
+            const coil = Math.sin(fish.lungeCharge * Math.PI);
+            fish.angle = lerpAngle(fish.angle, aim + Math.sin(fish.circleAngle) * coil * .4, .17);
+            if (fish.lungeCharge >= 1)
+                fish.angle = aim;
+            fish.vx *= .72;
+            fish.vy *= .72;
+            return;
+        }
+        const elapsed = Math.max(0, fish.stateTimer - profile.chargeFrames);
+        const speed = profile.speed * Math.min(1, .65 + elapsed * .12) * Math.max(.45, 1 - Math.max(0, elapsed - 17) * .035);
+        const vx = Math.cos(fish.angle) * speed, vy = Math.sin(fish.angle) * speed;
+        if ((0, FishBump_1.tryFishBump)(fish, vx, vy)) {
+            fish.state = 'retreat';
+            fish.stateTimer = 0;
+            fish.lightFrames = 0;
+            return;
+        }
+        if (elapsed >= profile.lungeFrames || hasWallAhead(fish, fish.angle, speed + 8)) {
+            fish.state = 'retreat';
+            fish.stateTimer = 0;
+            fish.vx *= -.16;
+            fish.vy *= -.16;
+            return;
+        }
+        fish.vx = vx;
+        fish.vy = vy;
+        return;
+    }
+    fish.lightFrames = lit || splash ? fish.lightFrames + 1 : Math.max(0, fish.lightFrames - 1);
+    if (fish.lightFrames >= profile.exposureFrames && seesPlayer) {
+        fish.state = 'lunge';
+        fish.stateTimer = 0;
+        fish.lungeCharge = 0;
+        fish.lightTargetX = state_1.player.x;
+        fish.lightTargetY = state_1.player.y;
+        fish.alertIcon = '!';
+        fish.alertIconColor = '#e2ce90';
+        fish.alertTimer = profile.chargeFrames;
+    }
+    else if (distance < 48 && seesPlayer) {
+        moveToward(fish, fish.x - dx * 1.8, fish.y - dy * 1.8, 2.6, .12);
+    }
+    else if (fish.awareness && seesPlayer) {
+        const bearing = Math.atan2(dy, dx) + .8 * Math.sin(fish.circleAngle);
+        moveToward(fish, state_1.player.x - Math.cos(bearing) * 95, state_1.player.y - Math.sin(bearing) * 95, 1.65, .065);
+    }
+    else
+        updateRoam(fish, CFG());
+}
+function schoolContext(members) {
+    const free = members.filter(fish => { var _a; return ((_a = (0, Rope_1.getRopeContact)(fish)) === null || _a === void 0 ? void 0 : _a.kind) !== 'snag'; });
+    const moving = free.length ? free : members;
+    const count = moving.length;
+    return {
+        x: moving.reduce((sum, f) => sum + f.x, 0) / count,
+        y: moving.reduce((sum, f) => sum + f.y, 0) / count,
+        vx: moving.reduce((sum, f) => sum + f.vx, 0) / count,
+        vy: moving.reduce((sum, f) => sum + f.vy, 0) / count,
+        alarm: moving.some(f => Math.hypot(f.x - state_1.player.x, f.y - state_1.player.y) < (Math.hypot(state_1.player.vx, state_1.player.vy) > 1.65 ? 145 : 48) &&
+            (0, Visibility_1.isLineOfSight)(f.x, f.y, state_1.player.x, state_1.player.y, 145) || flashlightExposure(f, CFG().shoal.lightThreshold) > 0),
+        members: moving,
+    };
+}
+function updateShoalFish(fish, group) {
+    const profile = CFG().shoal;
+    if (group.alarm)
+        fish.fearTimer = profile.regroupFrames;
+    else
+        fish.fearTimer = Math.max(0, fish.fearTimer - 1);
+    let tx, ty;
+    if (fish.fearTimer > 0) {
+        const angle = Math.atan2(fish.y - state_1.player.y, fish.x - state_1.player.x) + Math.sin(fish.animTime + fish.circleAngle) * .32;
+        tx = fish.x + Math.cos(angle) * 70;
+        ty = fish.y + Math.sin(angle) * 70;
+        fish.state = 'flee';
+    }
+    else {
+        const drift = fish.animTime * .08 + fish.circleAngle;
+        tx = group.x + group.vx * 20 + Math.cos(drift) * 32 + (fish.denX - group.x) * .15;
+        ty = group.y + group.vy * 20 + Math.sin(drift) * 23 + (fish.denY - group.y) * .15;
+        fish.state = 'roam';
+    }
+    for (const other of group.members) {
+        if (other === fish)
+            continue;
+        const dx = fish.x - other.x, dy = fish.y - other.y, distance = Math.hypot(dx, dy);
+        if (distance > .01 && distance < 19) {
+            tx += dx / distance * (19 - distance) * 2;
+            ty += dy / distance * (19 - distance) * 2;
+        }
+    }
+    let heading = Math.atan2(ty - fish.y, tx - fish.x);
+    if (hasWallAhead(fish, heading, 20)) {
+        const side = Math.sin(fish.circleAngle) > 0 ? 1 : -1;
+        heading += side * 1.0;
+        if (hasWallAhead(fish, heading, 18))
+            heading += side * .8;
+    }
+    const speed = (fish.fearTimer > 0 ? profile.fleeSpeed : profile.speed) * (.9 + .12 * Math.sin(fish.animTime + fish.circleAngle));
+    moveToward(fish, fish.x + Math.cos(heading) * 45, fish.y + Math.sin(heading) * 45, speed, fish.fearTimer > 0 ? .15 : .085);
 }
 // =============================================
 // 主更新函数：更新单条凶猛鱼的 AI
 // =============================================
-function updateFishEnemy(fish, dt) {
+function updateFishEnemy(fish, dt, getGlow = illuminatedRockSpot, school) {
     if (fish.dead)
         return;
+    if (fish.state === 'dying') {
+        updateDying(fish, CFG());
+        return;
+    }
     const cfg = CFG();
     fish.stateTimer++;
     fish.animTime += 0.08;
+    const contact = (0, Rope_1.getRopeContact)(fish);
+    if (contact && contact.kind !== 'glide') {
+        const wriggle = Math.sin(contact.phase * .66) * 5;
+        applyMovement(fish, { x: -contact.nx * 1.8 - contact.ny * wriggle, y: -contact.ny * 1.8 + contact.nx * wriggle });
+        return;
+    }
     // --- 检测手电筒照射（任何状态下都优先响应，除非已在逃跑）---
-    if (fish.state !== 'flee' && fish.state !== 'fear') {
+    if (fish.kind === 'piranha' && fish.state !== 'flee' && fish.state !== 'fear') {
         if (isFlashlightHittingFish(fish)) {
             // 进入怕光状态
             const dx = fish.x - state_1.player.x;
@@ -16005,49 +16220,74 @@ function updateFishEnemy(fish, dt) {
     // 衰减状态提示图标
     if (fish.alertTimer > 0)
         fish.alertTimer--;
-    switch (fish.state) {
-        case 'roam':
-            updateRoam(fish, cfg);
-            break;
-        case 'detect':
-            updateDetect(fish, cfg);
-            break;
-        case 'stalk':
-            updateStalk(fish, cfg);
-            break;
-        case 'circle':
-            updateCircle(fish, cfg);
-            break;
-        case 'lunge':
-            updateLunge(fish, cfg);
-            break;
-        case 'bite':
-            updateBite(fish, cfg);
-            break;
-        case 'devour':
-            updateDevour(fish, cfg);
-            break;
-        case 'retreat':
-            updateRetreat(fish, cfg);
-            break;
-        case 'flee':
-            updateFlee(fish, cfg);
-            break;
-        case 'fear':
-            updateFear(fish, cfg);
-            break;
-        case 'hit':
-            updateHit(fish, cfg);
-            break;
-        case 'returning':
-            updateReturning(fish, cfg);
-            break;
-        case 'dying':
-            updateDying(fish, cfg);
-            return; // 死亡动画不做碰撞移动
+    if (fish.kind === 'rammer') {
+        updateRammer(fish);
     }
+    else if (fish.kind === 'shoal') {
+        updateShoalFish(fish, school || schoolContext([fish]));
+    }
+    else if (fish.kind === 'curious') {
+        updateCuriousFish(fish, getGlow);
+    }
+    else
+        switch (fish.state) {
+            case 'roam':
+                if (fish.kind === 'provoked')
+                    updateProvokedFish(fish);
+                else
+                    updateRoam(fish, cfg);
+                break;
+            case 'detect':
+                updateDetect(fish, cfg);
+                break;
+            case 'stalk':
+                updateStalk(fish, cfg);
+                break;
+            case 'circle':
+                updateCircle(fish, cfg);
+                break;
+            case 'lunge':
+                if (fish.kind === 'provoked')
+                    updateProvokedLunge(fish, cfg);
+                else
+                    updateLunge(fish, cfg);
+                break;
+            case 'bite':
+                updateBite(fish, cfg);
+                break;
+            case 'devour':
+                updateDevour(fish, cfg);
+                break;
+            case 'retreat':
+                if (fish.kind === 'provoked')
+                    updateProvokedFish(fish);
+                else
+                    updateRetreat(fish, cfg);
+                break;
+            case 'flee':
+                updateFlee(fish, cfg);
+                break;
+            case 'fear':
+                updateFear(fish, cfg);
+                break;
+            case 'hit':
+                updateHit(fish, cfg);
+                break;
+            case 'returning':
+                updateReturning(fish, cfg);
+                break;
+        }
     // 应用速度并做碰撞检测
-    applyMovement(fish);
+    const ropeContact = applyMovement(fish);
+    if (ropeContact && ropeContact !== 'glide') {
+        if (fish.state === 'lunge') {
+            fish.state = 'retreat';
+            fish.stateTimer = 0;
+            fish.lungeCharge = 0;
+        }
+        else if (fish.state === 'roam')
+            fish.roamTimer = 0;
+    }
 }
 // =============================================
 // 各状态更新函数
@@ -16077,6 +16317,9 @@ function updateRoam(fish, cfg) {
     }
     // 向目标缓慢游动
     moveToward(fish, fish.roamTargetX, fish.roamTargetY, cfg.roamSpeed, cfg.turnSpeedRoam);
+    // Only the piranha starts a predatory approach during its patrol.
+    if (fish.kind !== 'piranha')
+        return;
     // 检测玩家是否进入感知范围
     const distToPlayer = Math.hypot(state_1.player.x - fish.x, state_1.player.y - fish.y);
     if (distToPlayer < cfg.detectRange) {
@@ -16187,33 +16430,85 @@ function updateLunge(fish, cfg) {
         startReturning(fish);
         return;
     }
-    // 蓄力阶段：减速并对准玩家，眼睛发光（通过 lungeCharge < 1 判断）
     if (fish.lungeCharge < 1) {
-        fish.lungeCharge += 1 / cfg.lungeChargeDuration;
+        fish.lungeCharge = Math.min(1, fish.lungeCharge + 1 / cfg.lungeChargeDuration);
         fish.targetAngle = Math.atan2(dy, dx);
-        fish.angle = lerpAngle(fish.angle, fish.targetAngle, 0.15);
-        fish.vx *= 0.7;
-        fish.vy *= 0.7;
+        fish.angle = lerpAngle(fish.angle, fish.targetAngle, .15);
+        fish.vx *= .7;
+        fish.vy *= .7;
         return;
     }
-    // 冲刺阶段：高速向玩家冲去（此阶段为弹反窗口）
-    const speed = cfg.lungeSpeed;
-    fish.vx = Math.cos(fish.angle) * speed;
-    fish.vy = Math.sin(fish.angle) * speed;
-    // 命中检测
-    if (dist < cfg.biteRange) {
-        fish.state = 'bite';
-        fish.stateTimer = 0;
-        fish.biteCount = 0;
-        // 触发玩家被咬事件
-        triggerPlayerBitten(fish);
-        return;
+    fish.vx = Math.cos(fish.angle) * cfg.lungeSpeed;
+    fish.vy = Math.sin(fish.angle) * cfg.lungeSpeed;
+    if (dist < cfg.biteRange && !netWillHoldLunge(fish)) {
+        startBite(fish);
     }
-    // 冲刺超时未命中，切回徘徊
-    if (fish.stateTimer >= cfg.lungeMaxDuration) {
+    else if (fish.stateTimer >= cfg.lungeMaxDuration) {
         fish.state = 'circle';
         fish.stateTimer = 0;
     }
+}
+function updateProvokedLunge(fish, cfg) {
+    const profile = cfg.provoked;
+    if (Math.hypot(fish.x - fish.denX, fish.y - fish.denY) > config_1.CONFIG.maze.denLeashDistance) {
+        startReturning(fish);
+        return;
+    }
+    const dx = state_1.player.x - fish.x, dy = state_1.player.y - fish.y;
+    const distance = Math.hypot(dx, dy);
+    const side = Math.sin(fish.circleAngle) < 0 ? -1 : 1;
+    if (fish.lungeCharge < 1) {
+        const charge = fish.lungeCharge = Math.min(1, fish.stateTimer / profile.chargeFrames);
+        // This eel curls away from the beam before aiming at where the diver is moving.
+        // Losing sight preserves the last visible aim point instead of following through stone.
+        if (charge < .82 && fish.stateTimer % 4 === 1 &&
+            (0, Visibility_1.isLineOfSight)(fish.x, fish.y, state_1.player.x, state_1.player.y, profile.trackRange)) {
+            const lead = Math.min(18, distance / profile.speed);
+            const tx = state_1.player.x + state_1.player.vx * lead, ty = state_1.player.y + state_1.player.vy * lead;
+            const clear = (0, Visibility_1.isLineOfSight)(fish.x, fish.y, tx, ty, profile.trackRange);
+            fish.lightTargetX = clear ? tx : state_1.player.x;
+            fish.lightTargetY = clear ? ty : state_1.player.y;
+        }
+        const aim = Math.atan2(fish.lightTargetY - fish.y, fish.lightTargetX - fish.x);
+        const curl = Math.sin(Math.min(1, charge / .77) * Math.PI);
+        fish.targetAngle = aim + side * curl * .73;
+        fish.angle = lerpAngle(fish.angle, fish.targetAngle, .085 + charge * .18);
+        fish.vx = fish.vx * .67 - Math.cos(aim) * curl * .20;
+        fish.vy = fish.vy * .67 - Math.sin(aim) * curl * .20;
+        return;
+    }
+    const elapsed = Math.max(1, fish.stateTimer - profile.chargeFrames);
+    if (elapsed <= 8) {
+        const aim = Math.atan2(fish.lightTargetY - fish.y, fish.lightTargetX - fish.x);
+        fish.angle = lerpAngle(fish.angle, aim, .07 * (1 - elapsed / 9));
+    }
+    const ux = Math.cos(fish.angle), uy = Math.sin(fish.angle);
+    const release = Math.min(1, .78 + elapsed * .045);
+    const glide = Math.max(.27, 1 - Math.max(0, elapsed - 12) / (profile.lungeFrames - 10));
+    const speed = profile.speed * release * glide;
+    if (distance < cfg.biteRange && dx * ux + dy * uy > distance * .62 &&
+        (0, Visibility_1.isLineOfSight)(fish.x, fish.y, state_1.player.x, state_1.player.y, cfg.biteRange) &&
+        !netWillHoldLunge(fish, ux * speed, uy * speed)) {
+        startBite(fish);
+        return;
+    }
+    if (elapsed >= profile.lungeFrames || hasWallAhead(fish, fish.angle, speed + 4)) {
+        fish.state = 'retreat';
+        fish.stateTimer = 0;
+        fish.vx *= .34;
+        fish.vy *= .34;
+        return;
+    }
+    fish.vx = ux * speed;
+    fish.vy = uy * speed;
+}
+function startBite(fish) {
+    if (fish.kind !== 'piranha' && fish.kind !== 'provoked')
+        return;
+    fish.state = 'bite';
+    fish.stateTimer = 0;
+    fish.biteCount = 0;
+    triggerPlayerBitten(fish);
 }
 /** 撕咬：锁定玩家位置，播放撕咬动画 */
 function updateBite(fish, cfg) {
@@ -16368,7 +16663,7 @@ function updateReturning(fish, cfg) {
     moveToward(fish, fish.roamTargetX, fish.roamTargetY, cfg.roamSpeed * 1.1, cfg.turnSpeedRoam);
     // 回家路上如果玩家又跟过来且离家很近，重新仇恨
     const distToPlayer = Math.hypot(state_1.player.x - fish.x, state_1.player.y - fish.y);
-    if (distToPlayer < cfg.detectRange * 0.8 && distFromDen < fish.denRadius * 1.3) {
+    if (fish.kind === 'piranha' && distToPlayer < cfg.detectRange * 0.8 && distFromDen < fish.denRadius * 1.3) {
         fish.state = 'detect';
         fish.stateTimer = 0;
     }
@@ -16465,7 +16760,15 @@ function moveToward(fish, tx, ty, speed, turnFactor) {
 // =============================================
 // 辅助：应用速度并做简单碰撞
 // =============================================
-function applyMovement(fish) {
+function fishCollisionRadius(fish) {
+    return CFG().size * (fish.kind === 'shoal' ? .18 : fish.kind === 'provoked' ? .64 : fish.kind === 'rammer' ? .48 : .38);
+}
+function netWillHoldLunge(fish, vx = fish.vx, vy = fish.vy) {
+    const response = (0, Rope_1.getRopeResponseAlong)(fish, state_1.player, fishCollisionRadius(fish), vx, vy);
+    return !!response && response.kind !== 'glide';
+}
+function applyMovement(fish, effort = { x: fish.vx, y: fish.vy }) {
+    const from = { x: fish.x, y: fish.y };
     const nextX = fish.x + fish.vx;
     const nextY = fish.y + fish.vy;
     if (!checkCollisionLocal(nextX, fish.y)) {
@@ -16480,6 +16783,7 @@ function applyMovement(fish) {
     else {
         fish.vy *= -0.5;
     }
+    const ropeContact = (0, Rope_1.resolveWovenRopeContact)(fish, from, fishCollisionRadius(fish), effort, (x, y) => !checkCollisionLocal(x, y));
     // 防止游出地图边界（适配迷宫模式）
     if (isMazeMode()) {
         const maze = state_1.state.mazeRescue;
@@ -16492,6 +16796,7 @@ function applyMovement(fish) {
         fish.x = Math.max(0, Math.min(config_1.CONFIG.cols * config_1.CONFIG.tileSize, fish.x));
         fish.y = Math.max(60, Math.min(config_1.CONFIG.rows * config_1.CONFIG.tileSize, fish.y));
     }
+    return ropeContact;
 }
 // =============================================
 // 触发玩家被咬事件（设置被咬状态）
@@ -16654,11 +16959,26 @@ function updateAllFishEnemies(dt) {
     updateFishBiteState();
     // 更新玩家攻击状态
     updatePlayerAttack();
+    (0, FishBump_1.stepFishBump)();
     if (!state_1.state.fishEnemies || state_1.state.fishEnemies.length === 0)
         return;
+    const schools = new Map();
+    for (const fish of state_1.state.fishEnemies) {
+        if (fish.kind !== 'shoal' || fish.dead || fish.state === 'dying')
+            continue;
+        const id = fish.schoolId || 0;
+        if (!schools.has(id))
+            schools.set(id, []);
+        schools.get(id).push(fish);
+    }
+    const contexts = new Map();
+    for (const [id, members] of schools)
+        contexts.set(id, schoolContext(members));
+    let glow;
+    const getGlow = () => glow === undefined ? (glow = illuminatedRockSpot()) : glow;
     for (let i = state_1.state.fishEnemies.length - 1; i >= 0; i--) {
         const fish = state_1.state.fishEnemies[i];
-        updateFishEnemy(fish, dt);
+        updateFishEnemy(fish, dt, getGlow, contexts.get(fish.schoolId || 0));
         if (fish.dead) {
             state_1.state.fishEnemies.splice(i, 1);
         }
@@ -16758,7 +17078,7 @@ function updateLifeDetector() {
     const dist = Math.hypot(dx, dy);
     runtime.distance = dist;
     // 最大探知半径：以 npcRescueRange 为基准的倍数
-    const maxDist = (config_1.CONFIG.maze.npcRescueRange || 80) * (cfg.rangeMultiplier || 4);
+    const maxDist = cfg.music.enabled ? (0, AdaptiveMusic_1.getRescueMusicRange)() : (config_1.CONFIG.maze.npcRescueRange || 80) * (cfg.rangeMultiplier || 4);
     const minDist = config_1.CONFIG.maze.npcRescueRange || 80; // 到达 NPC 呼救反馈范围时达到最大节奏
     if (dist > maxDist) {
         // 超出探知范围：完全静默
@@ -16775,7 +17095,8 @@ function updateLifeDetector() {
     const tCurve = Math.pow(t, cfg.curvePower || 0.6);
     runtime.currentIntensity = tCurve;
     runtime.active = true;
-    if (cfg.music.enabled && (0, AdaptiveMusic_1.isAdaptiveMusicReady)()) {
+    // 音轨准备中或失败时保持静默，不用旧双音把入水静默又打破。
+    if (cfg.music.enabled) {
         runtime.currentIntensity = t; // 音乐使用线性距离分档，不沿用旧探测音的指数间隔
         runtime.pendingHighAt = 0;
         runtime.nextGroupAt = 0;
@@ -17011,15 +17332,6 @@ function update() {
     let lastPlayerY = state_1.player.y;
     storyManager.update();
     checkZones();
-    if (state_1.state.rope && state_1.state.rope.hold && state_1.state.rope.hold.active) {
-        state_1.input.move = 0;
-        state_1.input.speedUp = false;
-        state_1.player.vx = 0;
-        state_1.player.vy = 0;
-        // 手动挡：清空脉冲队列，防止松手后突然冲出
-        if (state_1.state.manualDrive)
-            state_1.state.manualDrive.activeTouches = {};
-    }
     // 被凶猛鱼咬住或死亡过场期间冻结玩家（动不了，正在被撕咬）
     if (state_1.state.fishBite && state_1.state.fishBite.active) {
         state_1.input.move = 0;
@@ -17104,7 +17416,6 @@ function update() {
     }
     (0, Rope_1.updateRopeSystem)();
     // 标记系统更新
-    (0, Marker_1.updateMarkers)();
     (0, Marker_1.updateWheelButtonVisibility)();
     // 轮盘展开动画
     if (state_1.state.wheel && state_1.state.wheel.open) {
@@ -17550,468 +17861,56 @@ function updateAutoDriveVisual(angleDiff, isThrust) {
 }
 },"/src/logic/Marker":function(exports,require){"use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getMarkers = getMarkers;
-exports.placeWallMarker = placeWallMarker;
-exports.placeRopeMarker = placeRopeMarker;
-exports.startRemoveMarker = startRemoveMarker;
-exports.updateMarkers = updateMarkers;
-exports.detectWheelContext = detectWheelContext;
-exports.buildWheelSectors = buildWheelSectors;
 exports.updateWheelButtonVisibility = updateWheelButtonVisibility;
-exports.executeWheelAction = executeWheelAction;
+exports.performDiveSupply = performDiveSupply;
 const config_1 = require("../core/config");
 const state_1 = require("../core/state");
-const Rope_1 = require("./Rope");
-const RockGeometry_1 = require("../world/RockGeometry");
-const Pathfinding_1 = require("./Pathfinding");
-const OxygenTank_1 = require("./OxygenTank");
-// 撤离玩法：水下战利品拾取轮盘上下文（接入点见 detectWheelContext / executeWheelAction）
 const extraction_1 = require("../extraction");
-// ============ 全局标记 ID 计数器 ============
-let _nextMarkerId = 1;
-// ============ 标记列表（挂在 state 上，这里提供操作函数） ============
-/** 获取当前标记列表 */
-function getMarkers() {
-    return state_1.state.markers || [];
+const OxygenTank_1 = require("./OxygenTank");
+const RopeWheel_1 = require("./RopeWheel");
+function getDiveSupply() {
+    const tank = (0, OxygenTank_1.findNearbyOxygenTank)();
+    if (tank)
+        return { kind: 'oxygen', id: tank.id };
+    const item = (extraction_1.ExtractionEnabled === null || extraction_1.ExtractionEnabled === void 0 ? void 0 : (0, extraction_1.ExtractionEnabled)()) ? (0, extraction_1.findNearbyPickupTarget)() : null;
+    return item ? { kind: 'pickup', item } : null;
 }
-/** 在岩石上放置标记 */
-function placeWallMarker(type, wall) {
-    if (!wall)
-        return null;
-    const point = (0, RockGeometry_1.closestRockPoint)(wall, state_1.player.x, state_1.player.y);
-    const angle = wall.rockPolygon ? Math.atan2(state_1.player.y - point.y, state_1.player.x - point.x) : Math.atan2(state_1.player.y - wall.y, state_1.player.x - wall.x);
-    const surfaceX = point.x;
-    const surfaceY = point.y;
-    // 检查该岩石上是否已有标记，如果有则替换
-    const markers = getMarkers();
-    const existing = markers.findIndex(m => m.attachType === 'wall' && m.wallX === wall.x && m.wallY === wall.y);
-    if (existing >= 0) {
-        markers.splice(existing, 1);
-    }
-    const marker = {
-        id: _nextMarkerId++,
-        type,
-        attachType: 'wall',
-        wallX: wall.x,
-        wallY: wall.y,
-        wallR: wall.r,
-        surfaceX,
-        surfaceY,
-        normalAngle: angle,
-        placeTimer: config_1.CONFIG.marker.placeAnimDuration,
-        removeTimer: 0,
-    };
-    markers.push(marker);
-    return marker;
-}
-/** 在绳索上放置标记 */
-function placeRopeMarker(type, ropeIndex, ropeT) {
-    const markers = getMarkers();
-    // 检查该绳索同一位置附近是否已有标记
-    const existing = markers.findIndex(m => m.attachType === 'rope' && m.ropeIndex === ropeIndex && Math.abs((m.ropeT || 0) - ropeT) < 0.05);
-    if (existing >= 0) {
-        markers.splice(existing, 1);
-    }
-    const marker = {
-        id: _nextMarkerId++,
-        type,
-        attachType: 'rope',
-        ropeIndex,
-        ropeT,
-        placeTimer: config_1.CONFIG.marker.placeAnimDuration,
-        removeTimer: 0,
-    };
-    markers.push(marker);
-    return marker;
-}
-/** 拆除标记（启动拆除动画） */
-function startRemoveMarker(markerId) {
-    const markers = getMarkers();
-    const m = markers.find(mk => mk.id === markerId);
-    if (m) {
-        m.removeTimer = config_1.CONFIG.marker.removeAnimDuration;
-    }
-}
-/** 更新标记动画（每帧调用） */
-function updateMarkers() {
-    const markers = getMarkers();
-    for (let i = markers.length - 1; i >= 0; i--) {
-        const m = markers[i];
-        // 放置动画倒计时
-        if (m.placeTimer > 0)
-            m.placeTimer--;
-        // 拆除动画倒计时
-        if (m.removeTimer > 0) {
-            m.removeTimer--;
-            if (m.removeTimer <= 0) {
-                markers.splice(i, 1); // 动画结束，真正移除
-            }
-        }
-    }
-}
-/** 检测玩家附近的可交互对象，返回上下文信息 */
-function detectWheelContext() {
-    const result = { context: 'none' };
-    if (!state_1.state.rope)
-        return result;
-    // === 0. 最高优先：氧气瓶 ===
-    // 氧气瓶不受铺绳状态/绳索状态影响，靠近就能触发（但不用抢抽绳索中的端点拆绳）
-    {
-        const tank = (0, OxygenTank_1.findNearbyOxygenTank)();
-        if (tank) {
-            result.context = 'oxygenTank';
-            result.oxygenTankId = tank.id;
-            return result;
-        }
-    }
-    // === 0.5 次高优先：水下战利品 / 丢弃物拾取（撤离玩法）===
-    // 仅在迷宫模式 play 阶段 + 撤离玩法启用时启用；不与铺绳/标记冲突
-    if (extraction_1.ExtractionEnabled && (0, extraction_1.ExtractionEnabled)() &&
-        state_1.state.screen === 'mazeRescue' && state_1.state.mazeRescue && state_1.state.mazeRescue.phase === 'play') {
-        const target = (0, extraction_1.findNearbyPickupTarget)();
-        if (target) {
-            result.context = 'pickupRelic';
-            result.pickupRelicId = target.id;
-            result.pickupRelicLabel = target.label;
-            result.pickupTargetKind = target.kind;
-            return result;
-        }
-    }
-    const anchorDist = config_1.CONFIG.ropeAnchorDistance;
-    // 1. 检测是否靠近绳索端点
-    for (let i = 0; i < state_1.state.rope.ropes.length; i++) {
-        const rope = state_1.state.rope.ropes[i];
-        if (!rope.start || !rope.end)
-            continue;
-        const distToStart = Math.hypot(state_1.player.x - rope.start.x, state_1.player.y - rope.start.y);
-        const distToEnd = Math.hypot(state_1.player.x - rope.end.x, state_1.player.y - rope.end.y);
-        if (distToStart < anchorDist || distToEnd < anchorDist) {
-            result.ropeIndex = i;
-            result.isEndpoint = true;
-            // 检查端点岩石上是否有标记
-            const endWall = distToStart < distToEnd ? rope.startWall : rope.endWall;
-            result.wall = endWall;
-            const markers = getMarkers();
-            const existing = markers.find(m => m.attachType === 'wall' && m.wallX === endWall.x && m.wallY === endWall.y);
-            if (existing) {
-                result.existingMarker = existing;
-                result.context = 'markedWall';
-            }
-            else {
-                result.context = 'ropeEndWall';
-            }
-            return result;
-        }
-    }
-    // 2. 检测是否靠近绳索中段
-    for (let i = 0; i < state_1.state.rope.ropes.length; i++) {
-        const rope = state_1.state.rope.ropes[i];
-        if (!rope.path || rope.path.length < 2)
-            continue;
-        const totalLen = (0, Pathfinding_1.pathLength)(rope.path);
-        if (totalLen < 1)
-            continue;
-        // 找最近点
-        let minDist = Infinity;
-        let bestT = 0.5;
-        const steps = Math.max(10, Math.ceil(totalLen / 20));
-        for (let s = 0; s <= steps; s++) {
-            const t = s / steps;
-            const d = t * totalLen;
-            const pt = (0, Pathfinding_1.samplePolyline)(rope.path, d);
-            const dist = Math.hypot(state_1.player.x - pt.x, state_1.player.y - pt.y);
-            if (dist < minDist) {
-                minDist = dist;
-                bestT = t;
-            }
-        }
-        if (minDist < anchorDist) {
-            result.ropeIndex = i;
-            result.ropeT = bestT;
-            result.isEndpoint = false;
-            // 检查绳索上是否有标记
-            const markers = getMarkers();
-            const existing = markers.find(m => m.attachType === 'rope' && m.ropeIndex === i && Math.abs((m.ropeT || 0) - bestT) < 0.1);
-            if (existing) {
-                result.existingMarker = existing;
-                result.context = 'ropeMarkedMid';
-            }
-            else {
-                result.context = 'ropeMid';
-            }
-            return result;
-        }
-    }
-    // 3. 检测是否靠近岩石
-    const nearest = (0, Rope_1.findNearestWall)(state_1.player.x, state_1.player.y, anchorDist);
-    if (nearest) {
-        result.wall = nearest.wall;
-        // 检查是否正在铺绳
-        if (state_1.state.rope.active) {
-            result.context = 'ropingWall';
-            return result;
-        }
-        // 检查岩石上是否有标记
-        const markers = getMarkers();
-        const existing = markers.find(m => m.attachType === 'wall' && m.wallX === nearest.wall.x && m.wallY === nearest.wall.y);
-        if (existing) {
-            result.existingMarker = existing;
-            result.context = 'markedWall';
-        }
-        else {
-            result.context = 'emptyWall';
-        }
-        return result;
-    }
-    return result;
-}
-// ============ 轮盘扇区生成 ============
-/** 根据上下文生成轮盘扇区列表 */
-function buildWheelSectors(ctx, hasExistingMarker) {
-    const sectors = [];
-    // 根据上下文决定扇区内容
-    // 规则：铺绳中只有结束铺绳；拆绳/拆标记场景只有拆；其余场景按标准布局
-    switch (ctx) {
-        case 'oxygenTank':
-            // 靠近氧气瓶：只有安装氧气瓶，占满 360°
-            sectors.push({ action: 'installTank', label: '安装氧气瓶', startAngle: 0, endAngle: 0 });
-            break;
-        case 'pickupRelic':
-            // 靠近水下战利品：只有"拾取"，占满 360°（label 由 nearbyInfo.pickupRelicLabel 提供）
-            // 这里先放占位 label，渲染时会被 input.ts 注入的 nearbyInfo.pickupRelicLabel 覆盖；
-            // 但更稳妥的做法是让渲染层直接读 nearbyInfo.pickupRelicLabel——保持本函数纯粹
-            sectors.push({ action: 'pickupRelic', label: '拾取', startAngle: 0, endAngle: 0 });
-            break;
-        case 'ropingWall':
-            // 铺绳中靠近岩石：只有结束铺绳，占满360°
-            sectors.push({ action: 'endRope', label: '结束铺绳', startAngle: 0, endAngle: 0 });
-            break;
-        case 'ropeEndWall':
-            // 靠近绳索端点：只有拆绳，占满360°
-            sectors.push({ action: 'removeRope', label: '拆绳', startAngle: 0, endAngle: 0 });
-            break;
-        case 'markedWall':
-            // 靠近已有标记的岩石：只有拆标记，占满360°
-            sectors.push({ action: 'removeMarker', label: '拆标记', startAngle: 0, endAngle: 0 });
-            break;
-        case 'ropeMarkedMid':
-            // 靠近绳索中段已有标记：只有拆标记，占满360°
-            sectors.push({ action: 'removeMarker', label: '拆标记', startAngle: 0, endAngle: 0 });
-            break;
-        case 'emptyWall':
-            // 靠近空岩石：上=铺绳，左=红叉，右=绿圈，下=黄问号
-            sectors.push({ action: 'startRope', label: '铺绳', startAngle: 0, endAngle: 0 });
-            sectors.push({ action: 'markDanger', label: '危险', startAngle: 0, endAngle: 0 });
-            sectors.push({ action: 'markSafe', label: '安全', startAngle: 0, endAngle: 0 });
-            sectors.push({ action: 'markUnknown', label: '未定', startAngle: 0, endAngle: 0 });
-            break;
-        case 'ropeMid':
-            // 靠近绳索中段：左上=红叉，右上=绿圈，下=黄问号
-            sectors.push({ action: 'markDanger', label: '危险', startAngle: 0, endAngle: 0 });
-            sectors.push({ action: 'markSafe', label: '安全', startAngle: 0, endAngle: 0 });
-            sectors.push({ action: 'markUnknown', label: '未定', startAngle: 0, endAngle: 0 });
-            break;
-        default:
-            return [];
-    }
-    // 分配角度
-    // Canvas坐标系：atan2 中 0°=右, -π/2=上, π/2=下, ±π=左
-    const count = sectors.length;
-    if (count === 1) {
-        // 单个选项占满360°
-        sectors[0].startAngle = -Math.PI;
-        sectors[0].endAngle = Math.PI;
-    }
-    else if (count === 3) {
-        // 3个按钮：[0]=红叉（左上），[1]=绿圈（右上），[2]=黄问号（下）
-        // 均分120°，从正上方(-π/2)开始
-        // 右上（绿圈）：-π/2 ~ π/6
-        // 下（黄问号）：π/6 ~ 5π/6
-        // 左上（红叉）：5π/6 ~ 3π/2（即-π/2，绕一圈回来）
-        sectors[0].startAngle = Math.PI * 5 / 6; // 红叉（左上）
-        sectors[0].endAngle = Math.PI * 3 / 2; // = -π/2 + 2π
-        sectors[1].startAngle = -Math.PI / 2; // 绿圈（右上）
-        sectors[1].endAngle = Math.PI / 6;
-        sectors[2].startAngle = Math.PI / 6; // 黄问号（下）
-        sectors[2].endAngle = Math.PI * 5 / 6;
-    }
-    else if (count === 4) {
-        // 4个按钮：[0]=铺绳（上），[1]=红叉（左），[2]=绿圈（右），[3]=黄问号（下）
-        // 均分90°，从正上方(-π/2)开始
-        // 上（铺绳）：-3π/4 ~ -π/4
-        // 右（绿圈）：-π/4 ~ π/4
-        // 下（黄问号）：π/4 ~ 3π/4
-        // 左（红叉）：3π/4 ~ 5π/4（即-3π/4 + 2π）
-        sectors[0].startAngle = -Math.PI * 3 / 4; // 铺绳（上）
-        sectors[0].endAngle = -Math.PI / 4;
-        sectors[1].startAngle = Math.PI * 3 / 4; // 红叉（左）
-        sectors[1].endAngle = Math.PI * 5 / 4;
-        sectors[2].startAngle = -Math.PI / 4; // 绿圈（右）
-        sectors[2].endAngle = Math.PI / 4;
-        sectors[3].startAngle = Math.PI / 4; // 黄问号（下）
-        sectors[3].endAngle = Math.PI * 3 / 4;
-    }
-    return sectors;
-}
-// ============ 轮盘交互按钮可见性更新 ============
-/** 每帧更新轮盘交互按钮的可见性（替代旧的绳索按钮逻辑） */
 function updateWheelButtonVisibility() {
     var _a;
-    if (!state_1.state.wheel)
-        return;
-    // 轮盘打开时不更新按钮
-    if (state_1.state.wheel.open)
-        return;
-    // 水面以上不显示（主线模式）
-    if (state_1.state.screen === 'play' && state_1.player.y <= 0) {
-        state_1.state.wheel.btnVisible = false;
-        state_1.state.wheel.btnActive = false;
-        return;
-    }
-    // 判定"没有移动输入"：
-    // - 自动挡：摇杆未推（input.move === 0）
-    // - 手动挡：没有活跃的搓屏触点
-    // - 半自动：和自动挡相同，以摇杆是否回中/松手为准
-    const isManual = config_1.CONFIG.driveMode === 'manual';
-    const hasManualTouch = isManual
-        ? Object.keys(((_a = state_1.state.manualDrive) === null || _a === void 0 ? void 0 : _a.activeTouches) || {}).length > 0
-        : false;
-    const noMoveInput = isManual ? !hasManualTouch : state_1.input.move === 0;
-    const nearbyInfo = detectWheelContext();
-    // stillTimer 字段保留但始终重置为 0，保持数据兼容
-    state_1.state.wheel.stillTimer = 0;
-    // 两态显示规则：
-    // - 附近有可交互对象 -> btnVisible=true（按钮显示出来，提示玩家"这里可以交互"）
-    // - 同时没有移动输入 -> btnActive=true（按钮为正常可交互态）
-    // - 附近有可交互对象 + 有移动输入 -> btnVisible=true、btnActive=false（灰态/半透明，提示"停下就能交互"）
-    // - 附近没有可交互对象 -> btnVisible=false、btnActive=false（不显示）
-    if (nearbyInfo.context !== 'none') {
-        state_1.state.wheel.btnVisible = true;
-        state_1.state.wheel.btnActive = noMoveInput;
-        // 只在可交互态下才填充 nearbyInfo，灰态下清空（确保点击时没法打开轮盘）
-        state_1.state.wheel.nearbyInfo = noMoveInput ? nearbyInfo : null;
-    }
-    else {
-        state_1.state.wheel.btnVisible = false;
-        state_1.state.wheel.btnActive = false;
-        state_1.state.wheel.nearbyInfo = null;
-    }
-}
-// ============ 执行轮盘选中的操作 ============
-/** 执行轮盘选中的操作 */
-function executeWheelAction(action) {
     const wheel = state_1.state.wheel;
-    if (!wheel || !wheel.nearbyInfo)
+    wheel.btnVisible = (0, RopeWheel_1.canUseRopeWheel)();
+    wheel.btnActive = wheel.btnVisible;
+    if (wheel.open) {
+        (0, RopeWheel_1.refreshRopeWheelAim)();
         return;
-    const info = wheel.nearbyInfo;
-    switch (action) {
-        case 'startRope': {
-            // 触发开始铺绳（复用旧逻辑：设置 rope.hold 状态，让 Rope.ts 处理）
-            if (info.wall && state_1.state.rope) {
-                state_1.state.rope.hold.active = true;
-                state_1.state.rope.hold.type = 'start';
-                state_1.state.rope.hold.timer = config_1.CONFIG.ropeHoldDuration; // 直接完成
-                state_1.state.rope.hold.anchor = info.wall;
-            }
-            break;
-        }
-        case 'endRope': {
-            if (info.wall && state_1.state.rope) {
-                state_1.state.rope.hold.active = true;
-                state_1.state.rope.hold.type = 'end';
-                state_1.state.rope.hold.timer = config_1.CONFIG.ropeHoldDuration;
-                state_1.state.rope.hold.anchor = info.wall;
-            }
-            break;
-        }
-        case 'removeRope': {
-            if (info.ropeIndex !== undefined && state_1.state.rope) {
-                // 拆除整段绳索
-                const idx = info.ropeIndex;
-                if (idx >= 0 && idx < state_1.state.rope.ropes.length) {
-                    // 同时移除绑在这段绳索上的所有标记
-                    const markers = getMarkers();
-                    for (let i = markers.length - 1; i >= 0; i--) {
-                        if (markers[i].attachType === 'rope' && markers[i].ropeIndex === idx) {
-                            markers.splice(i, 1);
-                        }
-                    }
-                    // 更新其他标记的 ropeIndex（索引后移）
-                    for (const m of markers) {
-                        if (m.attachType === 'rope' && m.ropeIndex !== undefined && m.ropeIndex > idx) {
-                            m.ropeIndex--;
-                        }
-                    }
-                    state_1.state.rope.ropes.splice(idx, 1);
-                }
-            }
-            break;
-        }
-        case 'markDanger':
-        case 'markUnknown':
-        case 'markSafe': {
-            const markerType = action === 'markDanger' ? 'danger' :
-                action === 'markUnknown' ? 'unknown' : 'safe';
-            if (info.context === 'ropeMid' || info.context === 'ropeMarkedMid') {
-                // 绳索上放标记
-                if (info.ropeIndex !== undefined && info.ropeT !== undefined) {
-                    placeRopeMarker(markerType, info.ropeIndex, info.ropeT);
-                }
-            }
-            else if (info.wall) {
-                // 岩石上放标记
-                placeWallMarker(markerType, info.wall);
-            }
-            break;
-        }
-        case 'removeMarker': {
-            if (info.existingMarker) {
-                startRemoveMarker(info.existingMarker.id);
-            }
-            break;
-        }
-        case 'installTank': {
-            // 轮盘松手选中：启动安装
-            // 注意：安装进度的按住驱动由 input.ts 中的 previewAction 维持，
-            // 这里只在“松手确认”时被触发，代表“立即完成一次安装动作”。
-            // 为了符合用户需求（按住瓶子设置到自己身上），这里把进度直接推到 1，
-            // 触发 completeInstall（有完整的视觉反馈：飞瓶、气泡、辉光、氧气条上涨、跳字）。
-            if (info.oxygenTankId != null) {
-                (0, OxygenTank_1.startInstallTank)(info.oxygenTankId);
-                const maze = state_1.state.mazeRescue;
-                if (maze && maze.oxygenTanks) {
-                    for (const t of maze.oxygenTanks) {
-                        if (t.id === info.oxygenTankId && !t.consumed) {
-                            // 立即完成（轮盘已经有自己的长按进度作为“按住”语义）
-                            t.holdProgress = 1;
-                            t.isBeingInstalled = true;
-                            break;
-                        }
-                    }
-                }
-            }
-            break;
-        }
-        case 'pickupRelic': {
-            // 撤离玩法：拾取水下战利品 / 丢弃物——立即入背包
-            if (info.pickupRelicId != null) {
-                const kind = info.pickupTargetKind || 'relic';
-                const r = (0, extraction_1.performPickupTarget)({
-                    kind,
-                    id: info.pickupRelicId,
-                    label: info.pickupRelicLabel || '',
-                    x: 0, y: 0,
-                });
-                if (r.ok) {
-                    // 静默拾取，UI 反馈走右下角背包格子点亮 + 世界层飘字
-                }
-                else if (r.reason === 'bagFull') {
-                    console.log('[Pickup] 背包已满，无法拾取');
-                }
-            }
-            break;
-        }
     }
+    const moving = config_1.CONFIG.driveMode === 'manual'
+        ? Object.keys(((_a = state_1.state.manualDrive) === null || _a === void 0 ? void 0 : _a.activeTouches) || {}).length > 0
+        : state_1.input.move !== 0;
+    wheel.nearbyInfo = wheel.btnVisible && !moving && state_1.state.screen === 'mazeRescue' ? getDiveSupply() : null;
+}
+function performDiveSupply(selected) {
+    var _a, _b;
+    const actual = (0, RopeWheel_1.canUseRopeWheel)() ? getDiveSupply() : null;
+    if (!actual || actual.kind !== selected.kind)
+        return false;
+    if (actual.kind === 'oxygen' && selected.kind === 'oxygen' && actual.id === selected.id) {
+        const tank = (_b = (_a = state_1.state.mazeRescue) === null || _a === void 0 ? void 0 : _a.oxygenTanks) === null || _b === void 0 ? void 0 : _b.find(tank => tank.id === actual.id && !tank.consumed);
+        if (!tank)
+            return false;
+        (0, OxygenTank_1.startInstallTank)(tank.id);
+        tank.holdProgress = 1;
+        tank.isBeingInstalled = true;
+        return true;
+    }
+    if (actual.kind === 'pickup' && selected.kind === 'pickup' &&
+        actual.item.kind === selected.item.kind && actual.item.id === selected.item.id) {
+        const result = (0, extraction_1.performPickupTarget)(actual.item);
+        if (!result.ok && result.reason === 'bagFull')
+            console.log('[Pickup] 背包已满，无法拾取');
+        return result.ok;
+    }
+    return false;
 }
 },"/src/logic/MazeLogic":function(exports,require){"use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
@@ -18114,6 +18013,7 @@ function resetMazeLogic(rockTrial = false) {
         state_1.state.splashes = [];
         state_1.state.fishEnemies = [];
         state_1.state.fishBite = null;
+        state_1.state.fishBump = (0, state_1.createFishBumpState)();
         state_1.state.flashlightOn = true;
         state_1.state.fx.redOverlay = 0;
         state_1.state.fx.shake = 0;
@@ -18214,6 +18114,7 @@ function resetMazeLogic(rockTrial = false) {
     state_1.state.splashes = [];
     state_1.state.fishEnemies = [];
     state_1.state.fishBite = null;
+    state_1.state.fishBump = (0, state_1.createFishBumpState)();
     state_1.state.flashlightOn = true;
     state_1.state.fx.redOverlay = 0;
     state_1.state.fx.shake = 0;
@@ -18224,34 +18125,7 @@ function resetMazeLogic(rockTrial = false) {
         angle: 0,
     };
     // 重置绳索
-    state_1.state.rope = {
-        ropes: [],
-        active: false,
-        current: {
-            start: null,
-            startWall: null,
-            end: null,
-            path: [],
-            basePoints: [],
-            slackFactor: 1,
-            mode: 'loose',
-            time: 0
-        },
-        ui: {
-            visible: false,
-            type: null,
-            progress: 0,
-            anchor: null
-        },
-        hold: {
-            active: false,
-            type: null,
-            timer: 0,
-            touchId: null,
-            anchor: null
-        },
-        stillTimer: 0
-    };
+    state_1.state.rope = (0, state_1.createRopeState)();
     // 生成迷宫地图
     const mazeData = rockTrial ? (0, CaveRockTrial_1.createCaveRockTrialMap)() : (0, map_1.generateMazeMap)();
     // 初始化相机
@@ -18427,7 +18301,7 @@ function startMazeDive(diveType) {
     (0, Relic_1.resetRelicDiscoveryForDive)();
     // 设置下潜类型（不区分scout/rescue，统一为scout，发现NPC后自动可绑绳）
     maze.diveType = diveType;
-    maze.phase = 'tape_rewind';
+    maze.phase = 'diving_in';
     maze.tapeEntryStartedAt = Date.now();
     maze.tapeIntroTimer = 0;
     maze.tapePlaybackStarted = false;
@@ -18510,6 +18384,7 @@ function startMazeDive(diveType) {
     state_1.particles.length = 0;
     state_1.state.splashes = [];
     state_1.state.fishBite = null;
+    state_1.state.fishBump = (0, state_1.createFishBumpState)();
     state_1.state.flashlightOn = true;
     state_1.state.playerAttack = { active: false, timer: 0, cooldownTimer: 0, angle: 0 };
     state_1.state.fx.redOverlay = 0;
@@ -18523,11 +18398,15 @@ function startMazeDive(diveType) {
     if (!maze.rockTrial && config_1.CONFIG.maze.fishEnabled && maze.fishDens && maze.fishDens.length > 0) {
         const perMin = config_1.CONFIG.maze.denFishCountMin || 2;
         const perMax = config_1.CONFIG.maze.denFishCountMax || 6;
-        for (const den of maze.fishDens) {
+        for (const [index, den] of maze.fishDens.entries()) {
             const fishCount = perMin + Math.floor(Math.random() * (perMax - perMin + 1));
             for (let i = 0; i < fishCount; i++) {
                 const pos = (0, FishEnemy_1.findMazeFishSpawnPosition)(den.x, den.y, den.radius);
-                state_1.state.fishEnemies.push((0, FishEnemy_1.createFishEnemy)(pos.x, pos.y, den.x, den.y, den.radius));
+                const kind = i === 0 ? (index % 2 === 0 ? 'curious' : 'rammer') : 'piranha';
+                if (i === 1 && index === 0)
+                    state_1.state.fishEnemies.push(...(0, FishEnemy_1.createFishSchool)(pos.x, pos.y));
+                else
+                    state_1.state.fishEnemies.push((0, FishEnemy_1.createFishEnemy)(pos.x, pos.y, den.x, den.y, den.radius, kind));
             }
         }
     }
@@ -18536,7 +18415,8 @@ function startMazeDive(diveType) {
         const count = config_1.CONFIG.maze.fishCountMin + Math.floor(Math.random() * (config_1.CONFIG.maze.fishCountMax - config_1.CONFIG.maze.fishCountMin + 1));
         for (let i = 0; i < count; i++) {
             const pos = (0, FishEnemy_1.findMazeFishSpawnPosition)();
-            state_1.state.fishEnemies.push((0, FishEnemy_1.createFishEnemy)(pos.x, pos.y));
+            const kind = i === 0 ? 'curious' : i === 1 ? 'rammer' : 'piranha';
+            state_1.state.fishEnemies.push((0, FishEnemy_1.createFishEnemy)(pos.x, pos.y, undefined, undefined, undefined, kind));
         }
     }
     // 相机归位到下潜出生点
@@ -18586,34 +18466,9 @@ function startMazeDive(diveType) {
     maze._overDepthWarned = false; // 重置超深一次性提示标志
     maze.currentThemeKey = '';
     maze.playerPath = [{ x: state_1.player.x, y: state_1.player.y }];
-    // 绳索系统保留已有绳索，只重置当前铺设状态
-    if (state_1.state.rope) {
-        state_1.state.rope.active = false;
-        state_1.state.rope.current = {
-            start: null,
-            startWall: null,
-            end: null,
-            path: [],
-            basePoints: [],
-            slackFactor: 1,
-            mode: 'loose',
-            time: 0
-        };
-        state_1.state.rope.ui = {
-            visible: false,
-            type: null,
-            progress: 0,
-            anchor: null
-        };
-        state_1.state.rope.hold = {
-            active: false,
-            type: null,
-            timer: 0,
-            touchId: null,
-            anchor: null
-        };
-        state_1.state.rope.stillTimer = 0;
-    }
+    // Preserve placed lines and clear the loose end and loads for the new dive.
+    (0, Rope_1.cancelRopePlacement)();
+    (0, Rope_1.resetRopeMotion)();
     // 标记系统保留已有标记（跨下潜持久化）
     // 轮盘状态重置
     if (state_1.state.wheel) {
@@ -18905,35 +18760,17 @@ function updateMaze() {
         maze.caseResultTimer++;
         return;
     }
-    // 倒带期间只有磁带和音频准备在运行，世界 / 氧气 / 救援计时全部冻结。
-    if (maze.phase === 'tape_rewind') {
-        if ((0, AdaptiveMusic_2.getAdaptiveMusicPreparation)().status === 'ready' && Date.now() - (maze.tapeEntryStartedAt || 0) >= 700) {
-            maze.phase = 'diving_in';
-            maze.divingInTimer = 0;
-            (0, AudioManager_1.playSFX)('diveSplash');
-        }
-        return;
+    // 兼容热更新前的旧阶段，绝不再等待音频就绪或可听时钟。
+    if (maze.phase === 'tape_rewind' || maze.phase === 'tape_play') {
+        maze.phase = 'diving_in';
+        maze.divingInTimer = 0;
     }
     if (maze.phase === 'diving_in') {
-        if (++maze.divingInTimer >= 90) {
-            maze.phase = 'tape_play';
-            maze.tapeIntroTimer = 0;
-        }
-        return;
-    }
-    // 水下先按下 PLAY，机械键落下后才允许启动音乐。
-    if (maze.phase === 'tape_play') {
-        maze.tapeIntroTimer = (maze.tapeIntroTimer || 0) + 1;
-        if (maze.tapeIntroTimer === 30)
-            (0, AudioManager_1.playSFX)('uiSecondary');
-        if (maze.tapeIntroTimer >= 36)
-            maze.tapePlaybackStarted = true;
-        const clock = (0, AdaptiveMusic_2.getAdaptiveMusicClock)();
-        const silentMode = !config_1.CONFIG.lifeDetector.enabled || !config_1.CONFIG.lifeDetector.music.enabled;
-        if (maze.tapeIntroTimer >= 60 && (silentMode || (clock && clock.playing))) {
+        if (maze.divingInTimer === 0)
+            (0, AudioManager_1.playSFX)('diveSplash');
+        if (++maze.divingInTimer >= 30) {
             maze.phase = 'play';
             maze.startTime = Date.now();
-            maze.tapeNowPlayingAt = silentMode ? 0 : Date.now();
         }
         return;
     }
@@ -19051,18 +18888,16 @@ function updateMaze() {
         return;
     }
     // === 游戏进行中 ===
+    // StoryManager 已不再更新视觉特效；短促冲撞等反馈须在正常游玩时归零。
+    // 放在本帧事件之前，让新撞击仍能以完整强度显示第一帧。
+    if (state_1.state.fx.shake > 0) {
+        state_1.state.fx.shake *= .85;
+        if (state_1.state.fx.shake < .1)
+            state_1.state.fx.shake = 0;
+    }
     // 更新剧情文字（复用 storyManager）
     storyManager.update();
-    // 绳索长按时冻结玩家
-    if (state_1.state.rope && state_1.state.rope.hold && state_1.state.rope.hold.active) {
-        state_1.input.move = 0;
-        state_1.input.speedUp = false;
-        state_1.player.vx = 0;
-        state_1.player.vy = 0;
-        // 手动挡：清空脉冲队列，防止松手后突然冲出
-        if (state_1.state.manualDrive)
-            state_1.state.manualDrive.activeTouches = {};
-    }
+    (0, Rope_1.updateRopeMotion)();
     // 撤离长按时也冻结玩家
     if (maze.retreatHolding) {
         state_1.input.move = 0;
@@ -19100,6 +18935,7 @@ function updateMaze() {
     (0, BCDSystem_1.updateBCDSystem)(1 / 60);
     state_1.player.vy += (0, BCDSystem_1.computeBCDBuoyancyAccel)();
     // 碰撞检测（使用迷宫专属地图）
+    const from = { x: state_1.player.x, y: state_1.player.y };
     const nextX = state_1.player.x + state_1.player.vx;
     const nextY = state_1.player.y + state_1.player.vy; // 记录撞前速度，用于撞击强度判定（必须在 vx/vy 反弹衰减前采样）
     const preVx = state_1.player.vx;
@@ -19124,6 +18960,10 @@ function updateMaze() {
     if (hitX || hitY) {
         (0, CollisionImpact_1.triggerCollisionImpact)(preVx, preVy, state_1.player.x, state_1.player.y);
     }
+    const steering = state_1.input.move > 0 || state_1.state.manualDrive.hasInput;
+    const driveAngle = config_1.CONFIG.driveMode === 'manual' ? state_1.player.angle : state_1.input.targetAngle;
+    const effort = steering ? 8 * (config_1.CONFIG.driveMode === 'semiAuto' ? state_1.state.semiAutoDrive.inputPower : 1) : 0;
+    (0, Rope_1.resolveWovenRopeContact)(state_1.player, from, config_1.CONFIG.maze.playerRadius, { x: Math.cos(driveAngle) * effort, y: Math.sin(driveAngle) * effort }, (x, y) => !(0, Collision_1.checkMazeCollision)(x, y, maze));
     // 顶部边界：不能游出迷宫
     if (state_1.player.y < maze.mazeTileSize / 2) {
         state_1.player.y = maze.mazeTileSize / 2;
@@ -19155,8 +18995,7 @@ function updateMaze() {
     state_1.state.camera.zoom += (state_1.state.camera.targetZoom - state_1.state.camera.zoom) * 0.02;
     // --- 绳索系统 ---
     (0, Rope_1.updateRopeSystem)();
-    // --- 标记系统 ---
-    (0, Marker_1.updateMarkers)();
+    // --- 补给与拾取交互 ---
     (0, Marker_1.updateWheelButtonVisibility)();
     // --- 氧气瓶系统（进度/飞瓶/气泡爆发/屏幕辉光动画） ---
     (0, OxygenTank_1.updateOxygenTanks)();
@@ -19471,6 +19310,7 @@ function exitCaveRockTrial() {
     state_1.state.npc.active = false;
     state_1.state.fishEnemies = [];
     state_1.state.fishBite = null;
+    state_1.state.fishBump = (0, state_1.createFishBumpState)();
     state_1.particles.length = 0;
     state_1.state.screen = 'menu';
 }
@@ -19590,12 +19430,12 @@ function unpackBoolMap(b64, rows, cols) {
     return map;
 }
 // 玩家路径 {x,y}[] → 扁平 int（坐标范围 0~12000，int32 足够）
-function packPath(path) {
+function packPath(path, precision = 1) {
     if (!path || path.length === 0)
         return [];
     const out = [];
     for (let i = 0; i < path.length; i++) {
-        out.push(Math.round(path[i].x), Math.round(path[i].y));
+        out.push(Math.round(path[i].x * precision) / precision, Math.round(path[i].y * precision) / precision);
     }
     return out;
 }
@@ -19663,7 +19503,10 @@ function packLiveRope(rope) {
         end: packPoint(rope && rope.end),
         startWall: packWallRef(rope && rope.startWall),
         endWall: packWallRef(rope && rope.endWall),
-        path: packPath(rope && rope.path),
+        startOnRope: (rope === null || rope === void 0 ? void 0 : rope.startOnRope) || undefined,
+        endOnRope: (rope === null || rope === void 0 ? void 0 : rope.endOnRope) || undefined,
+        // Live paths retain the same precision as their tied endpoints.
+        path: packPath(rope === null || rope === void 0 ? void 0 : rope.path, 100),
         slackFactor: (rope && typeof rope.slackFactor === 'number') ? rope.slackFactor : 0,
         mode: (rope && typeof rope.mode === 'string') ? rope.mode : 'tight',
     };
@@ -19675,6 +19518,8 @@ function unpackLiveRope(p, newMazeWalls) {
         end: p.end ? { x: p.end.x, y: p.end.y } : null,
         startWall: findWallByRef(newMazeWalls, p.startWall),
         endWall: findWallByRef(newMazeWalls, p.endWall),
+        startOnRope: p.startOnRope,
+        endOnRope: p.endOnRope,
         path: unpackPath(p.path),
         slackFactor: p.slackFactor,
         mode: p.mode,
@@ -19968,19 +19813,8 @@ function loadMazeProgress() {
     maze._driveSwitchTip = 0;
     state_1.state.mazeRescue = maze;
     // 恢复绳索
-    if (!state_1.state.rope) {
-        state_1.state.rope = {
-            ropes: [],
-            active: false,
-            current: {
-                start: null, startWall: null, end: null, path: [],
-                basePoints: [], slackFactor: 1, mode: 'loose', time: 0,
-            },
-            ui: { visible: false, type: null, progress: 0, anchor: null },
-            hold: { active: false, type: null, timer: 0, touchId: null, anchor: null },
-            stillTimer: 0,
-        };
-    }
+    if (!state_1.state.rope)
+        state_1.state.rope = (0, state_1.createRopeState)();
     // 活绳子解包 + wall 最近匹配回挂
     const restoredRopes = [];
     if (Array.isArray(data.ropes)) {
@@ -21526,6 +21360,7 @@ exports.updateRescueTow = updateRescueTow;
 const config_1 = require("../core/config");
 const state_1 = require("../core/state");
 const Collision_1 = require("./Collision");
+const Rope_1 = require("./Rope");
 const RescueRagdoll_1 = require("./RescueRagdoll");
 function canMove(x, y, tx, ty) {
     const maze = state_1.state.mazeRescue;
@@ -21606,9 +21441,18 @@ function updateRescueTow() {
             npcCorrection = 0;
         const pull = over - npcCorrection;
         const px = state_1.player.x - nx * pull, py = state_1.player.y - ny * pull;
+        const contact = (0, Rope_1.getRopeContact)(state_1.player);
         if (canMove(state_1.player.x, state_1.player.y, px, py)) {
-            state_1.player.x = px;
-            state_1.player.y = py;
+            if ((contact === null || contact === void 0 ? void 0 : contact.kind) === 'glide' || (!contact && !(0, Rope_1.traceWovenRopes)(state_1.player, { x: px, y: py }, config_1.CONFIG.maze.playerRadius))) {
+                state_1.player.x = px;
+                state_1.player.y = py;
+            }
+            else if (!contact) {
+                // Pull into the mesh through normal movement, where its load can stretch the strands.
+                const acceleration = Math.min(1.4, pull * .08);
+                state_1.player.vx -= nx * acceleration;
+                state_1.player.vy -= ny * acceleration;
+            }
         }
         const away = state_1.player.vx * nx + state_1.player.vy * ny;
         if (away > 0) {
@@ -21621,11 +21465,25 @@ function updateRescueTow() {
 },"/src/logic/Rope":function(exports,require){"use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.findNearestWall = findNearestWall;
+exports.cancelRopePlacement = cancelRopePlacement;
+exports.placeRopeAt = placeRopeAt;
+exports.traceWovenRopes = traceWovenRopes;
+exports.resolveWovenRopeContact = resolveWovenRopeContact;
+exports.applyRopeBodyImpulse = applyRopeBodyImpulse;
+exports.getRopeContact = getRopeContact;
+exports.getRopeApproach = getRopeApproach;
+exports.getRopeResponseAlong = getRopeResponseAlong;
+exports.getRopeDeformedPoint = getRopeDeformedPoint;
+exports.updateRopeMotion = updateRopeMotion;
+exports.resetRopeMotion = resetRopeMotion;
 exports.updateRopeSystem = updateRopeSystem;
 const config_1 = require("../core/config");
 const state_1 = require("../core/state");
 const Pathfinding_1 = require("./Pathfinding");
 const RockGeometry_1 = require("../world/RockGeometry");
+const Visibility_1 = require("../world/Visibility");
+const RopeNet_1 = require("./RopeNet");
+const RopeDynamics_1 = require("./RopeDynamics");
 function getActiveWalls() {
     if (state_1.state.screen === 'mazeRescue' && state_1.state.mazeRescue) {
         return state_1.state.mazeRescue.mazeWalls;
@@ -21653,157 +21511,944 @@ function findNearestWall(x, y, maxDist) {
         return null;
     return { wall: nearest, dist: minDist };
 }
-function getAnchorPoint(wall, fromX, fromY) {
-    if (wall.rockPolygon) {
-        const p = (0, RockGeometry_1.closestRockPoint)(wall, fromX, fromY);
-        const d = Math.hypot(fromX - p.x, fromY - p.y) || 1;
-        return { x: p.x + (fromX - p.x) / d * .1, y: p.y + (fromY - p.y) / d * .1 };
-    }
-    let angle = Math.atan2(fromY - wall.y, fromX - wall.x);
-    return {
-        x: wall.x + Math.cos(angle) * wall.r,
-        y: wall.y + Math.sin(angle) * wall.r
-    };
-}
-function clonePath(points) {
-    if (!points)
-        return [];
-    return points.map(point => ({ x: point.x, y: point.y }));
-}
-function finalizePreviewPath(endPoint) {
-    var _a;
-    if (!state_1.state.rope.current.start) {
-        return [{ x: endPoint.x, y: endPoint.y }];
-    }
-    if (state_1.state.screen === 'mazeRescue' && ((_a = state_1.state.mazeRescue) === null || _a === void 0 ? void 0 : _a.caveRockRoom))
-        return (0, Pathfinding_1.buildAvoidedPath)(state_1.state.rope.current.start, endPoint, config_1.CONFIG.ropeAvoidPadding);
-    if (!state_1.state.rope.current.path || state_1.state.rope.current.path.length < 2) {
-        return (0, Pathfinding_1.buildAvoidedPath)(state_1.state.rope.current.start, endPoint, config_1.CONFIG.ropeAvoidPadding);
-    }
-    const path = clonePath(state_1.state.rope.current.path);
-    path[0] = { x: state_1.state.rope.current.start.x, y: state_1.state.rope.current.start.y };
-    path[path.length - 1] = { x: endPoint.x, y: endPoint.y };
-    return path;
-}
-// 开始铺绳：将锚点固定在锁定岩石上
-function startRope(anchorWall) {
-    if (!anchorWall)
-        return;
-    const anchorPoint = getAnchorPoint(anchorWall, state_1.player.x, state_1.player.y);
+function startRopeAt(anchor) {
+    const { point, wall, onRope } = anchor;
     state_1.state.rope.active = true;
-    state_1.state.rope.current.start = anchorPoint;
-    state_1.state.rope.current.startWall = anchorWall;
-    state_1.state.rope.current.end = null;
-    state_1.state.rope.current.path = (0, Pathfinding_1.buildAvoidedPath)(anchorPoint, { x: state_1.player.x, y: state_1.player.y }, config_1.CONFIG.ropeAvoidPadding);
-    state_1.state.rope.current.basePoints = state_1.state.rope.current.path;
-    state_1.state.rope.current.slackFactor = 1;
-    state_1.state.rope.current.mode = 'loose';
-    state_1.state.rope.current.time = 0;
-    state_1.state.rope.stillTimer = 0;
-}
-// 结束铺绳：将末端固定在岩石上，拉紧并锁定
-function endRope(anchorWall) {
-    if (!state_1.state.rope.active || !state_1.state.rope.current.start || !anchorWall)
-        return;
-    const endPoint = getAnchorPoint(anchorWall, state_1.player.x, state_1.player.y);
-    const path = finalizePreviewPath(endPoint);
-    state_1.state.rope.ropes.push({
-        start: state_1.state.rope.current.start,
-        startWall: state_1.state.rope.current.startWall,
-        end: endPoint,
-        endWall: anchorWall,
-        path,
-        slackFactor: 0,
-        mode: 'tight'
-    });
-    state_1.state.rope.active = false;
     state_1.state.rope.current = {
-        start: null,
-        startWall: null,
-        end: null,
-        path: [],
-        basePoints: [],
-        slackFactor: 1,
-        mode: 'loose',
-        time: 0
+        start: point, startWall: wall || null, startOnRope: !!onRope,
+        path: (0, Pathfinding_1.buildAvoidedPath)(point, { x: state_1.player.x, y: state_1.player.y }, config_1.CONFIG.ropeAvoidPadding),
+        slackFactor: 1, time: 0,
     };
-    state_1.state.rope.stillTimer = 0;
 }
-// 绳索系统主更新
-function updateRopeSystem() {
-    if (!state_1.state.rope)
-        return;
-    const dt = 1 / 60;
-    if (state_1.state.rope.current) {
-        if (!state_1.state.rope.current.time)
-            state_1.state.rope.current.time = 0;
-        state_1.state.rope.current.time += dt;
+function cancelRopePlacement() {
+    state_1.state.rope.active = false;
+    state_1.state.rope.current = (0, state_1.createLooseRope)();
+}
+function endRopeAt(anchor) {
+    const { start, startWall, startOnRope } = state_1.state.rope.current;
+    if (!state_1.state.rope.active || !start || Math.hypot(start.x - anchor.point.x, start.y - anchor.point.y) < 12)
+        return false;
+    const path = (0, Pathfinding_1.buildAvoidedPath)(start, anchor.point, config_1.CONFIG.ropeAvoidPadding);
+    if (path.length < 2)
+        return false;
+    if (path.slice(1).some((p, i) => !(0, Visibility_1.isLineOfSight)(path[i].x, path[i].y, p.x, p.y, Infinity)))
+        return false;
+    const ropes = state_1.state.rope.ropes;
+    const strands = (0, RopeNet_1.getRopeNet)(ropes).strands;
+    if (startOnRope && !strands.some(s => (0, RopeNet_1.pointOnStrand)(start, s.a, s.b))) {
+        cancelRopePlacement();
+        return false;
     }
-    if (state_1.state.rope.hold.active) {
-        state_1.state.rope.hold.timer += dt;
-        state_1.state.rope.ui.visible = true;
-        state_1.state.rope.ui.type = state_1.state.rope.hold.type;
-        state_1.state.rope.ui.anchor = state_1.state.rope.hold.anchor;
-        state_1.state.rope.ui.progress = Math.min(1, state_1.state.rope.hold.timer / config_1.CONFIG.ropeHoldDuration);
-    }
-    if (state_1.state.rope.active && state_1.state.rope.current.start) {
-        let endPoint = { x: state_1.player.x, y: state_1.player.y };
-        if (state_1.state.rope.hold.active && state_1.state.rope.hold.type === 'end' && state_1.state.rope.hold.anchor) {
-            endPoint = getAnchorPoint(state_1.state.rope.hold.anchor, state_1.player.x, state_1.player.y);
-            state_1.state.rope.current.end = endPoint;
-            state_1.state.rope.current.mode = 'tightening';
-            state_1.state.rope.current.slackFactor += (0 - state_1.state.rope.current.slackFactor) * config_1.CONFIG.ropeTightenLerp;
-        }
-        else if (state_1.state.rope.current.mode === 'tightening') {
-            state_1.state.rope.current.slackFactor += (1 - state_1.state.rope.current.slackFactor) * 0.2;
-            if (state_1.state.rope.current.slackFactor > 0.95) {
-                state_1.state.rope.current.slackFactor = 1;
-                state_1.state.rope.current.mode = 'loose';
+    if (path.slice(1).every((b, i) => strands.some(s => (0, RopeNet_1.pointOnStrand)(path[i], s.a, s.b) && (0, RopeNet_1.pointOnStrand)(b, s.a, s.b))))
+        return false;
+    // Insert selected endpoints into their parent paths so the exact join survives saving.
+    for (const p of [startOnRope && start, anchor.onRope && anchor.point]) {
+        if (!p)
+            continue;
+        for (const rope of ropes) {
+            for (let i = rope.path.length - 1; i > 0; i--) {
+                const a = rope.path[i - 1], b = rope.path[i];
+                if ((0, RopeNet_1.pointOnStrand)(p, a, b) && Math.hypot(p.x - a.x, p.y - a.y) > .025 &&
+                    Math.hypot(p.x - b.x, p.y - b.y) > .025)
+                    rope.path.splice(i, 0, p);
             }
         }
-        state_1.state.rope.current.path = (0, Pathfinding_1.buildAvoidedPath)(state_1.state.rope.current.start, endPoint, config_1.CONFIG.ropeAvoidPadding);
-        state_1.state.rope.current.basePoints = state_1.state.rope.current.path;
     }
-    if (state_1.state.rope.hold.active && state_1.state.rope.hold.timer >= config_1.CONFIG.ropeHoldDuration) {
-        if (state_1.state.rope.hold.type === 'start') {
-            startRope(state_1.state.rope.hold.anchor);
-        }
-        else if (state_1.state.rope.hold.type === 'end') {
-            endRope(state_1.state.rope.hold.anchor);
-        }
-        state_1.state.rope.hold.active = false;
-        state_1.state.rope.hold.type = null;
-        state_1.state.rope.hold.timer = 0;
-        state_1.state.rope.hold.touchId = null;
-        state_1.state.rope.hold.anchor = null;
-        state_1.state.rope.ui.progress = 0;
-    }
-    if (state_1.state.rope.hold.active)
+    // Replace the list so the collision geometry is rebuilt, even after a remove/add pair.
+    state_1.state.rope.ropes = ropes.concat({
+        start, startWall, startOnRope, end: anchor.point, endWall: anchor.wall || null,
+        endOnRope: anchor.onRope, path, slackFactor: 0, mode: 'tight',
+    });
+    cancelRopePlacement();
+    return true;
+}
+function placeRopeAt(anchor) {
+    if (state_1.state.rope.active)
+        return endRopeAt(anchor);
+    startRopeAt(anchor);
+    return true;
+}
+function traceWovenRopes(from, to, radius) {
+    if (state_1.state.screen !== 'mazeRescue' || !state_1.state.rope.ropes.length)
+        return null;
+    return (0, RopeNet_1.sweepRopeNet)((0, RopeNet_1.getRopeNet)(state_1.state.rope.ropes), from, to, radius);
+}
+function resolveWovenRopeContact(body, from, radius, intent, canOccupy) {
+    if (state_1.state.screen !== 'mazeRescue' || !state_1.state.rope.ropes.length)
+        return null;
+    return (0, RopeDynamics_1.moveThroughNet)((0, RopeNet_1.getRopeNet)(state_1.state.rope.ropes), body, from, radius, body === state_1.player ? 3.6 : 13, intent, canOccupy);
+}
+function applyRopeBodyImpulse(body, vx, vy) {
+    (0, RopeDynamics_1.applyNetBodyImpulse)((0, RopeNet_1.getRopeNet)(state_1.state.rope.ropes), body, vx, vy);
+}
+function getRopeContact(body) {
+    if (state_1.state.screen !== 'mazeRescue' || !state_1.state.rope.ropes.length)
+        return null;
+    return (0, RopeDynamics_1.viewNetContact)((0, RopeNet_1.getRopeNet)(state_1.state.rope.ropes), body);
+}
+function getRopeApproach(body, radius) {
+    const speed = Math.hypot(body.vx, body.vy);
+    if (state_1.state.screen !== 'mazeRescue' || !state_1.state.rope.ropes.length || speed < .7 || getRopeContact(body))
+        return null;
+    const ahead = Math.min(42, 112 / speed);
+    const aim = { x: body.x + body.vx * ahead, y: body.y + body.vy * ahead };
+    const result = getRopeResponseAlong(body, aim, radius, body.vx, body.vy);
+    return result && (0, Visibility_1.isLineOfSight)(body.x, body.y, result.x, result.y, 120) ? result : null;
+}
+function getRopeResponseAlong(from, to, radius, vx, vy) {
+    if (state_1.state.screen !== 'mazeRescue' || !state_1.state.rope.ropes.length)
+        return null;
+    return (0, RopeDynamics_1.netResponseAlong)((0, RopeNet_1.getRopeNet)(state_1.state.rope.ropes), from, to, radius, vx, vy, from === state_1.player ? 3.6 : 13, from);
+}
+function getRopeDeformedPoint(point, ropeIndex) {
+    if (state_1.state.screen !== 'mazeRescue')
+        return point;
+    return (0, RopeDynamics_1.deformNetPoint)((0, RopeNet_1.getRopeNet)(state_1.state.rope.ropes), point, ropeIndex);
+}
+function updateRopeMotion() {
+    if (state_1.state.rope.ropes.length)
+        (0, RopeDynamics_1.stepNetMotion)((0, RopeNet_1.getRopeNet)(state_1.state.rope.ropes));
+}
+function resetRopeMotion() {
+    if (state_1.state.rope.ropes.length)
+        (0, RopeDynamics_1.resetNetMotion)((0, RopeNet_1.getRopeNet)(state_1.state.rope.ropes));
+}
+function updateRopeSystem() {
+    if (!state_1.state.rope.active || !state_1.state.rope.current.start)
         return;
-    if (state_1.player.y <= 0) {
-        state_1.state.rope.ui.visible = false;
-        state_1.state.rope.ui.type = null;
-        state_1.state.rope.ui.anchor = null;
-        state_1.state.rope.stillTimer = 0;
-        return;
+    const current = state_1.state.rope.current;
+    current.time += 1 / 60;
+    current.path = (0, Pathfinding_1.buildAvoidedPath)(current.start, { x: state_1.player.x, y: state_1.player.y }, config_1.CONFIG.ropeAvoidPadding);
+}
+},"/src/logic/RopeDynamics":function(exports,require){"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.resetNetMotion = resetNetMotion;
+exports.netResponseAlong = netResponseAlong;
+exports.stepNetMotion = stepNetMotion;
+exports.deformNetPoint = deformNetPoint;
+exports.applyNetBodyImpulse = applyNetBodyImpulse;
+exports.viewNetContact = viewNetContact;
+exports.moveThroughNet = moveThroughNet;
+const RopeNet_1 = require("./RopeNet");
+const motionByNet = new WeakMap();
+const densityRadius = 86;
+const clamp = (n, low, high) => Math.max(low, Math.min(high, n));
+const unit = (n) => clamp(n, 0, 1);
+function motionFor(net) {
+    let motion = motionByNet.get(net);
+    if (!motion) {
+        motion = { contacts: new WeakMap(), pulls: [] };
+        motionByNet.set(net, motion);
     }
-    let nearest = findNearestWall(state_1.player.x, state_1.player.y, config_1.CONFIG.ropeAnchorDistance);
-    let speedThreshold = config_1.CONFIG.ropeStillSpeedThreshold || 1.5;
-    let isStill = state_1.input.move === 0 && Math.hypot(state_1.player.vx, state_1.player.vy) < speedThreshold;
-    if (nearest && isStill)
-        state_1.state.rope.stillTimer += dt;
-    else
-        state_1.state.rope.stillTimer = 0;
-    if (nearest && state_1.state.rope.stillTimer >= config_1.CONFIG.ropeStillTimeToShow) {
-        state_1.state.rope.ui.visible = true;
-        state_1.state.rope.ui.type = state_1.state.rope.active ? 'end' : 'start';
-        state_1.state.rope.ui.anchor = nearest.wall;
+    return motion;
+}
+function resetNetMotion(net) {
+    motionByNet.delete(net);
+}
+function densityAt(group, point, nx, ny) {
+    let density = .045;
+    for (const knot of group.knots) {
+        density += Math.max(0, 1 - Math.hypot(point.x - knot.x, point.y - knot.y) / densityRadius) * .16;
+        if (density >= 1)
+            return 1;
+    }
+    for (const { a, b } of group.strands) {
+        const len = Math.hypot(b.x - a.x, b.y - a.y);
+        const ux = (b.x - a.x) / len, uy = (b.y - a.y) / len;
+        const dx = point.x - a.x, dy = point.y - a.y;
+        const distance = Math.abs(dx * uy - dy * ux);
+        if (distance >= densityRadius)
+            continue;
+        const halfChord = Math.sqrt(densityRadius * densityRadius - distance * distance);
+        const along = dx * ux + dy * uy;
+        const localLength = Math.max(0, Math.min(len, along + halfChord) - Math.max(0, along - halfChord));
+        const across = .35 + .65 * Math.abs(nx * uy - ny * ux);
+        density += .14 * localLength / (2 * densityRadius) * (1 - distance / densityRadius) * across;
+        if (density >= 1)
+            return 1;
+    }
+    return density;
+}
+function response(net, hit, vx, vy, referenceSpeed) {
+    const nx = -hit.nx, ny = -hit.ny;
+    const density = densityAt(net.groups.get(hit.rope), hit.point, nx, ny);
+    const speed = Math.max(0, vx * nx + vy * ny);
+    const load = density * (.12 + .98 * Math.min(1.7, speed / referenceSpeed));
+    return Object.assign(Object.assign({}, hit.surface), { nx, ny, density, strength: unit(load), kind: load < .50 ? 'glide' : load < .84 ? 'rebound' : 'snag' });
+}
+function movingNetHit(net, from, to, radius) {
+    var _a;
+    const hasLoad = !!((_a = motionByNet.get(net)) === null || _a === void 0 ? void 0 : _a.pulls.length);
+    return (0, RopeNet_1.sweepRopeNet)(net, from, to, radius, hasLoad ? (p, i) => deformNetPoint(net, p, i) : undefined);
+}
+function netResponseAlong(net, from, to, radius, vx, vy, referenceSpeed, swimmer) {
+    const hit = movingNetHit(net, from, to, radius);
+    if (!hit)
+        return null;
+    const result = response(net, hit, vx, vy, referenceSpeed);
+    if (swimmer === null || swimmer === void 0 ? void 0 : swimmer.kind) {
+        const threads = touchedFishThreads(net, Object.assign(Object.assign({}, swimmer), to), from, radius, net.groups.get(hit.rope));
+        const crossing = Array.from(threads.values()).filter(thread => thread.across).length;
+        result.kind = threads.size >= fishProfiles[swimmer.kind].required && crossing >= 2 ? 'snag' : 'glide';
+    }
+    return Object.assign(Object.assign({}, result), { ropeIndex: hit.rope, entry: { x: from.x + (to.x - from.x) * hit.time, y: from.y + (to.y - from.y) * hit.time } });
+}
+function stepNetMotion(net) {
+    const motion = motionByNet.get(net);
+    if (!motion)
+        return;
+    for (let i = motion.pulls.length - 1; i >= 0; i--) {
+        const pull = motion.pulls[i];
+        pull.age++;
+        if (pull.driven && pull.age < 2)
+            continue;
+        pull.driven = false;
+        pull.velocity = (pull.velocity - pull.amount * .044) * .9;
+        pull.amount += pull.velocity;
+        if (Math.abs(pull.amount) + Math.abs(pull.velocity) < .09)
+            motion.pulls.splice(i, 1);
+    }
+}
+function deformNetPoint(net, point, ropeIndex) {
+    const group = net.groups.get(ropeIndex), motion = motionByNet.get(net);
+    if (!group || !(motion === null || motion === void 0 ? void 0 : motion.pulls.length))
+        return point;
+    let dx = 0, dy = 0;
+    for (const pull of motion.pulls) {
+        if (pull.group !== group)
+            continue;
+        const distance = Math.hypot(point.x - pull.point.x, point.y - pull.point.y);
+        const falloff = 1 - distance / pull.width;
+        if (falloff <= 0)
+            continue;
+        const deflection = pull.amount * falloff * falloff * (3 - 2 * falloff);
+        dx += pull.nx * deflection;
+        dy += pull.ny * deflection;
+    }
+    if (Math.abs(dx) + Math.abs(dy) < .001)
+        return point;
+    let pin = 1;
+    for (const anchor of group.pins)
+        pin = Math.min(pin, Math.hypot(point.x - anchor.x, point.y - anchor.y) / 25);
+    const scale = Math.min(pin, 48 / (Math.hypot(dx, dy) || 1));
+    return { x: point.x + dx * scale, y: point.y + dy * scale };
+}
+function applyNetBodyImpulse(net, body, vx, vy) {
+    var _a;
+    body.vx += vx;
+    body.vy += vy;
+    const contact = (_a = motionByNet.get(net)) === null || _a === void 0 ? void 0 : _a.contacts.get(body);
+    if (!contact || contact.cooldown > 0 || contact.kind === 'glide')
+        return;
+    const force = vx * contact.nx + vy * contact.ny;
+    contact.speed = clamp(contact.speed + force * .72, -10, 14);
+    contact.pull.velocity += force * .2;
+    if (force < 0)
+        contact.escape = unit(contact.escape - force * .025);
+}
+function viewNetContact(net, body) {
+    var _a, _b;
+    const contact = (_a = motionByNet.get(net)) === null || _a === void 0 ? void 0 : _a.contacts.get(body);
+    if (!contact || contact.cooldown > 0)
+        return null;
+    const { kind, density, strength, phase, escape, nx, ny, pull } = contact;
+    const point = deformNetPoint(net, pull.point, pull.group.indices.values().next().value);
+    return Object.assign(Object.assign({}, point), { kind, density, strength, nx, ny, phase, escape, pull: unit(pull.amount / 36), threads: ((_b = contact.fish) === null || _b === void 0 ? void 0 : _b.threads.size) || 1 });
+}
+function release(contact, body, impulse) {
+    contact.cooldown = 12;
+    contact.pull.driven = false;
+    contact.pull.velocity = -Math.min(5.2, 1 + contact.pull.amount * .17);
+    const sideSpeed = body.vy * contact.nx - body.vx * contact.ny;
+    body.vx = -contact.nx * impulse - contact.ny * sideSpeed;
+    body.vy = -contact.ny * impulse + contact.nx * sideSpeed;
+}
+const fishProfiles = {
+    curious: { tail: 20, retain: 45, required: 3, gripFrames: 7 },
+    piranha: { tail: 28, retain: 50, required: 3, gripFrames: 5 },
+    provoked: { tail: 46, retain: 70, required: 4, gripFrames: 4 },
+    rammer: { tail: 44, retain: 64, required: 4, gripFrames: 3 },
+    shoal: { tail: 12, retain: 30, required: 3, gripFrames: 8 },
+};
+function segmentDistance(a, b, c, d) {
+    const ax = b.x - a.x, ay = b.y - a.y, bx = d.x - c.x, by = d.y - c.y;
+    const det = ax * by - ay * bx;
+    if (Math.abs(det) > 1e-7) {
+        const dx = c.x - a.x, dy = c.y - a.y;
+        const t = (dx * by - dy * bx) / det, u = (dx * ay - dy * ax) / det;
+        if (t >= 0 && t <= 1 && u >= 0 && u <= 1)
+            return 0;
+    }
+    const distances = [[a, c, d], [b, c, d], [c, a, b], [d, a, b]].map(([p, x, y]) => {
+        const q = (0, RopeNet_1.projectOntoStrand)(p, x, y);
+        return Math.hypot(p.x - q.x, p.y - q.y);
+    });
+    return Math.min(...distances);
+}
+// Count separate ropes actually crossed by the body and trailing fins, including
+// their current deformation. Subdividing a rope never adds extra entanglement.
+function touchedFishThreads(net, body, from, radius, group) {
+    var _a, _b;
+    const profile = fishProfiles[body.kind];
+    const angle = (_a = body.angle) !== null && _a !== void 0 ? _a : Math.atan2(body.y - from.y, body.x - from.x);
+    const ux = Math.cos(angle), uy = Math.sin(angle);
+    const tail = { x: from.x - ux * profile.tail, y: from.y - uy * profile.tail };
+    const nose = { x: body.x + ux * 5, y: body.y + uy * 5 };
+    const reach = radius * .78 + 2;
+    const threads = new Map();
+    const loaded = !!((_b = motionByNet.get(net)) === null || _b === void 0 ? void 0 : _b.pulls.length);
+    const padding = reach + (loaded ? 48 : 0);
+    for (const strand of (group === null || group === void 0 ? void 0 : group.strands) || net.strands) {
+        if (!net.woven.has(strand.rope) || threads.has(strand.rope))
+            continue;
+        const { a, b, rope } = strand;
+        if (Math.max(a.x, b.x) < Math.min(tail.x, nose.x) - padding || Math.min(a.x, b.x) > Math.max(tail.x, nose.x) + padding ||
+            Math.max(a.y, b.y) < Math.min(tail.y, nose.y) - padding || Math.min(a.y, b.y) > Math.max(tail.y, nose.y) + padding)
+            continue;
+        const length = Math.hypot(b.x - a.x, b.y - a.y);
+        const across = Math.abs(ux * (b.y - a.y) - uy * (b.x - a.x)) / length > .45;
+        if (!loaded) {
+            if (segmentDistance(tail, nose, a, b) <= reach)
+                threads.set(rope, { point: (0, RopeNet_1.projectOntoStrand)(body, a, b), across });
+            continue;
+        }
+        // Only pose a small portion of long ropes around the fish.
+        const len = Math.hypot(b.x - a.x, b.y - a.y);
+        const q = (0, RopeNet_1.projectOntoStrand)(body, a, b);
+        const middle = Math.hypot(q.x - a.x, q.y - a.y) / len;
+        const span = (profile.tail + padding + Math.hypot(body.x - from.x, body.y - from.y)) / len;
+        const start = Math.max(0, middle - span), end = Math.min(1, middle + span);
+        const pieces = Math.max(1, Math.ceil((end - start) * len / 8));
+        let previous = deformNetPoint(net, { x: a.x + (b.x - a.x) * start, y: a.y + (b.y - a.y) * start }, rope);
+        for (let i = 1; i <= pieces; i++) {
+            const t = start + (end - start) * i / pieces;
+            const rest = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+            const posed = deformNetPoint(net, rest, rope);
+            if (segmentDistance(tail, nose, previous, posed) <= reach) {
+                threads.set(rope, { point: q, across });
+                break;
+            }
+            previous = posed;
+        }
+    }
+    return threads;
+}
+function gatherFish(net, motion, body, from, radius, canOccupy, current) {
+    const profile = fishProfiles[body.kind];
+    const touched = touchedFishThreads(net, body, from, radius, current === null || current === void 0 ? void 0 : current.pull.group);
+    if (!current && !touched.size)
+        return null;
+    let contact = current;
+    if (!contact) {
+        const [rope, first] = touched.entries().next().value;
+        const point = first.point;
+        const dx = body.x - from.x, dy = body.y - from.y, speed = Math.hypot(dx, dy);
+        const nx = speed > .01 ? dx / speed : Math.cos(body.angle || 0);
+        const ny = speed > .01 ? dy / speed : Math.sin(body.angle || 0);
+        const group = net.groups.get(rope);
+        const surface = deformNetPoint(net, point, rope);
+        const pull = { group, point, nx, ny, width: 72, amount: 0, velocity: 0, driven: true, age: 0 };
+        contact = Object.assign(Object.assign({}, surface), { kind: 'glide', nx, ny, density: densityAt(group, point, nx, ny), strength: 0, phase: 0, escape: 0, pull, depth: 0, speed, side: 0, gap: 0, cooldown: 0, surface, fish: { threads: new Map(), entry: null, grip: 0, emptyFrames: 0 } });
+        motion.contacts.set(body, contact);
+        motion.pulls.push(pull);
+    }
+    const fish = contact.fish;
+    contact.phase++;
+    for (const [rope, thread] of touched) {
+        if (net.groups.get(rope) !== contact.pull.group)
+            continue;
+        fish.threads.set(rope, Object.assign(Object.assign({}, thread), { lastSeen: contact.phase }));
+        if (thread.across && !fish.entry)
+            fish.entry = deformNetPoint(net, thread.point, rope);
+    }
+    for (const [rope, thread] of fish.threads) {
+        const p = deformNetPoint(net, thread.point, rope);
+        if (contact.phase - thread.lastSeen > 18 || Math.hypot(body.x - p.x, body.y - p.y) > profile.retain)
+            fish.threads.delete(rope);
+    }
+    fish.emptyFrames = touched.size ? 0 : fish.emptyFrames + 1;
+    if (!fish.threads.size || fish.emptyFrames > 12) {
+        contact.pull.driven = false;
+        motion.contacts.delete(body);
+        return null;
+    }
+    const coverage = unit(fish.threads.size / profile.required);
+    const dx = body.x - from.x, dy = body.y - from.y;
+    const drag = .035 + coverage * .13;
+    const x = body.x - dx * drag, y = body.y - dy * drag;
+    if (canOccupy(x, y)) {
+        body.x = x;
+        body.y = y;
+    }
+    body.vx *= 1 - drag;
+    body.vy *= 1 - drag;
+    const pull = contact.pull;
+    const points = Array.from(fish.threads.values(), thread => thread.point);
+    const centre = {
+        x: points.reduce((sum, p) => sum + p.x, 0) / points.length,
+        y: points.reduce((sum, p) => sum + p.y, 0) / points.length,
+    };
+    pull.point = { x: pull.point.x + (centre.x - pull.point.x) * .24, y: pull.point.y + (centre.y - pull.point.y) * .24 };
+    contact.surface = deformNetPoint(net, pull.point, pull.group.indices.values().next().value);
+    contact.x = contact.surface.x;
+    contact.y = contact.surface.y;
+    contact.strength = coverage * contact.density;
+    pull.driven = true;
+    pull.age = 0;
+    const travelled = Math.max(0, (body.x - contact.surface.x) * contact.nx + (body.y - contact.surface.y) * contact.ny + radius);
+    const flex = Math.min(23, 2 + travelled * .43 + coverage * 5);
+    pull.amount += (flex - pull.amount) * .3;
+    const crossings = Array.from(fish.threads.values()).filter(thread => thread.across).length;
+    const entered = fish.entry && (body.x - fish.entry.x) * contact.nx + (body.y - fish.entry.y) * contact.ny > radius * .6;
+    const engaged = fish.threads.size >= profile.required && crossings >= 2 && entered;
+    // A burst threads through several layers within a few frames. Scale the
+    // tightening by distance travelled so it catches inside the mesh as well.
+    const tightening = clamp(Math.hypot(dx, dy) / 3, .5, 2.5);
+    fish.grip = Math.max(0, fish.grip + (engaged ? tightening : -.6));
+    if (fish.grip < profile.gripFrames)
+        return 'glide';
+    // Re-anchor the pocket around all engaged ropes, keeping the fish's current
+    // position continuous as the fins tighten the mesh around it.
+    pull.point = centre;
+    const surface = deformNetPoint(net, pull.point, pull.group.indices.values().next().value);
+    contact.x = surface.x;
+    contact.y = surface.y;
+    contact.surface = surface;
+    contact.depth = Math.max(12, pull.amount);
+    contact.gap = contact.depth - ((body.x - surface.x) * contact.nx + (body.y - surface.y) * contact.ny);
+    contact.side = (body.y - surface.y) * contact.nx - (body.x - surface.x) * contact.ny;
+    contact.speed = Math.min(3.2, Math.max(0, body.vx * contact.nx + body.vy * contact.ny));
+    contact.strength = Math.max(.65, coverage * contact.density);
+    contact.kind = 'snag';
+    contact.phase = 0;
+    return 'snag';
+}
+function moveThroughNet(net, body, from, radius, referenceSpeed, intent, canOccupy) {
+    if (!net.woven.size)
+        return null;
+    const motion = motionFor(net);
+    let contact = motion.contacts.get(body);
+    const dx = body.x - from.x, dy = body.y - from.y;
+    if ((contact === null || contact === void 0 ? void 0 : contact.cooldown) > 0) {
+        if (--contact.cooldown === 0)
+            motion.contacts.delete(body);
+        return null;
+    }
+    if (body.kind && (!contact || contact.kind === 'glide')) {
+        return gatherFish(net, motion, body, from, radius, canOccupy, contact);
+    }
+    if (!contact) {
+        const hit = movingNetHit(net, from, body, radius);
+        if (!hit)
+            return null;
+        const impact = response(net, hit, dx, dy, referenceSpeed);
+        const speed = Math.max(0, dx * impact.nx + dy * impact.ny);
+        const pull = {
+            group: net.groups.get(hit.rope), point: hit.point, nx: impact.nx, ny: impact.ny,
+            width: 55 + impact.density * 49, amount: 0, velocity: 0, driven: true, age: 0,
+        };
+        contact = Object.assign(Object.assign({}, impact), { pull, surface: hit.surface, phase: 0, escape: 0, depth: -speed * hit.time, speed, side: 0, gap: -((from.x - hit.surface.x) * impact.nx + (from.y - hit.surface.y) * impact.ny) - speed * hit.time, cooldown: 0 });
+        motion.contacts.set(body, contact);
+        motion.pulls.push(pull);
+    }
+    contact.phase++;
+    const { kind, nx, ny, density, strength, phase, pull } = contact;
+    const inward = dx * nx + dy * ny;
+    if (kind === 'glide') {
+        // Drag acts in the direction crossing the strand. Leave lateral swimming intact.
+        const drag = inward * (.08 + density * .34) * Math.max(0, 1 - (phase - 1) / 7);
+        const x = body.x - drag * nx, y = body.y - drag * ny;
+        if (canOccupy(x, y)) {
+            body.x = x;
+            body.y = y;
+        }
+        body.vx -= drag * nx;
+        body.vy -= drag * ny;
+        if (phase === 1) {
+            pull.amount = 3 + strength * 13;
+            pull.velocity = Math.min(3.4, inward * .35);
+        }
+        pull.driven = false;
+        const distance = (body.x - contact.x) * nx + (body.y - contact.y) * ny;
+        if (Math.abs(distance) > radius + 8 || phase >= 54) {
+            contact.cooldown = 3;
+        }
+        return kind;
+    }
+    const effort = clamp((intent.x * nx + intent.y * ny) / 8, -1, 1);
+    const sideEffort = clamp((intent.y * nx - intent.x * ny) / 8, -1, 1);
+    const snagged = kind === 'snag';
+    const target = snagged ? radius + 11 + 10 * density : 0;
+    const slack = snagged ? 0 : 8;
+    const displacement = snagged ? contact.depth - target : Math.max(0, contact.depth - slack);
+    contact.speed = clamp((contact.speed - displacement * (.048 + .037 * density) + effort * (snagged ? .26 : .3)) * .88, -10, 14);
+    const previousDepth = contact.depth;
+    contact.depth = Math.min(43, contact.depth + contact.speed);
+    const limit = snagged ? radius * .85 : 34;
+    contact.side = clamp(contact.side + (dy * nx - dx * ny) * (snagged ? .16 : .6), -limit, limit);
+    const tug = snagged && phase > 7 ? Math.sin(phase * .66) * (1.4 + Math.abs(sideEffort) * 2.8) : 0;
+    const x = contact.surface.x + nx * (contact.depth - contact.gap) - ny * (contact.side + tug);
+    const y = contact.surface.y + ny * (contact.depth - contact.gap) + nx * (contact.side + tug);
+    if (canOccupy(x, y)) {
+        body.x = x;
+        body.y = y;
+        body.vx = x - from.x;
+        body.vy = y - from.y;
     }
     else {
-        state_1.state.rope.ui.visible = false;
-        state_1.state.rope.ui.type = null;
-        state_1.state.rope.ui.anchor = null;
+        body.x = from.x;
+        body.y = from.y;
+        body.vx = body.vy = 0;
+        contact.depth = previousDepth;
+        contact.speed *= -.24;
     }
+    pull.amount = Math.max(0, contact.depth) * .96 + tug * .46;
+    pull.velocity = 0;
+    pull.age = 0;
+    pull.driven = true;
+    if (snagged) {
+        const backingOut = Math.max(0, -effort);
+        const loosen = contact.fish ? .0028 + .006 * backingOut + .004 * Math.abs(sideEffort)
+            : .007 - .003 * density + (.034 - .012 * density) * backingOut + .014 * Math.abs(sideEffort);
+        contact.escape = unit(contact.escape + loosen);
+        if (contact.escape >= 1)
+            release(contact, body, contact.fish ? 2.2 + strength * 1.5 : 6 + strength * 3);
+    }
+    else if ((phase >= 5 && contact.depth < -.5) || phase >= 36 || Math.abs(contact.side) >= 33) {
+        release(contact, body, clamp(-contact.speed, 2.2, 7));
+    }
+    return kind;
+}
+},"/src/logic/RopeNet":function(exports,require){"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.projectOntoStrand = projectOntoStrand;
+exports.pointOnStrand = pointOnStrand;
+exports.getRopeNet = getRopeNet;
+exports.sweepRopeNet = sweepRopeNet;
+const KNOT_EPSILON = 0.025;
+const STRAND_RADIUS = 2;
+const KNOT_RADIUS = 5;
+const MAX_POSE_OFFSET = 48;
+const cross = (ax, ay, bx, by) => ax * by - ay * bx;
+function projectOntoStrand(p, a, b) {
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const lengthSquared = dx * dx + dy * dy;
+    const t = lengthSquared ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / lengthSquared)) : 0;
+    return { x: a.x + dx * t, y: a.y + dy * t };
+}
+function pointOnStrand(p, a, b) {
+    const q = projectOntoStrand(p, a, b);
+    return Math.hypot(p.x - q.x, p.y - q.y) <= KNOT_EPSILON;
+}
+const nets = new WeakMap();
+const collisionBounds = new WeakMap();
+function crossing(a, b) {
+    const ax = a.b.x - a.a.x, ay = a.b.y - a.a.y;
+    const bx = b.b.x - b.a.x, by = b.b.y - b.a.y;
+    const det = cross(ax, ay, bx, by);
+    if (Math.abs(det) < 1e-6)
+        return null;
+    const dx = b.a.x - a.a.x, dy = b.a.y - a.a.y;
+    const t = cross(dx, dy, bx, by) / det, u = cross(dx, dy, ax, ay) / det;
+    if (t < -1e-7 || t > 1 + 1e-7 || u < -1e-7 || u > 1 + 1e-7)
+        return null;
+    return { x: a.a.x + ax * t, y: a.a.y + ay * t };
+}
+function getRopeNet(ropes) {
+    var _a;
+    const cached = nets.get(ropes);
+    if ((cached === null || cached === void 0 ? void 0 : cached.length) === ropes.length)
+        return cached.net;
+    const strands = [], knots = [];
+    const woven = new Set();
+    ropes.forEach((rope, index) => {
+        const path = rope.path || [];
+        for (let i = 1; i < path.length; i++) {
+            const a = path[i - 1], b = path[i];
+            if (Math.hypot(a.x - b.x, a.y - b.y) > KNOT_EPSILON)
+                strands.push({ a, b, rope: index });
+        }
+    });
+    const knotBins = new Map();
+    const join = (p, a, b) => {
+        let index = knots.length;
+        // An epsilon-sized search visits only the one-pixel bins touching the point.
+        for (let x = Math.floor(p.x - KNOT_EPSILON); x <= Math.floor(p.x + KNOT_EPSILON); x++) {
+            for (let y = Math.floor(p.y - KNOT_EPSILON); y <= Math.floor(p.y + KNOT_EPSILON); y++) {
+                const candidates = knotBins.get(`${x}:${y}`);
+                if (!candidates)
+                    continue;
+                for (const candidate of candidates) {
+                    const knot = knots[candidate];
+                    if (candidate < index && Math.hypot(p.x - knot.x, p.y - knot.y) <= KNOT_EPSILON)
+                        index = candidate;
+                }
+            }
+        }
+        if (index === knots.length) {
+            const cell = `${Math.floor(p.x)}:${Math.floor(p.y)}`;
+            const candidates = knotBins.get(cell);
+            if (candidates)
+                candidates.push(index);
+            else
+                knotBins.set(cell, [index]);
+            knots.push(Object.assign(Object.assign({}, p), { ropes: new Set() }));
+        }
+        const knot = knots[index];
+        knot.ropes.add(a);
+        knot.ropes.add(b);
+        woven.add(a);
+        woven.add(b);
+    };
+    const isTip = (p, rope) => [rope.path[0], rope.path[rope.path.length - 1]].some(q => Math.hypot(p.x - q.x, p.y - q.y) <= KNOT_EPSILON);
+    for (let i = 0; i < strands.length; i++) {
+        const a = strands[i];
+        for (let j = i + 1; j < strands.length; j++) {
+            const b = strands[j];
+            if (a.rope === b.rope)
+                continue;
+            const p = crossing(a, b);
+            // Two wall anchors sharing a tip do not create a junction in the water.
+            if (p && !(isTip(p, ropes[a.rope]) && isTip(p, ropes[b.rope])))
+                join(p, a.rope, b.rope);
+        }
+    }
+    ropes.forEach((rope, index) => {
+        const ends = [rope.startOnRope && rope.path[0], rope.endOnRope && rope.path[rope.path.length - 1]];
+        for (const p of ends) {
+            if (!p)
+                continue;
+            for (const s of strands) {
+                if (s.rope !== index && pointOnStrand(p, s.a, s.b))
+                    join(p, index, s.rope);
+            }
+        }
+    });
+    const groups = new Map();
+    const links = new Map();
+    for (const knot of knots) {
+        for (const index of knot.ropes) {
+            if (!links.has(index))
+                links.set(index, []);
+            links.get(index).push(knot);
+        }
+    }
+    for (const index of woven) {
+        if (groups.has(index))
+            continue;
+        const group = { indices: new Set([index]), strands: [], knots: [], pins: [] };
+        const seenKnots = new Set();
+        for (const member of group.indices) {
+            groups.set(member, group);
+            for (const knot of links.get(member) || []) {
+                seenKnots.add(knot);
+                for (const neighbor of knot.ropes)
+                    group.indices.add(neighbor);
+            }
+            const rope = ropes[member], path = rope.path;
+            if (!rope.startOnRope)
+                group.pins.push(path[0]);
+            if (!rope.endOnRope)
+                group.pins.push(path[path.length - 1]);
+            // A rope going around a rock bears against the bend as well as its nails.
+            for (let i = 1; i < path.length - 1; i++) {
+                if (!pointOnStrand(path[i], path[i - 1], path[i + 1]))
+                    group.pins.push(path[i]);
+            }
+        }
+        group.knots = Array.from(seenKnots);
+    }
+    for (const strand of strands)
+        (_a = groups.get(strand.rope)) === null || _a === void 0 ? void 0 : _a.strands.push(strand);
+    const net = { strands, knots, woven, groups };
+    const bounds = { left: Infinity, right: -Infinity, top: Infinity, bottom: -Infinity };
+    for (const { a, b, rope } of strands) {
+        if (!woven.has(rope))
+            continue;
+        bounds.left = Math.min(bounds.left, a.x, b.x);
+        bounds.right = Math.max(bounds.right, a.x, b.x);
+        bounds.top = Math.min(bounds.top, a.y, b.y);
+        bounds.bottom = Math.max(bounds.bottom, a.y, b.y);
+    }
+    for (const knot of knots) {
+        bounds.left = Math.min(bounds.left, knot.x);
+        bounds.right = Math.max(bounds.right, knot.x);
+        bounds.top = Math.min(bounds.top, knot.y);
+        bounds.bottom = Math.max(bounds.bottom, knot.y);
+    }
+    collisionBounds.set(net, bounds);
+    nets.set(ropes, { length: ropes.length, net });
+    return net;
+}
+// A moving circle against the sides and round caps of each strand, and against knots.
+function sweepRopeNet(net, from, to, radius, pose) {
+    if (!net.woven.size)
+        return null;
+    const left = Math.min(from.x, to.x), right = Math.max(from.x, to.x);
+    const top = Math.min(from.y, to.y), bottom = Math.max(from.y, to.y);
+    const posePadding = pose ? MAX_POSE_OFFSET : 0;
+    const knotPadding = radius + KNOT_RADIUS + posePadding;
+    const bounds = collisionBounds.get(net);
+    if (bounds && (right + knotPadding < bounds.left || left - knotPadding > bounds.right ||
+        bottom + knotPadding < bounds.top || top - knotPadding > bounds.bottom))
+        return null;
+    const dx = to.x - from.x, dy = to.y - from.y;
+    const speedSquared = dx * dx + dy * dy;
+    if (speedSquared < 1e-8)
+        return null;
+    let hit = null;
+    const consider = (time, nx, ny, point, surface, rope) => {
+        if (time >= 0 && time <= 1 && (!hit || time < hit.time) && dx * nx + dy * ny < -1e-6) {
+            hit = { time, nx, ny, point, surface, rope };
+        }
+    };
+    const circle = (p, r, rope, surface) => {
+        const px = from.x - surface.x, py = from.y - surface.y;
+        const b = px * dx + py * dy, c = px * px + py * py - r * r;
+        const det = b * b - speedSquared * c;
+        if (b >= 0 || det < 0)
+            return;
+        const t = Math.max(0, (-b - Math.sqrt(det)) / speedSquared);
+        const x = px + dx * t, y = py + dy * t, len = Math.hypot(x, y);
+        if (len > 1e-6)
+            consider(t, x / len, y / len, p, surface, rope);
+    };
+    const r = radius + STRAND_RADIUS;
+    const nearSweep = (a, b, padding) => right + padding >= Math.min(a.x, b.x) && left - padding <= Math.max(a.x, b.x) &&
+        bottom + padding >= Math.min(a.y, b.y) && top - padding <= Math.max(a.y, b.y);
+    const test = (restA, restB, a, b, rope) => {
+        if (!nearSweep(a, b, r))
+            return;
+        const len = Math.hypot(b.x - a.x, b.y - a.y);
+        if (len < .001)
+            return;
+        const ux = (b.x - a.x) / len, uy = (b.y - a.y) / len;
+        const px = from.x - a.x, py = from.y - a.y;
+        const side = -px * uy + py * ux;
+        const across = -dx * uy + dy * ux;
+        if (side * across < 0) {
+            const time = Math.max(0, (Math.sign(side) * r - side) / across);
+            const along = (px + dx * time) * ux + (py + dy * time) * uy;
+            if (along >= 0 && along <= len) {
+                const t = along / len;
+                consider(time, -uy * Math.sign(side), ux * Math.sign(side), { x: restA.x + (restB.x - restA.x) * t, y: restA.y + (restB.y - restA.y) * t }, { x: a.x + ux * along, y: a.y + uy * along }, rope);
+            }
+        }
+        circle(restA, r, rope, a);
+        circle(restB, r, rope, b);
+    };
+    for (const { a, b, rope } of net.strands) {
+        if (!net.woven.has(rope))
+            continue;
+        if (!pose) {
+            test(a, b, a, b, rope);
+            continue;
+        }
+        const padding = r + posePadding;
+        if (!nearSweep(a, b, padding))
+            continue;
+        const spanX = b.x - a.x, spanY = b.y - a.y;
+        let enter = 0, exit = 1;
+        if (spanX !== 0) {
+            const t1 = (left - padding - a.x) / spanX, t2 = (right + padding - a.x) / spanX;
+            enter = Math.max(enter, Math.min(t1, t2));
+            exit = Math.min(exit, Math.max(t1, t2));
+        }
+        if (spanY !== 0) {
+            const t1 = (top - padding - a.y) / spanY, t2 = (bottom + padding - a.y) / spanY;
+            enter = Math.max(enter, Math.min(t1, t2));
+            exit = Math.min(exit, Math.max(t1, t2));
+        }
+        if (enter > exit + 1e-8)
+            continue;
+        // Preserve the strand's fixed 8 px sampling lattice so clipping cannot change its posed curve.
+        const pieces = Math.ceil(Math.hypot(spanX, spanY) / 8);
+        const first = Math.max(1, Math.ceil(enter * pieces - 1e-8));
+        const last = Math.min(pieces, Math.floor(exit * pieces + 1e-8) + 1);
+        const start = (first - 1) / pieces;
+        let previous = first === 1 ? a : { x: a.x + spanX * start, y: a.y + spanY * start };
+        let posedPrevious = pose(previous, rope);
+        for (let i = first; i <= last; i++) {
+            const t = i / pieces;
+            const point = { x: a.x + spanX * t, y: a.y + spanY * t };
+            const posed = pose(point, rope);
+            test(previous, point, posedPrevious, posed, rope);
+            previous = point;
+            posedPrevious = posed;
+        }
+    }
+    for (const knot of net.knots) {
+        if (nearSweep(knot, knot, knotPadding)) {
+            const rope = knot.ropes.values().next().value;
+            circle(knot, radius + KNOT_RADIUS, rope, pose ? pose(knot, rope) : knot);
+        }
+    }
+    return hit;
+}
+},"/src/logic/RopeWheel":function(exports,require){"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.canUseRopeWheel = canUseRopeWheel;
+exports.aimRopeAnchor = aimRopeAnchor;
+exports.startRopeWheelGesture = startRopeWheelGesture;
+exports.refreshRopeWheelAim = refreshRopeWheelAim;
+exports.moveRopeWheelGesture = moveRopeWheelGesture;
+exports.getRopeWheelAim = getRopeWheelAim;
+exports.getRopeCancelProgress = getRopeCancelProgress;
+exports.finishRopeWheelGesture = finishRopeWheelGesture;
+const config_1 = require("../core/config");
+const state_1 = require("../core/state");
+const RockGeometry_1 = require("../world/RockGeometry");
+const Visibility_1 = require("../world/Visibility");
+const Rope_1 = require("./Rope");
+const DriveMode_1 = require("./DriveMode");
+const RopeNet_1 = require("./RopeNet");
+const CANCEL_HOLD_MS = 650;
+const DRAG_THRESHOLD = 9;
+let gesture = null;
+let aim = null;
+function canUseRopeWheel() {
+    var _a, _b;
+    return !((_a = state_1.state.fishBite) === null || _a === void 0 ? void 0 : _a.active) && (state_1.state.screen === 'play' && state_1.player.y > 0 ||
+        state_1.state.screen === 'mazeRescue' && ((_b = state_1.state.mazeRescue) === null || _b === void 0 ? void 0 : _b.phase) === 'play');
+}
+function rockHitDistance(wall, dx, dy, range) {
+    if (wall.rockPolygon)
+        return (0, RockGeometry_1.rayHitsRock)(wall, state_1.player.x, state_1.player.y, dx, dy, range);
+    const wx = wall.x - state_1.player.x, wy = wall.y - state_1.player.y;
+    const across = wx * dy - wy * dx;
+    if (Math.abs(across) > wall.r)
+        return range;
+    const hit = wx * dx + wy * dy - Math.sqrt(Math.max(0, wall.r * wall.r - across * across));
+    return hit > .001 && hit < range ? hit : range;
+}
+/** The thumb selects a direction and a reach. Along the ray, two strands at
+ * different depths can both be selected. Between rays, the nearest point on a
+ * strand or rock face makes small adjustments possible without pixel hunting. */
+function aimRopeAnchor(angle, reach) {
+    const dx = Math.cos(angle), dy = Math.sin(angle);
+    const range = config_1.CONFIG.ropeAnchorDistance;
+    const pointer = { x: state_1.player.x + dx * reach, y: state_1.player.y + dy * reach };
+    const { strands, knots } = (0, RopeNet_1.getRopeNet)(state_1.state.rope.ropes);
+    const walls = ((0, Visibility_1.getActiveMapContext)().walls || []).filter(wall => Math.abs(state_1.player.x - wall.x) <= wall.r + range && Math.abs(state_1.player.y - wall.y) <= wall.r + range);
+    const start = state_1.state.rope.active ? state_1.state.rope.current.start : null;
+    let target = null;
+    let best = Infinity;
+    const consider = (kind, point, wall, ropeIndex) => {
+        const rx = point.x - state_1.player.x, ry = point.y - state_1.player.y;
+        const depth = rx * dx + ry * dy;
+        const lateral = Math.abs(rx * dy - ry * dx);
+        const distance = Math.hypot(rx, ry);
+        if (depth < 1 || lateral > 9 || distance > range ||
+            (start && Math.hypot(point.x - start.x, point.y - start.y) < 12))
+            return;
+        const snap = kind === 'knot' && lateral < 5 && Math.abs(depth - reach) < 12 ? 7 : 0;
+        const score = Math.abs(depth - reach) + 2.1 * lateral - snap;
+        if (score >= best || walls.some(w => rockHitDistance(w, rx / distance, ry / distance, distance) < distance - .02) ||
+            !(0, Visibility_1.isLineOfSight)(state_1.player.x, state_1.player.y, point.x, point.y, range))
+            return;
+        best = score;
+        target = { kind, anchor: { point, wall, onRope: !wall }, ropeIndex };
+    };
+    for (const knot of knots)
+        consider('knot', { x: knot.x, y: knot.y }, undefined, knot.ropes.values().next().value);
+    for (const { a, b, rope } of strands) {
+        if (state_1.player.x + range < Math.min(a.x, b.x) || state_1.player.x - range > Math.max(a.x, b.x) ||
+            state_1.player.y + range < Math.min(a.y, b.y) || state_1.player.y - range > Math.max(a.y, b.y))
+            continue;
+        consider('strand', (0, RopeNet_1.projectOntoStrand)(pointer, a, b), undefined, rope);
+        const sx = b.x - a.x, sy = b.y - a.y;
+        const cross = dx * sy - dy * sx;
+        if (Math.abs(cross) < 1e-6)
+            continue;
+        const t = ((a.x - state_1.player.x) * dy - (a.y - state_1.player.y) * dx) / cross;
+        if (t >= 0 && t <= 1)
+            consider('strand', { x: a.x + sx * t, y: a.y + sy * t }, undefined, rope);
+    }
+    for (const wall of walls) {
+        const addSurface = (x, y) => {
+            const length = Math.hypot(state_1.player.x - x, state_1.player.y - y);
+            if (length < .25)
+                return;
+            // Keep the exact surface anchor just inside the water for line-of-sight and routing.
+            const point = { x: x + (state_1.player.x - x) * .25 / length, y: y + (state_1.player.y - y) * .25 / length };
+            if (!(0, RockGeometry_1.circleHitsRock)(wall, point.x, point.y, 0))
+                consider('rock', point, wall);
+        };
+        const projected = (0, RockGeometry_1.closestRockPoint)(wall, pointer.x, pointer.y);
+        addSurface(projected.x, projected.y);
+        const hit = rockHitDistance(wall, dx, dy, range);
+        if (hit > .25 && hit < range)
+            addSurface(state_1.player.x + dx * hit, state_1.player.y + dy * hit);
+    }
+    return { angle, reach, pointer, target };
+}
+function startRopeWheelGesture(touchId, x, y, centerX, centerY) {
+    if (!canUseRopeWheel() || state_1.state.wheel.open)
+        return false;
+    state_1.state.wheel.open = true;
+    state_1.state.wheel.expandProgress = 1;
+    state_1.state.wheel.touchId = touchId;
+    state_1.state.wheel.centerX = centerX;
+    state_1.state.wheel.centerY = centerY;
+    gesture = { touchId, x, y, startX: x, startY: y, dragged: false, openedAt: Date.now() };
+    aim = null;
+    (0, DriveMode_1.resetDriveInput)();
+    return true;
+}
+function refreshRopeWheelAim() {
+    if (!state_1.state.wheel.open || !gesture || !canUseRopeWheel() || !gesture.dragged) {
+        aim = null;
+        return;
+    }
+    const { wheelInnerRadius: inner, wheelOuterRadius: outer } = config_1.CONFIG.marker;
+    const dx = gesture.x - state_1.state.wheel.centerX, dy = gesture.y - state_1.state.wheel.centerY;
+    const distance = Math.hypot(dx, dy);
+    if (distance <= inner) {
+        aim = null;
+        return;
+    }
+    const fraction = Math.min(1, (distance - inner) / Math.max(1, outer - inner));
+    aim = aimRopeAnchor(Math.atan2(dy, dx), config_1.CONFIG.ropeAnchorDistance * fraction);
+}
+function moveRopeWheelGesture(touchId, x, y) {
+    if (!state_1.state.wheel.open || (gesture === null || gesture === void 0 ? void 0 : gesture.touchId) !== touchId)
+        return false;
+    gesture.x = x;
+    gesture.y = y;
+    gesture.dragged || (gesture.dragged = Math.hypot(x - gesture.startX, y - gesture.startY) >= DRAG_THRESHOLD);
+    refreshRopeWheelAim();
+    return true;
+}
+function getRopeWheelAim() {
+    return state_1.state.wheel.open && canUseRopeWheel() ? aim : null;
+}
+function getRopeCancelProgress(now = Date.now()) {
+    if (!state_1.state.wheel.open || !state_1.state.rope.active || !gesture || gesture.dragged)
+        return 0;
+    if (Math.hypot(gesture.x - state_1.state.wheel.centerX, gesture.y - state_1.state.wheel.centerY) > config_1.CONFIG.marker.wheelInnerRadius)
+        return 0;
+    return Math.min(1, (now - gesture.openedAt) / CANCEL_HOLD_MS);
+}
+function finishRopeWheelGesture(touchId, x, y, cancelled) {
+    if (!state_1.state.wheel.open || (gesture === null || gesture === void 0 ? void 0 : gesture.touchId) !== touchId)
+        return null;
+    let changed = false;
+    if (!cancelled && canUseRopeWheel()) {
+        if (!aim || Math.hypot(x - gesture.x, y - gesture.y) > 1)
+            moveRopeWheelGesture(touchId, x, y);
+        if (aim === null || aim === void 0 ? void 0 : aim.target)
+            changed = (0, Rope_1.placeRopeAt)(aim.target.anchor);
+        else if (getRopeCancelProgress() >= 1) {
+            (0, Rope_1.cancelRopePlacement)();
+            changed = true;
+        }
+    }
+    state_1.state.wheel.open = false;
+    state_1.state.wheel.expandProgress = 0;
+    state_1.state.wheel.touchId = null;
+    gesture = null;
+    aim = null;
+    return changed;
 }
 },"/src/logic/SemiAutoDrive":function(exports,require){"use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
@@ -21850,11 +22495,11 @@ function updateSemiAutoJoystick(dx, dy, speedUp) {
     sd.thrusting = true;
 }
 function processSemiAutoDrive(moveSpeed = config_1.CONFIG.moveSpeed) {
-    var _a, _b, _c, _d;
+    var _a, _b;
     if (config_1.CONFIG.driveMode !== 'semiAuto')
         return false;
-    const blocked = ((_b = (_a = state_1.state.rope) === null || _a === void 0 ? void 0 : _a.hold) === null || _b === void 0 ? void 0 : _b.active) || ((_c = state_1.state.fishBite) === null || _c === void 0 ? void 0 : _c.active) ||
-        (state_1.state.screen === 'mazeRescue' && ((_d = state_1.state.mazeRescue) === null || _d === void 0 ? void 0 : _d.retreatHolding));
+    const blocked = ((_a = state_1.state.fishBite) === null || _a === void 0 ? void 0 : _a.active) ||
+        (state_1.state.screen === 'mazeRescue' && ((_b = state_1.state.mazeRescue) === null || _b === void 0 ? void 0 : _b.retreatHolding));
     if (blocked || state_1.input.move === 0)
         releaseSemiAutoDrive();
     const sd = state_1.state.semiAutoDrive, cfg = config_1.CONFIG.semiAutoDrive;
@@ -22485,8 +23130,10 @@ function drawHUDTopLeft(time) {
     // 先绘制所有图标（不带长按附加面板）
     for (const slot of slots) {
         slot.item.iconDraw(Canvas_1.ctx, slot.cx, slot.cy, slot.size, time);
-        if (slot.item.id === 'lifeDetector')
+        if (slot.item.id === 'lifeDetector') {
+            (0, TapeEntry_1.drawTapeLoadingHint)(Canvas_1.ctx, slot.cx + slot.size / 2 + 12, slot.cy - 16);
             (0, TapeEntry_1.drawTapeNowPlaying)(Canvas_1.ctx, slot.cx + slot.size / 2 + 12, slot.cy - 23);
+        }
         if (slot.item.id !== 'lifeDetector') {
             const captions = { oxygen: 'AIR', depth: 'DEPTH', deco: 'DECO', retreat: 'RETURN', gm: 'TOOLS' };
             Canvas_1.ctx.save();
@@ -22684,15 +23331,19 @@ function initMazeHUDTopLeft() {
             (0, TapeDeckVisual_1.drawTapeSleeve)(c, Math.min(cx + 38, Canvas_1.logicW - w - 12), Math.max(64, Math.min(cy - 112, Canvas_1.logicH - 236)), w, (0, RescueTape_1.getRescueTapeVisual)());
             c.restore();
         },
-        onShortTap: () => { (0, RenderAudioToggle_1.toggleMuted)(); },
+        onShortTap: () => { if (!(0, TapeEntry_1.retryTapeLoading)())
+            (0, RenderAudioToggle_1.toggleMuted)(); },
         tipText: () => {
+            const loading = (0, TapeEntry_1.getTapeLoadingLabel)();
+            if (loading)
+                return loading + '\n可继续游动，不影响救援';
             const v = (0, RescueTape_1.getRescueTapeVisual)();
             if (state_1.state.audio.muted)
                 return '深流随身听 · 已静音\n轻点磁带恢复声音\n按住磁带可看分层节奏';
             if (v.fallback)
                 return '深流随身听 · 双音模式\n按住查看节奏';
             if (!v.playing)
-                return '深流随身听 · 磁带就绪\n带上音乐，下潜\n按住查看分层节奏';
+                return '深流随身听 · 音轨就绪\n靠近救援对象时才播放\n按住查看分层节奏';
             return `深流随身听 · ${v.mood === 'return' ? 'B 面' : 'A 面'}\n${v.level}/5 层 · 120 BPM\n按住查看分层节奏`;
         },
     });
@@ -24048,10 +24699,11 @@ Object.defineProperty(exports, "ctx", { enumerable: true, get: function () { ret
 const RenderLight_1 = require("./RenderLight");
 const WebGLLight_1 = require("./WebGLLight");
 const RenderDiver_1 = require("./RenderDiver");
+const RenderFishSpecies_1 = require("./RenderFishSpecies");
 const RenderUI_1 = require("./RenderUI");
 const RenderRope_1 = require("./RenderRope");
+const Rope_1 = require("../logic/Rope");
 const RenderRescueRope_1 = require("./RenderRescueRope");
-const RenderMarker_1 = require("./RenderMarker");
 const RenderWheel_1 = require("./RenderWheel");
 const RenderFishEnemy_1 = require("./RenderFishEnemy");
 const RenderMazeScene_1 = require("./RenderMazeScene");
@@ -24417,27 +25069,11 @@ function draw() {
     (0, PerfHUD_1.profileEnd)('draw.scene');
     (0, PerfHUD_1.profileBegin)('draw.worldObjects');
     // --- 绘制绳索（世界空间，在角色之前）---
-    (0, RenderRope_1.drawRopesWorld)();
+    (0, RenderRope_1.drawRopesWorld)(viewL, viewR, viewT, viewB);
     // --- 绘制救援绳（玩家↔NPC，仅迷宫模式绑绳后）---
     (0, RenderRescueRope_1.drawRescueRopeWorld)(Canvas_1.ctx);
-    // --- 绘制标记（世界空间，在绳索之后）---
-    (0, RenderMarker_1.drawMarkersWorld)(Canvas_1.ctx);
-    // --- 绘制标记预览（轮盘高亮时在场景中显示半透明预览）---
-    if (state_1.state.wheel && state_1.state.wheel.open && state_1.state.wheel.previewAction && state_1.state.wheel.nearbyInfo) {
-        const pa = state_1.state.wheel.previewAction;
-        const info = state_1.state.wheel.nearbyInfo;
-        if (pa === 'markDanger' || pa === 'markUnknown' || pa === 'markSafe') {
-            const mType = pa === 'markDanger' ? 'danger' : pa === 'markUnknown' ? 'unknown' : 'safe';
-            if (info.context === 'ropeMid' || info.context === 'ropeMarkedMid') {
-                (0, RenderMarker_1.drawMarkerPreview)(Canvas_1.ctx, mType, null, info.ropeIndex, info.ropeT);
-            }
-            else if (info.wall) {
-                (0, RenderMarker_1.drawMarkerPreview)(Canvas_1.ctx, mType, info.wall);
-            }
-        }
-    }
     // --- 绘制凶猛鱼敌人（在角色之前）---
-    (0, RenderFishEnemy_1.drawAllFishEnemies)(Canvas_1.ctx);
+    (0, RenderFishEnemy_1.drawAllFishEnemies)(Canvas_1.ctx, viewL, viewR, viewT, viewB);
     // --- 迷宫模式：绘制氧气瓶（静态位点 + 交互环）+ 拾取反馈（飞瓶/气泡爆发）---
     if (isMazeMode && state_1.state.mazeRescue && state_1.state.mazeRescue.phase === 'play') {
         (0, RenderOxygenTank_1.drawOxygenTanksWorld)(Canvas_1.ctx, viewL, viewR, viewT, viewB);
@@ -24478,7 +25114,10 @@ function draw() {
     const tankCountForDiver = hasTank
         ? (state_1.state.screen === 'mazeRescue' ? Math.max(1, activeTanks.length) : 1)
         : 0;
+    const ropeContact = isMazeMode ? (0, Rope_1.getRopeContact)(state_1.player) : null;
     (0, RenderDiver_1.drawDiver)(Canvas_1.ctx, state_1.player.x, state_1.player.y, state_1.player.angle, playerColors, {
+        fishBump: (0, RenderFishSpecies_1.fishBumpPose)(),
+        ropeStruggle: (ropeContact === null || ropeContact === void 0 ? void 0 : ropeContact.kind) === 'snag' ? { phase: ropeContact.phase, strength: ropeContact.strength, pull: ropeContact.pull } : undefined,
         animTime: state_1.player.animTime,
         hasTank,
         tankCount: tankCountForDiver,
@@ -24511,6 +25150,8 @@ function draw() {
             : isMazeMode && state_1.state.mazeRescue.npcStunnedAt && Date.now() - state_1.state.mazeRescue.npcStunnedAt < 240
                 ? 1 - (Date.now() - state_1.state.mazeRescue.npcStunnedAt) / 240 : 0,
     });
+    (0, RenderFishSpecies_1.drawFishBumpWorld)(Canvas_1.ctx);
+    (0, RenderRope_1.drawRopeContactWorld)(Canvas_1.ctx, state_1.player, ropeContact, config_1.CONFIG.maze.playerRadius);
     // --- 绘制 NPC 呼救表现（气泡、挥手、闪光圈，仅迷宫未被救时）---
     if (!targetDance && !(isMazeMode && state_1.state.mazeRescue.npcStunned))
         (0, RenderRescueRope_1.drawNPCDistressWorld)(Canvas_1.ctx);
@@ -24687,6 +25328,18 @@ function draw() {
         Canvas_1.ctx.fill();
     }
     Canvas_1.ctx.restore();
+    if (isMazeMode && state_1.state.mazeRescue.phase === 'play') {
+        Canvas_1.ctx.save();
+        Canvas_1.ctx.translate(Canvas_1.logicW / 2 + shakeX, Canvas_1.logicH / 2 + shakeY);
+        Canvas_1.ctx.scale(zoom, zoom);
+        Canvas_1.ctx.translate(-camX, -camY);
+        (0, RenderRope_1.drawRopeApproachWorld)(Canvas_1.ctx, zoom, {
+            left: camX - Canvas_1.logicW / (2 * zoom), right: camX + Canvas_1.logicW / (2 * zoom),
+            top: camY - Canvas_1.logicH / (2 * zoom), bottom: camY + Canvas_1.logicH / (2 * zoom),
+        });
+        (0, RenderWheel_1.drawRopeAimWorld)(Canvas_1.ctx);
+        Canvas_1.ctx.restore();
+    }
     // 旧主线 blackScreen（开场黑屏过渡）已废弃。
     // 红色叠加（濒死状态）
     if (state_1.state.fx.redOverlay > 0.001) {
@@ -24715,6 +25368,7 @@ function draw() {
             (0, RenderUI_1.drawSlashEffect)(Canvas_1.ctx, Canvas_1.logicW, Canvas_1.logicH, playerScreenX, playerScreenY, state_1.state.playerAttack.angle, state_1.state.playerAttack.timer);
         }
     }
+    (0, RenderFishEnemy_1.drawFishThreatDirection)(Canvas_1.ctx, Canvas_1.logicW, Canvas_1.logicH, camX, camY, zoom);
     // 绘制凶猛鱼被咬特效（在 UI 之上，屏幕空间）
     (0, RenderFishEnemy_1.drawFishBiteEffect)(Canvas_1.ctx, Canvas_1.logicW, Canvas_1.logicH);
     (0, PerfHUD_1.profileEnd)('draw.ui');
@@ -26382,7 +27036,7 @@ function drawBCDBladder(renderCtx, inflation, venting, bodyYaw) {
     renderCtx.restore();
 }
 function drawDiver(renderCtx, x, y, angle, colors = null, motion = {}) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s;
     const defaultColors = {
         suit: '#2d3b43',
         body: '#576b74',
@@ -26399,32 +27053,36 @@ function drawDiver(renderCtx, x, y, angle, colors = null, motion = {}) {
     const dance = motion.dancePose;
     const limp = motion.limpPose;
     const time = (_a = motion.animTime) !== null && _a !== void 0 ? _a : Date.now() / 150;
+    const struggle = motion.ropeStruggle;
+    const struggleAmount = struggle ? clamp(struggle.strength * .72 + struggle.pull * .4, 0, 1) : 0;
+    const struggleBeat = ((_b = struggle === null || struggle === void 0 ? void 0 : struggle.phase) !== null && _b !== void 0 ? _b : 0) * .46;
+    const yank = Math.sin(struggleBeat) * struggleAmount;
     // tankCount 优先：传 0/1/2 直接生效；不传则按 hasTank 推（true→1, false→0）
     const tankCount = motion.tankCount != null
         ? Math.max(0, Math.min(2, motion.tankCount | 0))
         : (motion.hasTank !== false ? 1 : 0);
-    const vx = limp ? 0 : (_b = motion.vx) !== null && _b !== void 0 ? _b : 0;
-    const vy = limp ? 0 : (_c = motion.vy) !== null && _c !== void 0 ? _c : 0;
+    const vx = limp ? 0 : (_c = motion.vx) !== null && _c !== void 0 ? _c : 0;
+    const vy = limp ? 0 : (_d = motion.vy) !== null && _d !== void 0 ? _d : 0;
     const speed = Math.hypot(vx, vy);
     const idleBlend = clamp(1 - speed / 1.2, 0, 1);
     const swimBlend = clamp(speed / 3.5, 0, 1);
     const autoSwim = motion.autoSwim === true;
-    const leftKickProgress = clamp((_d = motion.leftKickProgress) !== null && _d !== void 0 ? _d : 0, 0, 1);
-    const rightKickProgress = clamp((_e = motion.rightKickProgress) !== null && _e !== void 0 ? _e : 0, 0, 1);
-    const leftKickStrength = clamp((_f = motion.leftKickStrength) !== null && _f !== void 0 ? _f : 0, 0, 1);
-    const rightKickStrength = clamp((_g = motion.rightKickStrength) !== null && _g !== void 0 ? _g : 0, 0, 1);
-    const leftTurnProgress = clamp((_h = motion.leftTurnProgress) !== null && _h !== void 0 ? _h : 0, 0, 1);
-    const rightTurnProgress = clamp((_j = motion.rightTurnProgress) !== null && _j !== void 0 ? _j : 0, 0, 1);
-    const leftTurnStrength = clamp((_k = motion.leftTurnStrength) !== null && _k !== void 0 ? _k : 0, 0, 1);
-    const rightTurnStrength = clamp((_l = motion.rightTurnStrength) !== null && _l !== void 0 ? _l : 0, 0, 1);
-    const forwardVisual = clamp((_m = motion.forwardVisual) !== null && _m !== void 0 ? _m : 0, 0, 1);
-    const turnVisual = clamp((_o = motion.turnVisual) !== null && _o !== void 0 ? _o : 0, -1, 1);
+    const leftKickProgress = clamp((_e = motion.leftKickProgress) !== null && _e !== void 0 ? _e : 0, 0, 1);
+    const rightKickProgress = clamp((_f = motion.rightKickProgress) !== null && _f !== void 0 ? _f : 0, 0, 1);
+    const leftKickStrength = clamp((_g = motion.leftKickStrength) !== null && _g !== void 0 ? _g : 0, 0, 1);
+    const rightKickStrength = clamp((_h = motion.rightKickStrength) !== null && _h !== void 0 ? _h : 0, 0, 1);
+    const leftTurnProgress = clamp((_j = motion.leftTurnProgress) !== null && _j !== void 0 ? _j : 0, 0, 1);
+    const rightTurnProgress = clamp((_k = motion.rightTurnProgress) !== null && _k !== void 0 ? _k : 0, 0, 1);
+    const leftTurnStrength = clamp((_l = motion.leftTurnStrength) !== null && _l !== void 0 ? _l : 0, 0, 1);
+    const rightTurnStrength = clamp((_m = motion.rightTurnStrength) !== null && _m !== void 0 ? _m : 0, 0, 1);
+    const forwardVisual = clamp((_o = motion.forwardVisual) !== null && _o !== void 0 ? _o : 0, 0, 1);
+    const turnVisual = clamp((_p = motion.turnVisual) !== null && _p !== void 0 ? _p : 0, -1, 1);
     // ===== 躯干波动相位时钟（全身动画统一驱动源） =====
     // 三种状态叠加推进：
     //   idle：低频常驻（漂浮呼吸）
     //   forward：随腿部速度同频推进（身体扭动带动踢水）
     //   turn：附加高频小扰动（转向时肌肉紧张）
-    const clockId = (_p = motion.id) !== null && _p !== void 0 ? _p : 'anon';
+    const clockId = (_q = motion.id) !== null && _q !== void 0 ? _q : 'anon';
     let bodyClock = bodyClocks.get(clockId);
     if (!bodyClock) {
         bodyClock = { phase: 0 };
@@ -26469,13 +27127,13 @@ function drawDiver(renderCtx, x, y, angle, colors = null, motion = {}) {
     const bodyRoll = turnVisual * cfg.rollTurnFactor
         + turnAmount * 0.08
         + bodyWave * bodySwayAmp * cfg.rollWaveFactor
-        + kickWave * 0.02;
+        + kickWave * 0.02 + yank * .28 + (motion.fishBump || 0) * .35;
     // ===== 身体 yaw（俯视下的左右扭动，驱动 S 型曲线） =====
     // 转向时强烈偏向输入侧，前进时周期性左右扭动，idle 时低频漂动
     const bodyYaw = turnAmount * 1.0
         + turnVisual * cfg.yawTurnFactor
         + bodyWave * bodySwayAmp * cfg.yawWaveFactor
-        + kickWave * 0.22;
+        + kickWave * 0.22 + yank * .46 + (motion.fishBump || 0) * .48;
     // ===== 躯干前后呼吸压缩 =====
     // forward 时随腿部相位做呼吸，idle 时随 bodyWave2 轻微起伏
     const compressWave = bodyWave2 * cfg.compressWaveAmp * (idleBlend * 0.5 + speedNormForBody);
@@ -26558,15 +27216,16 @@ function drawDiver(renderCtx, x, y, angle, colors = null, motion = {}) {
     const welcomeBreath = welcomeActive
         ? Math.sin((wa.timer / Math.max(1, wa.duration)) * Math.PI * 4) * 0.05 * welcomeBlend
         : 0;
-    const leftArmTargetUpper = Math.PI + 0.95 + welcomeBreath;
-    const leftArmTargetLower = leftArmTargetUpper + 0.18;
-    const rightArmTargetUpper = Math.PI - 0.95 - welcomeBreath;
-    const rightArmTargetLower = rightArmTargetUpper - 0.18;
+    const armBlend = Math.max(welcomeBlend, struggleAmount);
+    const leftArmTargetUpper = Math.PI + .95 + welcomeBreath + yank * .58;
+    const leftArmTargetLower = leftArmTargetUpper + .18 + struggleAmount * .96;
+    const rightArmTargetUpper = Math.PI - .95 - welcomeBreath + yank * .58;
+    const rightArmTargetLower = rightArmTargetUpper - .18 - struggleAmount * .96;
     const strike = motion.rescueStrike || 0;
-    const leftArmUpper = limp ? limp.lu : dance ? dance.lu : leftArmUpperBase + (leftArmTargetUpper - leftArmUpperBase) * welcomeBlend;
-    const leftArmLower = limp ? limp.ll : dance ? dance.ll : leftArmLowerBase + (leftArmTargetLower - leftArmLowerBase) * welcomeBlend;
-    const rightArmUpper = limp ? limp.ru : strike ? -1.8 + strike * 2.1 : dance ? dance.ru : rightArmUpperBase + (rightArmTargetUpper - rightArmUpperBase) * welcomeBlend;
-    const rightArmLower = limp ? limp.rl : strike ? -.9 + strike * .9 : dance ? dance.rl : rightArmLowerBase + (rightArmTargetLower - rightArmLowerBase) * welcomeBlend;
+    const leftArmUpper = limp ? limp.lu : dance ? dance.lu : leftArmUpperBase + (leftArmTargetUpper - leftArmUpperBase) * armBlend;
+    const leftArmLower = limp ? limp.ll : dance ? dance.ll : leftArmLowerBase + (leftArmTargetLower - leftArmLowerBase) * armBlend;
+    const rightArmUpper = limp ? limp.ru : strike ? -1.8 + strike * 2.1 : dance ? dance.ru : rightArmUpperBase + (rightArmTargetUpper - rightArmUpperBase) * armBlend;
+    const rightArmLower = limp ? limp.rl : strike ? -.9 + strike * .9 : dance ? dance.rl : rightArmLowerBase + (rightArmTargetLower - rightArmLowerBase) * armBlend;
     renderCtx.save();
     renderCtx.translate(x + (limp ? 0 : dance ? dance.sway : driftX), y + (limp ? 0 : dance ? dance.bounce : driftY));
     renderCtx.rotate(angle + (limp ? 0 : dance ? dance.roll : bodyRoll + resonance.roll));
@@ -26582,7 +27241,7 @@ function drawDiver(renderCtx, x, y, angle, colors = null, motion = {}) {
     const speedRefMax = 6;
     const hasEffort = motion.swimEffort !== undefined;
     const speedNorm = hasEffort ? clamp(motion.swimEffort, 0, 1) : clamp(speed / speedRefMax, 0, 1);
-    const kickDriveVal = hasEffort ? 0 : clamp((_q = motion.kickDrive) !== null && _q !== void 0 ? _q : 0, 0, 1);
+    const kickDriveVal = hasEffort ? 0 : clamp((_r = motion.kickDrive) !== null && _r !== void 0 ? _r : 0, 0, 1);
     // 频率：base + speedNorm 主导 + kickDrive 加速瞬间 boost
     // kickDrive boost 降到 0.3 倍，避免手动挡加速瞬间腿摆得过快
     const freq = cfg.legAutoFreqBase
@@ -26613,14 +27272,17 @@ function drawDiver(renderCtx, x, y, angle, colors = null, motion = {}) {
             : freq;
         clock.phase = (clock.phase + effectiveFreq) % 1;
     }
-    const legPhaseVal = dance ? dance.legPhase : clock.phase;
-    drawLegAndFin(renderCtx, -8.2, -4.2, -1, legPhaseVal, limp ? 0 : ampNorm, leftTurnProgress, leftTurnStrength, limp ? 0 : bodyYaw, c, dance ? dance.leftBend : 0, limp ? { thigh: limp.leftThigh, shin: limp.leftShin } : undefined);
+    const legPhaseVal = dance ? dance.legPhase : struggle ? (struggleBeat / (Math.PI * 2)) % 1 : clock.phase;
+    const legAmp = limp ? 0 : Math.max(ampNorm, struggleAmount);
+    const leftBend = dance ? dance.leftBend : Math.max(0, yank * .9);
+    const rightBend = dance ? dance.rightBend : Math.max(0, -yank * .9);
+    drawLegAndFin(renderCtx, -8.2, -4.2, -1, legPhaseVal, legAmp, leftTurnProgress, leftTurnStrength, limp ? 0 : bodyYaw, c, leftBend, limp ? { thigh: limp.leftThigh, shin: limp.leftShin } : undefined);
     // 右腿相位 +0.5，实现左右交替鞭打
-    drawLegAndFin(renderCtx, -8.2, 4.2, 1, (legPhaseVal + 0.5) % 1, limp ? 0 : ampNorm, rightTurnProgress, rightTurnStrength, limp ? 0 : bodyYaw, c, dance ? dance.rightBend : 0, limp ? { thigh: limp.rightThigh, shin: limp.rightShin } : undefined);
+    drawLegAndFin(renderCtx, -8.2, 4.2, 1, (legPhaseVal + 0.5) % 1, legAmp, rightTurnProgress, rightTurnStrength, limp ? 0 : bodyYaw, c, rightBend, limp ? { thigh: limp.rightThigh, shin: limp.rightShin } : undefined);
     renderCtx.save();
     renderCtx.scale(limp ? 1 : dance ? dance.compress : torsoCompress, 1);
     // BCD 浮力背心气囊：画在躯干之下，让躯干"坐"在气囊上，形成外包一层软壳的层次
-    drawBCDBladder(renderCtx, (_r = motion.bcdInflation) !== null && _r !== void 0 ? _r : 0, motion.bcdVenting === true, bodyYaw);
+    drawBCDBladder(renderCtx, (_s = motion.bcdInflation) !== null && _s !== void 0 ? _s : 0, motion.bcdVenting === true, bodyYaw);
     const bodyGradient = renderCtx.createLinearGradient(10, 0, -16, 0);
     bodyGradient.addColorStop(0, c.body);
     bodyGradient.addColorStop(0.65, c.suit);
@@ -27095,18 +27757,45 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.drawFishEnemy = drawFishEnemy;
 exports.drawFishBiteEffect = drawFishBiteEffect;
 exports.drawAllFishEnemies = drawAllFishEnemies;
+exports.getFishEdgeHints = getFishEdgeHints;
+exports.drawFishThreatDirection = drawFishThreatDirection;
 const config_1 = require("../core/config");
 const state_1 = require("../core/state");
+const Rope_1 = require("../logic/Rope");
+const RenderRope_1 = require("./RenderRope");
+const Visibility_1 = require("../world/Visibility");
+const RenderBCD_1 = require("./RenderBCD");
+const RenderFishSpecies_1 = require("./RenderFishSpecies");
 // =============================================
 // 绘制单条凶猛鱼（世界坐标系，已在摄像机变换内调用）
 // =============================================
-function drawFishEnemy(ctx, fish) {
+function drawFishEnemy(ctx, fish, contact = (0, Rope_1.getRopeContact)(fish)) {
+    const caught = (contact === null || contact === void 0 ? void 0 : contact.kind) === 'snag';
+    const effort = caught ? .54 + contact.pull * .46 : 0;
+    const strain = caught ? Math.sin(contact.phase * .6) * effort : 0;
     ctx.save();
     ctx.translate(fish.x, fish.y);
-    ctx.rotate(fish.angle);
+    ctx.rotate(fish.angle + strain * .31);
+    if (caught)
+        ctx.scale(1 - Math.abs(strain) * .11, 1 + Math.abs(strain) * .16);
     const cfg = config_1.CONFIG.fishEnemy;
     const t = fish.animTime;
     const state_ = fish.state;
+    if (fish.kind === 'curious') {
+        drawCuriousFish(ctx, cfg.size, t, state_ === 'inspect', strain);
+        ctx.restore();
+        return;
+    }
+    if (fish.kind === 'provoked' || fish.kind === 'shoal') {
+        (fish.kind === 'provoked' ? RenderFishSpecies_1.drawHunterShark : RenderFishSpecies_1.drawSilverFish)(ctx, fish, strain);
+        ctx.restore();
+        return;
+    }
+    if (fish.kind === 'rammer') {
+        drawRammerFish(ctx, fish, strain);
+        ctx.restore();
+        return;
+    }
     // --- 身体摆动幅度根据状态变化 ---
     let bodySwayAmp = 0.12; // 身体左右摆动幅度
     let tailSwayAmp = 0.35; // 尾巴摆动幅度
@@ -27136,8 +27825,8 @@ function drawFishEnemy(ctx, fish) {
         tailSwayAmp = 0.05;
         swaySpeed = 0.3;
     }
-    const bodySway = Math.sin(t * swaySpeed) * bodySwayAmp;
-    const tailSway = Math.sin(t * swaySpeed + 0.5) * tailSwayAmp;
+    const bodySway = caught ? strain * .27 : Math.sin(t * swaySpeed) * bodySwayAmp;
+    const tailSway = caught ? Math.sin(contact.phase * .83 + .6) * effort : Math.sin(t * swaySpeed + 0.5) * tailSwayAmp;
     // --- 颜色主题（深灰蓝+暗红腹部，凶残感）---
     const bodyColor1 = '#1a2535'; // 背部深色
     const bodyColor2 = '#2d3d52'; // 侧面中间色
@@ -27453,24 +28142,388 @@ function drawFishBiteEffect(ctx, canvasW, canvasH) {
         }
     }
 }
+/** Cave eel: bone plate at the nose, a long taper, and a single ribbed ribbon fin. */
+function drawRammerFish(ctx, fish, strain, dying = false) {
+    const charging = !dying && fish.state === 'lunge' && fish.lungeCharge < 1;
+    const surging = !dying && fish.state === 'lunge' && !charging;
+    const coil = charging ? Math.sin(Math.min(1, fish.lungeCharge / .77) * Math.PI) : 0;
+    const stroke = fish.animTime * (surging ? 3 : 1.48);
+    const flex = (dying ? .08 : .23 + Math.abs(strain) * .54) * (surging ? 1.18 : 1);
+    const curlSign = Math.sin(fish.circleAngle) < 0 ? -1 : 1;
+    const neck = Math.sin(stroke + .7) * flex * .12;
+    const mid = Math.sin(stroke - .45) * flex * .68 + coil * curlSign * .43;
+    const tail = Math.sin(stroke - 1.6) * flex * 1.4 + coil * curlSign * 1.20;
+    const tip = Math.sin(stroke - 2.1) * flex * 1.78 + coil * curlSign * 1.37;
+    ctx.save();
+    const size = config_1.CONFIG.fishEnemy.size;
+    ctx.scale(size * (1 - coil * .11), size);
+    // Long membranes are continuous with the eel, with ribs following the same bend.
+    ctx.fillStyle = surging ? '#92bcb6' : '#5b9691';
+    ctx.strokeStyle = '#294c4c';
+    ctx.lineWidth = .045;
+    ctx.beginPath();
+    ctx.moveTo(.25, -.30);
+    ctx.quadraticCurveTo(-.06, -.72 - coil * .14, -.62, mid - .54);
+    ctx.bezierCurveTo(-1.08, mid - .68, -1.74, tail - .36, -2.25, tip - .04);
+    ctx.quadraticCurveTo(-1.46, tail + .06, -.43, mid - .13);
+    ctx.quadraticCurveTo(-.06, neck - .17, .25, -.30);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#4d817c';
+    ctx.beginPath();
+    ctx.moveTo(.14, .29);
+    ctx.quadraticCurveTo(-.53, mid + .40, -1.17, mid + .46);
+    ctx.quadraticCurveTo(-1.75, tail + .32, -2.25, tip - .04);
+    ctx.quadraticCurveTo(-1.48, tail + .09, -.42, mid + .12);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(215,218,222,.52)';
+    ctx.lineWidth = .033;
+    ctx.beginPath();
+    ctx.moveTo(-.24, mid - .17);
+    ctx.quadraticCurveTo(-.29, mid - .36, -.39, mid - .55);
+    ctx.moveTo(-.54, mid - .14);
+    ctx.quadraticCurveTo(-.65, mid - .34, -.77, mid - .55);
+    ctx.moveTo(-.84, mid - .09);
+    ctx.quadraticCurveTo(-.93, mid - .31, -1.11, mid - .49);
+    ctx.moveTo(-1.14, mid - .03);
+    ctx.quadraticCurveTo(-1.27, (mid + tail) / 2 - .24, -1.45, (mid + tail) / 2 - .39);
+    ctx.stroke();
+    const skin = ctx.createLinearGradient(0, -.38, 0, .44);
+    skin.addColorStop(0, '#2a4d50');
+    skin.addColorStop(.53, '#64958c');
+    skin.addColorStop(1, dying ? '#c0b9ad' : '#aac3a9');
+    ctx.fillStyle = skin;
+    ctx.strokeStyle = '#294546';
+    ctx.lineWidth = .042;
+    ctx.beginPath();
+    ctx.moveTo(1.02, .06);
+    ctx.quadraticCurveTo(.82, -.31, .49, -.36);
+    ctx.bezierCurveTo(.02, neck - .38, -.34, mid - .25, -.76, mid - .15);
+    ctx.bezierCurveTo(-1.24, (mid + tail) / 2 - .10, -1.82, tail - .08, -2.25, tip - .04);
+    ctx.bezierCurveTo(-1.77, tail + .09, -1.19, (mid + tail) / 2 + .16, -.74, mid + .19);
+    ctx.quadraticCurveTo(-.14, neck + .30, .53, .32);
+    ctx.quadraticCurveTo(.83, .26, 1.02, .06);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#70a69a';
+    ctx.beginPath();
+    ctx.moveTo(.17, .14);
+    ctx.quadraticCurveTo(-.02, .24, -.18, .56 + neck * 2);
+    ctx.quadraticCurveTo(-.30, .38, -.44, .19);
+    ctx.quadraticCurveTo(-.12, .14, .17, .14);
+    ctx.fill();
+    // The plate takes light before the dark ribbon is fully visible.
+    ctx.fillStyle = '#d1c9a9';
+    ctx.beginPath();
+    ctx.moveTo(1.02, .06);
+    ctx.quadraticCurveTo(.84, -.30, .50, -.31);
+    ctx.lineTo(.27, -.13);
+    ctx.lineTo(.34, .13);
+    ctx.lineTo(.59, .27);
+    ctx.quadraticCurveTo(.91, .22, 1.02, .06);
+    ctx.fill();
+    ctx.strokeStyle = '#496e67';
+    ctx.lineWidth = .044;
+    ctx.beginPath();
+    ctx.moveTo(.24, -.19);
+    ctx.quadraticCurveTo(.13, -.01, .26, .20);
+    ctx.moveTo(.12, -.18);
+    ctx.quadraticCurveTo(.02, -.01, .13, .19);
+    ctx.stroke();
+    ctx.fillStyle = charging ? '#fff4c4' : '#ddc49e';
+    if (charging) {
+        ctx.shadowColor = '#ffb277';
+        ctx.shadowBlur = 7 + fish.lungeCharge * 10;
+    }
+    ctx.beginPath();
+    ctx.ellipse(.70, -.116, .085, .052, -.15, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#303141';
+    ctx.beginPath();
+    ctx.ellipse(.735, -.12, .022, .044, .16, 0, Math.PI * 2);
+    ctx.fill();
+    const jaw = .014;
+    ctx.fillStyle = '#302b3d';
+    ctx.beginPath();
+    ctx.moveTo(.59, .083);
+    ctx.quadraticCurveTo(.81, .106, 1.015, .06);
+    ctx.quadraticCurveTo(.91, .09 + jaw, .59, .083);
+    ctx.fill();
+    ctx.restore();
+}
+function drawCuriousFish(ctx, size, time, inspecting, strain) {
+    const tail = Math.sin(time * .8) * (inspecting ? .08 : .3) + strain * .72;
+    ctx.save();
+    ctx.translate(-size * .64, 0);
+    ctx.rotate(tail);
+    ctx.fillStyle = '#59918b';
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.bezierCurveTo(-size * .65, -size * .57, -size * .77, -size * .39, -size * .64, 0);
+    ctx.bezierCurveTo(-size * .77, size * .39, -size * .65, size * .57, 0, 0);
+    ctx.fill();
+    ctx.restore();
+    ctx.fillStyle = '#83aba0';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, size * .78, size * .49, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#bbcf9e';
+    ctx.beginPath();
+    ctx.ellipse(size * .12, size * .14, size * .55, size * .28, -.11, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#659b93';
+    ctx.beginPath();
+    ctx.ellipse(-size * .21, size * .17, size * .23, size * .1, -.45 + tail, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#e7eacb';
+    ctx.beginPath();
+    ctx.arc(size * .42, -size * .14, size * .16, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#223f3e';
+    ctx.beginPath();
+    ctx.arc(size * .47, -size * .14, size * .085, 0, Math.PI * 2);
+    ctx.fill();
+}
 // =============================================
 // 绘制所有凶猛鱼（在世界坐标系内调用）
 // =============================================
-function drawAllFishEnemies(ctx) {
+function drawAllFishEnemies(ctx, left = -Infinity, right = Infinity, top = -Infinity, bottom = Infinity) {
     if (!state_1.state.fishEnemies || state_1.state.fishEnemies.length === 0)
         return;
     for (const fish of state_1.state.fishEnemies) {
+        if (fish.x < left || fish.x > right || fish.y < top || fish.y > bottom)
+            continue;
         if (fish.state === 'dying') {
             // 死亡动画：翻肚皮淡出
             drawDyingFish(ctx, fish);
         }
         else if (!fish.dead) {
-            drawFishEnemy(ctx, fish);
+            const contact = (0, Rope_1.getRopeContact)(fish);
+            drawFishEnemy(ctx, fish, contact);
+            (0, RenderRope_1.drawRopeContactWorld)(ctx, fish, contact, config_1.CONFIG.fishEnemy.size * (fish.kind === 'shoal' ? .18 : fish.kind === 'provoked' ? .64 : .43));
             // 绘制状态变化提示图标（问号/感叹号）
-            if (fish.alertTimer > 0 && fish.alertIcon) {
+            if ((contact === null || contact === void 0 ? void 0 : contact.kind) !== 'snag' && fish.alertTimer > 0 && fish.alertIcon) {
                 drawFishAlertIcon(ctx, fish);
             }
         }
+    }
+}
+/** Follow nearby fish just beyond the viewport, using border distance rather
+ * than distance to its centre so the tall phone viewport behaves consistently. */
+function getFishEdgeHints(width, height, cameraX, cameraY, zoom) {
+    const range = 240;
+    const candidates = state_1.state.fishEnemies.filter(fish => !fish.dead && fish.state !== 'dying').map(fish => {
+        const sx = width / 2 + (fish.x - cameraX) * zoom;
+        const sy = height / 2 + (fish.y - cameraY) * zoom;
+        const outside = Math.hypot(Math.max(0, -sx, sx - width), Math.max(0, -sy, sy - height)) / zoom;
+        return { fish, sx, sy, outside };
+    }).filter(({ sx, sy, outside }) => outside > 8 / zoom && outside < range &&
+        (sx < -8 || sx > width + 8 || sy < -8 || sy > height + 8));
+    candidates.sort((a, b) => a.outside - b.outside);
+    const hints = [];
+    const schools = new Set();
+    const safeTop = Math.max(28, config_1.CONFIG.uiSafeTop || 0);
+    const safeBottom = Math.max(28, (config_1.CONFIG.uiSafeBottom || 0) + 24);
+    const bcd = (0, RenderBCD_1.getBCDLayout)();
+    const blocks = [
+        { left: 0, right: 67, top: Math.max(62, config_1.CONFIG.uiSafeTop || 0) - 22, bottom: Math.max(62, config_1.CONFIG.uiSafeTop || 0) + 275 },
+        { left: bcd.cx - 35, right: width, top: bcd.inflateY - 32, bottom: bcd.deflateY + 32 },
+    ];
+    for (const { fish, sx, sy, outside } of candidates) {
+        if (fish.schoolId && schools.has(fish.schoolId))
+            continue;
+        if (!(0, Visibility_1.isLineOfSight)(state_1.player.x, state_1.player.y, fish.x, fish.y, Math.hypot(fish.x - state_1.player.x, fish.y - state_1.player.y) + 1))
+            continue;
+        const near = 1 - outside / range;
+        const radius = 8 + near * 7;
+        const left = radius + 7, right = width - radius - 7;
+        const top = safeTop + radius, bottom = height - safeBottom - radius;
+        const dx = sx - width / 2, dy = sy - height / 2;
+        const t = Math.min((width / 2 - left) / (Math.abs(dx) || .001), (height / 2 - (dy < 0 ? top : height - bottom)) / (Math.abs(dy) || .001));
+        const aimX = width / 2 + dx * t, aimY = height / 2 + dy * t;
+        const positions = [{ x: aimX, y: aimY }];
+        for (let y = top; y <= bottom; y += 24)
+            positions.push({ x: left, y }, { x: right, y });
+        for (let x = left; x <= right; x += 24)
+            positions.push({ x, y: top }, { x, y: bottom });
+        let best = null, score = Infinity;
+        for (const p of positions) {
+            if (blocks.some(b => p.x + radius > b.left && p.x - radius < b.right && p.y + radius > b.top && p.y - radius < b.bottom) ||
+                hints.some(h => Math.hypot(p.x - h.x, p.y - h.y) < radius + h.radius + 8))
+                continue;
+            const distance = Math.hypot(p.x - aimX, p.y - aimY);
+            if (distance < score) {
+                score = distance;
+                best = p;
+            }
+        }
+        if (!best || score > 145)
+            continue;
+        if (fish.schoolId)
+            schools.add(fish.schoolId);
+        hints.push(Object.assign(Object.assign({ fish }, best), { angle: Math.atan2(sy - best.y, sx - best.x), radius, alpha: .42 + near * .54 }));
+        if (hints.length >= 6)
+            break;
+    }
+    return hints;
+}
+function drawFishEdgeIcon(c, fish, radius) {
+    const size = radius * .70;
+    c.save();
+    c.scale(size, size);
+    c.lineWidth = .10;
+    if (fish.kind === 'curious') {
+        c.fillStyle = '#9bc8b3';
+        c.beginPath();
+        c.ellipse(.12, 0, .73, .53, 0, 0, Math.PI * 2);
+        c.fill();
+        c.beginPath();
+        c.moveTo(-.51, 0);
+        c.lineTo(-1, -.4);
+        c.quadraticCurveTo(-1.14, 0, -1, .4);
+        c.closePath();
+        c.fill();
+        c.fillStyle = '#f0e8c1';
+        c.beginPath();
+        c.arc(.40, -.17, .22, 0, Math.PI * 2);
+        c.fill();
+        c.fillStyle = '#24423b';
+        c.beginPath();
+        c.arc(.47, -.17, .10, 0, Math.PI * 2);
+        c.fill();
+    }
+    else if (fish.kind === 'rammer') {
+        c.strokeStyle = '#9fc9b8';
+        c.lineWidth = .40;
+        c.lineCap = 'round';
+        c.beginPath();
+        c.moveTo(-1.13, .29);
+        c.bezierCurveTo(-.43, .62, -.65, -.46, -.12, -.23);
+        c.quadraticCurveTo(.26, -.04, .68, -.09);
+        c.stroke();
+        c.fillStyle = '#d5cac0';
+        c.beginPath();
+        c.moveTo(.95, -.08);
+        c.lineTo(.42, -.40);
+        c.lineTo(.20, -.15);
+        c.lineTo(.40, .20);
+        c.closePath();
+        c.fill();
+        c.fillStyle = '#4d4157';
+        c.beginPath();
+        c.arc(.62, -.18, .075, 0, Math.PI * 2);
+        c.fill();
+    }
+    else if (fish.kind === 'provoked') {
+        c.fillStyle = '#a9bdc4';
+        c.beginPath();
+        c.moveTo(1.05, 0);
+        c.quadraticCurveTo(.40, -.47, -.59, -.17);
+        c.lineTo(-1.01, -.62);
+        c.lineTo(-.85, 0);
+        c.lineTo(-1.01, .57);
+        c.lineTo(-.59, .17);
+        c.quadraticCurveTo(.42, .49, 1.05, 0);
+        c.fill();
+        c.beginPath();
+        c.moveTo(-.39, -.24);
+        c.lineTo(-.30, -.86);
+        c.lineTo(.13, -.31);
+        c.fill();
+        c.beginPath();
+        c.moveTo(-.03, .20);
+        c.lineTo(-.32, .70);
+        c.lineTo(.29, .23);
+        c.fill();
+        c.fillStyle = '#2d3944';
+        c.beginPath();
+        c.arc(.69, -.10, .075, 0, Math.PI * 2);
+        c.fill();
+    }
+    else if (fish.kind === 'shoal') {
+        c.fillStyle = '#b9dbe0';
+        for (const [x, y] of [[.35, -.43], [-.18, .04], [.40, .48]]) {
+            c.beginPath();
+            c.ellipse(x, y, .46, .16, 0, 0, Math.PI * 2);
+            c.fill();
+            c.beginPath();
+            c.moveTo(x - .32, y);
+            c.lineTo(x - .68, y - .22);
+            c.lineTo(x - .68, y + .22);
+            c.fill();
+        }
+    }
+    else {
+        c.fillStyle = '#b2bac7';
+        c.beginPath();
+        c.moveTo(.93, -.02);
+        c.quadraticCurveTo(.17, -.65, -.61, -.26);
+        c.lineTo(-1.01, -.46);
+        c.lineTo(-.86, 0);
+        c.lineTo(-1.01, .46);
+        c.lineTo(-.61, .28);
+        c.quadraticCurveTo(.20, .62, .93, -.02);
+        c.fill();
+        c.beginPath();
+        c.moveTo(-.36, -.31);
+        c.lineTo(-.08, -.78);
+        c.lineTo(.27, -.40);
+        c.closePath();
+        c.fill();
+        c.fillStyle = '#33313b';
+        c.beginPath();
+        c.arc(.49, -.12, .09, 0, Math.PI * 2);
+        c.fill();
+        c.strokeStyle = '#efe0c6';
+        c.lineWidth = .09;
+        c.beginPath();
+        c.moveTo(.61, .11);
+        c.lineTo(.41, .24);
+        c.lineTo(.29, .12);
+        c.stroke();
+    }
+    c.restore();
+}
+function drawFishThreatDirection(ctx, width, height, cameraX, cameraY, zoom) {
+    var _a, _b, _c;
+    if (state_1.state.screen !== 'mazeRescue' || ((_a = state_1.state.mazeRescue) === null || _a === void 0 ? void 0 : _a.phase) !== 'play' ||
+        ((_b = state_1.state.fishBite) === null || _b === void 0 ? void 0 : _b.active) || state_1.state.wheel.open)
+        return;
+    for (const hint of getFishEdgeHints(width, height, cameraX, cameraY, zoom)) {
+        const { fish, x, y, radius, alpha, angle } = hint;
+        const color = fish.kind === 'curious' ? '#a6cdbb' : fish.kind === 'rammer' ? '#c5d8b5' : fish.kind === 'provoked' ? '#dda29b' : fish.kind === 'shoal' ? '#b9dbe0' : '#c7cbd2';
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.globalAlpha = alpha;
+        ctx.beginPath();
+        ctx.arc(0, 0, radius, 0, Math.PI * 2);
+        ctx.fillStyle = '#0c1b23';
+        ctx.fill();
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = color;
+        ctx.stroke();
+        drawFishEdgeIcon(ctx, fish, radius);
+        ctx.save();
+        ctx.rotate(angle);
+        ctx.beginPath();
+        ctx.moveTo(radius + 5, 0);
+        ctx.lineTo(radius + 1, -3.2);
+        ctx.lineTo(radius + 1, 3.2);
+        ctx.closePath();
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.restore();
+        if (fish.state === 'lunge' && ((_c = (0, Rope_1.getRopeContact)(fish)) === null || _c === void 0 ? void 0 : _c.kind) !== 'snag') {
+            ctx.beginPath();
+            ctx.arc(0, 0, radius + 2.5, -.25, Math.PI + .25);
+            ctx.lineWidth = 1.4;
+            ctx.strokeStyle = '#f5ac85';
+            ctx.stroke();
+        }
+        ctx.restore();
     }
 }
 // =============================================
@@ -27531,9 +28584,22 @@ function drawDyingFish(ctx, fish) {
     ctx.rotate(fish.angle);
     ctx.scale(1, scaleY);
     // 翻转后腹部朝上（白色腹部）
-    const cfg = config_1.CONFIG.fishEnemy;
-    const size = cfg.size;
-    const t = fish.animTime;
+    const size = config_1.CONFIG.fishEnemy.size;
+    if (fish.kind === 'provoked' || fish.kind === 'shoal') {
+        (fish.kind === 'provoked' ? RenderFishSpecies_1.drawHunterShark : RenderFishSpecies_1.drawSilverFish)(ctx, fish, 0);
+        ctx.restore();
+        return;
+    }
+    if (fish.kind === 'rammer') {
+        drawRammerFish(ctx, fish, 0, true);
+        ctx.restore();
+        return;
+    }
+    if (fish.kind === 'curious') {
+        drawCuriousFish(ctx, size, fish.animTime, true, 0);
+        ctx.restore();
+        return;
+    }
     // 简化绘制：死亡状态下身体不摆动
     // 腹部（白色，翻转后显示）
     const bellyAlpha = rollProgress;
@@ -27564,6 +28630,176 @@ function drawDyingFish(ctx, fish) {
     ctx.fill();
     ctx.restore();
     ctx.restore();
+}
+},"/src/render/RenderFishSpecies":function(exports,require){"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.drawHunterShark = drawHunterShark;
+exports.drawSilverFish = drawSilverFish;
+exports.drawFishBumpWorld = drawFishBumpWorld;
+exports.fishBumpPose = fishBumpPose;
+const config_1 = require("../core/config");
+const state_1 = require("../core/state");
+/** Broad shoulders, a swept dorsal fin and a crescent tail separate the hunter
+ * from the small piranha and the flexible, blunt-headed ramming eel. */
+function drawHunterShark(c, fish, strain) {
+    const attack = fish.state === 'lunge' || fish.state === 'bite' || fish.state === 'devour';
+    const beat = Math.sin(fish.animTime * (attack ? 2.4 : .85)) * .16 + strain * .45;
+    c.save();
+    c.scale(config_1.CONFIG.fishEnemy.size * 1.35, config_1.CONFIG.fishEnemy.size * 1.35);
+    c.fillStyle = '#465f70';
+    c.strokeStyle = '#253a49';
+    c.lineWidth = .035;
+    // The fins sit behind the heavy body, rather than looking like another jaw.
+    c.beginPath();
+    c.moveTo(.06, -.29);
+    c.lineTo(-.40, -1.02);
+    c.quadraticCurveTo(-.62, -.63, -.52, -.24);
+    c.closePath();
+    c.fill();
+    c.stroke();
+    c.beginPath();
+    c.moveTo(.28, .17);
+    c.lineTo(-.49, .93 + beat * .3);
+    c.lineTo(-.28, .27);
+    c.closePath();
+    c.fill();
+    c.stroke();
+    c.save();
+    c.translate(-1.03, beat * .45);
+    c.rotate(beat);
+    c.beginPath();
+    c.moveTo(.05, 0);
+    c.quadraticCurveTo(-.15, -.35, -.64, -.72);
+    c.quadraticCurveTo(-.42, -.17, -.29, 0);
+    c.quadraticCurveTo(-.41, .27, -.61, .61);
+    c.quadraticCurveTo(-.15, .39, .05, 0);
+    c.fill();
+    c.stroke();
+    c.restore();
+    const skin = c.createLinearGradient(0, -.43, 0, .43);
+    skin.addColorStop(0, '#354e60');
+    skin.addColorStop(.48, '#7f99a5');
+    skin.addColorStop(1, '#d3dbd4');
+    c.fillStyle = skin;
+    c.beginPath();
+    c.moveTo(1.29, .02);
+    c.bezierCurveTo(.93, -.43, .17, -.48, -.37, -.31);
+    c.quadraticCurveTo(-.82, -.12 + beat * .2, -1.12, beat * .45);
+    c.quadraticCurveTo(-.65, .15 + beat * .2, -.28, .30);
+    c.quadraticCurveTo(.58, .46, 1.29, .02);
+    c.fill();
+    c.stroke();
+    c.strokeStyle = '#435968';
+    c.lineWidth = .038;
+    c.beginPath();
+    for (let i = 0; i < 4; i++) {
+        const x = .21 - i * .10;
+        c.moveTo(x, -.21);
+        c.quadraticCurveTo(x - .10, 0, x - .02, .18);
+    }
+    c.stroke();
+    c.fillStyle = '#101e29';
+    c.beginPath();
+    c.ellipse(.84, -.13, .061, .051, -.25, 0, Math.PI * 2);
+    c.fill();
+    c.fillStyle = '#dce8e4';
+    c.beginPath();
+    c.arc(.86, -.15, .018, 0, Math.PI * 2);
+    c.fill();
+    const jaw = attack ? .12 + .035 * Math.sin(fish.animTime * 2) : .026;
+    c.fillStyle = '#30282d';
+    c.beginPath();
+    c.moveTo(1.16, .07);
+    c.quadraticCurveTo(.86, .11 + jaw, .53, .14);
+    c.quadraticCurveTo(.91, .04, 1.16, .07);
+    c.fill();
+    if (attack) {
+        c.fillStyle = '#f0e8d7';
+        c.beginPath();
+        for (let i = 0; i < 5; i++) {
+            const x = .65 + i * .087;
+            c.moveTo(x, .10);
+            c.lineTo(x + .028, .16);
+            c.lineTo(x + .06, .095);
+        }
+        c.fill();
+    }
+    c.restore();
+}
+function drawSilverFish(c, fish, strain) {
+    const beat = Math.sin(fish.animTime * (fish.state === 'flee' ? 4 : 1.8) + fish.circleAngle) * .22 + strain * .65;
+    c.save();
+    c.scale(config_1.CONFIG.fishEnemy.size * .39, config_1.CONFIG.fishEnemy.size * .39);
+    c.fillStyle = '#88acb9';
+    c.save();
+    c.translate(-.67, 0);
+    c.rotate(beat);
+    c.beginPath();
+    c.moveTo(.05, 0);
+    c.lineTo(-.44, -.35);
+    c.lineTo(-.31, 0);
+    c.lineTo(-.44, .35);
+    c.closePath();
+    c.fill();
+    c.restore();
+    const skin = c.createLinearGradient(0, -.28, 0, .28);
+    skin.addColorStop(0, '#567e94');
+    skin.addColorStop(.48, '#e3eff0');
+    skin.addColorStop(1, '#7fabb9');
+    c.fillStyle = skin;
+    c.beginPath();
+    c.ellipse(0, 0, .78, .26, 0, 0, Math.PI * 2);
+    c.fill();
+    c.fillStyle = '#b9d6d9';
+    c.beginPath();
+    c.moveTo(-.22, -.19);
+    c.lineTo(-.18, -.43);
+    c.lineTo(.10, -.23);
+    c.fill();
+    c.strokeStyle = '#eff9ef';
+    c.lineWidth = .06;
+    c.beginPath();
+    c.moveTo(-.50, -.01);
+    c.lineTo(.39, -.04);
+    c.stroke();
+    c.fillStyle = '#152c3a';
+    c.beginPath();
+    c.arc(.50, -.065, .071, 0, Math.PI * 2);
+    c.fill();
+    c.restore();
+}
+/** A brief water-pressure crescent marks the actual contact; its expansion and
+ * the diver's recoil accompany the velocity impulse without a damage overlay. */
+function drawFishBumpWorld(c) {
+    const bump = state_1.state.fishBump;
+    if (bump.timer <= 0)
+        return;
+    const p = 1 - bump.timer / 26;
+    const angle = Math.atan2(bump.ny, bump.nx);
+    c.save();
+    c.translate(bump.x, bump.y);
+    c.rotate(angle);
+    c.globalAlpha = (1 - p) * .75;
+    c.strokeStyle = '#c4eee6';
+    c.lineWidth = 2 * (1 - p) + .5;
+    c.beginPath();
+    c.arc(0, 0, 9 + p * 27, -.90, .90);
+    c.stroke();
+    c.lineWidth = 1;
+    for (let i = -1; i <= 1; i++) {
+        const x = 6 + p * (22 + i * 4), y = i * (9 + p * 14);
+        c.beginPath();
+        c.arc(x, y, 1.2 + p * 2, 0, Math.PI * 2);
+        c.stroke();
+    }
+    c.restore();
+}
+function fishBumpPose() {
+    const bump = state_1.state.fishBump;
+    if (bump.timer <= 0)
+        return 0;
+    const side = Math.cos(state_1.player.angle) * bump.ny - Math.sin(state_1.player.angle) * bump.nx;
+    return Math.sin((1 - bump.timer / 26) * Math.PI) * bump.strength * (side < 0 ? -1 : 1);
 }
 },"/src/render/RenderHomeScene":function(exports,require){"use strict";
 // 家场景渲染
@@ -28680,263 +29916,6 @@ function drawVPLColor(renderCtx, x, y, angle, rayDist) {
         renderCtx.fill();
     }
     renderCtx.restore();
-}
-},"/src/render/RenderMarker":function(exports,require){"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.drawMarkersWorld = drawMarkersWorld;
-exports.drawMarkerPreview = drawMarkerPreview;
-const config_1 = require("../core/config");
-const state_1 = require("../core/state");
-const Marker_1 = require("../logic/Marker");
-const Pathfinding_1 = require("../logic/Pathfinding");
-// ============ 绘制所有标记（世界空间） ============
-function drawMarkersWorld(ctx) {
-    const markers = (0, Marker_1.getMarkers)();
-    if (!markers || markers.length === 0)
-        return;
-    const time = Date.now() / 1000;
-    for (const m of markers) {
-        if (m.attachType === 'wall') {
-            drawWallMarker(ctx, m, time);
-        }
-        else if (m.attachType === 'rope') {
-            drawRopeMarker(ctx, m, time);
-        }
-    }
-}
-// ============ 绘制预览标记（轮盘高亮时在场景中显示半透明预览） ============
-function drawMarkerPreview(ctx, markerType, wall, ropeIndex, ropeT) {
-    if (!markerType || (markerType !== 'danger' && markerType !== 'unknown' && markerType !== 'safe'))
-        return;
-    ctx.save();
-    ctx.globalAlpha = 0.5; // 半透明预览
-    const cfg = config_1.CONFIG.marker;
-    if (wall) {
-        // 岩石预览
-        const angle = Math.atan2(state_1.state.markers ? 0 : 0, 0) || Math.atan2((typeof state_1.player !== 'undefined' ? state_1.player.y : 0) - wall.y, (typeof state_1.player !== 'undefined' ? state_1.player.x : 0) - wall.x);
-        const surfaceX = wall.x + Math.cos(angle) * wall.r;
-        const surfaceY = wall.y + Math.sin(angle) * wall.r;
-        ctx.translate(surfaceX, surfaceY);
-        ctx.rotate(angle);
-        const colors = getMarkerColors(markerType);
-        ctx.fillStyle = colors.stake;
-        ctx.fillRect(0, -1.5, cfg.wallStakeLength, 3);
-        const signX = cfg.wallStakeLength;
-        ctx.fillStyle = colors.bg;
-        ctx.beginPath();
-        roundRect(ctx, signX, -cfg.wallSignHeight / 2, cfg.wallSignWidth, cfg.wallSignHeight, 2);
-        ctx.fill();
-        ctx.strokeStyle = colors.border;
-        ctx.lineWidth = 1.2;
-        ctx.stroke();
-        drawMarkerSymbol(ctx, markerType, signX + cfg.wallSignWidth / 2, 0);
-    }
-    else if (ropeIndex !== undefined && ropeT !== undefined && state_1.state.rope && state_1.state.rope.ropes[ropeIndex]) {
-        // 绳索预览
-        const rope = state_1.state.rope.ropes[ropeIndex];
-        if (rope.path && rope.path.length >= 2) {
-            const totalLen = (0, Pathfinding_1.pathLength)(rope.path);
-            if (totalLen >= 1) {
-                const d = ropeT * totalLen;
-                const pt = (0, Pathfinding_1.samplePolyline)(rope.path, d);
-                ctx.translate(pt.x, pt.y);
-                const colors = getMarkerColors(markerType);
-                ctx.fillStyle = colors.stake;
-                ctx.fillRect(-1, 0, 2, cfg.ropeTagStrapLength);
-                const tagY = cfg.ropeTagStrapLength;
-                ctx.fillStyle = colors.bg;
-                ctx.beginPath();
-                roundRect(ctx, -cfg.ropeTagWidth / 2, tagY, cfg.ropeTagWidth, cfg.ropeTagHeight, 1.5);
-                ctx.fill();
-                ctx.strokeStyle = colors.border;
-                ctx.lineWidth = 1;
-                ctx.stroke();
-                drawMarkerSymbol(ctx, markerType, 0, tagY + cfg.ropeTagHeight / 2);
-            }
-        }
-    }
-    ctx.restore();
-}
-// ============ 岩石标记（插牌式） ============
-function drawWallMarker(ctx, m, time) {
-    if (m.surfaceX === undefined || m.surfaceY === undefined || m.normalAngle === undefined)
-        return;
-    const cfg = config_1.CONFIG.marker;
-    const angle = m.normalAngle;
-    // 动画缩放
-    let scale = 1;
-    if (m.placeTimer > 0) {
-        const progress = 1 - m.placeTimer / cfg.placeAnimDuration;
-        if (progress < 0.25) {
-            scale = progress / 0.25; // 短杆伸出
-        }
-        else if (progress < 0.6) {
-            scale = 1 + 0.15 * Math.sin((progress - 0.25) / 0.35 * Math.PI); // 弹出过冲
-        }
-    }
-    if (m.removeTimer > 0) {
-        const progress = 1 - m.removeTimer / cfg.removeAnimDuration;
-        if (progress < 0.33) {
-            scale = 1 + 0.1 * (progress / 0.33); // 轻微膨胀
-        }
-        else {
-            scale = 1.1 * (1 - (progress - 0.33) / 0.67); // 缩小消失
-        }
-    }
-    if (scale <= 0.01)
-        return;
-    ctx.save();
-    ctx.translate(m.surfaceX, m.surfaceY);
-    ctx.rotate(angle);
-    ctx.scale(scale, scale);
-    // 获取标记颜色
-    const colors = getMarkerColors(m.type);
-    // 短杆
-    ctx.fillStyle = colors.stake;
-    ctx.fillRect(0, -1, cfg.wallStakeLength, 2);
-    // 牌面
-    const signX = cfg.wallStakeLength;
-    const signW = cfg.wallSignWidth;
-    const signH = cfg.wallSignHeight;
-    ctx.fillStyle = colors.bg;
-    ctx.beginPath();
-    roundRect(ctx, signX, -signH / 2, signW, signH, 2);
-    ctx.fill();
-    ctx.strokeStyle = colors.border;
-    ctx.lineWidth = 1;
-    ctx.stroke();
-    // 符号
-    const symX = signX + signW / 2;
-    const symY = 0;
-    drawMarkerSymbol(ctx, m.type, symX, symY);
-    ctx.restore();
-}
-// ============ 绳索标记（绑扎式） ============
-function drawRopeMarker(ctx, m, time) {
-    if (m.ropeIndex === undefined || m.ropeT === undefined)
-        return;
-    if (!state_1.state.rope || !state_1.state.rope.ropes[m.ropeIndex])
-        return;
-    const rope = state_1.state.rope.ropes[m.ropeIndex];
-    if (!rope.path || rope.path.length < 2)
-        return;
-    const totalLen = (0, Pathfinding_1.pathLength)(rope.path);
-    if (totalLen < 1)
-        return;
-    const d = m.ropeT * totalLen;
-    const pt = (0, Pathfinding_1.samplePolyline)(rope.path, d);
-    const cfg = config_1.CONFIG.marker;
-    // 摆动
-    const hash = m.id * 1.37;
-    const sway = Math.sin(time * cfg.ropeTagSwaySpeed + hash) * cfg.ropeTagSwayAmplitude;
-    // 动画缩放
-    let scale = 1;
-    if (m.placeTimer > 0) {
-        const progress = 1 - m.placeTimer / cfg.placeAnimDuration;
-        if (progress < 0.4) {
-            scale = progress / 0.4;
-        }
-        else if (progress < 0.75) {
-            scale = 1 + 0.2 * Math.sin((progress - 0.4) / 0.35 * Math.PI);
-        }
-    }
-    if (m.removeTimer > 0) {
-        const progress = 1 - m.removeTimer / cfg.removeAnimDuration;
-        if (progress < 0.33) {
-            scale = 1 + 0.1 * (progress / 0.33);
-        }
-        else {
-            scale = 1.1 * (1 - (progress - 0.33) / 0.67);
-        }
-    }
-    if (scale <= 0.01)
-        return;
-    ctx.save();
-    ctx.translate(pt.x, pt.y);
-    ctx.rotate(sway);
-    ctx.scale(scale, scale);
-    const colors = getMarkerColors(m.type);
-    // 绑带
-    ctx.fillStyle = colors.stake;
-    ctx.fillRect(-0.75, 0, 1.5, cfg.ropeTagStrapLength);
-    // 标签
-    const tagW = cfg.ropeTagWidth;
-    const tagH = cfg.ropeTagHeight;
-    const tagY = cfg.ropeTagStrapLength;
-    ctx.fillStyle = colors.bg;
-    ctx.beginPath();
-    roundRect(ctx, -tagW / 2, tagY, tagW, tagH, 1.5);
-    ctx.fill();
-    ctx.strokeStyle = colors.border;
-    ctx.lineWidth = 0.8;
-    ctx.stroke();
-    // 符号
-    drawMarkerSymbol(ctx, m.type, 0, tagY + tagH / 2);
-    ctx.restore();
-}
-// ============ 辅助函数 ============
-function getMarkerColors(type) {
-    const cfg = config_1.CONFIG.marker;
-    switch (type) {
-        case 'danger':
-            return { bg: cfg.dangerColor, border: cfg.dangerBorder, stake: cfg.dangerStake };
-        case 'unknown':
-            return { bg: cfg.unknownColor, border: cfg.unknownBorder, stake: cfg.unknownStake };
-        case 'safe':
-            return { bg: cfg.safeColor, border: cfg.safeBorder, stake: cfg.safeStake };
-        default:
-            return { bg: '#888', border: '#aaa', stake: '#666' };
-    }
-}
-function drawMarkerSymbol(ctx, type, x, y) {
-    ctx.save();
-    ctx.translate(x, y);
-    switch (type) {
-        case 'danger': {
-            // 白色 ×
-            ctx.strokeStyle = '#fff';
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.moveTo(-4, -4);
-            ctx.lineTo(4, 4);
-            ctx.moveTo(4, -4);
-            ctx.lineTo(-4, 4);
-            ctx.stroke();
-            break;
-        }
-        case 'unknown': {
-            // 白色 ?
-            ctx.fillStyle = '#fff';
-            ctx.font = 'bold 10px Arial';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText('?', 0, 0);
-            break;
-        }
-        case 'safe': {
-            // 白色 ○
-            ctx.strokeStyle = '#fff';
-            ctx.lineWidth = 1.8;
-            ctx.beginPath();
-            ctx.arc(0, 0, 4, 0, Math.PI * 2);
-            ctx.stroke();
-            break;
-        }
-    }
-    ctx.restore();
-}
-function roundRect(ctx, x, y, w, h, r) {
-    r = Math.min(r, w / 2, h / 2);
-    ctx.moveTo(x + r, y);
-    ctx.lineTo(x + w - r, y);
-    ctx.arcTo(x + w, y, x + w, y + r, r);
-    ctx.lineTo(x + w, y + h - r);
-    ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
-    ctx.lineTo(x + r, y + h);
-    ctx.arcTo(x, y + h, x, y + h - r, r);
-    ctx.lineTo(x, y + r);
-    ctx.arcTo(x, y, x + r, y, r);
-    ctx.closePath();
 }
 },"/src/render/RenderMazeScene":function(exports,require){"use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
@@ -30219,14 +31198,6 @@ function drawMazeHUD() {
     const ch = Canvas_1.logicH;
     const time = Date.now() / 1000;
     Canvas_1.ctx.save();
-    if (maze.phase === 'tape_rewind' || maze.phase === 'tape_play') {
-        if (maze.phase === 'tape_rewind')
-            (0, TapeEntry_1.drawTapeRewind)();
-        else
-            (0, TapeEntry_1.drawTapePlayIntro)();
-        Canvas_1.ctx.restore();
-        return;
-    }
     // === 岸上阶段 ===
     if (maze.phase === 'shore') {
         // 图鉴全屏页：独立分发，不叠加任何其它 UI（返回按钮在全屏页自己画）
@@ -30343,6 +31314,7 @@ function drawMazeHUD() {
     // === 入水动效阶段 ===
     if (maze.phase === 'diving_in') {
         (0, debrief_1.drawMazeDivingIn)(maze, cw, ch, time);
+        (0, TapeEntry_1.drawTapeLoadingHint)(Canvas_1.ctx, 16, ch - 58);
         Canvas_1.ctx.restore();
         return;
     }
@@ -33406,10 +34378,13 @@ function drawRescueTarget(c, visual) {
 },"/src/render/RenderRope":function(exports,require){"use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.drawRopesWorld = drawRopesWorld;
-exports.drawRopeButton = drawRopeButton;
+exports.drawRopeContactWorld = drawRopeContactWorld;
+exports.drawRopeApproachWorld = drawRopeApproachWorld;
 const config_1 = require("../core/config");
 const state_1 = require("../core/state");
 const Canvas_1 = require("./Canvas");
+const RopeNet_1 = require("../logic/RopeNet");
+const Rope_1 = require("../logic/Rope");
 const Pathfinding_1 = require("../logic/Pathfinding");
 function generateSlackRopePoints(basePath, slackFactor, animTime) {
     var _a;
@@ -33439,7 +34414,7 @@ function generateSlackRopePoints(basePath, slackFactor, animTime) {
     }
     return points;
 }
-function strokeRopeLine(points, color, width) {
+function strokeRopeLine(points, color, width, exact = false) {
     var _a;
     if (!points || points.length < 2)
         return;
@@ -33450,7 +34425,7 @@ function strokeRopeLine(points, color, width) {
     Canvas_1.ctx.lineJoin = 'round';
     Canvas_1.ctx.beginPath();
     Canvas_1.ctx.moveTo(points[0].x, points[0].y);
-    if (state_1.state.screen === 'mazeRescue' && ((_a = state_1.state.mazeRescue) === null || _a === void 0 ? void 0 : _a.caveRockRoom)) {
+    if (exact || (state_1.state.screen === 'mazeRescue' && ((_a = state_1.state.mazeRescue) === null || _a === void 0 ? void 0 : _a.caveRockRoom))) {
         for (let i = 1; i < points.length; i++)
             Canvas_1.ctx.lineTo(points[i].x, points[i].y);
     }
@@ -33525,99 +34500,328 @@ function drawReelIndicator(x, y, angle) {
     }
     Canvas_1.ctx.restore();
 }
-function drawRopesWorld() {
+// Include each junction in the sampled lines. Every branch then has the same
+// position at the junction while the impact travels through the net.
+const cachedPaths = new WeakMap();
+function getWovenPath(net, index, path) {
+    let cache = cachedPaths.get(net);
+    if (!cache) {
+        cache = new Map();
+        cachedPaths.set(net, cache);
+    }
+    const existing = cache.get(index);
+    if (existing)
+        return existing;
+    const knots = net.knots.filter(knot => knot.ropes.has(index));
+    const sampled = [path[0]];
+    for (let i = 1; i < path.length; i++) {
+        const a = path[i - 1], b = path[i];
+        const inner = knots.filter(knot => (0, RopeNet_1.pointOnStrand)(knot, a, b));
+        inner.sort((p, q) => Math.hypot(p.x - a.x, p.y - a.y) - Math.hypot(q.x - a.x, q.y - a.y));
+        for (const end of [...inner, b]) {
+            const start = sampled[sampled.length - 1];
+            const distance = Math.hypot(end.x - start.x, end.y - start.y);
+            if (distance < .01)
+                continue;
+            const pieces = Math.ceil(distance / 8);
+            for (let step = 1; step < pieces; step++) {
+                const t = step / pieces;
+                sampled.push({ x: start.x + (end.x - start.x) * t, y: start.y + (end.y - start.y) * t });
+            }
+            sampled.push(end);
+        }
+    }
+    cache.set(index, sampled);
+    return sampled;
+}
+function visiblePoint(point, view, pad) {
+    return point.x >= view.left - pad && point.x <= view.right + pad &&
+        point.y >= view.top - pad && point.y <= view.bottom + pad;
+}
+function visibleSegment(a, b, view, pad) {
+    return Math.max(a.x, b.x) >= view.left - pad && Math.min(a.x, b.x) <= view.right + pad &&
+        Math.max(a.y, b.y) >= view.top - pad && Math.min(a.y, b.y) <= view.bottom + pad;
+}
+function strokeWovenPath(path, ropeIndex, view) {
+    var _a;
+    const pad = 68; // Make room for spring deflection outside the camera bounds.
+    let previous = null;
+    let maxDeflection = 0;
+    let visible = false;
+    Canvas_1.ctx.save();
+    Canvas_1.ctx.beginPath();
+    for (let i = 1; i < path.length; i++) {
+        const a = path[i - 1], b = path[i];
+        if (!visibleSegment(a, b, view, pad)) {
+            previous = null;
+            continue;
+        }
+        if (!previous) {
+            const first = (0, Rope_1.getRopeDeformedPoint)(a, ropeIndex);
+            Canvas_1.ctx.moveTo(first.x, first.y);
+        }
+        previous = (0, Rope_1.getRopeDeformedPoint)(b, ropeIndex);
+        Canvas_1.ctx.lineTo(previous.x, previous.y);
+        maxDeflection = Math.max(maxDeflection, Math.hypot(b.x - previous.x, b.y - previous.y));
+        visible = true;
+    }
+    if (visible) {
+        Canvas_1.ctx.lineCap = 'round';
+        Canvas_1.ctx.lineJoin = 'round';
+        Canvas_1.ctx.lineWidth = 4.2;
+        Canvas_1.ctx.strokeStyle = 'rgba(19,31,29,.82)';
+        Canvas_1.ctx.stroke();
+        Canvas_1.ctx.lineWidth = 2.4;
+        Canvas_1.ctx.strokeStyle = '#9eab86';
+        Canvas_1.ctx.stroke();
+        Canvas_1.ctx.lineWidth = 1.1;
+        (_a = Canvas_1.ctx.setLineDash) === null || _a === void 0 ? void 0 : _a.call(Canvas_1.ctx, [2, 3]);
+        Canvas_1.ctx.strokeStyle = `rgba(244,223,165,${.5 + .42 * Math.min(1, maxDeflection / 22)})`;
+        Canvas_1.ctx.stroke();
+    }
+    Canvas_1.ctx.restore();
+}
+function drawNetKnot(x, y, connections, selected = false) {
+    const radius = selected ? 5 : 3 + Math.min(2, (connections - 2) * .75);
+    Canvas_1.ctx.save();
+    Canvas_1.ctx.translate(x, y);
+    Canvas_1.ctx.rotate(-.48);
+    Canvas_1.ctx.beginPath();
+    Canvas_1.ctx.ellipse(0, 0, radius, radius * .76, 0, 0, Math.PI * 2);
+    Canvas_1.ctx.fillStyle = '#7b8063';
+    Canvas_1.ctx.fill();
+    Canvas_1.ctx.lineWidth = 1;
+    Canvas_1.ctx.strokeStyle = '#273b34';
+    Canvas_1.ctx.stroke();
+    Canvas_1.ctx.beginPath();
+    Canvas_1.ctx.moveTo(-radius * .68, -.9);
+    Canvas_1.ctx.quadraticCurveTo(0, -radius, radius * .65, -.6);
+    Canvas_1.ctx.moveTo(-radius * .66, 1.1);
+    Canvas_1.ctx.quadraticCurveTo(0, -radius * .34, radius * .65, 1.2);
+    Canvas_1.ctx.strokeStyle = '#c0bb88';
+    Canvas_1.ctx.stroke();
+    Canvas_1.ctx.restore();
+}
+function drawRopesWorld(left, right, top, bottom) {
+    var _a, _b;
     if (!state_1.state.rope)
         return;
+    const view = { left, right, top, bottom };
     const time = Date.now() / 1000;
-    for (let rope of state_1.state.rope.ropes) {
+    const net = state_1.state.screen === 'mazeRescue' ? (0, RopeNet_1.getRopeNet)(state_1.state.rope.ropes) : null;
+    for (const [i, rope] of state_1.state.rope.ropes.entries()) {
         if (!rope.path || rope.path.length < 2)
             continue;
-        let visualPts = generateSlackRopePoints(rope.path, rope.slackFactor || 0, time);
-        strokeRopeLine(visualPts, config_1.CONFIG.ropeTightColor, config_1.CONFIG.ropeTightWidth);
-        if (rope.start && rope.startWall) {
-            drawNail(rope.start.x, rope.start.y, rope.startWall.x, rope.startWall.y);
-            drawKnot(rope.start.x, rope.start.y);
+        if (net === null || net === void 0 ? void 0 : net.woven.has(i))
+            strokeWovenPath(getWovenPath(net, i, rope.path), i, view);
+        else if (rope.path.some((p, index) => index > 0 && visibleSegment(rope.path[index - 1], p, view, 24))) {
+            strokeRopeLine(rope.path, config_1.CONFIG.ropeTightColor, config_1.CONFIG.ropeTightWidth, true);
         }
-        if (rope.end && rope.endWall) {
-            drawNail(rope.end.x, rope.end.y, rope.endWall.x, rope.endWall.y);
-            drawKnot(rope.end.x, rope.end.y);
+        for (const [point, wall] of [[rope.start, rope.startWall], [rope.end, rope.endWall]]) {
+            if (!point || !wall || !visiblePoint(point, view, 12))
+                continue;
+            drawNail(point.x, point.y, wall.x, wall.y);
+            drawKnot(point.x, point.y);
         }
     }
-    if (state_1.state.rope.active && state_1.state.rope.current && state_1.state.rope.current.start) {
-        let cur = state_1.state.rope.current;
-        if (!cur.path || cur.path.length < 2)
-            return;
-        let visualPts = generateSlackRopePoints(cur.path, cur.slackFactor !== undefined ? cur.slackFactor : 1, cur.time || time);
+    if (net)
+        for (const knot of net.knots) {
+            if (!visiblePoint(knot, view, 68))
+                continue;
+            const point = (0, Rope_1.getRopeDeformedPoint)(knot, knot.ropes.values().next().value);
+            drawNetKnot(point.x, point.y, knot.ropes.size);
+        }
+    const cur = state_1.state.rope.current;
+    if (!state_1.state.rope.active || !(cur === null || cur === void 0 ? void 0 : cur.start))
+        return;
+    const parent = cur.startOnRope && (net === null || net === void 0 ? void 0 : net.strands.find(s => (0, RopeNet_1.pointOnStrand)(cur.start, s.a, s.b)));
+    const start = parent ? (0, Rope_1.getRopeDeformedPoint)(cur.start, parent.rope) : cur.start;
+    if (((_a = cur.path) === null || _a === void 0 ? void 0 : _a.length) >= 2) {
+        const previewPath = [start, ...cur.path.slice(1)];
+        const visualPts = generateSlackRopePoints(previewPath, (_b = cur.slackFactor) !== null && _b !== void 0 ? _b : 1, cur.time || time);
         strokeRopeLine(visualPts, config_1.CONFIG.ropeColor, config_1.CONFIG.ropeWidth);
-        if (cur.start && cur.startWall) {
-            drawNail(cur.start.x, cur.start.y, cur.startWall.x, cur.startWall.y);
-            drawKnot(cur.start.x, cur.start.y);
-        }
     }
-    if (state_1.state.rope.active && state_1.player.y > 0)
+    if (cur.startOnRope)
+        drawNetKnot(start.x, start.y, 2, true);
+    if (cur.startWall) {
+        drawNail(start.x, start.y, cur.startWall.x, cur.startWall.y);
+        drawKnot(start.x, start.y);
+    }
+    if (state_1.player.y > 0)
         drawReelIndicator(state_1.player.x, state_1.player.y, state_1.player.angle);
 }
-function drawRopeButton() {
-    // 主线模式和迷宫模式都显示绳索按钮
-    if (state_1.state.screen !== 'play' && state_1.state.screen !== 'mazeRescue')
+/** Front part of the loaded strand, drawn over the body that is pulling it. */
+function drawRopeContactWorld(c, body, contact, radius) {
+    var _a;
+    if (!contact)
         return;
-    if (!state_1.state.rope || !state_1.state.rope.ui || !state_1.state.rope.ui.visible)
+    const caught = contact.kind === 'snag';
+    const gathering = contact.kind === 'glide' && contact.threads > 1;
+    const fading = caught || gathering ? 1 : Math.max(0, 1 - contact.phase / 19);
+    const load = contact.strength * fading;
+    if (load < .04)
         return;
-    const btnX = config_1.CONFIG.screenWidth * config_1.CONFIG.ropeButtonXRatio;
-    const btnY = config_1.CONFIG.screenHeight * config_1.CONFIG.ropeButtonYRatio;
-    const radius = config_1.CONFIG.ropeButtonRadius;
-    const progress = state_1.state.rope.ui.progress || 0;
-    const isEnd = state_1.state.rope.ui.type === 'end';
-    const time = Date.now() / 1000;
-    Canvas_1.ctx.save();
-    if (progress === 0) {
-        let glowAlpha = 0.15 + Math.sin(time * 3) * 0.1;
-        Canvas_1.ctx.beginPath();
-        Canvas_1.ctx.arc(btnX, btnY, radius + 8, 0, Math.PI * 2);
-        Canvas_1.ctx.fillStyle = `rgba(230,220,170,${glowAlpha})`;
-        Canvas_1.ctx.fill();
+    const sx = body.x - contact.x, sy = body.y - contact.y;
+    const distance = Math.hypot(sx, sy);
+    if (distance > radius * (caught ? 4 : 2.2))
+        return;
+    const wiggle = caught ? Math.sin(contact.phase * .45) * (2 + 3 * contact.pull) : 0;
+    const ax = contact.x + sx * (caught ? .68 : .28), ay = contact.y + sy * (caught ? .68 : .28);
+    c.save();
+    c.globalAlpha *= fading;
+    if (caught || contact.kind === 'rebound') {
+        c.lineWidth = .9;
+        for (let i = 0; i < 3; i++) {
+            const age = (contact.phase + i * 6) % 22 / 22;
+            const x = body.x + Math.sin(i * 2.4 + age * 3) * radius * (.45 + age * .4);
+            const y = body.y - radius * .45 - age * (13 + load * 9);
+            c.beginPath();
+            c.arc(x, y, .75 + age * 1.8, 0, Math.PI * 2);
+            c.strokeStyle = `rgba(176,219,205,${(1 - age) * load * .62})`;
+            c.stroke();
+        }
     }
-    Canvas_1.ctx.beginPath();
-    Canvas_1.ctx.arc(btnX, btnY, radius, 0, Math.PI * 2);
-    Canvas_1.ctx.fillStyle = 'rgba(20,30,40,0.85)';
-    Canvas_1.ctx.fill();
-    Canvas_1.ctx.strokeStyle = isEnd ? 'rgba(255,180,80,0.7)' : 'rgba(200,220,255,0.6)';
-    Canvas_1.ctx.lineWidth = 2;
-    Canvas_1.ctx.stroke();
-    if (progress > 0) {
-        Canvas_1.ctx.strokeStyle = isEnd ? 'rgba(255,200,100,0.95)' : 'rgba(230,220,170,0.95)';
-        Canvas_1.ctx.lineWidth = 4;
-        Canvas_1.ctx.beginPath();
-        Canvas_1.ctx.arc(btnX, btnY, radius - 5, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2);
-        Canvas_1.ctx.stroke();
+    c.translate(ax, ay);
+    c.rotate(Math.atan2(contact.ny, contact.nx));
+    c.lineCap = 'round';
+    c.lineJoin = 'round';
+    c.beginPath();
+    const width = radius * (caught ? 1.58 : 1.02);
+    const bulge = radius * (.2 + load * (caught ? .9 : .5));
+    c.moveTo(-radius * .32, -width);
+    c.bezierCurveTo(bulge, -width * .65, bulge + wiggle, width * .7, -radius * .32, width);
+    const wraps = caught ? Math.min(3, Math.max(1, contact.threads - 1)) : gathering ? 1 : 0;
+    for (let i = 0; i < wraps; i++) {
+        const offset = i * radius * .30;
+        c.moveTo(-radius * .62 + offset, -width * .97);
+        c.bezierCurveTo(-radius * .43 + offset, -width * .55, bulge + wiggle + offset, width * .55, radius * .7 + offset, width * .78);
     }
-    Canvas_1.ctx.fillStyle = 'rgba(255,255,255,0.9)';
-    Canvas_1.ctx.strokeStyle = 'rgba(255,255,255,0.9)';
-    if (isEnd) {
-        Canvas_1.ctx.lineWidth = 2;
-        Canvas_1.ctx.beginPath();
-        Canvas_1.ctx.arc(btnX, btnY - 3, 5, 0, Math.PI * 2);
-        Canvas_1.ctx.stroke();
-        Canvas_1.ctx.beginPath();
-        Canvas_1.ctx.moveTo(btnX, btnY + 2);
-        Canvas_1.ctx.lineTo(btnX, btnY + 10);
-        Canvas_1.ctx.stroke();
+    c.lineWidth = 4.2;
+    c.strokeStyle = '#26342d';
+    c.stroke();
+    c.lineWidth = 2.1;
+    c.strokeStyle = caught ? '#debd85' : '#afc297';
+    c.stroke();
+    c.lineWidth = .8;
+    (_a = c.setLineDash) === null || _a === void 0 ? void 0 : _a.call(c, [2, 2.4]);
+    c.strokeStyle = '#f5dab0';
+    c.stroke();
+    c.restore();
+}
+function drawResistanceLabel(c, label, color, y, escape) {
+    c.font = '11px sans-serif';
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    const w = Math.ceil(c.measureText(label).width) + 14;
+    c.fillStyle = 'rgba(13,27,29,.9)';
+    c.fillRect(-w / 2, y - 10, w, 19);
+    c.fillStyle = color;
+    c.fillText(label, 0, y);
+    if (escape !== undefined) {
+        c.fillStyle = 'rgba(242,188,121,.22)';
+        c.fillRect(-w / 2, y + 10, w, 2);
+        c.fillStyle = color;
+        c.fillRect(-w / 2, y + 10, w * escape, 2);
     }
-    else {
-        Canvas_1.ctx.lineWidth = 2;
-        Canvas_1.ctx.beginPath();
-        Canvas_1.ctx.arc(btnX, btnY, 7, 0, Math.PI * 2);
-        Canvas_1.ctx.stroke();
-        Canvas_1.ctx.beginPath();
-        Canvas_1.ctx.arc(btnX, btnY, 3, 0, Math.PI * 2);
-        Canvas_1.ctx.fill();
+}
+const forecastColors = { glide: '#82f7d8', rebound: '#ffce73', snag: '#ff9989' };
+/** Light only the nearby strands of the net the player is about to hit. */
+function drawForecastStrands(c, approach, zoom) {
+    const net = (0, RopeNet_1.getRopeNet)(state_1.state.rope.ropes);
+    const group = net.groups.get(approach.ropeIndex);
+    if (!group)
+        return;
+    const { x, y, kind } = approach;
+    const extent = (kind === 'snag' ? 49 : 40) / zoom;
+    const patch = { left: x - extent, right: x + extent, top: y - extent, bottom: y + extent };
+    const glow = c.createRadialGradient(x, y, extent * .22, x, y, extent);
+    const color = forecastColors[kind];
+    glow.addColorStop(0, color);
+    glow.addColorStop(.64, color + 'b3');
+    glow.addColorStop(1, color + '00');
+    c.save();
+    c.lineCap = 'round';
+    c.lineJoin = 'round';
+    c.beginPath();
+    for (const index of group.indices) {
+        const path = getWovenPath(net, index, state_1.state.rope.ropes[index].path);
+        let started = false;
+        for (let i = 1; i < path.length; i++) {
+            const a = path[i - 1], b = path[i];
+            if (!visibleSegment(a, b, patch, 48)) {
+                started = false;
+                continue;
+            }
+            const end = (0, Rope_1.getRopeDeformedPoint)(b, index);
+            if (!started) {
+                const start = (0, Rope_1.getRopeDeformedPoint)(a, index);
+                c.moveTo(start.x, start.y);
+                started = true;
+            }
+            c.lineTo(end.x, end.y);
+        }
     }
-    Canvas_1.ctx.fillStyle = 'rgba(255,255,255,0.7)';
-    Canvas_1.ctx.font = '10px Arial';
-    Canvas_1.ctx.textAlign = 'center';
-    Canvas_1.ctx.textBaseline = 'top';
-    Canvas_1.ctx.fillText(isEnd ? '结束布线' : '开始布线', btnX, btnY + radius + 6);
-    Canvas_1.ctx.restore();
+    c.strokeStyle = glow;
+    c.globalAlpha = .24;
+    c.lineWidth = (kind === 'snag' ? 12 : 9) / zoom;
+    c.stroke();
+    c.globalAlpha = .95;
+    c.lineWidth = 2.8 / zoom;
+    c.stroke();
+    c.restore();
+}
+function arrowTip(c, x, y) {
+    c.moveTo(x - 6, y - 5);
+    c.lineTo(x, y);
+    c.lineTo(x - 6, y + 5);
+}
+function drawForecastTrack(c, approach, zoom) {
+    var _a;
+    const dx = approach.entry.x - state_1.player.x, dy = approach.entry.y - state_1.player.y;
+    const distance = Math.hypot(dx, dy) * zoom;
+    if (distance <= 32)
+        return;
+    c.save();
+    c.translate(state_1.player.x, state_1.player.y);
+    c.rotate(Math.atan2(dy, dx));
+    c.scale(1 / zoom, 1 / zoom);
+    c.beginPath();
+    c.moveTo(22, 0);
+    c.lineTo(distance - 3, 0);
+    (_a = c.setLineDash) === null || _a === void 0 ? void 0 : _a.call(c, [4, 5]);
+    c.lineWidth = 1.5;
+    c.strokeStyle = forecastColors[approach.kind];
+    c.stroke();
+    c.restore();
+}
+function drawRopeApproachWorld(c, zoom, view) {
+    var _a, _b;
+    if (state_1.state.screen !== 'mazeRescue' || ((_a = state_1.state.mazeRescue) === null || _a === void 0 ? void 0 : _a.phase) !== 'play' || ((_b = state_1.state.wheel) === null || _b === void 0 ? void 0 : _b.open))
+        return;
+    const contact = (0, Rope_1.getRopeContact)(state_1.player);
+    if (contact) {
+        if (contact.kind !== 'snag' || contact.phase < 8)
+            return;
+        c.save();
+        c.translate(state_1.player.x, state_1.player.y);
+        c.scale(1 / zoom, 1 / zoom);
+        c.globalAlpha *= Math.min(1, (contact.phase - 8) / 8);
+        drawResistanceLabel(c, '沿来路退', forecastColors.snag, 42, contact.escape);
+        c.strokeStyle = forecastColors.snag;
+        c.lineWidth = 1.5;
+        c.lineCap = 'round';
+        c.rotate(Math.atan2(-contact.ny, -contact.nx));
+        c.beginPath();
+        arrowTip(c, 27, 0);
+        c.stroke();
+        c.restore();
+        return;
+    }
+    const approach = (0, Rope_1.getRopeApproach)(state_1.player, config_1.CONFIG.maze.playerRadius);
+    if (!approach || !visiblePoint(approach, view, 24 / zoom))
+        return;
+    drawForecastStrands(c, approach, zoom);
+    drawForecastTrack(c, approach, zoom);
 }
 },"/src/render/RenderSemiAutoDrive":function(exports,require){"use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
@@ -33911,11 +35115,8 @@ function drawControls() {
             Canvas_1.ctx.stroke();
         }
     }
-    // 迷宫由自身 HUD 绘制攻击和手电按钮。
-    if (isMazePlay)
-        return;
-    // 绘制攻击按鈕
-    drawAttackButton();
+    if (!isMazePlay)
+        drawAttackButton();
     // 绘制手电筒开关按钮
     drawFlashlightButton();
 }
@@ -34179,331 +35380,218 @@ function drawSlashEffect(ctx, canvasW, canvasH, playerScreenX, playerScreenY, at
 },"/src/render/RenderWheel":function(exports,require){"use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getWheelBtnPos = getWheelBtnPos;
+exports.getDiveSupplyButton = getDiveSupplyButton;
 exports.drawWheelButton = drawWheelButton;
 exports.drawWheel = drawWheel;
+exports.drawRopeAimWorld = drawRopeAimWorld;
 const config_1 = require("../core/config");
 const state_1 = require("../core/state");
+const Rope_1 = require("../logic/Rope");
+const RopeWheel_1 = require("../logic/RopeWheel");
 const Canvas_1 = require("./Canvas");
-// ============ 自适应按钮位置计算 ============
-// 确保按钮+轮盘不超出屏幕边界
+const INK = '#0d2028';
+const THREAD = '#9ae5d6';
+const TIED = '#ffd89e';
+const LABEL = { rock: '岩壁', strand: '绳线', knot: '绳结' };
 function getWheelBtnPos(width = config_1.CONFIG.screenWidth, height = config_1.CONFIG.screenHeight) {
-    const outerR = config_1.CONFIG.marker.wheelOuterRadius;
-    const margin = outerR + 12; // 轮盘外径 + 安全边距
-    const rawX = width * config_1.CONFIG.marker.btnXRatio;
-    const rawY = height * config_1.CONFIG.marker.btnYRatio;
-    // 限制按钮位置，使轮盘展开后不超出屏幕
-    const x = Math.max(margin, Math.min(width - margin, rawX));
-    // 底部体力栏独占安全区上方 36px；展开轮盘与按钮文字均留在栏外。
+    const margin = config_1.CONFIG.marker.wheelOuterRadius + 12;
     const footer = config_1.CONFIG.driveMode === 'semiAuto' && config_1.CONFIG.semiAutoDrive.staminaPosition === 'bottom'
         ? Math.max(18, config_1.CONFIG.uiSafeBottom || 18) + 36 : 0;
-    const y = Math.max(margin, Math.min(height - margin - footer, rawY));
-    return { x, y };
+    return {
+        x: Math.max(margin, Math.min(width - margin, width * config_1.CONFIG.marker.btnXRatio)),
+        y: Math.max(margin, Math.min(height - margin - footer, height * config_1.CONFIG.marker.btnYRatio)),
+    };
 }
-// ============ 绘制轮盘交互按钮（替代旧绳索按钮） ============
-function drawWheelButton() {
-    // 主线和迷宫模式都显示
-    if (state_1.state.screen !== 'play' && state_1.state.screen !== 'mazeRescue')
-        return;
-    if (!state_1.state.wheel || !state_1.state.wheel.btnVisible)
-        return;
-    // 轮盘打开时不画按钮
-    if (state_1.state.wheel.open)
-        return;
-    const { x: btnX, y: btnY } = getWheelBtnPos();
-    const radius = config_1.CONFIG.marker.btnRadius;
-    const time = Date.now() / 1000;
-    // 是否为可交互态（false = 灰态，提示"停下就能交互"）
-    const active = !!state_1.state.wheel.btnActive;
-    // 按上下文决定按钮文字
-    const ctxKind = state_1.state.wheel.nearbyInfo ? state_1.state.wheel.nearbyInfo.context : null;
-    let labelActive = '标记';
-    let labelInactive = '停下标记';
-    if (ctxKind === 'oxygenTank') {
-        labelActive = '安装氧气瓶';
-        labelInactive = '停下安装';
-    }
-    else if (ctxKind === 'pickupRelic') {
-        labelActive = '拾取';
-        labelInactive = '停下拾取';
-    }
-    else if (ctxKind === 'ropeEndWall') {
-        labelActive = '拆绳';
-        labelInactive = '停下拆绳';
-    }
-    else if (ctxKind === 'ropingWall') {
-        labelActive = '结束铺绳';
-        labelInactive = '停下铺绳';
-    }
-    else if (ctxKind === 'markedWall' || ctxKind === 'ropeMarkedMid') {
-        labelActive = '拆标记';
-        labelInactive = '停下拆标记';
-    }
-    Canvas_1.ctx.save();
-    if (active) {
-        // =============== 可交互态（原样式）===============
-        // 呼吸脉冲光晕
-        const glowAlpha = 0.15 + Math.sin(time * 3) * 0.1;
-        Canvas_1.ctx.beginPath();
-        Canvas_1.ctx.arc(btnX, btnY, radius + 8, 0, Math.PI * 2);
-        Canvas_1.ctx.fillStyle = `rgba(100, 180, 255, ${glowAlpha})`;
-        Canvas_1.ctx.fill();
-        // 按钮底圆
-        Canvas_1.ctx.beginPath();
-        Canvas_1.ctx.arc(btnX, btnY, radius, 0, Math.PI * 2);
-        Canvas_1.ctx.fillStyle = 'rgba(10, 25, 40, 0.85)';
-        Canvas_1.ctx.fill();
-        Canvas_1.ctx.strokeStyle = 'rgba(100, 180, 255, 0.6)';
-        Canvas_1.ctx.lineWidth = 2;
-        Canvas_1.ctx.stroke();
-        // 中心图标：⊕ 符号（十字 + 圆）
-        Canvas_1.ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
-        Canvas_1.ctx.lineWidth = 1.5;
-        Canvas_1.ctx.beginPath();
-        Canvas_1.ctx.arc(btnX, btnY, 8, 0, Math.PI * 2);
-        Canvas_1.ctx.stroke();
-        Canvas_1.ctx.beginPath();
-        Canvas_1.ctx.moveTo(btnX - 5, btnY);
-        Canvas_1.ctx.lineTo(btnX + 5, btnY);
-        Canvas_1.ctx.moveTo(btnX, btnY - 5);
-        Canvas_1.ctx.lineTo(btnX, btnY + 5);
-        Canvas_1.ctx.stroke();
-        // 文字标签
-        Canvas_1.ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-        Canvas_1.ctx.font = '10px Arial';
-        Canvas_1.ctx.textAlign = 'center';
-        Canvas_1.ctx.textBaseline = 'top';
-        Canvas_1.ctx.fillText(labelActive, btnX, btnY + radius + 6);
-    }
-    else {
-        // =============== 灰态（移动中，提示"停下就能交互"）===============
-        // 不画呼吸光晕，整体压低透明度
-        Canvas_1.ctx.globalAlpha = 0.45;
-        // 按钮底圆（偏灰色调）
-        Canvas_1.ctx.beginPath();
-        Canvas_1.ctx.arc(btnX, btnY, radius, 0, Math.PI * 2);
-        Canvas_1.ctx.fillStyle = 'rgba(30, 35, 40, 0.75)';
-        Canvas_1.ctx.fill();
-        // 虚线灰色描边，暗示"不可点击"
-        Canvas_1.ctx.strokeStyle = 'rgba(160, 170, 180, 0.5)';
-        Canvas_1.ctx.lineWidth = 1.5;
-        if (typeof Canvas_1.ctx.setLineDash === 'function')
-            Canvas_1.ctx.setLineDash([4, 3]);
-        Canvas_1.ctx.stroke();
-        if (typeof Canvas_1.ctx.setLineDash === 'function')
-            Canvas_1.ctx.setLineDash([]);
-        // 中心图标：⊕ 符号（灰色版本）
-        Canvas_1.ctx.strokeStyle = 'rgba(200, 210, 220, 0.55)';
-        Canvas_1.ctx.lineWidth = 1.2;
-        Canvas_1.ctx.beginPath();
-        Canvas_1.ctx.arc(btnX, btnY, 8, 0, Math.PI * 2);
-        Canvas_1.ctx.stroke();
-        Canvas_1.ctx.beginPath();
-        Canvas_1.ctx.moveTo(btnX - 5, btnY);
-        Canvas_1.ctx.lineTo(btnX + 5, btnY);
-        Canvas_1.ctx.moveTo(btnX, btnY - 5);
-        Canvas_1.ctx.lineTo(btnX, btnY + 5);
-        Canvas_1.ctx.stroke();
-        // 文字标签：提示"停下"
-        Canvas_1.ctx.fillStyle = 'rgba(210, 220, 230, 0.6)';
-        Canvas_1.ctx.font = '9px Arial';
-        Canvas_1.ctx.textAlign = 'center';
-        Canvas_1.ctx.textBaseline = 'top';
-        Canvas_1.ctx.fillText(labelInactive, btnX, btnY + radius + 6);
-    }
-    Canvas_1.ctx.restore();
+function getDiveSupplyButton() {
+    const supply = state_1.state.wheel.nearbyInfo;
+    if (!supply || state_1.state.wheel.open || !(0, RopeWheel_1.canUseRopeWheel)())
+        return null;
+    const center = getWheelBtnPos();
+    return { x: center.x - config_1.CONFIG.marker.btnRadius - 36, y: center.y, radius: 24, supply };
 }
-// ============ 绘制轮盘 ============
-function drawWheel() {
-    if (!state_1.state.wheel || !state_1.state.wheel.open)
-        return;
-    const wheel = state_1.state.wheel;
-    const sectors = wheel.sectors;
-    if (!sectors || sectors.length === 0)
-        return;
-    const { x: btnX, y: btnY } = getWheelBtnPos();
-    const outerR = config_1.CONFIG.marker.wheelOuterRadius;
-    const innerR = config_1.CONFIG.marker.wheelInnerRadius;
-    // 展开动画缩放
-    const expandProgress = wheel.expandProgress || 1;
-    const scale = expandProgress;
-    const alpha = expandProgress;
-    Canvas_1.ctx.save();
-    Canvas_1.ctx.globalAlpha = alpha;
-    Canvas_1.ctx.translate(btnX, btnY);
-    Canvas_1.ctx.scale(scale, scale);
-    // 单选项时不画间隔
-    const gapAngle = sectors.length === 1 ? 0 : 0.07;
-    for (let i = 0; i < sectors.length; i++) {
-        const s = sectors[i];
-        const isHighlight = (wheel.highlightIndex === i);
-        const sStart = s.startAngle + gapAngle / 2;
-        const sEnd = s.endAngle - gapAngle / 2;
-        // 扇区背景
-        Canvas_1.ctx.beginPath();
-        if (sectors.length === 1) {
-            // 单选项：画完整圆环
-            Canvas_1.ctx.arc(0, 0, outerR, 0, Math.PI * 2);
-            Canvas_1.ctx.arc(0, 0, innerR, Math.PI * 2, 0, true);
-        }
-        else {
-            Canvas_1.ctx.arc(0, 0, outerR, sStart, sEnd);
-            Canvas_1.ctx.arc(0, 0, innerR, sEnd, sStart, true);
-        }
-        Canvas_1.ctx.closePath();
-        Canvas_1.ctx.fillStyle = isHighlight ? 'rgba(60, 100, 140, 0.9)' : 'rgba(40, 60, 80, 0.7)';
-        Canvas_1.ctx.fill();
-        Canvas_1.ctx.strokeStyle = 'rgba(100, 160, 220, 0.5)';
-        Canvas_1.ctx.lineWidth = 1;
-        Canvas_1.ctx.stroke();
-        // 扇区图标和文字位置
-        let iconX, iconY;
-        if (sectors.length === 1) {
-            // 单选项：图标在正上方
-            const iconR = (outerR + innerR) / 2;
-            iconX = 0;
-            iconY = -iconR;
-        }
-        else {
-            const midAngle = (sStart + sEnd) / 2;
-            const iconR = (outerR + innerR) / 2 + 2;
-            iconX = Math.cos(midAngle) * iconR;
-            iconY = Math.sin(midAngle) * iconR;
-        }
-        Canvas_1.ctx.save();
-        Canvas_1.ctx.translate(iconX, iconY);
-        // 根据 action 绘制图标
-        drawSectorIcon(s.action, isHighlight);
-        // 文字标签
-        let labelOffsetY;
-        if (sectors.length === 1) {
-            labelOffsetY = 16;
-        }
-        else {
-            labelOffsetY = 14;
-        }
-        Canvas_1.ctx.fillStyle = isHighlight ? 'rgba(255,255,255,0.95)' : 'rgba(200,220,240,0.8)';
-        Canvas_1.ctx.font = '11px Arial';
-        Canvas_1.ctx.textAlign = 'center';
-        Canvas_1.ctx.textBaseline = 'middle';
-        Canvas_1.ctx.fillText(s.label, 0, labelOffsetY);
-        Canvas_1.ctx.restore();
-    }
-    // 中心死区
+function circle(g, x, y, radius) {
+    g.beginPath();
+    g.arc(x, y, radius, 0, Math.PI * 2);
+}
+function drawSpool() {
+    Canvas_1.ctx.lineWidth = 1.65;
+    Canvas_1.ctx.lineCap = 'round';
+    circle(Canvas_1.ctx, -2, -2, 6.5);
+    Canvas_1.ctx.stroke();
+    circle(Canvas_1.ctx, -2, -2, 2.5);
+    Canvas_1.ctx.stroke();
     Canvas_1.ctx.beginPath();
-    Canvas_1.ctx.arc(0, 0, innerR, 0, Math.PI * 2);
-    Canvas_1.ctx.fillStyle = 'rgba(10, 20, 30, 0.6)';
+    Canvas_1.ctx.moveTo(-2, 4.5);
+    Canvas_1.ctx.bezierCurveTo(3, 4.5, 3.5, 8, 8, 8);
+    Canvas_1.ctx.stroke();
+}
+function drawWheelButton() {
+    if (!(0, RopeWheel_1.canUseRopeWheel)() || state_1.state.wheel.open)
+        return;
+    const { x, y } = getWheelBtnPos();
+    const radius = config_1.CONFIG.marker.btnRadius;
+    const active = state_1.state.rope.active;
+    const color = active ? TIED : THREAD;
+    Canvas_1.ctx.save();
+    Canvas_1.ctx.translate(x, y);
+    Canvas_1.ctx.fillStyle = 'rgba(8,25,34,.88)';
+    Canvas_1.ctx.strokeStyle = color;
+    Canvas_1.ctx.lineWidth = 1.4;
+    circle(Canvas_1.ctx, 0, 0, radius - 3);
     Canvas_1.ctx.fill();
+    Canvas_1.ctx.stroke();
+    Canvas_1.ctx.globalAlpha = .35;
+    circle(Canvas_1.ctx, 0, 0, radius + 2);
+    Canvas_1.ctx.stroke();
+    Canvas_1.ctx.globalAlpha = 1;
+    Canvas_1.ctx.save();
+    Canvas_1.ctx.translate(0, -8);
+    drawSpool();
+    Canvas_1.ctx.restore();
+    Canvas_1.ctx.fillStyle = '#e8f3ef';
+    Canvas_1.ctx.font = 'bold 12px Arial';
+    Canvas_1.ctx.textAlign = 'center';
+    Canvas_1.ctx.textBaseline = 'middle';
+    Canvas_1.ctx.fillText(active ? '收绳' : '起绳', 0, 12);
+    Canvas_1.ctx.restore();
+    drawDiveSupplyButton();
+}
+function drawDiveSupplyButton() {
+    const button = getDiveSupplyButton();
+    if (!button)
+        return;
+    const { x, y, radius, supply } = button;
+    Canvas_1.ctx.save();
+    circle(Canvas_1.ctx, x, y, radius);
+    Canvas_1.ctx.fillStyle = 'rgba(14,31,42,.9)';
+    Canvas_1.ctx.fill();
+    Canvas_1.ctx.strokeStyle = '#8cafc6';
+    Canvas_1.ctx.stroke();
+    Canvas_1.ctx.fillStyle = '#d8eef9';
+    Canvas_1.ctx.font = '11px Arial';
+    Canvas_1.ctx.textAlign = 'center';
+    Canvas_1.ctx.textBaseline = 'middle';
+    Canvas_1.ctx.fillText(supply.kind === 'oxygen' ? '补氧' : '拾取', x, y);
+    if (supply.kind === 'pickup') {
+        Canvas_1.ctx.font = '10px Arial';
+        Canvas_1.ctx.fillText(supply.item.label, x, y + radius + 8, 85);
+    }
     Canvas_1.ctx.restore();
 }
-// ============ 扇区图标绘制 ============
-function drawSectorIcon(action, highlight) {
-    const color = highlight ? 'rgba(255,255,255,0.95)' : 'rgba(200,220,240,0.8)';
-    switch (action) {
-        case 'startRope': {
-            // 绳索卷轴图标
-            Canvas_1.ctx.strokeStyle = color;
-            Canvas_1.ctx.lineWidth = 1.5;
-            Canvas_1.ctx.beginPath();
-            Canvas_1.ctx.arc(0, -2, 6, 0, Math.PI * 2);
-            Canvas_1.ctx.stroke();
-            Canvas_1.ctx.beginPath();
-            Canvas_1.ctx.arc(0, -2, 2.5, 0, Math.PI * 2);
-            Canvas_1.ctx.fillStyle = color;
-            Canvas_1.ctx.fill();
-            break;
-        }
-        case 'endRope': {
-            // 钉子 + 绳结图标
-            Canvas_1.ctx.strokeStyle = color;
-            Canvas_1.ctx.lineWidth = 1.5;
-            Canvas_1.ctx.beginPath();
-            Canvas_1.ctx.moveTo(-4, -2);
-            Canvas_1.ctx.lineTo(4, -2);
-            Canvas_1.ctx.stroke();
-            Canvas_1.ctx.beginPath();
-            Canvas_1.ctx.arc(0, 2, 2.5, 0, Math.PI * 2);
-            Canvas_1.ctx.fillStyle = color;
-            Canvas_1.ctx.fill();
-            break;
-        }
-        case 'removeRope': {
-            // 剪刀图标（橙色）
-            Canvas_1.ctx.strokeStyle = 'rgba(255, 150, 100, 0.9)';
-            Canvas_1.ctx.lineWidth = 1.5;
-            Canvas_1.ctx.beginPath();
-            Canvas_1.ctx.moveTo(-4, -4);
-            Canvas_1.ctx.lineTo(4, 4);
-            Canvas_1.ctx.moveTo(4, -4);
-            Canvas_1.ctx.lineTo(-4, 4);
-            Canvas_1.ctx.stroke();
-            Canvas_1.ctx.beginPath();
-            Canvas_1.ctx.arc(-4, 5, 2, 0, Math.PI * 2);
-            Canvas_1.ctx.arc(4, 5, 2, 0, Math.PI * 2);
-            Canvas_1.ctx.stroke();
-            break;
-        }
-        case 'markDanger': {
-            // 红叉小牌子
-            Canvas_1.ctx.fillStyle = config_1.CONFIG.marker.dangerColor;
-            Canvas_1.ctx.fillRect(-5, -5, 10, 8);
-            Canvas_1.ctx.strokeStyle = '#fff';
-            Canvas_1.ctx.lineWidth = 1.5;
-            Canvas_1.ctx.beginPath();
-            Canvas_1.ctx.moveTo(-3, -3);
-            Canvas_1.ctx.lineTo(3, 1);
-            Canvas_1.ctx.moveTo(3, -3);
-            Canvas_1.ctx.lineTo(-3, 1);
-            Canvas_1.ctx.stroke();
-            break;
-        }
-        case 'markUnknown': {
-            // 黄问号小牌子
-            Canvas_1.ctx.fillStyle = config_1.CONFIG.marker.unknownColor;
-            Canvas_1.ctx.fillRect(-5, -5, 10, 8);
-            Canvas_1.ctx.fillStyle = '#fff';
-            Canvas_1.ctx.font = 'bold 8px Arial';
-            Canvas_1.ctx.textAlign = 'center';
-            Canvas_1.ctx.textBaseline = 'middle';
-            Canvas_1.ctx.fillText('?', 0, -1);
-            break;
-        }
-        case 'markSafe': {
-            // 绿圈小牌子
-            Canvas_1.ctx.fillStyle = config_1.CONFIG.marker.safeColor;
-            Canvas_1.ctx.fillRect(-5, -5, 10, 8);
-            Canvas_1.ctx.strokeStyle = '#fff';
-            Canvas_1.ctx.lineWidth = 1.5;
-            Canvas_1.ctx.beginPath();
-            Canvas_1.ctx.arc(0, -1, 3, 0, Math.PI * 2);
-            Canvas_1.ctx.stroke();
-            break;
-        }
-        case 'removeMarker': {
-            // 垃圾桶图标（红色）
-            Canvas_1.ctx.strokeStyle = 'rgba(200, 100, 80, 0.9)';
-            Canvas_1.ctx.lineWidth = 1.2;
-            // 桶身
-            Canvas_1.ctx.beginPath();
-            Canvas_1.ctx.moveTo(-4, -2);
-            Canvas_1.ctx.lineTo(-3, 5);
-            Canvas_1.ctx.lineTo(3, 5);
-            Canvas_1.ctx.lineTo(4, -2);
-            Canvas_1.ctx.stroke();
-            // 桶盖
-            Canvas_1.ctx.beginPath();
-            Canvas_1.ctx.moveTo(-5, -2);
-            Canvas_1.ctx.lineTo(5, -2);
-            Canvas_1.ctx.stroke();
-            // 把手
-            Canvas_1.ctx.beginPath();
-            Canvas_1.ctx.moveTo(-2, -2);
-            Canvas_1.ctx.lineTo(-2, -4);
-            Canvas_1.ctx.lineTo(2, -4);
-            Canvas_1.ctx.lineTo(2, -2);
-            Canvas_1.ctx.stroke();
-            break;
-        }
+function drawWheel() {
+    if (!(0, RopeWheel_1.canUseRopeWheel)() || !state_1.state.wheel.open)
+        return;
+    const { centerX: x, centerY: y, expandProgress } = state_1.state.wheel;
+    const { wheelInnerRadius: inner, wheelOuterRadius: outer } = config_1.CONFIG.marker;
+    const aim = (0, RopeWheel_1.getRopeWheelAim)();
+    const valid = !!(aim === null || aim === void 0 ? void 0 : aim.target);
+    const cancel = (0, RopeWheel_1.getRopeCancelProgress)();
+    const color = valid ? (state_1.state.rope.active ? TIED : THREAD) : '#a2bbc5';
+    Canvas_1.ctx.save();
+    Canvas_1.ctx.translate(x, y);
+    Canvas_1.ctx.globalAlpha = .7 + .3 * expandProgress;
+    circle(Canvas_1.ctx, 0, 0, outer);
+    Canvas_1.ctx.fillStyle = 'rgba(9,22,30,.86)';
+    Canvas_1.ctx.strokeStyle = '#597e89';
+    Canvas_1.ctx.lineWidth = 1;
+    Canvas_1.ctx.fill();
+    Canvas_1.ctx.stroke();
+    circle(Canvas_1.ctx, 0, 0, inner + (outer - inner) * .5);
+    Canvas_1.ctx.strokeStyle = 'rgba(129,170,178,.22)';
+    Canvas_1.ctx.stroke();
+    for (let i = 0; i < 32; i++) {
+        const angle = i * Math.PI / 16;
+        const x = Math.cos(angle), y = Math.sin(angle);
+        const length = i % 4 === 0 ? 9 : 4;
+        Canvas_1.ctx.strokeStyle = i % 4 === 0 ? '#799ca5' : 'rgba(129,170,178,.37)';
+        Canvas_1.ctx.beginPath();
+        Canvas_1.ctx.moveTo(x * (outer - length - 4), y * (outer - length - 4));
+        Canvas_1.ctx.lineTo(x * (outer - 4), y * (outer - 4));
+        Canvas_1.ctx.stroke();
     }
+    if (aim) {
+        const vx = Math.cos(aim.angle), vy = Math.sin(aim.angle);
+        const reach = aim.reach / config_1.CONFIG.ropeAnchorDistance;
+        const knob = inner + (outer - inner - 8) * reach;
+        Canvas_1.ctx.lineWidth = valid ? 2 : 1.15;
+        Canvas_1.ctx.strokeStyle = color;
+        Canvas_1.ctx.beginPath();
+        Canvas_1.ctx.moveTo(vx * inner, vy * inner);
+        Canvas_1.ctx.lineTo(vx * knob, vy * knob);
+        Canvas_1.ctx.stroke();
+        circle(Canvas_1.ctx, vx * knob, vy * knob, valid ? 6 : 4);
+        Canvas_1.ctx.fillStyle = color;
+        Canvas_1.ctx.fill();
+    }
+    circle(Canvas_1.ctx, 0, 0, inner);
+    Canvas_1.ctx.fillStyle = INK;
+    Canvas_1.ctx.strokeStyle = '#597e89';
+    Canvas_1.ctx.lineWidth = 1;
+    Canvas_1.ctx.fill();
+    Canvas_1.ctx.stroke();
+    if (cancel > 0) {
+        Canvas_1.ctx.strokeStyle = TIED;
+        Canvas_1.ctx.lineWidth = 2.5;
+        Canvas_1.ctx.beginPath();
+        Canvas_1.ctx.arc(0, 0, inner, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * cancel);
+        Canvas_1.ctx.stroke();
+    }
+    Canvas_1.ctx.fillStyle = color;
+    Canvas_1.ctx.font = 'bold 11px Arial';
+    Canvas_1.ctx.textAlign = 'center';
+    Canvas_1.ctx.textBaseline = 'middle';
+    Canvas_1.ctx.fillText((aim === null || aim === void 0 ? void 0 : aim.target) ? LABEL[aim.target.kind] : state_1.state.rope.active ? '收绳' : '起绳', 0, 0);
+    Canvas_1.ctx.fillStyle = '#c2d3d6';
+    Canvas_1.ctx.font = '11px Arial';
+    const hint = valid ? '松手系绳' : aim ? '转向或拖远找结点' : '按住拖动，选结点';
+    Canvas_1.ctx.fillText(hint, 0, -outer - 9);
+    if (state_1.state.rope.active && !aim)
+        Canvas_1.ctx.fillText('长按中心撤回这段绳', 0, outer + 10);
+    Canvas_1.ctx.restore();
+}
+function drawRopeAimWorld(g) {
+    var _a, _b, _c;
+    const aim = (0, RopeWheel_1.getRopeWheelAim)();
+    if (!aim)
+        return;
+    const target = aim.target;
+    const point = (target === null || target === void 0 ? void 0 : target.ropeIndex) === undefined
+        ? (_a = target === null || target === void 0 ? void 0 : target.anchor.point) !== null && _a !== void 0 ? _a : aim.pointer
+        : (0, Rope_1.getRopeDeformedPoint)(target.anchor.point, target.ropeIndex);
+    const zoom = Math.max(.5, state_1.state.camera.zoom);
+    const color = target ? (state_1.state.rope.active ? TIED : THREAD) : 'rgba(176,204,209,.52)';
+    g.save();
+    g.lineWidth = 1.45 / zoom;
+    g.strokeStyle = color;
+    (_b = g.setLineDash) === null || _b === void 0 ? void 0 : _b.call(g, [3 / zoom, 4 / zoom]);
+    g.beginPath();
+    const angle = Math.atan2(point.y - state_1.player.y, point.x - state_1.player.x);
+    g.moveTo(state_1.player.x + Math.cos(angle) * 13, state_1.player.y + Math.sin(angle) * 13);
+    g.lineTo(point.x, point.y);
+    g.stroke();
+    (_c = g.setLineDash) === null || _c === void 0 ? void 0 : _c.call(g, []);
+    g.translate(point.x, point.y);
+    g.scale(1 / zoom, 1 / zoom);
+    g.lineWidth = 1.65;
+    circle(g, 0, 0, target ? 8 : 5);
+    g.fillStyle = INK;
+    g.fill();
+    g.stroke();
+    if (target) {
+        circle(g, 0, 0, 2.6);
+        g.fillStyle = color;
+        g.fill();
+        g.font = 'bold 11px Arial';
+        g.textAlign = 'center';
+        g.textBaseline = 'middle';
+        const label = `${LABEL[target.kind]} · ${state_1.state.rope.active ? '终点' : '起点'}`;
+        const width = g.measureText(label).width + 12;
+        g.fillStyle = 'rgba(8,24,32,.91)';
+        g.fillRect(-width / 2, -30, width, 16);
+        g.fillStyle = color;
+        g.fillText(label, 0, -22);
+    }
+    g.restore();
 }
 },"/src/render/RescueDance":function(exports,require){"use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
@@ -34758,7 +35846,7 @@ const config_1 = require("../core/config");
 function getRescueTapeVisual() {
     const clock = (0, AdaptiveMusic_1.getAdaptiveMusicClock)();
     const visual = (0, AdaptiveMusicVisuals_1.sampleTapeVisual)(clock);
-    if (!clock || !config_1.CONFIG.lifeDetector.music.enabled) {
+    if (!config_1.CONFIG.lifeDetector.music.enabled) {
         const detector = (0, LifeDetector_1.getLifeDetectorRuntime)();
         visual.fallback = true;
         visual.playing = detector.active;
@@ -34972,93 +36060,57 @@ function drawTapeSleeve(c, x, y, w, v) {
 },"/src/render/TapeEntry":function(exports,require){"use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TAPE_TRACK_TITLE = void 0;
-exports.getTapeEntryButtons = getTapeEntryButtons;
-exports.drawTapeRewind = drawTapeRewind;
-exports.drawTapePlayIntro = drawTapePlayIntro;
+exports.getTapeLoadingLabel = getTapeLoadingLabel;
+exports.retryTapeLoading = retryTapeLoading;
+exports.drawTapeLoadingHint = drawTapeLoadingHint;
 exports.drawTapeNowPlaying = drawTapeNowPlaying;
-const Canvas_1 = require("./Canvas");
 const state_1 = require("../core/state");
 const AdaptiveMusic_1 = require("../audio/AdaptiveMusic");
-const PaperCassette_1 = require("./PaperCassette");
 const TapeDeckVisual_1 = require("./TapeDeckVisual");
 exports.TAPE_TRACK_TITLE = '夜航';
-function getTapeEntryButtons() {
+function getTapeLoadingLabel() {
     const prep = (0, AdaptiveMusic_1.getAdaptiveMusicPreparation)();
-    const blocked = prep.status === 'error' || prep.status === 'locked';
-    return {
-        retry: { x: Canvas_1.logicW / 2 - 102, y: Canvas_1.logicH * .79, w: 204, h: 42, enabled: blocked },
-        back: { x: Canvas_1.logicW / 2 - 84, y: Canvas_1.logicH * .89, w: 168, h: 36, enabled: state_1.state.mazeRescue && (state_1.state.mazeRescue.phase === 'tape_rewind' || blocked) },
-    };
+    if (prep.status === 'ready')
+        return '';
+    if (prep.status === 'error')
+        return '音轨暂不可用 · 轻点重试';
+    if (prep.status === 'locked')
+        return '音轨 100% · 轻点启用';
+    return `音轨准备 ${Math.min(99, Math.floor(prep.progress * 100))}%`;
 }
-function text(s, x, y, font, color, align = 'center') {
-    Canvas_1.ctx.font = font;
-    Canvas_1.ctx.fillStyle = color;
-    Canvas_1.ctx.textAlign = align;
-    Canvas_1.ctx.textBaseline = 'middle';
-    Canvas_1.ctx.fillText(s, x, y);
+function retryTapeLoading() {
+    const status = (0, AdaptiveMusic_1.getAdaptiveMusicPreparation)().status;
+    if (status !== 'error' && status !== 'locked')
+        return false;
+    (0, AdaptiveMusic_1.retryAdaptiveMusic)();
+    return true;
 }
-function recovery() {
-    const buttons = getTapeEntryButtons(), prep = (0, AdaptiveMusic_1.getAdaptiveMusicPreparation)();
-    if (buttons.retry.enabled) {
-        Canvas_1.ctx.fillStyle = '#a7412c';
-        (0, TapeDeckVisual_1.cutPanel)(Canvas_1.ctx, buttons.retry.x, buttons.retry.y, buttons.retry.w, buttons.retry.h, 3);
-        Canvas_1.ctx.fill();
-        text(prep.status === 'locked' ? '轻点，唤醒随身听' : '重新倒带', Canvas_1.logicW / 2, buttons.retry.y + 21, '13px Arial', '#eee6cf');
-    }
-    if (buttons.back.enabled)
-        text('返回主界面', Canvas_1.logicW / 2, buttons.back.y + 18, '11px Arial', '#697361');
+/** Real synthesis progress, not a transport animation or a blocking overlay. */
+function drawTapeLoadingHint(c, x, y) {
+    const label = getTapeLoadingLabel();
+    if (!label)
+        return;
+    const prep = (0, AdaptiveMusic_1.getAdaptiveMusicPreparation)(), w = 168, h = 32;
+    c.save();
+    c.translate(x, y);
+    c.fillStyle = 'rgba(14,29,29,.88)';
+    (0, TapeDeckVisual_1.cutPanel)(c, 0, 0, w, h, 3);
+    c.fill();
+    c.fillStyle = TapeDeckVisual_1.TAPE.paper;
+    c.font = '10px Arial';
+    c.textAlign = 'left';
+    c.textBaseline = 'middle';
+    c.fillText(label, 9, 12);
+    c.fillStyle = 'rgba(222,214,188,.2)';
+    c.fillRect(9, 24, w - 18, 2);
+    c.fillStyle = prep.status === 'error' ? TapeDeckVisual_1.TAPE.orange : TapeDeckVisual_1.TAPE.mint;
+    c.fillRect(9, 24, (w - 18) * Math.max(0, Math.min(1, prep.progress)), 2);
+    c.restore();
 }
-function drawTapeRewind() {
-    const maze = state_1.state.mazeRescue, prep = (0, AdaptiveMusic_1.getAdaptiveMusicPreparation)();
-    const secs = Math.max(0, (Date.now() - (maze.tapeEntryStartedAt || Date.now())) / 1000);
-    // This is tape transport position, not a made-up network percentage. Even a
-    // cached tape completes its short physical rewind gesture before entering water.
-    const transportProgress = Math.min(prep.progress, secs / .7);
-    const bg = Canvas_1.ctx.createRadialGradient(Canvas_1.logicW / 2, Canvas_1.logicH * .47, 20, Canvas_1.logicW / 2, Canvas_1.logicH * .47, Canvas_1.logicH * .8);
-    bg.addColorStop(0, '#ddd8c9');
-    bg.addColorStop(1, '#c4c4b3');
-    Canvas_1.ctx.fillStyle = bg;
-    Canvas_1.ctx.fillRect(0, 0, Canvas_1.logicW, Canvas_1.logicH);
-    text('DEEPTAPE  /  SIDE A', Canvas_1.logicW / 2, Canvas_1.logicH * .18, '10px Arial', '#69715e');
-    (0, PaperCassette_1.drawPaperCassette)(Canvas_1.ctx, Canvas_1.logicW / 2, Canvas_1.logicH * .46, Math.min(410, Canvas_1.logicW * .86), {
-        mode: prep.status === 'loading' || (prep.status === 'ready' && transportProgress < 1) ? 'rewind' : 'stop', progress: transportProgress, seconds: secs,
-    });
-    const counter = '00:' + ('0' + Math.ceil((1 - transportProgress) * 16)).slice(-2);
-    text('◀◀  REWIND', Canvas_1.logicW / 2 - 48, Canvas_1.logicH * .67, '10px monospace', '#69715e');
-    text(counter, Canvas_1.logicW / 2 + 72, Canvas_1.logicH * .67, '19px monospace', '#384d39');
-    if (prep.status === 'error' || prep.status === 'locked')
-        text(prep.status === 'error' ? '音频准备失败' : '等待音频解锁', Canvas_1.logicW / 2, Canvas_1.logicH * .73, '11px Arial', '#6a705d');
-    recovery();
-}
-/** Underwater transport close-up. No center-screen story toast. */
-function drawTapePlayIntro() {
-    var _a;
-    const maze = state_1.state.mazeRescue, frame = maze.tapeIntroTimer || 0;
-    const prep = (0, AdaptiveMusic_1.getAdaptiveMusicPreparation)();
-    const enter = Math.min(1, frame / 18), leave = Math.max(0, Math.min(1, (frame - 44) / 20));
-    Canvas_1.ctx.save();
-    Canvas_1.ctx.globalAlpha *= 1 - leave;
-    Canvas_1.ctx.fillStyle = 'rgba(6,20,22,.36)';
-    Canvas_1.ctx.fillRect(0, 0, Canvas_1.logicW, Canvas_1.logicH);
-    const cy = Canvas_1.logicH * .68 + (1 - enter) * 90;
-    (0, PaperCassette_1.drawPaperCassette)(Canvas_1.ctx, Canvas_1.logicW / 2, cy, Math.min(350, Canvas_1.logicW * .75), {
-        mode: maze.tapePlaybackStarted ? 'play' : 'stop', progress: 1,
-        seconds: ((_a = (0, AdaptiveMusic_1.getAdaptiveMusicClock)()) === null || _a === void 0 ? void 0 : _a.seconds) || 0, press: Math.max(0, Math.min(1, (frame - 18) / 12)),
-    }, -.035 * (1 - enter));
-    text(maze.tapePlaybackStarted ? '▶  PLAY  /  SIDE A' : 'SIDE A  /  PRESS PLAY', Canvas_1.logicW / 2, cy - Math.min(350, Canvas_1.logicW * .75) * .38, '10px monospace', TapeDeckVisual_1.TAPE.paper);
-    Canvas_1.ctx.restore();
-    if (prep.status === 'error' || prep.status === 'locked') {
-        Canvas_1.ctx.save();
-        Canvas_1.ctx.fillStyle = '#d5d2c1';
-        Canvas_1.ctx.fillRect(0, Canvas_1.logicH * .75, Canvas_1.logicW, Canvas_1.logicH * .25);
-        recovery();
-        Canvas_1.ctx.restore();
-    }
-}
-/** A short paper label alongside the cassette slot; fully disappears after 4.2s. */
+/** Appears only when the nearby encounter's audible clock actually starts. */
 function drawTapeNowPlaying(c, x, y) {
     const at = state_1.state.mazeRescue && state_1.state.mazeRescue.tapeNowPlayingAt;
-    if (!at)
+    if (!at || (0, AdaptiveMusic_1.getAdaptiveMusicPreparation)().status !== 'ready')
         return;
     const age = (Date.now() - at) / 1000;
     if (age < 0 || age > 4.2)
@@ -38312,11 +39364,11 @@ function rrect(c, x, y, w, h, r) {
 // - 200 个气泡随机撒在全屏，速度方向为"从屏幕中心指向自己位置"，持续向外飘散并回绕
 // - 气泡造型：纯白主体 + 左上角高亮小点（alpha 比主体大 1.5 倍）
 // - 背景：rgba(0,60,100) 半透明覆盖，浓度跟随 alpha（和剧情模式 in 模式一致）
-// - 节奏：90 帧总长，前 50 帧 alpha 从 0 渐入到 1，后 40 帧保持 1，到 90 帧后 phase 切 play 瞬接水下场景
+// - 节奏：30 帧短转场，18 帧渐入，结束直接取得控制，不等待音频
 // =============================================
 function drawMazeDivingIn(maze, cw, ch, time) {
     const timer = maze.divingInTimer;
-    const inFrames = 50;
+    const inFrames = 18;
     const alpha = Math.min(1, timer / inFrames);
     const bubbles = maze.divingInBubbles;
     if (!bubbles || bubbles.length === 0) {

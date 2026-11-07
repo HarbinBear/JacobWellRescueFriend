@@ -189,12 +189,13 @@ export const gameplayConfig = {
         music: {
             enabled: true,          // 原创「Signal Below」：底轨 + 五层累加节奏
             variant: 'undertow',     // GM 探知仪中切换 A/B/C，按需生成，避免常驻三套缓冲
+            encounterRangeMultiplier: 5, // 只在救援对象附近播放，外圈静默
             eventCues: true,         // 绑绳确认与死亡落音；入镜由主题展开反馈
             cueVolume: 0.8,
             volume: 0.78,           // v2 固定总增益，保留满层混音余量
             hysteresis: 0.03,       // 每档边界两侧各 3% 缓冲，防止来回跳档
         },
-        // 探知范围（以 npcRescueRange 为基准；音乐模式外圈回到底轨、内圈满层）
+        // 旧双音模式的探知范围；音乐使用上方 encounterRangeMultiplier
         rangeMultiplier: 50,         // 最大探知半径 = npcRescueRange × 此值
         // 注意：上面 rangeMultiplier 实际解释为"以 npcRescueRange 为最内圈强度=1，乘 rangeMultiplier 得到最外圈强度=0"
         // 节奏

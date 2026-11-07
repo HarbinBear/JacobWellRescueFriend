@@ -25,7 +25,7 @@ import { buildRelicsForMaze, updateRelicDiscovery, resetRelicDiscoveryForDive, g
 import { updateLifeDetector, resetLifeDetector } from './LifeDetector';
 import { playSFX } from '../audio/AudioManager';
 import { isRescueTargetVisible } from './NPCPerception';
-import { getAdaptiveMusicPreparation, getAdaptiveMusicClock, warmUpAdaptiveMusic } from '../audio/AdaptiveMusic';
+import { warmUpAdaptiveMusic } from '../audio/AdaptiveMusic';
 import { triggerCollisionImpact, resetCollisionImpact, updateRegulatorAnim } from './CollisionImpact';
 import { loadMazeProgress, saveMazeProgress, clearMazeSave } from './MazeSave';
 import { setActiveSeededRandom, clearActiveSeededRandom } from '../core/SeededRandom';
@@ -408,7 +408,7 @@ export function startMazeDive(diveType: string) {
 
     // 设置下潜类型（不区分scout/rescue，统一为scout，发现NPC后自动可绑绳）
     maze.diveType = diveType;
-    maze.phase = 'tape_rewind';
+    maze.phase = 'diving_in';
     maze.tapeEntryStartedAt = Date.now();
     maze.tapeIntroTimer = 0;
     maze.tapePlaybackStarted = false;
@@ -880,33 +880,16 @@ export function updateMaze() {
         return;
     }
 
-    // 倒带期间只有磁带和音频准备在运行，世界 / 氧气 / 救援计时全部冻结。
-    if (maze.phase === 'tape_rewind') {
-        if (getAdaptiveMusicPreparation().status === 'ready' && Date.now() - (maze.tapeEntryStartedAt || 0) >= 700) {
-            maze.phase = 'diving_in';
-            maze.divingInTimer = 0;
-            playSFX('diveSplash');
-        }
-        return;
+    // 兼容热更新前的旧阶段，绝不再等待音频就绪或可听时钟。
+    if (maze.phase === 'tape_rewind' || maze.phase === 'tape_play') {
+        maze.phase = 'diving_in';
+        maze.divingInTimer = 0;
     }
     if (maze.phase === 'diving_in') {
-        if (++maze.divingInTimer >= 90) {
-            maze.phase = 'tape_play';
-            maze.tapeIntroTimer = 0;
-        }
-        return;
-    }
-    // 水下先按下 PLAY，机械键落下后才允许启动音乐。
-    if (maze.phase === 'tape_play') {
-        maze.tapeIntroTimer = (maze.tapeIntroTimer || 0) + 1;
-        if (maze.tapeIntroTimer === 30) playSFX('uiSecondary');
-        if (maze.tapeIntroTimer >= 36) maze.tapePlaybackStarted = true;
-        const clock = getAdaptiveMusicClock();
-        const silentMode = !CONFIG.lifeDetector.enabled || !CONFIG.lifeDetector.music.enabled;
-        if (maze.tapeIntroTimer >= 60 && (silentMode || (clock && clock.playing))) {
+        if (maze.divingInTimer === 0) playSFX('diveSplash');
+        if (++maze.divingInTimer >= 30) {
             maze.phase = 'play';
             maze.startTime = Date.now();
-            maze.tapeNowPlayingAt = silentMode ? 0 : Date.now();
         }
         return;
     }

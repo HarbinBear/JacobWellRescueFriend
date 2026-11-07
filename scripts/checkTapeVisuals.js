@@ -100,7 +100,8 @@ const neutral = resonance.sampleTapeBody();
 assert.deepEqual(resonance.sampleTapeBody({ ...v5, muted: true }), neutral);
 assert.deepEqual(resonance.sampleTapeBody({ ...v5, playing: false }), neutral);
 console.log('通过：五级全身姿态明显展开、目标轻呼应、停止/静音恢复自然姿态。');
-const context = new Proxy({ measureText: text => ({ width: text.length * 7 }), createRadialGradient: () => ({ addColorStop() {} }),
+const hudTexts = [];
+const context = new Proxy({ fillText: (...args) => hudTexts.push(args), measureText: text => ({ width: text.length * 7 }), createRadialGradient: () => ({ addColorStop() {} }),
     createLinearGradient: () => ({ addColorStop() {} }), globalAlpha: 1 }, { get(target, key) { return key in target ? target[key] : () => {}; } });
 const CONFIG = { ...compile('core/config/gameplay', {}).gameplayConfig, ...compile('core/config/character', {}).characterConfig };
 const state = { audio: { muted: false }, mazeRescue: { phase: 'play', mazeTileSize: 120 } }, player = { o2: 80, o2Max: 100, y: 600 };
@@ -114,10 +115,11 @@ try {
             drawTapeMixStrip: () => { throw Error('Default sidebar blocks the view'); },
             drawTapeSleeve: (...args) => { sleeves++; artwork.drawTapeSleeve(...args); } },
         './RescueTape': { getRescueTapeVisual: () => visuals.sampleTapeVisual(clock(5, 8, 'undertow')) },
-        './TapeEntry': { drawTapeNowPlaying() {} },
+        './TapeEntry': { drawTapeNowPlaying() {}, drawTapeLoadingHint() {}, getTapeLoadingLabel: () => '', retryTapeLoading: () => false },
         './RenderAudioToggle': { drawAudioIcon() {}, toggleMuted() {} }, '../gm/GMPanel': { toggleGMOpen() {}, isGMOpen: () => false },
         '../logic/BreathSystem': { getBreathPhaseAngle: () => 0, getBreathPhase: () => 'inhale', getBreathPressure: () => 0, getLungVolume: () => .5 },
         '../audio/AudioManager': { playSFX: () => { calls++; } }, '../extraction/logic/Loadout': { getActiveAirTanks: () => [] },
+        '../extraction/core/ExtractionRegistry': { getEquipmentEffects: () => ({ startO2: 120 }) },
         '../logic/DecompressionSystem': { getDecoRuntime: () => ({ nitrogenLoad: 0 }), getDecoLevel: () => 0,
             getCurrentStopInfo: () => null, isDecompressionRequired: () => false, isDecoLockActive: () => false,
             setDecoBoost() {}, getCurrentDepthMeters: () => 5 },
@@ -125,12 +127,14 @@ try {
     hud.initMazeHUDTopLeft();
     hud.drawHUDTopLeft(0);
     assert.equal(tapes, 1); assert.equal(sleeves, 0, 'default HUD shows only the tape, no sleeve');
-    // No deco slot: oxygen95, depth168, drive230, audio292, tape360.
-    assert(hud.handleHUDTouchStart(1, 46, 360)); time += 300;
+    // Current compact HUD: tape follows the depth icon, with its own size.
+    const depth = hudTexts.find(call => call[0] === 'DEPTH');
+    const tapeX = depth[1], tapeY = depth[2] - 29 + 20 + 14 + 24;
+    assert(hud.handleHUDTouchStart(1, tapeX, tapeY)); time += 300;
     hud.drawHUDTopLeft(0); assert.equal(sleeves, 1, 'stationary hold opens detail without touchmove');
-    hud.handleHUDTouchEnd(1, 46, 360); hud.drawHUDTopLeft(0); assert.equal(sleeves, 1, 'release closes detail');
+    hud.handleHUDTouchEnd(1, tapeX, tapeY); hud.drawHUDTopLeft(0); assert.equal(sleeves, 1, 'release closes detail');
     assert.equal(calls, 0, 'long hold does not also tap');
-    hud.handleHUDTouchStart(2, 46, 360); time += 50; hud.handleHUDTouchEnd(2, 46, 360); assert.equal(calls, 1);
+    hud.handleHUDTouchStart(2, tapeX, tapeY); time += 50; hud.handleHUDTouchEnd(2, tapeX, tapeY); assert.equal(calls, 1);
 } finally { Date.now = originalNow; }
 console.log('通过：默认仅磁带、真实HUD静止长按展开、松手关闭、短按提示。');
 

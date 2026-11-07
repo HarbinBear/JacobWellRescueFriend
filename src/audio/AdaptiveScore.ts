@@ -168,9 +168,10 @@ function stringWave(phase: number, t: number, freq: number, lead: boolean, rate:
 }
 
 export type ThemePart = 'melody' | 'harmony';
-function* renderChunks(stem: ScoreTrack, rate: number, out: Float32Array, variant: VariantName, part?: ThemePart): IterableIterator<void> {
+function* renderChunks(stem: ScoreTrack, rate: number, out: Float32Array, variant: VariantName, part?: ThemePart): IterableIterator<number> {
     const isMelody = (n: Note) => ['lead', 'veil', 'horizon', 'home'].indexOf(n.voice) >= 0;
     const notes = notesFor(stem, variant).filter(n => !part || isMelody(n) === (part === 'melody')), beatSeconds = 60 / SCORE.bpm;
+    let completed = 0;
     for (let n = 0; n < notes.length; n++) {
         const note = notes[n], start = Math.round(note.beat * beatSeconds * rate);
         const freq = 440 * Math.pow(2, (note.midi - 69) / 12), duration = note.length * beatSeconds;
@@ -251,7 +252,8 @@ function* renderChunks(stem: ScoreTrack, rate: number, out: Float32Array, varian
                 out[(start + i + Math.round(rate * 0.375)) % out.length] += value * wet * 0.7;
                 out[(start + i + Math.round(rate * 0.625)) % out.length] += value * wet * 0.4;
             }
-            if (i % 2048 === 2047) yield;
+            completed++;
+            if (completed % 512 === 0) yield completed;
         }
     }
 }
@@ -276,16 +278,29 @@ export function renderStem(stem: ScoreTrack, rate = SCORE.sampleRate, variant: V
     return finishThemeLoop(out, stem, rate);
 }
 
-export async function renderStemAsync(stem: ScoreTrack, variant: VariantName = DEFAULT_VARIANT): Promise<Float32Array> {
-    const out = new Float32Array(SCORE.sampleRate * SCORE.duration);
-    const chunks = renderChunks(stem, SCORE.sampleRate, out, variant);
-    let done = false;
+export async function renderStemAsync(stem: ScoreTrack, variant: VariantName = DEFAULT_VARIANT, onProgress?: (progress: number) => void): Promise<Float32Array> {
+    // 第一片也推迟，触摸回调不承担任何昂贵的PCM计算。
+    await new Promise<void>(resolve => setTimeout(resolve, 0));
+    const rate = SCORE.sampleRate, out = new Float32Array(rate * SCORE.duration);
+    const totalWork = notesFor(stem, variant).reduce((sum, note) => {
+        const melodic = ['lead', 'veil', 'horizon', 'home'].indexOf(note.voice) >= 0;
+        const tail = note.voice === 'strings' ? 0.7 : melodic ? 0.24 : note.voice === 'rush' ? 0.012 : note.voice === 'cello' ? 0.18 : 0.07;
+        return sum + Math.ceil((note.length * 60 / SCORE.bpm + tail) * rate);
+    }, 0);
+    const chunks = renderChunks(stem, rate, out, variant);
+    let done = false, completed = 0;
     while (!done) {
-        const deadline = Date.now() + 5;
-        do { done = !!chunks.next().done; } while (!done && Date.now() < deadline);
-        if (!done) await new Promise<void>(resolve => setTimeout(resolve, 0));
+        const deadline = Date.now() + 2;
+        do {
+            const chunk = chunks.next();
+            done = !!chunk.done;
+            if (!done) completed = chunk.value as number;
+        } while (!done && Date.now() < deadline);
+        if (onProgress) onProgress(done ? 1 : completed / Math.max(1, totalWork));
+        // 每片后给渲染/输入留出时间，低端机不会连续霸占主线程。
+        if (!done) await new Promise<void>(resolve => setTimeout(resolve, 8));
     }
-    return finishThemeLoop(out, stem, SCORE.sampleRate);
+    return finishThemeLoop(out, stem, rate);
 }
 
 export function selectMusicLevel(intensity: number, previous: number, hysteresis = 0.03): number {

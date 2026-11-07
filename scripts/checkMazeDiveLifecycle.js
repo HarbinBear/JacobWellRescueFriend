@@ -18,6 +18,7 @@ const overrides = {
     'audio/AudioManager': idleSystems,
     'audio/AdaptiveMusic': {
         warmUpAdaptiveMusic: noop,
+        unlockAdaptiveMusic: noop,
         getAdaptiveMusicPreparation: () => ({ status: 'ready' }),
         getAdaptiveMusicClock: () => ({ playing: true }),
     },
@@ -115,7 +116,7 @@ try {
     maze._decoBlockedRescuedSince = now - 9000;
     maze.shoreMapOpen = true; maze.codexOpen = true;
     logic.startMazeDive('scout'); // Menu historically forced scout, even for known NPCs.
-    assert.equal(maze.phase, 'tape_rewind');
+    assert.equal(maze.phase, 'diving_in');
     assert.equal(maze.npcRescued, false);
     assert.equal(state.npc.state, 'wait');
     assert.equal(input.move, 0); assert.equal(input.speedUp, false);
@@ -191,7 +192,7 @@ try {
     handlers.start({ touches: [touch], changedTouches: [touch] });
     handlers.end({ touches: [], changedTouches: [touch] });
     assert.equal(selectedType, 'rescue');
-    assert.equal(state.mazeRescue.phase, 'tape_rewind');
+    assert.equal(state.mazeRescue.phase, 'diving_in');
     assert.equal(state.mazeRescue.npcRescued, false);
     assert.equal(player.x, spawn.x); assert.equal(player.y, spawn.y);
     // Real touch handlers: cancel a short wind-up, stun, release, then bind.

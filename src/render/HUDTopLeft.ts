@@ -28,7 +28,7 @@ import { state, player } from '../core/state';
 import { ctx, logicW, logicH } from './Canvas';
 import { drawTapeDeck, drawTapeSleeve, cutPanel, drawCutPanelProgress, TAPE } from './TapeDeckVisual';
 import { getRescueTapeVisual } from './RescueTape';
-import { drawTapeNowPlaying } from './TapeEntry';
+import { drawTapeNowPlaying, drawTapeLoadingHint, getTapeLoadingLabel, retryTapeLoading } from './TapeEntry';
 import { toggleMuted as audioToggleMuted } from './RenderAudioToggle';
 import { toggleGMOpen, isGMOpen } from '../gm/GMPanel';
 import { getBreathPhaseAngle, getBreathPhase, getBreathPressure, getLungVolume } from '../logic/BreathSystem';
@@ -301,7 +301,10 @@ export function drawHUDTopLeft(time: number): void {
     // 先绘制所有图标（不带长按附加面板）
     for (const slot of slots) {
         slot.item.iconDraw(ctx, slot.cx, slot.cy, slot.size, time);
-        if (slot.item.id === 'lifeDetector') drawTapeNowPlaying(ctx, slot.cx + slot.size / 2 + 12, slot.cy - 23);
+        if (slot.item.id === 'lifeDetector') {
+            drawTapeLoadingHint(ctx, slot.cx + slot.size / 2 + 12, slot.cy - 16);
+            drawTapeNowPlaying(ctx, slot.cx + slot.size / 2 + 12, slot.cy - 23);
+        }
         if (slot.item.id !== 'lifeDetector') {
             const captions: { [id: string]: string } = { oxygen: 'AIR', depth: 'DEPTH', deco: 'DECO', retreat: 'RETURN', gm: 'TOOLS' };
             ctx.save(); ctx.font = 'bold 7px Arial'; ctx.textAlign = 'center';
@@ -504,12 +507,14 @@ export function initMazeHUDTopLeft(): void {
             drawTapeSleeve(c, Math.min(cx + 38, logicW - w - 12), Math.max(64, Math.min(cy - 112, logicH - 236)), w, getRescueTapeVisual());
             c.restore();
         },
-        onShortTap: () => { audioToggleMuted(); },
+        onShortTap: () => { if (!retryTapeLoading()) audioToggleMuted(); },
         tipText: () => {
+            const loading = getTapeLoadingLabel();
+            if (loading) return loading + '\n可继续游动，不影响救援';
             const v = getRescueTapeVisual();
             if (state.audio.muted) return '深流随身听 · 已静音\n轻点磁带恢复声音\n按住磁带可看分层节奏';
             if (v.fallback) return '深流随身听 · 双音模式\n按住查看节奏';
-            if (!v.playing) return '深流随身听 · 磁带就绪\n带上音乐，下潜\n按住查看分层节奏';
+            if (!v.playing) return '深流随身听 · 音轨就绪\n靠近救援对象时才播放\n按住查看分层节奏';
             return `深流随身听 · ${v.mood === 'return' ? 'B 面' : 'A 面'}\n${v.level}/5 层 · 120 BPM\n按住查看分层节奏`;
         },
     });

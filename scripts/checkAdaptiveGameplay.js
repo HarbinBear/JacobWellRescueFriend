@@ -71,9 +71,10 @@ async function check() {
     const lifecycle = {};
     global.wx = { createWebAudioContext: () => ctx, onHide: fn => lifecycle.hide = fn, onShow: fn => lifecycle.show = fn };
     const score = load('AdaptiveScore');
-    let visible = false, predicted = false;
+    let visible = false, predicted = false, generatedTracks = 0;
     const music = compile('audio/AdaptiveMusic', { ...baseDeps,
         './AdaptiveScore': { ...score, renderStemAsync: async (stem, variant) => {
+            generatedTracks++;
             const pcm = new Float32Array(score.SCORE.sampleRate * score.SCORE.duration);
             pcm[0] = Object.keys(score.VARIANTS).indexOf(variant) + 1;
             return pcm;
@@ -81,9 +82,14 @@ async function check() {
         '../logic/NPCPerception': { isRescueTargetVisible: () => visible, rescueTargetEntrySeconds: () => visible ? 0 : predicted ? .8 : Infinity } });
     const tick = () => music.updateAdaptiveMusic({ active: true, currentIntensity: 1 });
     const settle = () => new Promise(resolve => setImmediate(resolve));
+    music.unlockAdaptiveMusic(); await settle();
+    assert.equal(music.isAdaptiveMusicReady(), false, '菜单手势只解锁，不生成音轨');
     music.warmUpAdaptiveMusic(); await settle();
     assert(music.isAdaptiveMusicReady());
     assert.equal(music.getAdaptiveMusicPreparation().status, 'ready');
+    assert.equal(generatedTracks, 12);
+    music.warmUpAdaptiveMusic();music.warmUpAdaptiveMusic();await settle();
+    assert.equal(generatedTracks, 12, '同一版缓存复用，不每次下水重新生成');
     ctx.state = 'suspended';
     assert.equal(music.getAdaptiveMusicPreparation().status, 'locked', '合成完成仍须等音频解锁');
     ctx.state = 'running';
@@ -92,9 +98,16 @@ async function check() {
     state.mazeRescue.phase = 'tape_play'; state.mazeRescue.tapePlaybackStarted = false; tick();
     assert.equal(sources.filter(s => s.buffer && s.buffer.duration === 16).length, 0, '播放键尚未按下，不能启动音乐');
     state.mazeRescue.tapePlaybackStarted = true; tick();
-    assert.equal(sources.filter(s => s.buffer && s.buffer.duration === 16).length, 12, '按键后才启动同一时钟的十二条循环轨');
+    assert.equal(sources.filter(s => s.buffer && s.buffer.duration === 16).length, 0, '旧播放演出也不能启动音乐');
     state.mazeRescue.phase = 'play';
-    tick();
+    const nearbyX = state.npc.x;
+    state.npc.x = 2000; tick();
+    assert.equal(sources.filter(s => s.buffer && s.buffer.duration === 16).length, 0, '刚入水远离目标时完全静默');
+    assert.equal(state.mazeRescue.tapeNowPlayingAt, undefined);
+    state.npc.x = nearbyX; tick();
+    assert.equal(sources.filter(s => s.buffer && s.buffer.duration === 16).length, 12, '接近目标后才启动同步的十二轨');
+    ctx.currentTime += .1; tick();
+    assert(state.mazeRescue.tapeNowPlayingAt > 0, '曲名等可听时钟起音后才显示');
     assert.equal(music.getAdaptiveMusicClock().requestedLevel, 4);
     predicted = true; tick();
     assert.equal(music.getAdaptiveMusicClock().requestedLevel, 5);
@@ -121,10 +134,13 @@ async function check() {
     assert.equal(cues('secured').length, 1);
     assert.equal(music.getAdaptiveMusicClock().requestedLevel, 0);
     assert.equal(music.getAdaptiveMusicClock().requestedMood, 'return');
+    state.npc.x = 2000; tick();
+    assert(sources.filter(s => s.buffer.duration === 16).every(s => s.stopped !== undefined), '带上目标也不能在远处保留常驻音乐');
+    state.npc.x = nearbyX; tick();
     state.mazeRescue.phase = 'failed'; tick(); tick();
     assert.equal(cues('secured')[0].stopped, ctx.currentTime, '死亡不能继续播放绑绳成功的尾音');
     assert.equal(cues('death').length, 1, '失败钟声只触发一次');
-    assert(sources.filter(s => s.buffer.duration === 16).every(s => s.stopped <= ctx.currentTime + .081), '死亡60ms让出音乐空间，避免强撞击叠加削波');
+    assert(sources.filter(s => s.buffer.duration === 16).every(s => s.disconnected || s.stopped <= ctx.currentTime + .081), '死亡60ms让出音乐空间，已断开的旧声源不再输出');
     state.mazeRescue.phase = 'debrief'; tick();
     assert.equal(cues('death')[0].stopped, undefined, '结算画面不切断钟声尾音');
     state.audio.muted = true; tick();
@@ -148,9 +164,9 @@ async function check() {
     assert.equal(music.getAdaptiveMusicClock().requestedLevel, 4);
     let rejectFirst = true, releaseLast;
     const recoveryMusic = compile('audio/AdaptiveMusic', { ...baseDeps,
-        './AdaptiveScore': { ...score, renderStemAsync: async stem => {
+        './AdaptiveScore': { ...score, renderStemAsync: async (stem, variant, onProgress) => {
             if (rejectFirst) { rejectFirst = false; throw Error('expected preparation failure'); }
-            if (stem === 'sparkFound') await new Promise(resolve => { releaseLast = resolve; });
+            if (stem === 'sparkFound') { onProgress(.5); await new Promise(resolve => { releaseLast = resolve; }); }
             return new Float32Array(score.SCORE.sampleRate * score.SCORE.duration);
         } }, './AdaptiveMusicEngine': load('AdaptiveMusicEngine'), './AdaptiveCues': load('AdaptiveCues'),
         '../logic/NPCPerception': { isRescueTargetVisible: () => false, rescueTargetEntrySeconds: () => Infinity } });
@@ -162,11 +178,12 @@ async function check() {
     recoveryMusic.retryAdaptiveMusic(); await settle();
     assert.equal(recoveryMusic.getAdaptiveMusicPreparation().status, 'loading');
     assert(recoveryMusic.getAdaptiveMusicPreparation().progress < 1);
-    assert.equal(recoveryMusic.isAdaptiveMusicReady(), false, '最后一轨没完成，不能解锁入水');
+    close(recoveryMusic.getAdaptiveMusicPreparation().progress, 11.5 / 13);
+    assert.equal(recoveryMusic.isAdaptiveMusicReady(), false, '最后一轨没完成，不能提交半成品音轨');
     releaseLast(); await settle();
     assert.equal(recoveryMusic.getAdaptiveMusicPreparation().status, 'ready');
     close(recoveryMusic.getAdaptiveMusicPreparation().progress, 1);
     delete global.wx;
-    console.log('通过：入镜/边缘/缩放/运动预判与撤销、发现情绪保持、绑绳返程、死亡尾音、静音/后台、A/B/C快速切换、播放键门禁、准备失败重试与最后一轨就绪门禁。');
+    console.log('通过：入镜/边缘/缩放/运动预判与撤销、发现情绪保持、绑绳返程、死亡尾音、静音/后台、A/B/C快速切换、菜单无合成、入水静默、接近播放、离开停播、准备失败重试与半成品隔离。');
 }
 check().catch(err => { console.error(err); process.exitCode = 1; });

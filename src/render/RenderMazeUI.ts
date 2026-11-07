@@ -4,7 +4,7 @@ import { ctx, logicW, logicH } from './Canvas';
 import { drawOxygenScreenGlow } from './RenderOxygenTank';
 import { drawHUDTopLeft, initMazeHUDTopLeft } from './HUDTopLeft';
 import { cutPanel, TAPE } from './TapeDeckVisual';
-import { drawTapeRewind, drawTapePlayIntro } from './TapeEntry';
+import { drawTapeLoadingHint } from './TapeEntry';
 import { drawRescueEncounterNote } from './RescueEncounterNote';
 import { drawRescueLinkFeedback } from './RescueLinkFeedback';
 // BCD 浮力背心：水下 inflator 控件 + 失控告警层
@@ -92,12 +92,6 @@ export function drawMazeHUD() {
     const time = Date.now() / 1000;
 
     ctx.save();
-
-    if (maze.phase === 'tape_rewind' || maze.phase === 'tape_play') {
-        if (maze.phase === 'tape_rewind') drawTapeRewind(); else drawTapePlayIntro();
-        ctx.restore();
-        return;
-    }
 
     // === 岸上阶段 ===
     if (maze.phase === 'shore') {
@@ -219,6 +213,7 @@ export function drawMazeHUD() {
     // === 入水动效阶段 ===
     if (maze.phase === 'diving_in') {
         drawMazeDivingIn(maze, cw, ch, time);
+        drawTapeLoadingHint(ctx, 16, ch - 58);
         ctx.restore();
         return;
     }

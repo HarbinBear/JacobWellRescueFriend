@@ -1,8 +1,7 @@
 import { updateSemiAutoJoystick, releaseSemiAutoDrive } from '../logic/SemiAutoDrive';
 import { resetDriveInput } from '../logic/DriveMode';
 import { CONFIG } from './config';
-import { warmUpAdaptiveMusic, retryAdaptiveMusic, resetAdaptiveMusic } from '../audio/AdaptiveMusic';
-import { getTapeEntryButtons } from '../render/TapeEntry';
+import { unlockAdaptiveMusic } from '../audio/AdaptiveMusic';
 import { state, input, touches, player } from './state';
 import { createFishEnemy, triggerPlayerAttack, findSafeSpawnPosition } from '../logic/FishEnemy';
 import { DEBUG_FISH_BTN, ATTACK_BTN, FLASHLIGHT_BTN } from '../render/RenderUI';
@@ -301,7 +300,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
         });
 
         window.addEventListener('keydown', (e) => {
-            warmUpAdaptiveMusic();
+            unlockAdaptiveMusic();
             if(state.screen === 'menu') {
                 if(e.code === 'Space' && !(state as any)._menuConfirmNewGame) {
                     handleMenuButton('dive', onMaze, onMazeDive);
@@ -338,7 +337,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
     }
 
     wx.onTouchStart((res) => {
-        warmUpAdaptiveMusic();
+        unlockAdaptiveMusic();
         const trialTouch=res.changedTouches?.[0]||res.touches[res.touches.length-1];
         if (trialTouch && isCaveRockTrialExitHit(trialTouch.clientX, trialTouch.clientY)) {
             if (state.wheel.touchId !== null) finishRopeWheelGesture(state.wheel.touchId, 0, 0, true);
@@ -346,8 +345,6 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
             return;
         }
         if (state.wheel.open && canUseRopeWheel()) return;
-        if (state.screen === 'mazeRescue' && state.mazeRescue &&
-            ['tape_rewind', 'tape_play'].indexOf(state.mazeRescue.phase) >= 0) return;
 
         // GM 面板优先消费触摸事件（面板本身或 HUD 栏的 GM 齿轮按钮）
         const gmTouch = res.touches[res.touches.length - 1];
@@ -786,19 +783,6 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
             handleTouchEnd(remaining);
             return;
         }
-        if (state.screen === 'mazeRescue' && state.mazeRescue &&
-            ['tape_rewind', 'tape_play'].indexOf(state.mazeRescue.phase) >= 0) {
-            const touch = res.changedTouches[0];
-            if (touch) {
-                const buttons = getTapeEntryButtons();
-                const hit = (r: any) => touch.clientX >= r.x && touch.clientX <= r.x + r.w && touch.clientY >= r.y && touch.clientY <= r.y + r.h;
-                if (buttons.retry.enabled && hit(buttons.retry)) retryAdaptiveMusic();
-                else if (buttons.back.enabled && hit(buttons.back)) { resetAdaptiveMusic(); returnToMainMenu(); }
-            }
-            bcdReleaseAll();
-            return;
-        }
-
         // 家场景（晚上）：完全独立的 UI 派发，不与营地/水下混用
         if (state.screen === 'home_evening') {
             const t = res.changedTouches[0] || res.touches[res.touches.length - 1];

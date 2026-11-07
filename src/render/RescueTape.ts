@@ -8,7 +8,7 @@ import { CONFIG } from '../core/config';
 export function getRescueTapeVisual(): TapeVisual {
     const clock = getAdaptiveMusicClock();
     const visual = sampleTapeVisual(clock);
-    if (!clock || !CONFIG.lifeDetector.music.enabled) {
+    if (!CONFIG.lifeDetector.music.enabled) {
         const detector = getLifeDetectorRuntime();
         visual.fallback = true;
         visual.playing = detector.active;

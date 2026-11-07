@@ -27,11 +27,11 @@ function rrect(c: any, x: number, y: number, w: number, h: number, r: number) {
 // - 200 个气泡随机撒在全屏，速度方向为"从屏幕中心指向自己位置"，持续向外飘散并回绕
 // - 气泡造型：纯白主体 + 左上角高亮小点（alpha 比主体大 1.5 倍）
 // - 背景：rgba(0,60,100) 半透明覆盖，浓度跟随 alpha（和剧情模式 in 模式一致）
-// - 节奏：90 帧总长，前 50 帧 alpha 从 0 渐入到 1，后 40 帧保持 1，到 90 帧后 phase 切 play 瞬接水下场景
+// - 节奏：30 帧短转场，18 帧渐入，结束直接取得控制，不等待音频
 // =============================================
 export function drawMazeDivingIn(maze: any, cw: number, ch: number, time: number) {
     const timer = maze.divingInTimer;
-    const inFrames = 50;
+    const inFrames = 18;
 
     const alpha = Math.min(1, timer / inFrames);
 

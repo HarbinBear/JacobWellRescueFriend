@@ -19,13 +19,13 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
   assert.equal(await b.evaluate('DeepTapeGame.cave.stats().loaded'),false,'Main menu must not preload cave artwork');
   await shot('menu');await click(187.5,554);
   assert.equal(await b.evaluate('DeepTapeGame.state.mazeRescue.rockTrial'),true,'Native menu must enter the actual trial');
-  await shot('rewind');
+  await shot('diving-in');
   const phases=[];
   for(let i=0;i<200;i++){
    const phase=await b.evaluate('DeepTapeGame.state.mazeRescue.phase');if(!phases.includes(phase))phases.push(phase);
    if(phase==='play')break;await wait(150);
   }
-  assert.equal(await b.evaluate('DeepTapeGame.state.mazeRescue.phase'),'play','Actual tape/dive flow must complete');
+  assert.equal(await b.evaluate('DeepTapeGame.state.mazeRescue.phase'),'play','Short dive entry must complete without waiting for audio');
   await wait(500);const initial=await b.evaluate('({o2:DeepTapeGame.player.o2,anim:DeepTapeGame.player.animTime,x:DeepTapeGame.player.x,y:DeepTapeGame.player.y,rock:DeepTapeGame.cave.stats()})');
   assert.equal(initial.rock.mode,'normal-map');await shot('playing');
   const hudTextDraws=await b.evaluate('__CaveUiProbe.count');assert(hudTextDraws>10,'HUD text must still draw after the rock pass without performance');assert(Number.isFinite(initial.rock.surfaceCPUms));

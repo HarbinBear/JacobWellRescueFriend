@@ -237,7 +237,7 @@ export const state = {
     // 迷宫纯享版模式状态（多次下潜闭环）
     mazeRescue: null as null | {
         // === 阶段控制 ===
-        phase: string;          // shore / tape_rewind / diving_in / tape_play / play / surfacing / failed / debrief / rescued
+        phase: string;          // shore / diving_in / play / surfacing / failed / debrief / rescued
         diveType: string;       // 'scout'（侦察）| 'rescue'（正式救援）
         resultTimer: number;    // 结算页计时（帧）
         surfacingReason: string; // 上浮原因：'retreat'（主动撤离）| 'o2'（氧气耗尽）| 'rescued'（救援成功）

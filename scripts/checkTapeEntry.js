@@ -14,18 +14,22 @@ try{
   };
   const exports={};new Function('exports','require',code)(exports,name=>deps[name]||new Proxy({},{get:(_,key)=>()=>{throw Error('World system ran during entry: '+String(key))}}));
   const maze=state.mazeRescue,tick=()=>exports.updateMaze();
-  for(let i=0;i<180;i++)tick();assert.equal(maze.phase,'tape_rewind');assert.equal(player.o2,100);assert.equal(maze.startTime,0);
-  prep='error';tick();assert.equal(maze.phase,'tape_rewind');
-  prep='locked';tick();assert.equal(maze.phase,'tape_rewind');
-  prep='ready';tick();assert.equal(maze.phase,'tape_rewind','Cached tape still completes its brief physical rewind');
-  now+=701;tick();assert.equal(maze.phase,'diving_in');assert.deepEqual(sounds,['diveSplash']);
-  for(let i=0;i<89;i++)tick();assert.equal(maze.phase,'diving_in');tick();assert.equal(maze.phase,'tape_play');
-  for(let i=0;i<35;i++)tick();assert.equal(maze.tapePlaybackStarted,false);assert.equal(maze.phase,'tape_play');
-  assert.deepEqual(sounds,['diveSplash','uiSecondary']);
-  tick();assert.equal(maze.tapePlaybackStarted,true);
-  for(let i=0;i<100;i++)tick();assert.equal(maze.phase,'tape_play','The animation finishing cannot unlock a silent / failed audio engine');
-  assert.equal(player.o2,100);assert.equal(maze.startTime,0);
-  audible=true;tick();assert.equal(maze.phase,'play');assert.equal(maze.startTime,now);assert.equal(maze.tapeNowPlayingAt,now);
+  for (const status of ['loading','error','locked','ready']) {
+    prep=status; audible=false;
+    Object.assign(maze,{phase:'diving_in',divingInTimer:0,startTime:0,tapeNowPlayingAt:0,tapePlaybackStarted:false});
+    sounds.length=0;
+    for(let i=0;i<29;i++)tick();
+    assert.equal(maze.phase,'diving_in');assert.equal(player.o2,100);assert.equal(maze.startTime,0);
+    now+=500;tick();
+    assert.equal(maze.phase,'play',status+' cannot block entry');
+    assert.equal(maze.startTime,now);assert.equal(maze.tapeNowPlayingAt,0);
+    assert.equal(maze.tapePlaybackStarted,false);assert.deepEqual(sounds,['diveSplash']);
+  }
+  for (const oldPhase of ['tape_rewind','tape_play']) {
+    Object.assign(maze,{phase:oldPhase,divingInTimer:0,startTime:0});prep='error';
+    for(let i=0;i<30;i++)tick();assert.equal(maze.phase,'play','旧阶段也不再卡住');
+  }
+  prep='ready';
   const dance=compile('render/RescueDance',{});
   const v={playing:true,fallback:false,beats:2.3,kick:0,snare:0};
   const pose=dance.sampleRescueDance(v),repeat=dance.sampleRescueDance({...v,beats:10.3});
@@ -37,8 +41,13 @@ try{
   assert(Math.max(...samples.map(p=>p.leftBend))-Math.min(...samples.map(p=>p.leftBend))>.6);
   const strings=[];const context=new Proxy({globalAlpha:1,fillText:s=>strings.push(s)},{get:(o,k)=>k in o?o[k]:()=>{}});
   const entry=compile('render/TapeEntry',{'./Canvas':{ctx:context,logicW:375,logicH:667},'../core/state':{state},'../audio/AdaptiveMusic':deps['../audio/AdaptiveMusic'],'./PaperCassette':{drawPaperCassette(){}},'./TapeDeckVisual':{cutPanel(){},TAPE:{paper:'#eee'}}});
-  now+=300;entry.drawTapeNowPlaying(context,86,360);assert(strings.includes('夜航'));
+  entry.drawTapeNowPlaying(context,86,360);assert.equal(strings.length,0,'No track title on entry');
+  maze.tapeNowPlayingAt=now;now+=300;entry.drawTapeNowPlaying(context,86,360);assert(strings.includes('夜航'));
   strings.length=0;now+=4000;entry.drawTapeNowPlaying(context,86,360);assert.equal(strings.length,0,'Track title must fully disappear');
+  prep='loading';entry.drawTapeLoadingHint(context,86,360);assert(strings.includes('音轨准备 50%'));
+  prep='error';strings.length=0;entry.drawTapeLoadingHint(context,86,360);assert(strings.includes('音轨暂不可用 · 轻点重试'));
+  prep='locked';strings.length=0;entry.drawTapeLoadingHint(context,86,360);assert(strings.includes('音轨 100% · 轻点启用'));
+  prep='ready';strings.length=0;entry.drawTapeLoadingHint(context,86,360);assert.equal(strings.length,0,'Ready progress disappears');
   state.camera={x:0,y:0,zoom:1,swayX:0,swayY:0};
   const encounter=compile('render/RescueEncounterNote',{'./Canvas':{ctx:context,logicW:375,logicH:667},'../core/state':{state,player},'./TapeDeckVisual':{TAPE:{paper:'#eee'}}});
   maze.npcEncounterNoteAt=now-1000;strings.length=0;encounter.drawRescueEncounterNote();
@@ -64,5 +73,5 @@ try{
   const menu=compile('render/RenderMenu',{'../core/config':{CONFIG:{}},'../core/state':{state:{story2:{nightIndex:0,knownNights:[]}}},'./Canvas':{ctx:context,logicW:375,logicH:667}});
   const buttons=menu.getMenuButtonRects();assert.equal(buttons[0].id,'dive');assert.equal(buttons[0].primary,true);
   assert(buttons.every(b=>b.y>0&&b.y+b.h<645));
-  console.log('通过：准备/失败/解锁门禁、倒带→入水→按键→可听音乐→控制、入场无世界更新/氧耗、八拍舞步、曲名退场、角色短句退场、绑绳松手/越界取消与完成反馈退场、BCD文案移除、主界面直达布局。');
+  console.log('通过：加载/失败/锁定均30帧入水、旧阶段无门禁、入水无音乐和曲名、真实进度提示、入场无世界更新/氧耗、八拍舞步、曲名退场、角色短句退场、绑绳松手/越界取消与完成反馈退场、BCD文案移除、主界面直达布局。');
 }finally{Date.now=originalNow}

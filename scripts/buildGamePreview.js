@@ -32,7 +32,7 @@ html=html.replaceAll("'../../'+value",JSON.stringify(prefix)+'+value').replaceAl
 if(study){
  html=html.replace(JSON.stringify(prefix)+'+value',JSON.stringify(prefix)+"+(value.startsWith('images/cave-rock/')?'design/cave-room/sculpt/assets/'+value.slice('images/cave-rock/'.length):value)");
  html=html.replace('href="index.html"','href="../index.html"').replace('磁带与分轨预览 ↗','回雕刻对照');
- html=html.replace('岩体版本已接入。','厚岩雕刻 · 独立实验').replace('主界面 → 倒带准备 → 入水 → 按下播放。<br>音乐响起，曲名短暂出现。','主菜单进入「岩体试跑」。<br>这是实验，不替换手机基线。');
+ html=html.replace('岩体版本已接入。','厚岩雕刻 · 独立实验').replace('主界面 → 短入水转场 → 自由探索。<br>音轨后台准备，接近救援对象才播放。','主菜单进入「岩体试跑」。<br>这是实验，不替换手机基线。');
  const controls='<section id="sculpt-controls"><p>实际游戏中观察，不暂停模拟。</p><button onclick="DeepTapeGame.cave.site(0)">看断冠</button><button onclick="DeepTapeGame.cave.site(1)">左侧岩壁</button><button onclick="DeepTapeGame.cave.site(2)">右侧岩壁</button><br><button onclick="DeepTapeGame.cave.aim(-.12)">向左转灯</button><button onclick="DeepTapeGame.cave.aim(.12)">向右转灯</button><br><button onclick="DeepTapeGame.cave.inspect(0)">正常材质</button><button onclick="DeepTapeGame.cave.inspect(2)">去掉纹理</button><button onclick="DeepTapeGame.cave.inspect(1)">法线诊断</button><p>去掉纹理仍应读出厚度；没有达到美术定稿。微信真机尚未验收。</p></section>';
  html=html.replace('<output id="phase"',controls+'<output id="phase"');
 }
