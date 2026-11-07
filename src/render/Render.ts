@@ -6,6 +6,7 @@ import { canvas, ctx, dpr, logicW, logicH } from './Canvas';
 import { isLineOfSight, getLightPolygon } from './RenderLight';
 import { initWebGLLight, isWebGLAvailable, uploadPolyData, uploadVPLData, renderLightMask, renderVolumetricLight, getGLCanvas, getVolGLCanvas, getGLCanvasPixelSize } from './WebGLLight';
 import { drawDiver } from './RenderDiver';
+import { drawFishBumpWorld, fishBumpPose } from './RenderFishSpecies';
 import { drawUI, drawControls, drawSlashEffect } from './RenderUI';
 import { drawRopesWorld, drawRopeApproachWorld, drawRopeContactWorld } from './RenderRope';
 import { getRopeContact } from '../logic/Rope';
@@ -464,6 +465,7 @@ export function draw() {
         : 0;
     const ropeContact = isMazeMode ? getRopeContact(player) : null;
     drawDiver(ctx, player.x, player.y, player.angle, playerColors, {
+        fishBump: fishBumpPose(),
         ropeStruggle: ropeContact?.kind === 'snag' ? { phase: ropeContact.phase, strength: ropeContact.strength, pull: ropeContact.pull } : undefined,
         animTime: player.animTime,
         hasTank,
@@ -499,6 +501,7 @@ export function draw() {
     });
 
 
+    drawFishBumpWorld(ctx);
     drawRopeContactWorld(ctx, player, ropeContact, CONFIG.maze.playerRadius);
 
     // --- 绘制 NPC 呼救表现（气泡、挥手、闪光圈，仅迷宫未被救时）---

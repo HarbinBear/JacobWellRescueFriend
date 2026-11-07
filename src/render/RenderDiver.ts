@@ -21,6 +21,7 @@ type DiverMotion = {
     dancePose?: RescueDancePose;
     limpPose?: RescueLimpPose;
     rescueStrike?: number;
+    fishBump?: number;
     ropeStruggle?: { phase: number; strength: number; pull: number };
     tapeVisual?: TapeVisual;
     resonanceVisual?: TapeVisual;
@@ -811,14 +812,14 @@ export function drawDiver(
     const bodyRoll = turnVisual * cfg.rollTurnFactor
                    + turnAmount * 0.08
                    + bodyWave * bodySwayAmp * cfg.rollWaveFactor
-                   + kickWave * 0.02 + yank * .28;
+                   + kickWave * 0.02 + yank * .28 + (motion.fishBump || 0) * .35;
 
     // ===== 身体 yaw（俯视下的左右扭动，驱动 S 型曲线） =====
     // 转向时强烈偏向输入侧，前进时周期性左右扭动，idle 时低频漂动
     const bodyYaw = turnAmount * 1.0
                   + turnVisual * cfg.yawTurnFactor
                   + bodyWave * bodySwayAmp * cfg.yawWaveFactor
-                  + kickWave * 0.22 + yank * .46;
+                  + kickWave * 0.22 + yank * .46 + (motion.fishBump || 0) * .48;
 
     // ===== 躯干前后呼吸压缩 =====
     // forward 时随腿部相位做呼吸，idle 时随 bodyWave2 轻微起伏

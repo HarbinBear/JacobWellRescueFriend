@@ -228,14 +228,14 @@ function swimFish(kind, speed, ropes = fishMesh) {
   rope.updateRopeMotion();
   const previous = point(fish.x, fish.y);
   fish.vx = 0; fish.vy = speed; fish.y += speed;
-  rope.resolveWovenRopeContact(fish, previous, CONFIG.fishEnemy.size * (kind === 'provoked' ? .48 : .38), point(0, speed), () => true);
+  rope.resolveWovenRopeContact(fish, previous, CONFIG.fishEnemy.size * (kind === 'shoal' ? .18 : kind === 'provoked' ? .64 : kind === 'rammer' ? .48 : .38), point(0, speed), () => true);
   const contact = rope.getRopeContact(fish);
   trace.push({frame: i, y: fish.y, contact});
   if (contact?.kind === 'snag') break;
  }
  return {fish, trace};
 }
-for (const [kind, speed, minimum] of [['curious', 2.2, 3], ['curious', .8, 3], ['piranha', 14, 3], ['provoked', 14, 4]]) {
+for (const [kind, speed, minimum] of [['curious', 2.2, 3], ['curious', .8, 3], ['piranha', 14, 3], ['provoked', 14, 4], ['rammer', 9.2, 4], ['shoal', 1.2, 3], ['shoal', 4.2, 3]]) {
  const {fish, trace} = swimFish(kind, speed);
  const first = trace.find(sample => sample.contact);
  const caught = trace.find(sample => sample.contact?.kind === 'snag');
@@ -248,7 +248,7 @@ for (const [kind, speed, minimum] of [['curious', 2.2, 3], ['curious', .8, 3], [
  rope.resolveWovenRopeContact(fish, previous, 12, point(0, 1), () => false);
  assert.deepEqual(point(fish.x, fish.y), previous, 'Net forces cannot move a fish into rock');
 }
-for (const [kind, speed] of [['curious', 2.2], ['piranha', 14], ['provoked', 14]]) {
+for (const [kind, speed] of [['curious', 2.2], ['piranha', 14], ['provoked', 14], ['rammer', 9.2], ['shoal', 1.2], ['shoal', 4.2]]) {
  const sparseFish = swimFish(kind, speed, [fishMesh[0], fishMesh[7]]);
  assert(sparseFish.trace.every(sample => sample.contact?.kind !== 'snag'), 'A sparse crossing does not capture ' + kind);
 }
@@ -267,3 +267,83 @@ assert(rope.getRopeContact(held.fish)?.kind === 'snag');
 rope.resetRopeMotion();
 assert.equal(rope.getRopeContact(held.fish), null);
 console.log('Fish and rope net: immediate aim, saved knots, player elasticity, progressive multi-strand fish capture and light responses passed');
+
+
+// The training opponent has a visible wind-up, transfers momentum once, and
+// recovers in range for another lure. No bite/death state or oxygen penalty.
+const bump = load('logic/FishBump');
+const {createFishBumpState} = load('core/state');
+state.rope.ropes = []; rope.resetRopeMotion(); state.fishBite = null;
+state.fishBump = createFishBumpState(); state.flashlightOn = true;
+Object.assign(player, {x:450,y:300,vx:0,vy:0,angle:0});
+const trainingFish = Object.assign(fishLogic.createFishEnemy(600,300,600,300,220,'rammer'), {
+ angle:Math.PI, circleAngle:Math.PI/2, vx:0,vy:0,
+});
+state.fishEnemies = [trainingFish];
+const o2BeforeBump = player.o2;
+let woundUp = false, struck = false;
+for(let frame=0;frame<130;frame++) {
+ fishLogic.updateAllFishEnemies(1);
+ woundUp ||= trainingFish.state === 'lunge' && trainingFish.lungeCharge < 1;
+ if(state.fishBump.timer > 0) { struck = true; break; }
+}
+assert(woundUp && struck, 'Light can lure the rammer through its warning into a collision');
+assert(player.vx < -2 && Math.abs(player.vy) < 1, 'The collision pushes the diver away from the fish');
+assert.equal(trainingFish.state, 'retreat');
+assert.equal(state.fishBite, null); assert.equal(player.o2, o2BeforeBump);
+const impulseVelocity = player.vx;
+const nextFish = Object.assign(fishLogic.createFishEnemy(player.x+35,player.y,undefined,undefined,undefined,'rammer'), {angle:Math.PI});
+assert(bump.tryFishBump(nextFish,-9.2,0));
+assert.equal(player.vx, impulseVelocity, 'A short immunity prevents a crowd from stacking impulses');
+state.flashlightOn = false; player.vx = player.vy = 0;
+for(let i=0;i<CONFIG.fishEnemy.rammer.recoverFrames+1;i++) fishLogic.updateAllFishEnemies(1);
+assert.equal(trainingFish.state,'roam');
+assert(Math.hypot(trainingFish.x-player.x,trainingFish.y-player.y) < 210, 'The rammer remains close enough to be lured again');
+assert.equal(state.fishBite,null);
+// Fast swimming attracts the rammer even with its lamp switched off.
+Object.assign(player,{x:450,y:300,vx:0,vy:2.3});
+const startledRammer=Object.assign(fishLogic.createFishEnemy(565,300,undefined,undefined,undefined,'rammer'),{angle:Math.PI,vx:0,vy:0});
+for(let i=0;i<24;i++)fishLogic.updateFishEnemy(startledRammer,1);
+assert.equal(startledRammer.state,'lunge');
+
+// A school reacts to water disturbance as a group, then reforms with distinct
+// individual strokes. Quiet approaches allow the player considerably closer.
+Object.assign(player,{x:450,y:300,vx:0,vy:0});
+const school = fishLogic.createFishSchool(555,300);
+assert.equal(school.length,7); assert.equal(new Set(school.map(f=>f.schoolId)).size,1);
+state.fishEnemies = school;
+fishLogic.updateAllFishEnemies(1);
+assert(school.every(f=>f.state==='roam'));
+player.vy=2.3; fishLogic.updateAllFishEnemies(1);
+assert(school.every(f=>f.state==='flee'));
+assert(new Set(school.map(f=>f.angle.toFixed(3))).size>3, 'School members do not use identical movement');
+Object.assign(player,{x:100,y:100,vx:0,vy:0});
+for(let i=0;i<CONFIG.fishEnemy.shoal.regroupFrames+8;i++)fishLogic.updateAllFishEnemies(1);
+assert(school.every(f=>f.state==='roam')); assert.equal(state.fishBite,null);
+state.fishEnemies=[]; state.fishBump.timer=12; state.fishBump.cooldown=40;
+logic.startCaveRockTrial(); logic.exitCaveRockTrial();
+assert.equal(state.fishBump.timer,0);assert.equal(state.fishBump.cooldown,0);
+console.log('Rammer and shoal: warning, nonlethal momentum, recovery, movement awareness, group behaviour and adaptive multi-strand capture passed');
+
+// A bump's global camera shake must recover through the real maze update,
+// including when the spawned fish is removed before its feedback has ended.
+logic.startCaveRockTrial(); state.mazeRescue.phase='play';
+state.fishEnemies=[]; state.flashlightOn=false;
+Object.assign(player,{vx:0,vy:0});
+const bumpSource=Object.assign(fishLogic.createFishEnemy(player.x+35,player.y,undefined,undefined,undefined,'rammer'),{angle:Math.PI});
+assert(bump.tryFishBump(bumpSource,-9.2,0));
+const impactShake=state.fx.shake;
+assert(impactShake>0,'A real collision still has an initial shake');
+logic.updateMaze();
+assert(state.fx.shake>0 && state.fx.shake<impactShake,'Camera shake decays on the next gameplay frame');
+for(let i=0;i<45;i++)logic.updateMaze();
+assert.equal(state.fx.shake,0,'Removing a fish cannot leave a permanent camera shake');
+state.fishEnemies=[fishLogic.createFishEnemy(player.x+160,player.y,undefined,undefined,undefined,'curious')];
+for(let i=0;i<45;i++)logic.updateMaze();
+assert.equal(state.fx.shake,0,'A swimming fish alone does not shake the camera');
+// Exercise the same lifecycle for short effects from other existing systems.
+state.fx.shake=4;
+for(let i=0;i<45;i++)logic.updateMaze();
+assert.equal(state.fx.shake,0);
+logic.exitCaveRockTrial();
+console.log('Maze camera shake: initial impact preserved, per-frame decay, zero residual with/without fish and repeated recovery passed');

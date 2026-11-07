@@ -396,7 +396,7 @@ export function updateBreathSystem() {
 // =============================================
 // 撞击气泡爆发（撞岩石时调用）
 // =============================================
-export function spawnImpactBurst(cx: number, cy: number, strength: number): void {
+export function spawnImpactBurst(cx: number, cy: number, strength: number, particleScale = 1): void {
     const cfg = CONFIG.breath;
     const impactCfg = (CONFIG as any).collisionImpact || {};
     const countMin: number = impactCfg.impactBubbleCountMin ?? 30;
@@ -406,7 +406,10 @@ export function spawnImpactBurst(cx: number, cy: number, strength: number): void
     const lifeMul: number = impactCfg.impactBubbleLifeMul ?? 0.55;
 
     const t = Math.max(0, Math.min(1, strength));
-    const count = Math.round(countMin + (countMax - countMin) * t);
+    // A glancing creature bump needs a small puff; hard rock collisions retain
+    // their full burst. Scale both population and size to keep the contact clear.
+    const scale = Math.max(.05, Math.min(1, particleScale));
+    const count = Math.round((countMin + (countMax - countMin) * t) * scale);
 
     for (let i = 0; i < count; i++) {
         const px = cx + (Math.random() - 0.5) * 12;
@@ -416,7 +419,7 @@ export function spawnImpactBurst(cx: number, cy: number, strength: number): void
         const initSpeed = spreadSpeed * speedScale * (0.5 + t * 0.5);
         const vx = Math.cos(dirAngle) * initSpeed;
         const vy = Math.sin(dirAngle) * initSpeed - (cfg.buoyancyMin + Math.random() * (cfg.buoyancyMax - cfg.buoyancyMin)) * 0.6;
-        const baseR = (cfg.bubbleSizeStatic + (cfg.bubbleSizePeak - cfg.bubbleSizeStatic) * t) * sizeMul;
+        const baseR = (cfg.bubbleSizeStatic + (cfg.bubbleSizePeak - cfg.bubbleSizeStatic) * t) * sizeMul * Math.sqrt(scale);
         const radius = baseR * (0.7 + Math.random() * 0.8);
         const maxRadius = radius * (1.3 + Math.random() * 0.5);
         const lifeSec = (cfg.lifeMinSec + Math.random() * (cfg.lifeMaxSec - cfg.lifeMinSec)) * lifeMul;

@@ -5,6 +5,7 @@ import { getRopeContact } from '../logic/Rope';
 import { drawRopeContactWorld } from './RenderRope';
 import { isLineOfSight } from '../world/Visibility';
 import { getBCDLayout } from './RenderBCD';
+import { drawHunterShark, drawSilverFish } from './RenderFishSpecies';
 
 // =============================================
 // 绘制单条凶猛鱼（世界坐标系，已在摄像机变换内调用）
@@ -26,8 +27,13 @@ export function drawFishEnemy(ctx: CanvasRenderingContext2D, fish: FishEnemy, co
         ctx.restore();
         return;
     }
-    if (fish.kind === 'provoked') {
-        drawProvokedFish(ctx, fish, strain);
+    if (fish.kind === 'provoked' || fish.kind === 'shoal') {
+        (fish.kind === 'provoked' ? drawHunterShark : drawSilverFish)(ctx, fish, strain);
+        ctx.restore();
+        return;
+    }
+    if (fish.kind === 'rammer') {
+        drawRammerFish(ctx, fish, strain);
         ctx.restore();
         return;
     }
@@ -421,10 +427,9 @@ export function drawFishBiteEffect(ctx: CanvasRenderingContext2D, canvasW: numbe
 }
 
 /** Cave eel: bone plate at the nose, a long taper, and a single ribbed ribbon fin. */
-function drawProvokedFish(ctx: CanvasRenderingContext2D, fish: FishEnemy, strain: number, dying = false) {
+function drawRammerFish(ctx: CanvasRenderingContext2D, fish: FishEnemy, strain: number, dying = false) {
     const charging = !dying && fish.state === 'lunge' && fish.lungeCharge < 1;
     const surging = !dying && fish.state === 'lunge' && !charging;
-    const snap = !dying && (fish.state === 'bite' || fish.state === 'devour');
     const coil = charging ? Math.sin(Math.min(1, fish.lungeCharge / .77) * Math.PI) : 0;
     const stroke = fish.animTime * (surging ? 3 : 1.48);
     const flex = (dying ? .08 : .23 + Math.abs(strain) * .54) * (surging ? 1.18 : 1);
@@ -438,8 +443,8 @@ function drawProvokedFish(ctx: CanvasRenderingContext2D, fish: FishEnemy, strain
     ctx.scale(size * (1 - coil * .11), size);
 
     // Long membranes are continuous with the eel, with ribs following the same bend.
-    ctx.fillStyle = surging ? '#8c8eb1' : '#6a6e90';
-    ctx.strokeStyle = '#343648';
+    ctx.fillStyle = surging ? '#92bcb6' : '#5b9691';
+    ctx.strokeStyle = '#294c4c';
     ctx.lineWidth = .045;
     ctx.beginPath();
     ctx.moveTo(.25, -.30);
@@ -450,7 +455,7 @@ function drawProvokedFish(ctx: CanvasRenderingContext2D, fish: FishEnemy, strain
     ctx.fill();
     ctx.stroke();
 
-    ctx.fillStyle = '#535776';
+    ctx.fillStyle = '#4d817c';
     ctx.beginPath();
     ctx.moveTo(.14, .29);
     ctx.quadraticCurveTo(-.53, mid + .40, -1.17, mid + .46);
@@ -470,11 +475,11 @@ function drawProvokedFish(ctx: CanvasRenderingContext2D, fish: FishEnemy, strain
     ctx.stroke();
 
     const skin = ctx.createLinearGradient(0, -.38, 0, .44);
-    skin.addColorStop(0, '#36374c');
-    skin.addColorStop(.53, '#7a7795');
-    skin.addColorStop(1, dying ? '#c0b9ad' : '#a4a0a2');
+    skin.addColorStop(0, '#2a4d50');
+    skin.addColorStop(.53, '#64958c');
+    skin.addColorStop(1, dying ? '#c0b9ad' : '#aac3a9');
     ctx.fillStyle = skin;
-    ctx.strokeStyle = '#292b3a';
+    ctx.strokeStyle = '#294546';
     ctx.lineWidth = .042;
     ctx.beginPath();
     ctx.moveTo(1.02, .06);
@@ -487,7 +492,7 @@ function drawProvokedFish(ctx: CanvasRenderingContext2D, fish: FishEnemy, strain
     ctx.fill();
     ctx.stroke();
 
-    ctx.fillStyle = '#888aa1';
+    ctx.fillStyle = '#70a69a';
     ctx.beginPath();
     ctx.moveTo(.17, .14);
     ctx.quadraticCurveTo(-.02, .24, -.18, .56 + neck * 2);
@@ -496,7 +501,7 @@ function drawProvokedFish(ctx: CanvasRenderingContext2D, fish: FishEnemy, strain
     ctx.fill();
 
     // The plate takes light before the dark ribbon is fully visible.
-    ctx.fillStyle = '#b9b4ae';
+    ctx.fillStyle = '#d1c9a9';
     ctx.beginPath();
     ctx.moveTo(1.02, .06);
     ctx.quadraticCurveTo(.84, -.30, .50, -.31);
@@ -506,7 +511,7 @@ function drawProvokedFish(ctx: CanvasRenderingContext2D, fish: FishEnemy, strain
     ctx.quadraticCurveTo(.91, .22, 1.02, .06);
     ctx.fill();
 
-    ctx.strokeStyle = '#535569';
+    ctx.strokeStyle = '#496e67';
     ctx.lineWidth = .044;
     ctx.beginPath();
     ctx.moveTo(.24, -.19); ctx.quadraticCurveTo(.13, -.01, .26, .20);
@@ -524,20 +529,13 @@ function drawProvokedFish(ctx: CanvasRenderingContext2D, fish: FishEnemy, strain
     ctx.fillStyle = '#303141';
     ctx.beginPath(); ctx.ellipse(.735, -.12, .022, .044, .16, 0, Math.PI * 2); ctx.fill();
 
-    const jaw = surging ? .17 : snap ? .13 + Math.sin(stroke * 3) * .12 : .014;
+    const jaw = .014;
     ctx.fillStyle = '#302b3d';
     ctx.beginPath();
     ctx.moveTo(.59, .083);
     ctx.quadraticCurveTo(.81, .106, 1.015, .06);
     ctx.quadraticCurveTo(.91, .09 + jaw, .59, .083);
     ctx.fill();
-    if (jaw > .05) {
-        ctx.fillStyle = '#ded5c4';
-        ctx.beginPath();
-        ctx.moveTo(.91, .08); ctx.lineTo(.87, .08 + jaw * .54); ctx.lineTo(.83, .096);
-        ctx.moveTo(.78, .097); ctx.lineTo(.74, .097 + jaw * .44); ctx.lineTo(.70, .10);
-        ctx.fill();
-    }
     ctx.restore();
 }
 
@@ -580,7 +578,7 @@ export function drawAllFishEnemies(ctx: CanvasRenderingContext2D,
         } else if (!fish.dead) {
             const contact = getRopeContact(fish);
             drawFishEnemy(ctx, fish, contact);
-            drawRopeContactWorld(ctx, fish, contact, CONFIG.fishEnemy.size * .43);
+            drawRopeContactWorld(ctx, fish, contact, CONFIG.fishEnemy.size * (fish.kind === 'shoal' ? .18 : fish.kind === 'provoked' ? .64 : .43));
             // 绘制状态变化提示图标（问号/感叹号）
             if (contact?.kind !== 'snag' && fish.alertTimer > 0 && fish.alertIcon) {
                 drawFishAlertIcon(ctx, fish);
@@ -611,6 +609,7 @@ export function getFishEdgeHints(width: number, height: number, cameraX: number,
         (sx < -8 || sx > width + 8 || sy < -8 || sy > height + 8));
     candidates.sort((a, b) => a.outside - b.outside);
     const hints: FishEdgeHint[] = [];
+    const schools = new Set<number>();
     const safeTop = Math.max(28, CONFIG.uiSafeTop || 0);
     const safeBottom = Math.max(28, (CONFIG.uiSafeBottom || 0) + 24);
     const bcd = getBCDLayout();
@@ -619,6 +618,7 @@ export function getFishEdgeHints(width: number, height: number, cameraX: number,
         { left: bcd.cx - 35, right: width, top: bcd.inflateY - 32, bottom: bcd.deflateY + 32 },
     ];
     for (const { fish, sx, sy, outside } of candidates) {
+        if (fish.schoolId && schools.has(fish.schoolId)) continue;
         if (!isLineOfSight(player.x, player.y, fish.x, fish.y, Math.hypot(fish.x - player.x, fish.y - player.y) + 1)) continue;
         const near = 1 - outside / range;
         const radius = 8 + near * 7;
@@ -639,6 +639,7 @@ export function getFishEdgeHints(width: number, height: number, cameraX: number,
             if (distance < score) { score = distance; best = p; }
         }
         if (!best || score > 145) continue;
+        if (fish.schoolId) schools.add(fish.schoolId);
         hints.push({ fish, ...best, angle: Math.atan2(sy - best.y, sx - best.x), radius, alpha: .42 + near * .54 });
         if (hints.length >= 6) break;
     }
@@ -655,12 +656,26 @@ function drawFishEdgeIcon(c: CanvasRenderingContext2D, fish: FishEnemy, radius: 
         c.beginPath(); c.moveTo(-.51, 0); c.lineTo(-1, -.4); c.quadraticCurveTo(-1.14, 0, -1, .4); c.closePath(); c.fill();
         c.fillStyle = '#f0e8c1'; c.beginPath(); c.arc(.40, -.17, .22, 0, Math.PI * 2); c.fill();
         c.fillStyle = '#24423b'; c.beginPath(); c.arc(.47, -.17, .10, 0, Math.PI * 2); c.fill();
-    } else if (fish.kind === 'provoked') {
-        c.strokeStyle = '#b7accb'; c.lineWidth = .40; c.lineCap = 'round';
+    } else if (fish.kind === 'rammer') {
+        c.strokeStyle = '#9fc9b8'; c.lineWidth = .40; c.lineCap = 'round';
         c.beginPath(); c.moveTo(-1.13, .29); c.bezierCurveTo(-.43, .62, -.65, -.46, -.12, -.23); c.quadraticCurveTo(.26, -.04, .68, -.09); c.stroke();
         c.fillStyle = '#d5cac0';
         c.beginPath(); c.moveTo(.95, -.08); c.lineTo(.42, -.40); c.lineTo(.20, -.15); c.lineTo(.40, .20); c.closePath(); c.fill();
         c.fillStyle = '#4d4157'; c.beginPath(); c.arc(.62, -.18, .075, 0, Math.PI * 2); c.fill();
+    } else if (fish.kind === 'provoked') {
+        c.fillStyle = '#a9bdc4';
+        c.beginPath(); c.moveTo(1.05, 0); c.quadraticCurveTo(.40, -.47, -.59, -.17);
+        c.lineTo(-1.01, -.62); c.lineTo(-.85, 0); c.lineTo(-1.01, .57); c.lineTo(-.59, .17);
+        c.quadraticCurveTo(.42, .49, 1.05, 0); c.fill();
+        c.beginPath(); c.moveTo(-.39, -.24); c.lineTo(-.30, -.86); c.lineTo(.13, -.31); c.fill();
+        c.beginPath(); c.moveTo(-.03, .20); c.lineTo(-.32, .70); c.lineTo(.29, .23); c.fill();
+        c.fillStyle = '#2d3944'; c.beginPath(); c.arc(.69, -.10, .075, 0, Math.PI * 2); c.fill();
+    } else if (fish.kind === 'shoal') {
+        c.fillStyle = '#b9dbe0';
+        for (const [x, y] of [[.35, -.43], [-.18, .04], [.40, .48]]) {
+            c.beginPath(); c.ellipse(x, y, .46, .16, 0, 0, Math.PI * 2); c.fill();
+            c.beginPath(); c.moveTo(x - .32, y); c.lineTo(x - .68, y - .22); c.lineTo(x - .68, y + .22); c.fill();
+        }
     } else {
         c.fillStyle = '#b2bac7';
         c.beginPath(); c.moveTo(.93, -.02); c.quadraticCurveTo(.17, -.65, -.61, -.26); c.lineTo(-1.01, -.46);
@@ -678,7 +693,7 @@ export function drawFishThreatDirection(ctx: CanvasRenderingContext2D,
         state.fishBite?.active || state.wheel.open) return;
     for (const hint of getFishEdgeHints(width, height, cameraX, cameraY, zoom)) {
         const { fish, x, y, radius, alpha, angle } = hint;
-        const color = fish.kind === 'curious' ? '#a6cdbb' : fish.kind === 'provoked' ? '#bfb0d2' : '#c7cbd2';
+        const color = fish.kind === 'curious' ? '#a6cdbb' : fish.kind === 'rammer' ? '#c5d8b5' : fish.kind === 'provoked' ? '#dda29b' : fish.kind === 'shoal' ? '#b9dbe0' : '#c7cbd2';
         ctx.save(); ctx.translate(x, y); ctx.globalAlpha = alpha;
         ctx.beginPath(); ctx.arc(0, 0, radius, 0, Math.PI * 2);
         ctx.fillStyle = '#0c1b23'; ctx.fill();
@@ -760,8 +775,13 @@ function drawDyingFish(ctx: CanvasRenderingContext2D, fish: FishEnemy) {
     ctx.scale(1, scaleY);
     // 翻转后腹部朝上（白色腹部）
     const size = CONFIG.fishEnemy.size;
-    if (fish.kind === 'provoked') {
-        drawProvokedFish(ctx, fish, 0, true);
+    if (fish.kind === 'provoked' || fish.kind === 'shoal') {
+        (fish.kind === 'provoked' ? drawHunterShark : drawSilverFish)(ctx, fish, 0);
+        ctx.restore();
+        return;
+    }
+    if (fish.kind === 'rammer') {
+        drawRammerFish(ctx, fish, 0, true);
         ctx.restore();
         return;
     }

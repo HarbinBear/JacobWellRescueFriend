@@ -32,6 +32,10 @@ export function createRopeState() {
     return { ropes: [] as any[], active: false, current: createLooseRope() };
 }
 
+export function createFishBumpState() {
+    return { timer: 0, cooldown: 0, x: 0, y: 0, nx: 0, ny: 0, strength: 0 };
+}
+
 export const state = {
     screen: 'menu', // menu, progressSelect, mazeRescue, home_evening, dream（旧 play/win/lose/ending/fishArena 已废弃；fishArena 仍可由 GM 强制进入）
     // 主菜单"开始新游戏"确认框开关（运行时，不进存档）
@@ -169,6 +173,7 @@ export const state = {
         chamber23Junction: {x: CONFIG.chamber23JunctionX, y: CONFIG.chamber23JunctionY}
     },
     flashlightOn: true, // 手电筒开关（玩家手动控制）
+    fishBump: createFishBumpState(),
     fishEnemies: [],  // 凶猛鱼敌人列表
     fishBite: null,    // 玩家被咬状态 { active, phase, timer, shakeIntensity }
     // 玩家攻击状态
@@ -541,6 +546,7 @@ export function resetState() {
     state.splashes = [];
     state.fishEnemies = [];
     state.fishBite = null;
+    state.fishBump = createFishBumpState();
     state.flashlightOn = true; // 重置手电筒为开启状态
     // 重置屏幕特效，防止重新开始后残留红屏和震动
     state.fx.redOverlay = 0;

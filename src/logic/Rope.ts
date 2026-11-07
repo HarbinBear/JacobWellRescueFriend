@@ -4,7 +4,7 @@ import { buildAvoidedPath } from './Pathfinding';
 import { closestRockPoint, circleHitsRock } from '../world/RockGeometry';
 import { isLineOfSight } from '../world/Visibility';
 import { getRopeNet, pointOnStrand, sweepRopeNet } from './RopeNet';
-import { deformNetPoint, moveThroughNet, netResponseAlong, resetNetMotion, stepNetMotion, viewNetContact } from './RopeDynamics';
+import { applyNetBodyImpulse, deformNetPoint, moveThroughNet, netResponseAlong, resetNetMotion, stepNetMotion, viewNetContact } from './RopeDynamics';
 import type { RopeBody } from './RopeDynamics';
 import type { RopePoint } from './RopeNet';
 
@@ -106,6 +106,10 @@ export function resolveWovenRopeContact(
 ) {
     if (state.screen !== 'mazeRescue' || !state.rope.ropes.length) return null;
     return moveThroughNet(getRopeNet(state.rope.ropes), body, from, radius, body === player ? 3.6 : 13, intent, canOccupy);
+}
+
+export function applyRopeBodyImpulse(body: RopeBody, vx: number, vy: number) {
+    applyNetBodyImpulse(getRopeNet(state.rope.ropes), body, vx, vy);
 }
 
 export function getRopeContact(body: RopeBody) {

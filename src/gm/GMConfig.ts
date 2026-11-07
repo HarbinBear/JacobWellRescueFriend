@@ -389,9 +389,11 @@ export const TABS: GMTab[] = [
             // 快捷动作
             { type: 'action', label: '🐟 生成一条食人鱼', actionId: 'spawnMazeFish' },
             { type: 'action', label: '生成好奇鱼（附近）', actionId: 'spawnCuriousFish' },
-            { type: 'action', label: '生成激怒鱼（附近）', actionId: 'spawnProvokedFish' },
-            { type: 'action', label: '💀 杀死所有食人鱼', actionId: 'killAllFish' },
-            { type: 'action', label: '🧹 清除所有食人鱼', actionId: 'removeAllFish' },
+            { type: 'action', label: '生成盾首鳗·顶撞（附近）', actionId: 'spawnRammerFish' },
+            { type: 'action', label: '生成银鳞鱼群（附近）', actionId: 'spawnFishSchool' },
+            { type: 'action', label: '生成猎鲨·危险（附近）', actionId: 'spawnProvokedFish' },
+            { type: 'action', label: '💀 杀死所有鱼', actionId: 'killAllFish' },
+            { type: 'action', label: '🧹 清除所有鱼', actionId: 'removeAllFish' },
         ]
     },
     {

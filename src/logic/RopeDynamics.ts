@@ -5,7 +5,7 @@ export type NetContactKind = 'glide' | 'rebound' | 'snag';
 export interface RopeBody extends RopePoint {
     vx: number;
     vy: number;
-    kind?: 'curious' | 'piranha' | 'provoked';
+    kind?: 'curious' | 'piranha' | 'provoked' | 'rammer' | 'shoal';
     angle?: number;
 }
 export interface NetApproach extends RopePoint {
@@ -157,6 +157,17 @@ export function deformNetPoint(net: RopeNet, point: RopePoint, ropeIndex: number
     return { x: point.x + dx * scale, y: point.y + dy * scale };
 }
 
+export function applyNetBodyImpulse(net: RopeNet, body: RopeBody, vx: number, vy: number) {
+    body.vx += vx;
+    body.vy += vy;
+    const contact = motionByNet.get(net)?.contacts.get(body);
+    if (!contact || contact.cooldown > 0 || contact.kind === 'glide') return;
+    const force = vx * contact.nx + vy * contact.ny;
+    contact.speed = clamp(contact.speed + force * .72, -10, 14);
+    contact.pull.velocity += force * .2;
+    if (force < 0) contact.escape = unit(contact.escape - force * .025);
+}
+
 export function viewNetContact(net: RopeNet, body: RopeBody): NetContactView | null {
     const contact = motionByNet.get(net)?.contacts.get(body);
     if (!contact || contact.cooldown > 0) return null;
@@ -177,7 +188,9 @@ function release(contact: Contact, body: RopeBody, impulse: number) {
 const fishProfiles = {
     curious: { tail: 20, retain: 45, required: 3, gripFrames: 7 },
     piranha: { tail: 28, retain: 50, required: 3, gripFrames: 5 },
-    provoked: { tail: 44, retain: 64, required: 4, gripFrames: 3 },
+    provoked: { tail: 46, retain: 70, required: 4, gripFrames: 4 },
+    rammer: { tail: 44, retain: 64, required: 4, gripFrames: 3 },
+    shoal: { tail: 12, retain: 30, required: 3, gripFrames: 8 },
 };
 
 function segmentDistance(a: RopePoint, b: RopePoint, c: RopePoint, d: RopePoint): number {

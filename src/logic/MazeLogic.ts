@@ -4,7 +4,7 @@ import { processSemiAutoDrive } from './SemiAutoDrive';
 import { updateRescueLink } from './RescueLink';
 import { updateRescueTow } from './RescueTow';
 import { CONFIG } from '../core/config';
-import { state, player, particles, input, touches, createRopeState } from '../core/state';
+import { state, player, particles, input, touches, createRopeState, createFishBumpState } from '../core/state';
 import { generateMazeMap } from '../world/map';
 import { createCaveRockTrialMap } from '../world/CaveRockTrial';
 import { ensureExtractionState,restoreLoadoutAfterDive } from '../extraction';
@@ -19,7 +19,7 @@ import { processManualDrive } from './ManualDrive';
 import { checkMazeCollision } from './Collision';
 import { updateCameraSpringArm, snapCameraToPlayer, getAdaptiveZoom } from './CameraLogic';
 import { updateWheelButtonVisibility } from './Marker';
-import { createFishEnemy, findMazeFishSpawnPosition, updateAllFishEnemies, generateFishDens } from './FishEnemy';
+import { createFishEnemy, createFishSchool, findMazeFishSpawnPosition, updateAllFishEnemies, generateFishDens } from './FishEnemy';
 import { buildOxygenTanksForMaze, updateOxygenTanks, createOxygenFeedback, triggerO2LossFlash } from './OxygenTank';
 import { buildRelicsForMaze, updateRelicDiscovery, resetRelicDiscoveryForDive, getThisDiveNewRelicIds, getThisDiveNewCodexCount } from './Relic';
 import { updateLifeDetector, resetLifeDetector } from './LifeDetector';
@@ -100,6 +100,7 @@ export function resetMazeLogic(rockTrial=false) {
         state.splashes = [];
         state.fishEnemies = [];
         state.fishBite = null;
+        state.fishBump = createFishBumpState();
         state.flashlightOn = true;
         state.fx.redOverlay = 0;
         state.fx.shake = 0;
@@ -201,6 +202,7 @@ export function resetMazeLogic(rockTrial=false) {
     state.splashes = [];
     state.fishEnemies = [];
     state.fishBite = null;
+    state.fishBump = createFishBumpState();
     state.flashlightOn = true;
     state.fx.redOverlay = 0;
     state.fx.shake = 0;
@@ -490,6 +492,7 @@ export function startMazeDive(diveType: string) {
     particles.length = 0;
     state.splashes = [];
     state.fishBite = null;
+    state.fishBump = createFishBumpState();
     state.flashlightOn = true;
     state.playerAttack = { active: false, timer: 0, cooldownTimer: 0, angle: 0 };
     state.fx.redOverlay = 0;
@@ -508,8 +511,9 @@ export function startMazeDive(diveType: string) {
             const fishCount = perMin + Math.floor(Math.random() * (perMax - perMin + 1));
             for (let i = 0; i < fishCount; i++) {
                 const pos = findMazeFishSpawnPosition(den.x, den.y, den.radius);
-                const kind = i === 0 ? (index % 2 === 0 ? 'curious' : 'provoked') : 'piranha';
-                state.fishEnemies.push(createFishEnemy(pos.x, pos.y, den.x, den.y, den.radius, kind));
+                const kind = i === 0 ? (index % 2 === 0 ? 'curious' : 'rammer') : 'piranha';
+                if (i === 1 && index === 0) state.fishEnemies.push(...createFishSchool(pos.x, pos.y));
+                else state.fishEnemies.push(createFishEnemy(pos.x, pos.y, den.x, den.y, den.radius, kind));
             }
         }
     } else if (!maze.rockTrial && CONFIG.maze.fishEnabled) {
@@ -517,7 +521,7 @@ export function startMazeDive(diveType: string) {
         const count = CONFIG.maze.fishCountMin + Math.floor(Math.random() * (CONFIG.maze.fishCountMax - CONFIG.maze.fishCountMin + 1));
         for (let i = 0; i < count; i++) {
             const pos = findMazeFishSpawnPosition();
-            const kind = i === 0 ? 'curious' : i === 1 ? 'provoked' : 'piranha';
+            const kind = i === 0 ? 'curious' : i === 1 ? 'rammer' : 'piranha';
             state.fishEnemies.push(createFishEnemy(pos.x, pos.y, undefined, undefined, undefined, kind));
         }
     }
@@ -1024,6 +1028,13 @@ export function updateMaze() {
 
     // === 游戏进行中 ===
 
+    // StoryManager 已不再更新视觉特效；短促冲撞等反馈须在正常游玩时归零。
+    // 放在本帧事件之前，让新撞击仍能以完整强度显示第一帧。
+    if (state.fx.shake > 0) {
+        state.fx.shake *= .85;
+        if (state.fx.shake < .1) state.fx.shake = 0;
+    }
+
     // 更新剧情文字（复用 storyManager）
     storyManager.update();
 
@@ -1446,6 +1457,6 @@ export function exitCaveRockTrial(){
  resetDriveInput(true);releaseBCDControls();resetBreathSystem();resetBreathO2Consumer();restoreLoadoutAfterDive();resetAdaptiveMusic();
  const original=rockTrialSnapshot;rockTrialSnapshot=null;
  (state as any).extraction=original.extraction;state.story2=original.story2;state.mazeRescue=original.maze;
- state.rope=original.rope;state.markers=original.markers;state.npc.active=false;state.fishEnemies=[];state.fishBite=null;
+ state.rope=original.rope;state.markers=original.markers;state.npc.active=false;state.fishEnemies=[];state.fishBite=null;state.fishBump=createFishBumpState();
  particles.length=0;state.screen='menu';
 }

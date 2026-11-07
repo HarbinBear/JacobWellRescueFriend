@@ -31,6 +31,12 @@ export const modesConfig = {
         curious: { lightThreshold: .16, noticeFrames: 25, memoryFrames: 70, standOff: 54, speed: 2.15, glowRange: 390, glowInterest: 220 },
         provoked: { lightThreshold: .22, exposureFrames: 22, chargeFrames: 42, lungeFrames: 33, recoverFrames: 95, speed: 14, trackRange: 490 },
 
+        rammer: {
+            lightThreshold: .16, exposureFrames: 18, chargeFrames: 38, lungeFrames: 34,
+            recoverFrames: 95, speed: 9.2, noticeRange: 210, lingerFrames: 520,
+        },
+        shoal: { speed: 1.35, fleeSpeed: 4.2, lightThreshold: .12, regroupFrames: 95 },
+
         // 感知与探测
         detectRange: 320,           // 感知玩家的距离（像素）
         safeDistance: 60,           // 非冲刺状态下鱼与玩家的最小安全距离（像素），玩家进入此范围鱼立刻逃跑

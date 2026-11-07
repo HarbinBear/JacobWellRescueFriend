@@ -11,7 +11,7 @@ import {
     ITEM_H, ITEM_PAD, LABEL_W_RATIO, INPUT_H,
 } from './GMConfig';
 import { state, player } from '../core/state';
-import { createFishEnemy, findMazeFishSpawnPosition, findSafeSpawnPosition, findVisibleFishSpawnPosition } from '../logic/FishEnemy';
+import { createFishEnemy, createFishSchool, findMazeFishSpawnPosition, findSafeSpawnPosition, findVisibleFishSpawnPosition } from '../logic/FishEnemy';
 import { setPreset, onItemEdited as qualityOnItemEdited, setAuto as qualitySetAuto } from '../render/QualityManager';
 import { playSFX } from '../audio/AudioManager';
 // GM 调试：扣氧时同步触发氧气环红色损失动画
@@ -416,16 +416,20 @@ function _applyEditingValue(item: GMNumberItem): void {
 function _executeAction(actionId: string): void {
     switch (actionId) {
         case 'spawnCuriousFish':
+        case 'spawnRammerFish':
+        case 'spawnFishSchool':
         case 'spawnProvokedFish':
         case 'spawnMazeFish': {
-            const kind = actionId === 'spawnCuriousFish' ? 'curious' : actionId === 'spawnProvokedFish' ? 'provoked' : 'piranha';
+            const kind = actionId === 'spawnCuriousFish' ? 'curious' : actionId === 'spawnProvokedFish' ? 'provoked' :
+                actionId === 'spawnRammerFish' ? 'rammer' : actionId === 'spawnFishSchool' ? 'shoal' : 'piranha';
             let pos: { x: number; y: number } | null = null;
             if (state.screen === 'mazeRescue' && state.mazeRescue?.phase === 'play') {
                 pos = kind === 'piranha' && !state.mazeRescue.rockTrial ? findMazeFishSpawnPosition() : findVisibleFishSpawnPosition();
             } else if (kind === 'piranha' && (state.screen === 'fishArena' || state.screen === 'play')) {
                 pos = findSafeSpawnPosition(player.x, player.y);
             }
-            if (pos) state.fishEnemies.push(createFishEnemy(pos.x, pos.y, undefined, undefined, undefined, kind));
+            if (pos) state.fishEnemies.push(...(kind === 'shoal' ? createFishSchool(pos.x, pos.y) :
+                [createFishEnemy(pos.x, pos.y, undefined, undefined, undefined, kind)]));
             else console.log('[GM] 进入潜水区域并靠近开阔水域后再生成鱼');
             break;
         }
