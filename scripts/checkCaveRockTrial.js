@@ -213,31 +213,57 @@ assert(Math.abs(rockWatcher.lightTargetX - 450) < 15 && rockWatcher.lightTargetY
 openMaze.mazeMap[2][4] = 0;
 state.flashlightOn = false;
 
-// A bursting fish uses the same deformable contact instead of biting across a dense pocket.
-state.fishBite = null;
-state.rope.ropes = [
+// Fish collect separate strands as they enter a dense weave, regardless of their
+// cruising speed. The first outside rope alone cannot capture a fast attacker.
+const fishMesh = [
  ...[-30, -15, 0, 15, 30].map(y => strand(point(300, 610 + y), point(600, 610 + y))),
  ...[-40, -20, 0, 20, 40].map(x => strand(point(450 + x, 535), point(450 + x, 675))),
 ];
-Object.assign(player, point(449, 599));
-const charging = fishLogic.createFishEnemy(449, 568, undefined, undefined, undefined, 'provoked');
-Object.assign(charging, {state: 'lunge', lungeCharge: 1, angle: Math.PI / 2, stateTimer: 45});
-fishLogic.updateFishEnemy(charging, 1);
-assert.equal(state.fishBite, null);
-assert.equal(rope.getRopeContact(charging)?.kind, 'snag');
-for (let i = 0; i < 12; i++) { rope.updateRopeMotion(); fishLogic.updateFishEnemy(charging, 1); }
-assert(rope.getRopeContact(charging)?.pull > .45, 'A captured fish bends and loads the net while struggling');
-// Fins catch a dense weave at the curious fish's real approach speed. The same
-// approach still slips through a sparse crossing and leaves the diver calibration alone.
-const denseRopes = state.rope.ropes;
-function curiousContact(ropes) {
+function swimFish(kind, speed, ropes = fishMesh) {
  state.rope.ropes = ropes.slice();
- const fish = fishLogic.createFishEnemy(449, 566, undefined, undefined, undefined, 'curious');
- fish.vy = 2.2;
- const from = point(fish.x, fish.y);
- fish.y += fish.vy;
- return rope.resolveWovenRopeContact(fish, from, CONFIG.fishEnemy.size * .38, point(0, 2.2), () => true);
+ const fish = fishLogic.createFishEnemy(449, 551, undefined, undefined, undefined, kind);
+ Object.assign(fish, {angle: Math.PI / 2, vx: 0, vy: speed});
+ const trace = [];
+ for (let i = 0; i < 190; i++) {
+  rope.updateRopeMotion();
+  const previous = point(fish.x, fish.y);
+  fish.vx = 0; fish.vy = speed; fish.y += speed;
+  rope.resolveWovenRopeContact(fish, previous, CONFIG.fishEnemy.size * (kind === 'provoked' ? .48 : .38), point(0, speed), () => true);
+  const contact = rope.getRopeContact(fish);
+  trace.push({frame: i, y: fish.y, contact});
+  if (contact?.kind === 'snag') break;
+ }
+ return {fish, trace};
 }
-assert.equal(curiousContact(denseRopes), 'snag');
-assert.equal(curiousContact([denseRopes[0], denseRopes[7]]), 'glide');
-console.log('Fish and rope net: directional aim, saved knots, local density, glide, rebound, snag, escape and light responses passed');
+for (const [kind, speed, minimum] of [['curious', 2.2, 3], ['curious', .8, 3], ['piranha', 14, 3], ['provoked', 14, 4]]) {
+ const {fish, trace} = swimFish(kind, speed);
+ const first = trace.find(sample => sample.contact);
+ const caught = trace.find(sample => sample.contact?.kind === 'snag');
+ assert.equal(first.contact.kind, 'glide', kind + ' must first load the outer strands');
+ assert(caught && caught.contact.threads >= minimum, kind + ' catches several separate strands');
+ assert(caught.frame > first.frame && caught.y > 586, kind + ' enters the mesh before capture');
+ assert(trace.every(sample => sample.contact?.kind !== 'rebound'), 'Fish do not use the diver speed threshold');
+ const previous = point(fish.x, fish.y);
+ fish.y += .3;
+ rope.resolveWovenRopeContact(fish, previous, 12, point(0, 1), () => false);
+ assert.deepEqual(point(fish.x, fish.y), previous, 'Net forces cannot move a fish into rock');
+}
+for (const [kind, speed] of [['curious', 2.2], ['piranha', 14], ['provoked', 14]]) {
+ const sparseFish = swimFish(kind, speed, [fishMesh[0], fishMesh[7]]);
+ assert(sparseFish.trace.every(sample => sample.contact?.kind !== 'snag'), 'A sparse crossing does not capture ' + kind);
+}
+// Parallel tails protruding from a dense net are not enough to capture a fish
+// outside its first row. It must enter and engage a second crosswise strand.
+const fringeMesh = [
+ ...[0, 12, 24, 36, 48].map(y => strand(point(300, 580 + y), point(600, 580 + y))),
+ ...[-20, -10, 0, 10, 20].map(x => strand(point(450 + x, 535), point(450 + x, 675))),
+];
+const fringe = swimFish('curious', 2.2, fringeMesh);
+assert(fringe.trace.some(sample => sample.y < 580 && sample.contact?.threads >= 3 && sample.contact.kind === 'glide'));
+assert(fringe.trace.find(sample => sample.contact?.kind === 'snag')?.y > 586);
+// Retrying a dive and replacing the rope array clears the transient grip.
+const held = swimFish('curious', 2.2);
+assert(rope.getRopeContact(held.fish)?.kind === 'snag');
+rope.resetRopeMotion();
+assert.equal(rope.getRopeContact(held.fish), null);
+console.log('Fish and rope net: immediate aim, saved knots, player elasticity, progressive multi-strand fish capture and light responses passed');

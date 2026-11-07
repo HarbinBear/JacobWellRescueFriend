@@ -13,7 +13,7 @@ import { getBCDInflateBtn, getBCDDeflateBtn, isBCDUIVisible } from '../render/Re
 import { setBCDInflate, setBCDDeflate, releaseBCDControls } from '../logic/BCDSystem';
 import { performDiveSupply } from '../logic/Marker';
 import type { DiveSupply } from '../logic/Marker';
-import { cancelRopeWheelPress, canUseRopeWheel, finishRopeWheelGesture, moveRopeWheelGesture, passRopePressToSwim, startRopeWheelPress } from '../logic/RopeWheel';
+import { canUseRopeWheel, finishRopeWheelGesture, moveRopeWheelGesture, startRopeWheelGesture } from '../logic/RopeWheel';
 import { ALL_RELIC_KINDS } from '../logic/Relic';
 import { getDiveSupplyButton, getWheelBtnPos } from '../render/RenderWheel';
 // 撤离玩法：UI hit-test 入口集中导入
@@ -296,7 +296,6 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
 
         window.addEventListener('blur', () => {
             keys.w = keys.a = keys.s = keys.d = keys.shift = false;
-            cancelRopeWheelPress();
             if (state.wheel.touchId !== null) finishRopeWheelGesture(state.wheel.touchId, 0, 0, true);
             resetDriveInput();
         });
@@ -342,7 +341,6 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
         warmUpAdaptiveMusic();
         const trialTouch=res.changedTouches?.[0]||res.touches[res.touches.length-1];
         if (trialTouch && isCaveRockTrialExitHit(trialTouch.clientX, trialTouch.clientY)) {
-            cancelRopeWheelPress();
             if (state.wheel.touchId !== null) finishRopeWheelGesture(state.wheel.touchId, 0, 0, true);
             exitCaveRockTrial();
             return;
@@ -354,7 +352,6 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
         // GM 面板优先消费触摸事件（面板本身或 HUD 栏的 GM 齿轮按钮）
         const gmTouch = res.touches[res.touches.length - 1];
         if (gmTouch && handleGMTouchStart(gmTouch.clientX, gmTouch.clientY)) {
-            cancelRopeWheelPress();
             // GM 面板吃掉触摸后不会再回调 touchEnd 给我们，顺手松开 BCD 双钮
             bcdReleaseAll();
             return;
@@ -552,7 +549,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
         const ropeButton = getWheelBtnPos();
         for (const t of res.changedTouches) {
             if (Math.hypot(t.clientX - ropeButton.x, t.clientY - ropeButton.y) <= CONFIG.marker.btnRadius &&
-                startRopeWheelPress(t.identifier, t.clientX, t.clientY, ropeButton.x, ropeButton.y)) continue;
+                startRopeWheelGesture(t.identifier, t.clientX, t.clientY, ropeButton.x, ropeButton.y)) continue;
 
             // 检测攻击按钮（右下角常驻，游戏进行中或竞技场战斗中，任意触点均可触发）
             // 被咬死亡过场期间禁止攻击
@@ -727,11 +724,6 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                 if (moveRopeWheelGesture(t.identifier, t.clientX, t.clientY)) break;
             }
             return;
-        }
-
-        for (const t of res.changedTouches) {
-            const origin = passRopePressToSwim(t.identifier, t.clientX, t.clientY);
-            if (origin) beginSwimTouch(t.identifier, origin.x, origin.y);
         }
 
         // 手动挡模式：touchMove 只更新当前位置，prev 由逻辑层推进
@@ -1394,7 +1386,6 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
 }
 
 function finishDiveActionTouch(id: number, tx: number, ty: number, cancelled: boolean) {
-    if (cancelRopeWheelPress(id)) return true;
     if (state.wheel.open && state.wheel.touchId === id) {
         const placed = finishRopeWheelGesture(id, tx, ty, cancelled);
         if (!cancelled) playSFX(placed ? 'uiPrimary' : 'uiSecondary');

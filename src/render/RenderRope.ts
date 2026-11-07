@@ -219,7 +219,8 @@ export function drawRopesWorld(left: number, right: number, top: number, bottom:
 export function drawRopeContactWorld(c: CanvasRenderingContext2D, body: RopePoint, contact: RopeContact | null, radius: number) {
     if (!contact) return;
     const caught = contact.kind === 'snag';
-    const fading = caught ? 1 : Math.max(0, 1 - contact.phase / 19);
+    const gathering = contact.kind === 'glide' && contact.threads > 1;
+    const fading = caught || gathering ? 1 : Math.max(0, 1 - contact.phase / 19);
     const load = contact.strength * fading;
     if (load < .04) return;
     const sx = body.x - contact.x, sy = body.y - contact.y;
@@ -247,9 +248,11 @@ export function drawRopeContactWorld(c: CanvasRenderingContext2D, body: RopePoin
     const bulge = radius * (.2 + load * (caught ? .9 : .5));
     c.moveTo(-radius * .32, -width);
     c.bezierCurveTo(bulge, -width * .65, bulge + wiggle, width * .7, -radius * .32, width);
-    if (caught) {
-        c.moveTo(-radius * .62, -width * .97);
-        c.bezierCurveTo(-radius * .43, -width * .55, bulge + wiggle, width * .55, radius * .7, width * .78);
+    const wraps = caught ? Math.min(3, Math.max(1, contact.threads - 1)) : gathering ? 1 : 0;
+    for (let i = 0; i < wraps; i++) {
+        const offset = i * radius * .30;
+        c.moveTo(-radius * .62 + offset, -width * .97);
+        c.bezierCurveTo(-radius * .43 + offset, -width * .55, bulge + wiggle + offset, width * .55, radius * .7 + offset, width * .78);
     }
     c.lineWidth = 4.2; c.strokeStyle = '#26342d'; c.stroke();
     c.lineWidth = 2.1; c.strokeStyle = caught ? '#debd85' : '#afc297'; c.stroke();

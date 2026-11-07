@@ -4,6 +4,7 @@ import { FishEnemy } from '../logic/FishEnemy';
 import { getRopeContact } from '../logic/Rope';
 import { drawRopeContactWorld } from './RenderRope';
 import { isLineOfSight } from '../world/Visibility';
+import { getBCDLayout } from './RenderBCD';
 
 // =============================================
 // 绘制单条凶猛鱼（世界坐标系，已在摄像机变换内调用）
@@ -588,69 +589,110 @@ export function drawAllFishEnemies(ctx: CanvasRenderingContext2D,
     }
 }
 
-/** A short edge signal for the nearest visible threat that has begun an attack. */
+interface FishEdgeHint {
+    fish: FishEnemy;
+    x: number;
+    y: number;
+    angle: number;
+    radius: number;
+    alpha: number;
+}
+
+/** Follow nearby fish just beyond the viewport, using border distance rather
+ * than distance to its centre so the tall phone viewport behaves consistently. */
+export function getFishEdgeHints(width: number, height: number, cameraX: number, cameraY: number, zoom: number): FishEdgeHint[] {
+    const range = 240;
+    const candidates = state.fishEnemies.filter(fish => !fish.dead && fish.state !== 'dying').map(fish => {
+        const sx = width / 2 + (fish.x - cameraX) * zoom;
+        const sy = height / 2 + (fish.y - cameraY) * zoom;
+        const outside = Math.hypot(Math.max(0, -sx, sx - width), Math.max(0, -sy, sy - height)) / zoom;
+        return { fish, sx, sy, outside };
+    }).filter(({ sx, sy, outside }) => outside > 8 / zoom && outside < range &&
+        (sx < -8 || sx > width + 8 || sy < -8 || sy > height + 8));
+    candidates.sort((a, b) => a.outside - b.outside);
+    const hints: FishEdgeHint[] = [];
+    const safeTop = Math.max(28, CONFIG.uiSafeTop || 0);
+    const safeBottom = Math.max(28, (CONFIG.uiSafeBottom || 0) + 24);
+    const bcd = getBCDLayout();
+    const blocks = [
+        { left: 0, right: 67, top: Math.max(62, CONFIG.uiSafeTop || 0) - 22, bottom: Math.max(62, CONFIG.uiSafeTop || 0) + 275 },
+        { left: bcd.cx - 35, right: width, top: bcd.inflateY - 32, bottom: bcd.deflateY + 32 },
+    ];
+    for (const { fish, sx, sy, outside } of candidates) {
+        if (!isLineOfSight(player.x, player.y, fish.x, fish.y, Math.hypot(fish.x - player.x, fish.y - player.y) + 1)) continue;
+        const near = 1 - outside / range;
+        const radius = 8 + near * 7;
+        const left = radius + 7, right = width - radius - 7;
+        const top = safeTop + radius, bottom = height - safeBottom - radius;
+        const dx = sx - width / 2, dy = sy - height / 2;
+        const t = Math.min((width / 2 - left) / (Math.abs(dx) || .001),
+            (height / 2 - (dy < 0 ? top : height - bottom)) / (Math.abs(dy) || .001));
+        const aimX = width / 2 + dx * t, aimY = height / 2 + dy * t;
+        const positions = [{ x: aimX, y: aimY }];
+        for (let y = top; y <= bottom; y += 24) positions.push({ x: left, y }, { x: right, y });
+        for (let x = left; x <= right; x += 24) positions.push({ x, y: top }, { x, y: bottom });
+        let best: { x: number; y: number } | null = null, score = Infinity;
+        for (const p of positions) {
+            if (blocks.some(b => p.x + radius > b.left && p.x - radius < b.right && p.y + radius > b.top && p.y - radius < b.bottom) ||
+                hints.some(h => Math.hypot(p.x - h.x, p.y - h.y) < radius + h.radius + 8)) continue;
+            const distance = Math.hypot(p.x - aimX, p.y - aimY);
+            if (distance < score) { score = distance; best = p; }
+        }
+        if (!best || score > 145) continue;
+        hints.push({ fish, ...best, angle: Math.atan2(sy - best.y, sx - best.x), radius, alpha: .42 + near * .54 });
+        if (hints.length >= 6) break;
+    }
+    return hints;
+}
+
+function drawFishEdgeIcon(c: CanvasRenderingContext2D, fish: FishEnemy, radius: number) {
+    const size = radius * .70;
+    c.save(); c.scale(size, size);
+    c.lineWidth = .10;
+    if (fish.kind === 'curious') {
+        c.fillStyle = '#9bc8b3';
+        c.beginPath(); c.ellipse(.12, 0, .73, .53, 0, 0, Math.PI * 2); c.fill();
+        c.beginPath(); c.moveTo(-.51, 0); c.lineTo(-1, -.4); c.quadraticCurveTo(-1.14, 0, -1, .4); c.closePath(); c.fill();
+        c.fillStyle = '#f0e8c1'; c.beginPath(); c.arc(.40, -.17, .22, 0, Math.PI * 2); c.fill();
+        c.fillStyle = '#24423b'; c.beginPath(); c.arc(.47, -.17, .10, 0, Math.PI * 2); c.fill();
+    } else if (fish.kind === 'provoked') {
+        c.strokeStyle = '#b7accb'; c.lineWidth = .40; c.lineCap = 'round';
+        c.beginPath(); c.moveTo(-1.13, .29); c.bezierCurveTo(-.43, .62, -.65, -.46, -.12, -.23); c.quadraticCurveTo(.26, -.04, .68, -.09); c.stroke();
+        c.fillStyle = '#d5cac0';
+        c.beginPath(); c.moveTo(.95, -.08); c.lineTo(.42, -.40); c.lineTo(.20, -.15); c.lineTo(.40, .20); c.closePath(); c.fill();
+        c.fillStyle = '#4d4157'; c.beginPath(); c.arc(.62, -.18, .075, 0, Math.PI * 2); c.fill();
+    } else {
+        c.fillStyle = '#b2bac7';
+        c.beginPath(); c.moveTo(.93, -.02); c.quadraticCurveTo(.17, -.65, -.61, -.26); c.lineTo(-1.01, -.46);
+        c.lineTo(-.86, 0); c.lineTo(-1.01, .46); c.lineTo(-.61, .28); c.quadraticCurveTo(.20, .62, .93, -.02); c.fill();
+        c.beginPath(); c.moveTo(-.36, -.31); c.lineTo(-.08, -.78); c.lineTo(.27, -.40); c.closePath(); c.fill();
+        c.fillStyle = '#33313b'; c.beginPath(); c.arc(.49, -.12, .09, 0, Math.PI * 2); c.fill();
+        c.strokeStyle = '#efe0c6'; c.lineWidth = .09; c.beginPath(); c.moveTo(.61, .11); c.lineTo(.41, .24); c.lineTo(.29, .12); c.stroke();
+    }
+    c.restore();
+}
+
 export function drawFishThreatDirection(ctx: CanvasRenderingContext2D,
     width: number, height: number, cameraX: number, cameraY: number, zoom: number) {
     if (state.screen !== 'mazeRescue' || state.mazeRescue?.phase !== 'play' ||
         state.fishBite?.active || state.wheel.open) return;
-    const halfW = width / 2, halfH = height / 2;
-    const maxRange = 315;
-    let nearest = maxRange, candidate: FishEnemy | null = null;
-    for (const fish of state.fishEnemies) {
-        if (fish.dead || fish.kind === 'curious' || fish.state !== 'lunge') continue;
-        const screenX = Math.abs(fish.x - cameraX) * zoom, screenY = Math.abs(fish.y - cameraY) * zoom;
-        if (screenX < halfW + 15 && screenY < halfH + 15) continue;
-        const dx = player.x - fish.x, dy = player.y - fish.y;
-        const distance = Math.hypot(dx, dy);
-        if (distance >= nearest || getRopeContact(fish)?.kind === 'snag') continue;
-        if (fish.lungeCharge >= 1 && (dx * Math.cos(fish.angle) + dy * Math.sin(fish.angle)) < distance * .3) continue;
-        if (!isLineOfSight(player.x, player.y, fish.x, fish.y, maxRange)) continue;
-        candidate = fish;
-        nearest = distance;
+    for (const hint of getFishEdgeHints(width, height, cameraX, cameraY, zoom)) {
+        const { fish, x, y, radius, alpha, angle } = hint;
+        const color = fish.kind === 'curious' ? '#a6cdbb' : fish.kind === 'provoked' ? '#bfb0d2' : '#c7cbd2';
+        ctx.save(); ctx.translate(x, y); ctx.globalAlpha = alpha;
+        ctx.beginPath(); ctx.arc(0, 0, radius, 0, Math.PI * 2);
+        ctx.fillStyle = '#0c1b23'; ctx.fill();
+        ctx.lineWidth = 1; ctx.strokeStyle = color; ctx.stroke();
+        drawFishEdgeIcon(ctx, fish, radius);
+        ctx.save(); ctx.rotate(angle);
+        ctx.beginPath(); ctx.moveTo(radius + 5, 0); ctx.lineTo(radius + 1, -3.2); ctx.lineTo(radius + 1, 3.2); ctx.closePath();
+        ctx.fillStyle = color; ctx.fill(); ctx.restore();
+        if (fish.state === 'lunge' && getRopeContact(fish)?.kind !== 'snag') {
+            ctx.beginPath(); ctx.arc(0, 0, radius + 2.5, -.25, Math.PI + .25);
+            ctx.lineWidth = 1.4; ctx.strokeStyle = '#f5ac85'; ctx.stroke();
+        }
+        ctx.restore();
     }
-    if (!candidate) return;
-
-    const dx = candidate.x - cameraX, dy = candidate.y - cameraY;
-    const angle = Math.atan2(dy, dx);
-    const ux = Math.cos(angle), uy = Math.sin(angle);
-    // Place the warning just inside the controls and respect the top and bottom safe areas.
-    const edgeX = halfW - Math.min(63, width * .17);
-    const edgeY = Math.max(halfH * .45, halfH - Math.max(86, CONFIG.uiSafeTop + 17, CONFIG.uiSafeBottom + 68));
-    const edge = Math.min(edgeX / (Math.abs(ux) || .001), edgeY / (Math.abs(uy) || .001));
-    const closeness = 1 - nearest / maxRange;
-    const urgent = candidate.lungeCharge >= 1;
-    const size = 8 + closeness * 6;
-    ctx.save();
-    ctx.translate(halfW + ux * edge, halfH + uy * edge);
-    ctx.rotate(angle);
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.strokeStyle = urgent ? '#ffb08d' : '#f4d29e';
-    ctx.fillStyle = 'rgba(20,27,31,.9)';
-    ctx.lineWidth = urgent ? 2.2 : 1.7;
-    ctx.beginPath();
-    ctx.moveTo(size * .9, 0);
-    ctx.quadraticCurveTo(size * .18, -size * .78, -size * .62, -size * .7);
-    ctx.lineTo(-size * .43, 0);
-    ctx.lineTo(-size * .62, size * .7);
-    ctx.quadraticCurveTo(size * .18, size * .78, size * .9, 0);
-    ctx.fill();
-    ctx.stroke();
-    ctx.globalAlpha = .54 + closeness * .3;
-    ctx.beginPath();
-    ctx.moveTo(-size * .95, -size * .46);
-    ctx.lineTo(-size * .83, 0);
-    ctx.lineTo(-size * .95, size * .46);
-    ctx.stroke();
-    if (urgent) {
-        ctx.globalAlpha = .48 + Math.sin(candidate.animTime * 4) * .16;
-        ctx.beginPath();
-        ctx.moveTo(-size * 1.26, -size * .38);
-        ctx.lineTo(-size * 1.15, 0);
-        ctx.lineTo(-size * 1.26, size * .38);
-        ctx.stroke();
-    }
-    ctx.restore();
 }
 
 // =============================================

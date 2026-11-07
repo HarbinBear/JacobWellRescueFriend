@@ -2,7 +2,7 @@ import { CONFIG } from '../core/config';
 import { input, state } from '../core/state';
 import { ExtractionEnabled, findNearbyPickupTarget, performPickupTarget } from '../extraction';
 import { findNearbyOxygenTank, startInstallTank } from './OxygenTank';
-import { advanceRopeWheelPress, canUseRopeWheel, refreshRopeWheelAim } from './RopeWheel';
+import { canUseRopeWheel, refreshRopeWheelAim } from './RopeWheel';
 
 type Pickup = NonNullable<ReturnType<typeof findNearbyPickupTarget>>;
 export type DiveSupply = { kind: 'oxygen'; id: number } | { kind: 'pickup'; item: Pickup };
@@ -15,7 +15,6 @@ function getDiveSupply(): DiveSupply | null {
 }
 
 export function updateWheelButtonVisibility() {
-    advanceRopeWheelPress();
     const wheel = state.wheel;
     wheel.btnVisible = canUseRopeWheel();
     wheel.btnActive = wheel.btnVisible;

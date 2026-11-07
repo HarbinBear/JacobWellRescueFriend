@@ -100,19 +100,12 @@ export function traceWovenRopes(from: RopePoint, to: RopePoint, radius: number) 
     return sweepRopeNet(getRopeNet(state.rope.ropes), from, to, radius);
 }
 
-// The diver's sustained kick and a fish's burst use different speed ranges.
-const impactReference = (body: RopePoint & { kind?: string }) => {
-    if (body === player) return 3.6;
-    // A curious fish's broad fins load the mesh even on a slow approach.
-    return body.kind === 'curious' ? 2.55 : 13;
-};
-
 export function resolveWovenRopeContact(
     body: RopeBody, from: RopePoint, radius: number, intent: RopePoint,
     canOccupy: (x: number, y: number) => boolean,
 ) {
     if (state.screen !== 'mazeRescue' || !state.rope.ropes.length) return null;
-    return moveThroughNet(getRopeNet(state.rope.ropes), body, from, radius, impactReference(body), intent, canOccupy);
+    return moveThroughNet(getRopeNet(state.rope.ropes), body, from, radius, body === player ? 3.6 : 13, intent, canOccupy);
 }
 
 export function getRopeContact(body: RopeBody) {
@@ -131,7 +124,7 @@ export function getRopeApproach(body: RopeBody, radius: number) {
 
 export function getRopeResponseAlong(from: RopePoint, to: RopePoint, radius: number, vx: number, vy: number) {
     if (state.screen !== 'mazeRescue' || !state.rope.ropes.length) return null;
-    return netResponseAlong(getRopeNet(state.rope.ropes), from, to, radius, vx, vy, impactReference(from));
+    return netResponseAlong(getRopeNet(state.rope.ropes), from, to, radius, vx, vy, from === player ? 3.6 : 13, from as RopeBody);
 }
 
 export function getRopeDeformedPoint(point: RopePoint, ropeIndex: number) {
