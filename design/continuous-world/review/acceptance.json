@@ -1,0 +1,90 @@
+{
+  "scope": "真实当前游戏模块 + 独立连续章节接入；独立浏览器与原生输入。不是微信真机性能验收。",
+  "graphics": {
+    "webgl": true,
+    "pixelSize": {
+      "w": 1000,
+      "h": 562
+    },
+    "sceneDecodedRGBABytes": 12317256
+  },
+  "geometry": {
+    "samples": 2400,
+    "failures": []
+  },
+  "connectivity": {
+    "reachable": true,
+    "reachableCells": 2128,
+    "npc": {
+      "x": 8460,
+      "y": 10260
+    }
+  },
+  "movement": {
+    "samples": 754,
+    "halfSubmerged": true,
+    "phaseAlwaysPlay": true,
+    "maxObservedFrameDisplacement": 9.245486446422598
+  },
+  "tow": {
+    "fishIDs": [
+      19,
+      20,
+      21
+    ],
+    "tethers": 3,
+    "allBodiesAboveWater": true,
+    "fishStayBound": true,
+    "returnToShoreInput": "原生 Shift+W+A 强力划水，等同充分拖动触控方向"
+  },
+  "landResume": {
+    "position": {
+      "x": 5479.581456605963,
+      "y": 478.55093814357724
+    },
+    "o2": 119.59254710543381,
+    "fishIDs": [
+      19,
+      20,
+      21
+    ],
+    "elapsed": 19.08333333333353,
+    "offlineFrozen": true,
+    "stamina": {
+      "remaining": 0.42,
+      "exhausted": false
+    }
+  },
+  "waterResume": {
+    "position": {
+      "x": 6082.828144501145,
+      "y": 728.258652861929
+    },
+    "o2": 119.204249436644,
+    "fishIDs": [
+      19,
+      20,
+      21
+    ],
+    "elapsed": 27.249999999999734,
+    "offlineFrozen": true,
+    "stamina": {
+      "remaining": 1,
+      "exhausted": false
+    }
+  },
+  "air": {
+    "requiresPhysicalStation": true,
+    "gradualRefill": true
+  },
+  "inventory": "原生触控打开和关闭背包，仍在同一章节",
+  "handoff": {
+    "chapterResolved": true,
+    "worldStillPlayable": true,
+    "noLiquidation": true,
+    "fishTethersRetained": true
+  },
+  "orientation": "原生触控切屏，章节与实体保持不变",
+  "errors": [],
+  "status": "passed"
+}

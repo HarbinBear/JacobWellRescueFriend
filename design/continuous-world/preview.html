@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>林泉营地 · 岸水连续章节验收</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#e7e6d7;color:#3d5142;font:12px -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif}main{display:flex;align-items:center;justify-content:center;gap:32px;min-height:100svh;padding:30px}.phone{height:min(790px,calc(100svh - 60px));aspect-ratio:375/667;box-shadow:0 20px 70px #1b37202b;background:#183c39;border:1px solid #b7bea4;overflow:hidden;border-radius:9px}.phone.landscape{height:auto;width:min(1000px,calc(100vw - 360px));aspect-ratio:667/375;flex-shrink:0}canvas{display:block;width:100%;height:100%;touch-action:none}aside{width:244px;flex-shrink:0}small{font:9px monospace;letter-spacing:2px;color:#9e7047}h1{font-weight:500;font-size:29px;line-height:1.45;letter-spacing:-1px;margin:14px 0 18px}p{line-height:1.9;color:#79806a;margin:16px 0}.rule{border-left:2px solid #b5bea0;padding-left:14px}button{display:block;min-width:160px;font:inherit;padding:10px 13px;margin:9px 0;border:1px solid #aeb99c;background:#e3e4d2;color:#4e6249;border-radius:4px;cursor:pointer}button:hover{background:#d3dac2}button:focus-visible{outline:2px solid #947147;outline-offset:3px}.quiet{font-size:10px;color:#91947b}output{display:block;margin:18px 0;padding:12px 0;border-top:1px solid #bbc3a6;border-bottom:1px solid #bbc3a6;line-height:1.9;font:10px monospace;color:#66755d}a{color:#876b46;text-decoration:none}details{margin-top:18px;color:#7d846c}summary{cursor:pointer;font-size:11px}.hidden{display:none}@media(max-width:700px){main{display:block;padding:0}.phone{height:100svh;width:auto;max-width:100%;margin:auto;border-radius:0;border:0}.phone.landscape{height:auto;width:100%;aspect-ratio:667/375}aside{padding:24px;width:auto}h1{font-size:24px}}
+</style>
+</head>
+<body>
+<main>
+<div class="phone"><canvas id="game" aria-label="林泉营地游戏：拖动或WASD移动，直接沿浅滩入水，靠近营地实体交互"></canvas></div>
+<aside>
+<small>JACOB'S WELL / CONTINUOUS WORLD</small>
+<h1>岸上，也属于<br>这场冒险。</h1>
+<p class="rule">走进浅滩，浮起，下潜。<br>再拖着鱼，一步步走回营地。<br>同一张地图，同一根绳。</p>
+<p>拖动空白处或 WASD 移动。<br>携鱼时加大拖动幅度 / 按住 Shift。<br>靠近实体后点提示，或按 E 交互。<br>右侧保留原绳盘与动作盘。<br>左上图标可切换横竖屏。</p>
+<button id="overview">查看营地与泉井总览</button>
+<button id="save">保存并原位续接</button>
+<button id="menu">退出到主界面</button>
+<output id="phase" role="status">正在构建连续世界</output>
+<details><summary>验收布置</summary>
+<p class="quiet">下面是明确的测试布置，不是游戏里的传送或捕获按钮。</p>
+<button id="tow">布置三条腰绳牵引</button>
+<button id="medical">布置岸上救援交接</button>
+</details>
+<p class="quiet">第一验收点：连续地图、行走涉水、拖鱼与原位存档。<br>独立实验，未替换手机已跑通的版本。<br>交易、资源转化、联机与跨章节迁移不在本节点。</p>
+</aside>
+</main>
+<script>
+(()=>{
+window.GameGlobal=window;
+const canvas=document.getElementById('game'),handlers={},pointers=new Map(),lifecycle={};let first=true;
+const landscape=window.innerWidth>700;
+const metrics={windowWidth:landscape?667:375,windowHeight:landscape?375:667,pixelRatio:2};
+document.querySelector('.phone').classList.toggle('landscape',landscape);
+const windowListeners=[],orientationListeners=[];
+const audioStub=()=>{const events={};let audio=null;return new Proxy({play(){if(audio){audio.currentTime=0;audio.volume=this.volume;audio.play().catch(()=>{})}},pause(){audio?.pause()},stop(){if(audio){audio.pause();audio.currentTime=0}},seek(){},destroy(){audio?.pause()},loop:false,volume:0,src:''},{get(o,k){if(k in o)return o[k];if(String(k).startsWith('on'))return fn=>events[k]=fn;return undefined},set(o,k,v){o[k]=v;if(k==='src'){if(v.endsWith('rescue-bonk.wav'))audio=new Audio('__ROOT_PREFIX__'+v);queueMicrotask(()=>events.onCanplay?.());}return true}})};
+window.wx={
+createCanvas(){if(first){first=false;return canvas}return document.createElement('canvas')},
+getWindowInfo:()=>({...metrics}),onWindowResize:fn=>windowListeners.push(fn),onDeviceOrientationChange:fn=>orientationListeners.push(fn),
+setDeviceOrientation({value,success}){const landscape=value==='landscape';metrics.windowWidth=landscape?667:375;metrics.windowHeight=landscape?375:667;document.querySelector('.phone').classList.toggle('landscape',landscape);pointers.clear();windowListeners.forEach(fn=>fn({...metrics}));orientationListeners.forEach(fn=>fn({value}));success?.({errMsg:'setDeviceOrientation:ok'})},
+showToast:({title})=>{document.getElementById('phase').textContent=title},
+createWebAudioContext:()=>new(window.AudioContext||window.webkitAudioContext)(),createInnerAudioContext:audioStub,
+createImage:()=>{const img=new Image(),desc=Object.getOwnPropertyDescriptor(HTMLImageElement.prototype,'src');Object.defineProperty(img,'src',{get(){return desc.get.call(img)},set(value){desc.set.call(img,'__ROOT_PREFIX__'+value)}});return img},
+getStorageSync:key=>{try{return JSON.parse(localStorage.getItem('shore-world-review/'+key)||'null')||''}catch{return ''}},
+setStorageSync:(key,value)=>localStorage.setItem('shore-world-review/'+key,JSON.stringify(value)),removeStorageSync:key=>localStorage.removeItem('shore-world-review/'+key),
+onTouchStart:fn=>handlers.start=fn,onTouchMove:fn=>handlers.move=fn,onTouchEnd:fn=>handlers.end=fn,onTouchCancel:fn=>handlers.cancel=fn,
+onHide:fn=>{const prev=lifecycle.hide;lifecycle.hide=()=>{prev?.();fn()}},onShow:fn=>{const prev=lifecycle.show;lifecycle.show=()=>{prev?.();fn()}},setPreferredFramesPerSecond(){}
+};
+function touch(e){const r=canvas.getBoundingClientRect();return{identifier:e.pointerId,clientX:(e.clientX-r.left)*metrics.windowWidth/r.width,clientY:(e.clientY-r.top)*metrics.windowHeight/r.height}}
+for(const[event,kind]of[['pointerdown','start'],['pointermove','move'],['pointerup','end'],['pointercancel','cancel']])canvas.addEventListener(event,e=>{if(kind==='move'&&!pointers.has(e.pointerId))return;e.preventDefault();const t=touch(e);if(kind==='start'){canvas.setPointerCapture(e.pointerId);pointers.set(e.pointerId,t)}else if(kind==='move')pointers.set(e.pointerId,t);else pointers.delete(e.pointerId);handlers[kind]?.({touches:[...pointers.values()],changedTouches:[t]})});
+document.addEventListener('visibilitychange',()=>{if(document.hidden)lifecycle.hide?.();else lifecycle.show?.()});
+window.__ShoreLifecycle=lifecycle;
+})();
+</script>
+<script src="game-runtime.js"></script>
+<script>
+const g=DeepTapeGame,r=g.world.runtime;
+document.getElementById('overview').onclick=r.toggleOverview;
+document.getElementById('menu').onclick=g.menu;
+document.getElementById('tow').onclick=()=>r.setupTowReview(3);
+document.getElementById('medical').onclick=r.setupRescueReview;
+document.getElementById('save').onclick=()=>{if(g.world.save.saveWorldProgress())r.resumeContinuousWorld()};
+window.addEventListener('keydown',e=>{if(e.key.toLowerCase()==='e'){e.preventDefault();r.useNearestStation()}if(e.key==='Escape')r.closeWorldPanel();if(e.code==='Space')e.preventDefault()});
+setInterval(()=>{const w=g.world.geometry.world();document.getElementById('phase').textContent=g.state.screen==='menu'?'主界面 · 点击继续连续章节':w?`${w.headWet?'水下':w.landBlend>.7?'岸上 / 涉水':'水面'} · 本洞 ${w.chapterStatus==='rescued'?'救援已完成':'搜寻中'}\n氧气 ${g.player.o2.toFixed(1)} / ${g.player.o2Max} · 腰绳 ${g.state.rope.links.length}\n${w.saveOK?'自动保存已写入':'存档待写入'} · 离线不推进世界`:'正在加载';},200);
+</script>
+</body>
+</html>
