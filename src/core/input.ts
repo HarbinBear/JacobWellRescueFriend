@@ -5,7 +5,8 @@ import { unlockAdaptiveMusic } from '../audio/AdaptiveMusic';
 import { state, input, touches, player } from './state';
 import { createFishEnemy, findSafeSpawnPosition } from '../logic/FishEnemy';
 import { startActionGesture, moveActionGesture, finishActionGesture } from '../logic/ActionWheel';
-import { getActionControlPosition } from '../logic/InteractionLayout';
+import { getActionControlPosition, getSelfSockets } from '../logic/InteractionLayout';
+import { getPlayerRopeEnds } from '../logic/Rope';
 import { cancelInteraction, cancelInteractionInput } from '../logic/Interaction';
 import { isInteractionPlay } from '../logic/ActionTargets';
 import { DEBUG_FISH_BTN, ATTACK_BTN, FLASHLIGHT_BTN } from '../render/RenderUI';
@@ -13,7 +14,6 @@ import { isGMOpen, handleGMTouchStart, handleGMTouchMove, handleGMTouchEnd } fro
 import { handleHUDTouchStart, handleHUDTouchMove, handleHUDTouchEnd, cancelHUDTouches } from '../render/HUDTopLeft';
 import { getScreenOrientationButton } from '../render/RenderOrientation';
 import { toggleScreenOrientation } from './ScreenOrientation';
-import { getUILayout } from './UILayout';
 // BCD 浮力背心：右侧竖直 inflator 控件（充气钮 / 排气钮）
 import { getBCDInflateBtn, getBCDDeflateBtn, isBCDUIVisible } from '../render/RenderBCD';
 import { setBCDInflate, setBCDDeflate, releaseBCDControls } from '../logic/BCDSystem';
@@ -44,8 +44,8 @@ import {
     getDetailCardActionRect,
     listDetailCardActionIds,
     discardBagItemAtPlayer,
-    // 背包 HUD（胶囊态）
-    getInventoryHUDCapsuleRect,
+    // 背包 HUD 图标
+    getInventoryHUDButtonRect,
     openBagFullPage,
     isBagFullPageOpen,
     // 背包全屏页（拖拽与单击）
@@ -149,8 +149,16 @@ function consumeNextManualStrokeSide() {
 }
 
 function beginSwimTouch(id: number, x: number, y: number) {
-    // 右手区域只分配给操作按钮，空白处不再抢走左手的移动触点。
-    if (x > CONFIG.screenWidth * .52 || y < getUILayout().moveTop) return;
+    // 任意空白处均可起手；展开中的选择盘与腰扣仍独占自己的区域。
+    const action = state.interaction.gesture;
+    if (action || state.wheel.open) {
+        const cx = action ? action.centerX : state.wheel.centerX;
+        const cy = action ? action.centerY : state.wheel.centerY;
+        const radius = action ? CONFIG.fishInteraction.wheelRadius : CONFIG.marker.wheelOuterRadius;
+        const count = action ? getPlayerRopeEnds().length : state.rope.active ? 1 : 0;
+        if (Math.hypot(x - cx, y - cy) <= radius || getSelfSockets(cx, cy, radius, count)
+            .some(s => Math.hypot(x - s.x, y - s.y) <= s.radius)) return;
+    }
     if (state.fishBump.stunTimer > 0) return;
     if (state.interaction.task) cancelInteraction(true);
     if (CONFIG.driveMode === 'manual') {
@@ -396,11 +404,6 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
             exitCaveRockTrial();
             return;
         }
-        if ((state.wheel.open || state.interaction.gesture) && isInteractionPlay()) {
-            for (const t of res.changedTouches) beginSwimTouch(t.identifier, t.clientX, t.clientY);
-            return;
-        }
-
         // GM 面板优先消费触摸事件（面板本身或 HUD 栏的 GM 齿轮按钮）
         const gmTouch = res.touches[res.touches.length - 1];
         if (gmTouch && handleGMTouchStart(gmTouch.clientX, gmTouch.clientY)) {
@@ -454,15 +457,16 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
             return;
         }
 
-        // === 撤离玩法：水下点击背包胶囊 → 打开全屏背包页 ===
+        // === 撤离玩法：水下点击背包图标 → 打开全屏背包页 ===
         if (state.screen === 'mazeRescue' && state.mazeRescue && state.mazeRescue.phase === 'play') {
             const t = res.changedTouches[0] || res.touches[res.touches.length - 1];
             if (t) {
-                const cap = getInventoryHUDCapsuleRect();
+                const cap = getInventoryHUDButtonRect();
                 if (cap && t.clientX >= cap.x && t.clientX <= cap.x + cap.w &&
                     t.clientY >= cap.y && t.clientY <= cap.y + cap.h) {
                     playSFX('uiSecondary');
                     openBagFullPage();
+                    cancelInteractionInput();
                     // 立刻清空玩家移动输入，避免打开背包页时角色继续滑行
                     resetDriveInput();
                     bcdReleaseAll();
@@ -484,6 +488,11 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
 
         // GM 面板打开时拦截剩余所有游戏输入（HUD 栏已在上面优先处理完）
         if (isGMOpen()) return;
+
+        if ((state.wheel.open || state.interaction.gesture) && isInteractionPlay()) {
+            for (const t of res.changedTouches) beginSwimTouch(t.identifier, t.clientX, t.clientY);
+            return;
+        }
 
         // 家场景：touchStart 阶段记录起点（用于 touchmove 拖拽），不做点击逻辑
         if (state.screen === 'home_evening') {

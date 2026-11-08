@@ -72,7 +72,7 @@ assert(!app.orientation.isOrientationSwitchPending()); assert.equal(app.messages
 
 // Both orientations share the same layout source for drawing and touch bounds.
 app = boot(); const layout = app.load('core/UILayout'), interaction = app.load('logic/InteractionLayout');
-for (const [width, height] of [[320, 568], [393, 852], [667, 375], [852, 393], [1024, 768]]) {
+for (const [width, height] of [[320, 568], [393, 852], [568, 320], [667, 375], [852, 393], [1024, 768]]) {
     app.resize(width, height);
     const L = layout.getUILayout(), p = interaction.getRopeControlPosition(), a = interaction.getActionControlPosition();
     if (width > height) {
@@ -81,13 +81,19 @@ for (const [width, height] of [[320, 568], [393, 852], [667, 375], [852, 393], [
     } else {
         assert.equal(L.orientation.x, L.settings.x); assert.equal(L.tape.x, L.flashlight.x);
         assert.equal(L.tape.x, L.left + 22, 'Portrait keeps its edge-aligned vertical column');
+        assert.equal(L.bag.x, L.tape.x); assert.equal(L.bag.y - L.orientation.y, 44);
     }
     assert(L.stamina.width <= 72 && L.stamina.height === 3);
     assert(L.stamina.y <= L.top + 64);
     assert(Math.hypot(p.x - a.x, p.y - a.y) > L.rope.radius + a.radius + 10);
-    for (const b of [L.orientation, L.settings, L.tape, L.flashlight, L.retreat]) {
+    for (const b of [L.orientation, L.settings, L.tape, L.flashlight, L.retreat, L.bag]) {
         assert(b.x >= 22 && b.x + 22 < width && b.y - 22 >= 0 && b.y + 22 < height);
         if (width > height) assert(b.x + 22 < width - 110, 'No tool occupies the system capsule area');
+    }
+    if (width > height) {
+        const wrapped = L.bag.y > L.orientation.y;
+        assert.equal(L.bag.y, L.orientation.y + (wrapped ? 44 : 0));
+        assert.equal(L.bag.x, wrapped ? L.orientation.x : L.retreat.x + 44);
     }
     const center = interaction.getActionWheelCenter(); assert(center.y >= 68 && center.y + 68 <= height);
 }

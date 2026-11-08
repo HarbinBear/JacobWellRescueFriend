@@ -7,6 +7,7 @@ export function getUILayout(width = CONFIG.screenWidth, height = CONFIG.screenHe
     const top = CONFIG.uiSafeTop || 8, bottom = CONFIG.uiSafeBottom || 18;
     const rope = { x: width - right - 76, y: height - bottom - 76, radius: 26 };
     const action = { x: rope.x - 82, y: rope.y - 46, radius: 26 };
+    const wrapBag = landscape && left + 414 > width - 110;
     // 横屏贴顶横排；竖屏恢复贴左向下的独立竖列。
     const toolbar = landscape
         ? { orientation: { x: left + 172, y: top + 22 }, settings: { x: left + 216, y: top + 22 },
@@ -24,9 +25,8 @@ export function getUILayout(width = CONFIG.screenWidth, height = CONFIG.screenHe
         tape: { ...toolbar.tape, size: 32 },
         flashlight: { ...toolbar.flashlight, size: 28 },
         retreat: { ...toolbar.retreat, size: 26 },
-        bag: { x: left + (landscape ? 82 : 2), y: top + (landscape ? 50 : 348) },
-        trialExit: { x: left + (landscape ? 186 : 2), y: top + (landscape ? 50 : 384) },
-        moveTop: top + (landscape ? 84 : 128),
+        bag: { x: left + (landscape ? (wrapBag ? 172 : 392) : 22), y: top + (landscape ? (wrapBag ? 66 : 22) : 356), size: 28 },
+        trialExit: { x: left + (landscape ? (wrapBag ? 216 : 186) : 2), y: top + (landscape ? 50 : 384) },
     };
 }
 

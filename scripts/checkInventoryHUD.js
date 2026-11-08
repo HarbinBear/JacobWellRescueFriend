@@ -1,12 +1,10 @@
 // Regression: first pickup used to create a gradient at the deleted retreat-button coordinates.
 const assert = require('assert/strict'), fs = require('fs'), path = require('path'), ts = require('typescript');
 const root = path.resolve(__dirname, '../src'), cache = new Map();
-let gradientCount = 0;
 const texts = [];
 const ctx = new Proxy({}, { get: (_, key) => {
     if (key === 'createLinearGradient') return (...args) => {
         assert(args.every(Number.isFinite), 'Canvas gradient coordinates must be finite: ' + args);
-        gradientCount++;
         return { addColorStop() {} };
     };
     if (key === 'fillText') return (...args) => texts.push(args);
@@ -38,28 +36,28 @@ const ex = ensureExtractionState();
 ex.bag.maxSlots = 4; ex.bag.items = [null, null, null, null];
 ex.diveSession.pickedRelicIds = [];
 hud.drawInventoryHUD();
-assert.equal(gradientCount, 0, 'An empty bag does not create the fill gradient');
+assert(texts.some(call => call[0] === '0/4'));
 for (let id = 1; id <= 4; id++) {
     assert.equal(pickup.performPickup(id).ok, true, 'Use the real relic pickup path');
     assert.doesNotThrow(() => hud.drawInventoryHUD(), 'Drawing after pickup ' + id + ' must not crash');
-    const rect = hud.getInventoryHUDCapsuleRect();
+    const rect = hud.getInventoryHUDButtonRect();
     assert(rect && Object.values(rect).every(Number.isFinite));
     assert(texts.some(call => call[0] === id + '/4'));
 }
 assert.equal(pickup.performPickup(5).reason, 'bagFull');
-assert(gradientCount >= 4);
-for (const [w, h, bottom] of [[320, 568, 18], [375, 667, 18], [393, 852, 44], [768, 1024, 24]]) {
+for (const [w, h, bottom] of [[320, 568, 18], [375, 667, 18], [393, 852, 44], [768, 1024, 24], [568, 320, 12], [667, 375, 12]]) {
     CONFIG.screenWidth = w; CONFIG.screenHeight = h; CONFIG.uiSafeBottom = bottom;
     for (const mode of ['auto', 'manual', 'semiAuto']) {
         CONFIG.driveMode = mode;
         hud.drawInventoryHUD();
-        const r = hud.getInventoryHUDCapsuleRect();
+        const r = hud.getInventoryHUDButtonRect();
         assert(Object.values(r).every(Number.isFinite));
+        assert.equal(r.w, 44); assert.equal(r.h, 44);
         assert(r.x >= 0 && r.y >= CONFIG.uiSafeTop && r.x + r.w <= w && r.y + r.h <= h - bottom);
     }
 }
 hud.openBagFullPage(); assert(hud.isBagFullPageOpen());
 hud.closeBagFullPage(); assert(!hud.isBagFullPageOpen());
 state.mazeRescue.phase = 'shore'; hud.drawInventoryHUD();
-assert.equal(hud.getInventoryHUDCapsuleRect(), null);
-console.log('Passed: empty bag, real first/repeated pickups, full bag, finite gradient and hit-test bounds, small/notched screens, three drive modes and bag open/close.');
+assert.equal(hud.getInventoryHUDButtonRect(), null);
+console.log('Passed: empty bag, real first/repeated pickups, full bag, compact icon hit bounds in both orientations, three drive modes and bag open/close.');

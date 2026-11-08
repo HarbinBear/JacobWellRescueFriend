@@ -1,165 +1,59 @@
-// 下潜中的背包 HUD（折叠胶囊态）
-//
-// 设计：
-// - 折叠态：左下角胶囊小条 "🎒 背包 N/M"，为底部体力条留出空间
-//   - 占用空间小，不挡视野
-//   - 容量将满时变金色脉冲提示
-// - 展开态：全屏背包页（BagFullPage）—— 由本模块的 openBagFullPage() 进入
-//
-// 注意：原"右下角格子条"已废弃（被全屏页接管）
-//       格子点击/拖拽都在 BagFullPage 内做，HUD 这里不再处理格子 hit-test
-
-import { CONFIG } from '../../core/config';
 import { getUILayout } from '../../core/UILayout';
 import { state } from '../../core/state';
 import { ctx } from '../../render/Canvas';
-import { cutPanel, TAPE } from '../../render/TapeDeckVisual';
+import { TAPE } from '../../render/TapeDeckVisual';
 import { getBagOccupiedSlots } from '../logic/Inventory';
 import { ensureExtractionState } from '../core/ExtractionState';
 
-// 圆角矩形
-function rrect(c: any, x: number, y: number, w: number, h: number, r: number) {
-    r = Math.min(r, w / 2, h / 2);
-    c.moveTo(x + r, y);
-    c.lineTo(x + w - r, y);
-    c.arcTo(x + w, y, x + w, y + r, r);
-    c.lineTo(x + w, y + h - r);
-    c.arcTo(x + w, y + h, x + w - r, y + h, r);
-    c.lineTo(x + r, y + h);
-    c.arcTo(x, y + h, x, y + h - r, r);
-    c.lineTo(x, y + r);
-    c.arcTo(x, y, x + r, y, r);
-    c.closePath();
-}
-
-// =============================================
-// HUD 可见性
-// =============================================
-
 export function isInventoryHUDVisible(): boolean {
-    if (state.screen !== 'mazeRescue') return false;
-    const maze: any = state.mazeRescue;
-    if (!maze) return false;
-    return maze.phase === 'play';
+    return state.screen === 'mazeRescue' && state.mazeRescue?.phase === 'play';
 }
 
-// =============================================
-// 折叠态胶囊
-// =============================================
-
-const HUD_W = 96;   // 胶囊宽度
-const HUD_H = 28;   // 胶囊高度
-
-// hit-test 矩形（input.ts 用）
-let _hudCapsuleRect: { x: number; y: number; w: number; h: number } | null = null;
-
-export function getInventoryHUDCapsuleRect(): { x: number; y: number; w: number; h: number } | null {
-    return _hudCapsuleRect;
-}
-
-/** 背包收在左上工具行下方，不占移动区和右手技能区。 */
-function getCapsulePosition(cw: number, ch: number): { x: number; y: number } {
-    return getUILayout(cw, ch).bag;
+/** 小图标沿用工具栏 44px 点击区域，切屏后立即使用新布局。 */
+export function getInventoryHUDButtonRect() {
+    if (!isInventoryHUDVisible()) return null;
+    const { x, y } = getUILayout().bag;
+    return { x: x - 22, y: y - 22, w: 44, h: 44 };
 }
 
 export function drawInventoryHUD(): void {
-    _hudCapsuleRect = null;
     if (!isInventoryHUDVisible()) return;
-
-    const ex = ensureExtractionState();
-    const cw = CONFIG.screenWidth;
-    const ch = CONFIG.screenHeight;
-
-    const slotN = Math.max(1, ex.bag.maxSlots);
-    const used = getBagOccupiedSlots();
-    const fillRatio = Math.min(1, used / slotN);
-
-    const { x, y } = getCapsulePosition(cw, ch);
-
-    ctx.save();
-
-    // 容量脉冲（>= 80% 时金色脉冲）
-    let glowAlpha = 0;
-    if (fillRatio >= 0.8) {
-        glowAlpha = 0.3 + 0.4 * (0.5 + 0.5 * Math.sin(Date.now() / 200));
+    const ex = ensureExtractionState(), slotN = Math.max(1, ex.bag.maxSlots);
+    const used = getBagOccupiedSlots(), full = used >= slotN;
+    const { x, y } = getUILayout().bag;
+    ctx.save(); ctx.translate(x, y - 3);
+    ctx.lineWidth = 1.4; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    ctx.strokeStyle = full ? '#ffd48c' : TAPE.paper;
+    if (used / slotN >= .8) {
+        ctx.shadowColor = '#ffc864'; ctx.shadowBlur = 3 + 2 * Math.sin(Date.now() / 200);
     }
-
-    // 背景胶囊
-    if (glowAlpha > 0) {
-        // 金色辉光圈
-        ctx.fillStyle = `rgba(255, 200, 100, ${glowAlpha * 0.4})`;
-        ctx.beginPath();
-        rrect(ctx, x - 3, y - 3, HUD_W + 6, HUD_H + 6, (HUD_H + 6) / 2);
-        ctx.fill();
-    }
-    ctx.fillStyle = 'rgba(16,30,38,0.88)';
-    ctx.beginPath();
-    cutPanel(ctx, x, y, HUD_W, HUD_H, 6);
-    ctx.fill();
-
-    // 描边（容量越满颜色越暖）
-    let strokeColor = TAPE.muted;
-    if (used >= slotN) strokeColor = 'rgba(255, 200, 100, 0.95)';
-    else if (fillRatio >= 0.75) strokeColor = 'rgba(220, 200, 130, 0.7)';
-    ctx.strokeStyle = strokeColor;
-    ctx.lineWidth = 1.4;
-    ctx.beginPath();
-    cutPanel(ctx, x, y, HUD_W, HUD_H, 6);
-    ctx.stroke();
-
-    // 内部填充进度条（背景层）
-    const innerPad = 4;
-    const fillW = (HUD_W - innerPad * 2) * fillRatio;
-    if (fillW > 0) {
-        const grad = ctx.createLinearGradient(x, y, x + HUD_W, y);
-        if (used >= slotN) {
-            grad.addColorStop(0, 'rgba(255, 180, 70, 0.35)');
-            grad.addColorStop(1, 'rgba(255, 200, 100, 0.45)');
-        } else {
-            grad.addColorStop(0, 'rgba(129,227,206,0.18)');
-            grad.addColorStop(1, 'rgba(129,227,206,0.3)');
-        }
-        ctx.fillStyle = grad;
-        ctx.beginPath();
-        rrect(ctx, x + innerPad, y + innerPad, fillW, HUD_H - innerPad * 2, (HUD_H - innerPad * 2) / 2);
-        ctx.fill();
-    }
-
-    // 文字 "🎒 N / M"
-    const textColor = used >= slotN ? 'rgba(255, 230, 160, 0.98)' : TAPE.paper;
-    ctx.fillStyle = textColor;
-    ctx.font = 'bold 12px "PingFang SC", Arial';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('🎒', x + 10, y + HUD_H / 2);
-    ctx.font = 'bold 13px "PingFang SC", Arial';
-    ctx.fillText('背包', x + 30, y + HUD_H / 2);
-    ctx.textAlign = 'right';
-    ctx.font = 'bold 12px Arial';
-    ctx.fillText(used + '/' + slotN, x + HUD_W - 10, y + HUD_H / 2);
-
-    ctx.textAlign = 'start';
-    ctx.textBaseline = 'alphabetic';
+    // 提手、肩带和包身构成图标本身，不添加外框或底板。
+    ctx.beginPath(); ctx.moveTo(-4, -10); ctx.lineTo(-4, -14); ctx.lineTo(4, -14); ctx.lineTo(4, -10); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-10, -6); ctx.quadraticCurveTo(-16, -7, -14, 9);
+    ctx.moveTo(10, -6); ctx.quadraticCurveTo(16, -7, 14, 9); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-11, 9); ctx.lineTo(-11, -3);
+    ctx.quadraticCurveTo(-11, -11, 0, -11); ctx.quadraticCurveTo(11, -11, 11, -3);
+    ctx.lineTo(11, 9); ctx.quadraticCurveTo(11, 12, 8, 12); ctx.lineTo(-8, 12);
+    ctx.quadraticCurveTo(-11, 12, -11, 9); ctx.closePath();
+    ctx.fillStyle = full ? '#b58b4f' : '#b77d61'; ctx.fill(); ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.beginPath(); ctx.moveTo(-7, 2); ctx.lineTo(7, 2); ctx.lineTo(7, 8); ctx.lineTo(-7, 8); ctx.closePath();
+    ctx.fillStyle = '#654b3d'; ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-4, -5); ctx.lineTo(4, -5); ctx.stroke();
+    ctx.fillStyle = full ? '#ffdb98' : TAPE.paper;
+    ctx.font = '9px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(used + '/' + slotN, 0, 21);
     ctx.restore();
-
-    _hudCapsuleRect = { x, y, w: HUD_W, h: HUD_H };
 }
 
-// =============================================
-// 进入全屏背包页
-// =============================================
-
 export function openBagFullPage(): void {
-    const ex = ensureExtractionState() as any;
-    ex.bagPageOpen = true;
+    (ensureExtractionState() as any).bagPageOpen = true;
 }
 
 export function closeBagFullPage(): void {
-    const ex = ensureExtractionState() as any;
-    ex.bagPageOpen = false;
+    (ensureExtractionState() as any).bagPageOpen = false;
 }
 
 export function isBagFullPageOpen(): boolean {
-    const ex = ensureExtractionState() as any;
-    return !!ex.bagPageOpen;
+    return !!(ensureExtractionState() as any).bagPageOpen;
 }

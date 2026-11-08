@@ -148,11 +148,11 @@ export {
     getShopSlotHitTests,
 } from './extraction/render/ShopUI';
 
-// 背包 HUD（折叠胶囊）
+// 背包 HUD 图标
 export {
     drawInventoryHUD,
     isInventoryHUDVisible,
-    getInventoryHUDCapsuleRect,
+    getInventoryHUDButtonRect,
     openBagFullPage,
     closeBagFullPage,
     isBagFullPageOpen,
