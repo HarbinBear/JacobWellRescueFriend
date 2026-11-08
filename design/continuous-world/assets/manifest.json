@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "banks": [
     {
       "file": "bank-left.png",
@@ -45,6 +45,42 @@
   },
   "background": "woodland.jpg",
   "source": "Shared layout.json plus independent distant woodland painting; generated master is not a runtime texture.",
-  "runtimeBytes": 2599755,
-  "decodedRGBABytes": 12317256
+  "runtimeBytes": 1228750,
+  "decodedRGBABytes": 10986824,
+  "materials": {
+    "color": "limestone-color.jpg",
+    "normal": "limestone-normal.png",
+    "woodland": "woodland-native.jpg"
+  },
+  "materialRGBABytes": 9469952,
+  "runtimeAssets": [
+    "woodland-native.jpg",
+    "woodland-sky-strip.png",
+    "limestone-color.jpg",
+    "limestone-normal.png",
+    "shop.png",
+    "tent.png",
+    "board.png",
+    "air.png",
+    "fish.png",
+    "diver-head.png",
+    "diver-torso.png",
+    "diver-upperarm.png",
+    "diver-forearm.png",
+    "diver-hand.png",
+    "diver-thigh.png",
+    "diver-calf.png",
+    "diver-tank.png",
+    "diver-fin.png"
+  ],
+  "sourcesNotRuntime": [
+    "woodland-master.png",
+    "limestone-material-master.png"
+  ],
+  "retainedFallbackAssets": [
+    "bank-left.png",
+    "bank-right.png",
+    "woodland.jpg",
+    "rock-grain.jpg"
+  ]
 }

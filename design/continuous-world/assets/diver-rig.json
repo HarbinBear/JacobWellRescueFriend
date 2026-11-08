@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "bodyHeightWorld": 83,
+  "parts": {
+    "head": {
+      "file": "diver-head.png",
+      "width": 38,
+      "height": 46,
+      "scale": 4
+    },
+    "torso": {
+      "file": "diver-torso.png",
+      "width": 46,
+      "height": 56,
+      "scale": 4
+    },
+    "upperarm": {
+      "file": "diver-upperarm.png",
+      "width": 18,
+      "height": 35,
+      "scale": 4
+    },
+    "forearm": {
+      "file": "diver-forearm.png",
+      "width": 16,
+      "height": 33,
+      "scale": 4
+    },
+    "hand": {
+      "file": "diver-hand.png",
+      "width": 14,
+      "height": 17,
+      "scale": 4
+    },
+    "thigh": {
+      "file": "diver-thigh.png",
+      "width": 22,
+      "height": 37,
+      "scale": 4
+    },
+    "calf": {
+      "file": "diver-calf.png",
+      "width": 18,
+      "height": 36,
+      "scale": 4
+    },
+    "tank": {
+      "file": "diver-tank.png",
+      "width": 29,
+      "height": 52,
+      "scale": 4
+    },
+    "fin": {
+      "file": "diver-fin.png",
+      "width": 54,
+      "height": 20,
+      "scale": 4
+    }
+  },
+  "production": "Single layered humanoid asset rig, authored limb motion, fins keep physical size until explicitly unequipped."
+}

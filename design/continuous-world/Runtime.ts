@@ -1,4 +1,6 @@
 import { CONFIG } from '../../src/core/config';
+import { fishKnotPoint } from '../../src/logic/FishGeometry';
+import { terrainNearest, terrainSample } from './ContourTerrain';
 import { state, player, input, createFishBumpState } from '../../src/core/state';
 import { resetDriveInput } from '../../src/logic/DriveMode';
 import { processJoystickDrive } from '../../src/logic/JoystickDrive';
@@ -31,6 +33,13 @@ let lastFrame = 0, accumulated = 0, nextSave = 0, lifecycleBound = false;
 export function shouldEnterWorld(rockTrial = false) { return !rockTrial && !booting; }
 export function isBootingWorld() { return booting; }
 export function previewSeed() { return pending?.seed ?? 26110941; }
+function settleInitialPoint(body:any,radius:number){
+    if(!circleCollision(body.x,body.y,radius))return;const m:any=state.mazeRescue,ts=m.mazeTileSize,r=Math.floor(body.y/ts),c=Math.floor(body.x/ts);let best:any=null;
+    const consider=(rr:number,cc:number)=>{const x=(cc+.5)*ts,y=(rr+.5)*ts;if(rr<0||cc<0||rr>=m.mazeRows||cc>=m.mazeCols||m.mazeMap[rr]?.[cc]!==0||y<(world()?.surfaceY||0)+radius||circleCollision(x,y,radius))return;const d=Math.hypot(x-body.x,y-body.y);if(!best||d<best.d)best={x,y,d};};
+    for(let dy=-3;dy<=3;dy++)for(let dx=-3;dx<=3;dx++)consider(r+dy,c+dx);
+    if(!best)for(let rr=0;rr<m.mazeRows;rr++)for(let cc=0;cc<m.mazeCols;cc++)consider(rr,cc);
+    if(best){body.x=best.x;body.y=best.y;if('vx' in body)body.vx=body.vy=0;}
+}
 export function enterContinuousWorld(originalBootstrap: () => void) {
     pending = readWorldSnapshot(); bootstrap = originalBootstrap; booting = true;
     try {
@@ -43,6 +52,8 @@ export function enterContinuousWorld(originalBootstrap: () => void) {
             const f: any = createFishEnemy(w.originX+dx,w.surfaceY+dy,w.originX+dx,w.surfaceY+dy,110,kind);
             f.worldId=w.nextFishId++;f.vx=f.vy=0;state.fishEnemies.push(f);
         }
+        for(const f of state.fishEnemies)settleInitialPoint(f,CONFIG.fishEnemy.size*(f.kind==='shoal'?.18:f.kind==='rammer'?.48:f.kind==='provoked'?.64:.38));
+        for(const t of m.oxygenTanks||[])settleInitialPoint(t,16);for(const relic of m.relics||[])settleInitialPoint(relic,8);
         state.fishBump=createFishBumpState();resetInteractions();resetDriveInput();releaseBCDControls();resetBreathSystem();
         if (pending) restoreWorld(pending);
         else { player.x=w.originX+layout.spawn[0];player.y=groundAt(player.x)-layout.footReach;player.vx=player.vy=0;player.angle=player.targetAngle=-Math.PI/2; resetBCDSystem(); }
@@ -67,10 +78,12 @@ export function closeWorldPanel() {const w=world();if(w)w.panel=null;resetDriveI
 
 function movePlayer() {
     const w=world()!, from={x:player.x,y:player.y}, supportTarget=landAmount(player.x);
-    const nearGround=Number.isFinite(groundAt(player.x))&&groundAt(player.x)-player.y<90;
+    const groundGap=groundAt(player.x)-player.y;
+    const nearGround=Number.isFinite(groundGap)&&groundGap>=0&&groundGap<90;
     const slope=slopeAt(player.x);
     let foot=Math.max(layout.footReach*supportTarget+20*(1-supportTarget),18*Math.sqrt(1+slope*slope)+1.5);
-    const land=w.grounded&&supportTarget>.10 || nearGround&&supportTarget>.65&&groundAt(player.x)-player.y-foot<10;
+    const contactGap=groundGap-foot;
+    const land=nearGround&&Math.abs(contactGap)<=10&&(w.grounded&&supportTarget>.10||supportTarget>.65)&&!circleCollision(player.x,player.y,16);
     if(w.panel||player.o2<=0&&w.headWet){input.move=0;input.speedUp=false;player.vx*=.6;}
     const work=updateInteractionMovement();
     if(land) {
@@ -84,7 +97,7 @@ function movePlayer() {
         }
         const nextX=player.x+player.vx, nextGround=groundAt(nextX), oldGround=groundAt(player.x);
         const rise=oldGround-nextGround;
-        if(Number.isFinite(nextGround)&&rise<=Math.abs(player.vx)*1.7+4&&!circleCollision(nextX,nextGround-foot,Math.min(18,foot-2))) {
+        if(Number.isFinite(nextGround)&&Math.abs(nextGround-foot-player.y)<=Math.abs(player.vx)*1.7+6&&rise<=Math.abs(player.vx)*1.7+4&&!circleCollision(nextX,nextGround-foot,Math.min(18,foot-2))) {
             player.x=nextX;player.y=nextGround-foot;player.vy=0;w.grounded=true;
         } else {sweptMove(player,18);w.grounded=bankSupport(player,foot,true);}
     } else {
@@ -118,6 +131,13 @@ function movePlayer() {
         w.events.push({x:player.x,y:groundAt(player.x),age:0,strength:.2,kind:groundAt(player.x)>w.surfaceY?'stepWater':'step'});
     }
 }
+function clearFishKnot(fish:FishEnemy,radius:number){
+    const t=world()?.terrain;if(!t||!fish.bound)return;const knot=fishKnotPoint(fish),near=terrainNearest(t,knot.x,knot.y,32);if(near.dist>=2.5)return;
+    let nx=terrainSample(t,near.x+2,near.y)-terrainSample(t,near.x-2,near.y),ny=terrainSample(t,near.x,near.y+2)-terrainSample(t,near.x,near.y-2),length=Math.hypot(nx,ny);
+    if(length<.001){nx=(knot.x-near.x)*(near.dist<0?-1:1);ny=(knot.y-near.y)*(near.dist<0?-1:1);length=Math.hypot(nx,ny)||1;}nx/=length;ny/=length;
+    const correction=Math.min(2.5,2.5-near.dist),x=fish.x+nx*correction,y=fish.y+ny*correction;
+    if(!circleCollision(x,y,radius)){fish.x=x;fish.y=y;const into=fish.vx*nx+fish.vy*ny;if(into<0){fish.vx-=nx*into;fish.vy-=ny*into;}}
+}
 export function moveContinuousFish(fish:FishEnemy,effort={x:fish.vx,y:fish.vy}) {
     const w=world()!, f:any=fish, from={x:f.x,y:f.y};
     const work=state.interaction.task;
@@ -127,10 +147,13 @@ export function moveContinuousFish(fish:FishEnemy,effort={x:fish.vx,y:fish.vy}) 
     const wet=bodyWet(f.y,radius), grounded=!!f.shoreGrounded;
     f.vy+=.32*(1-wet);if(wet<.2){f.vx*=grounded?.84:.985;f.vy*=.98;}
     const nextX=f.x+f.vx, floor=groundAt(nextX),slope=slopeAt(nextX);
-    const support=Math.max(radius+.8,radius*.85*Math.sqrt(1+slope*slope)+1.5);
-    if(grounded&&Number.isFinite(floor)&&Math.abs(floor-support-f.y)<Math.abs(f.vx)*1.8+7&&!circleCollision(nextX,floor-support,radius*.85)) {
-        f.x=nextX;f.y=floor-support;f.vy=Math.min(0,f.vy);f.shoreGrounded=true;
-    } else {sweptMove(f,radius*.85);f.shoreGrounded=bankSupport(f,support);}
+    const knot=fishKnotPoint(fish),knotSupport=fish.bound?(knot.y-fish.y)-slope*(knot.x-fish.x)+2.5*Math.sqrt(1+slope*slope)+1:0;
+    const support=Math.max(radius+.8,radius*Math.sqrt(1+slope*slope)+1.5,knotSupport);
+    const lifting=(slope*f.vx-f.vy)/Math.sqrt(1+slope*slope)>.22;
+    if(grounded&&!lifting&&Number.isFinite(floor)&&Math.abs(floor-support-f.y)<Math.abs(f.vx)*1.8+7&&!circleCollision(nextX,floor-support,radius)) {
+        const oldY=f.y;f.x=nextX;f.y=floor-support;f.vy=f.y-oldY;f.shoreGrounded=true;
+    } else {sweptMove(f,radius);f.shoreGrounded=!lifting&&bankSupport(f,support);}
+    clearFishKnot(fish,radius);
     if(!f.bound&&f.y<w.surfaceY+radius){f.y=w.surfaceY+radius;f.vy=Math.max(.12,f.vy);f.shoreGrounded=false;}
     return f.netGraceFrames>0?null:resolveWovenRopeContact(f,from,radius,effort,(x,y)=>!circleCollision(x,y,radius));
 }
@@ -145,14 +168,14 @@ export function stepAirFish(fish:FishEnemy):boolean {
 function cameraStep() {
     const w:any=world()!, c=state.camera;
     const overview=!!w.overview;
-    c.targetZoom=overview?Math.min(CONFIG.screenWidth/(layout.maxX-layout.minX+160),CONFIG.screenHeight/1080):(CONFIG.screenWidth>CONFIG.screenHeight?.9:.96);
+    c.targetZoom=overview?Math.min(CONFIG.screenWidth/(layout.maxX-layout.minX+160),CONFIG.screenHeight/1080):(CONFIG.screenWidth>CONFIG.screenHeight?.76:.82);
     c.zoom+=(c.targetZoom-c.zoom)*.08;
     c.targetX=overview?w.originX+(layout.minX+layout.maxX)/2:player.x+Math.cos(input.targetAngle)*input.move*58;
-    c.targetY=overview?650:player.y+30*w.landBlend;
+    c.targetY=overview?690:player.y+(CONFIG.screenHeight>CONFIG.screenWidth?20:-64)*w.landBlend;
     c.x+=(c.targetX-c.x)*.105;c.y+=(c.targetY-c.y)*.085;
     c.swayTime+=1/60;c.swayX=Math.sin(c.swayTime*.63)*w.wet*.8;c.swayY=Math.sin(c.swayTime*.81)*w.wet*.6;
 }
-function tickWorld() {
+export function tickWorld() {
     const m:any=state.mazeRescue,w=world()!;w.elapsed+=1/60;
     const wasHeadWet=w.headWet,oldWet=w.wet;
     state.fx.shake*=.84;state.fx.redOverlay*=.96;

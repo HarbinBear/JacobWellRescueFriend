@@ -1,0 +1,104 @@
+{
+  "scope": "真实当前游戏模块 + 独立连续章节接入；独立浏览器与原生输入。不是微信真机性能验收。",
+  "graphics": {
+    "webgl": true,
+    "pixelSize": {
+      "w": 1000,
+      "h": 562
+    },
+    "materialDecodedRGBABytes": 9469952,
+    "sceneDecodedRGBABytes": 10634568,
+    "terrain": {
+      "webgl": true,
+      "failed": false,
+      "revision": 1,
+      "draws": 29,
+      "lostCount": 0,
+      "textureCount": 4,
+      "fieldBytes": 1028196,
+      "roots": 18,
+      "edges": 7116,
+      "generationMs": 166
+    }
+  },
+  "geometry": {
+    "samples": 1600,
+    "failures": [],
+    "allContourWalls": true
+  },
+  "connectivity": {
+    "reachable": true,
+    "reachableCells": 2131,
+    "npc": {
+      "x": 8460,
+      "y": 10260
+    }
+  },
+  "movement": {
+    "samples": 772,
+    "halfSubmerged": true,
+    "phaseAlwaysPlay": true,
+    "maxObservedFrameDisplacement": 2.8775137807226647
+  },
+  "tow": {
+    "fishIDs": [
+      21,
+      22,
+      23
+    ],
+    "tethers": 3,
+    "allBodiesAboveWater": true,
+    "fishStayBound": true,
+    "returnToShoreInput": "原生 Shift+W+A 强力划水，等同充分拖动触控方向"
+  },
+  "landResume": {
+    "position": {
+      "x": 5477.507204806911,
+      "y": 478.5118223745478
+    },
+    "o2": 119.19474354119869,
+    "fishIDs": [
+      21,
+      22,
+      23
+    ],
+    "elapsed": 19.40000000000018,
+    "offlineFrozen": true,
+    "stamina": {
+      "remaining": 0.42,
+      "exhausted": false
+    }
+  },
+  "waterResume": {
+    "position": {
+      "x": 6087.620608753177,
+      "y": 695.5034710138062
+    },
+    "o2": 118.77433112582051,
+    "fishIDs": [
+      21,
+      22,
+      23
+    ],
+    "elapsed": 26.983333333333082,
+    "offlineFrozen": true,
+    "stamina": {
+      "remaining": 1,
+      "exhausted": false
+    }
+  },
+  "air": {
+    "requiresPhysicalStation": true,
+    "gradualRefill": true
+  },
+  "inventory": "原生触控打开和关闭背包，仍在同一章节",
+  "handoff": {
+    "chapterResolved": true,
+    "worldStillPlayable": true,
+    "noLiquidation": true,
+    "fishTethersRetained": true
+  },
+  "orientation": "原生触控切屏，章节与实体保持不变",
+  "errors": [],
+  "status": "passed"
+}

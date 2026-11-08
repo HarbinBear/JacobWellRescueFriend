@@ -15,6 +15,8 @@ function build(ref=null){
  const integrationModule={exports:{}};
  new Function('module','exports','require',read(DESIGN+'/Integration.cjs'))(integrationModule,integrationModule.exports,require);
  const {integrate}=integrationModule.exports;
+ const contourModule={exports:{}};let applyContour=(id,source)=>source;
+ if(ref?tracked.has(DESIGN+'/ContourIntegration.cjs'):fs.existsSync(path.join(ROOT,DESIGN,'ContourIntegration.cjs'))){new Function('module','exports','require',read(DESIGN+'/ContourIntegration.cjs'))(contourModule,contourModule.exports,require);applyContour=contourModule.exports.integrateContour;}
  const files=ref?tree.filter(f=>f==='game.ts'||f.startsWith('src/')&&f.endsWith('.ts')||f.startsWith('typings/')&&f.endsWith('.ts')||f.startsWith(DESIGN+'/')&&f.endsWith('.ts')&&!f.slice(DESIGN.length+1).includes('/')):
   ['game.ts',...walk(path.join(ROOT,'src')),...walk(path.join(ROOT,'typings')),...fs.readdirSync(path.join(ROOT,DESIGN)).filter(f=>f.endsWith('.ts')).map(f=>DESIGN+'/'+f)];
  const rawSources=new Map(files.map(f=>[f,read(f)]));
@@ -23,7 +25,7 @@ function build(ref=null){
  // memory. Never borrow a current generated shader for a historical version.
  for(const f of shaders){const name=path.basename(f,'.glsl').replace(/([a-z])([A-Z])/g,'$1_$2').toUpperCase()+'_SRC',body=read(f).replaceAll('`','\\`').replaceAll('${','\\${');rawSources.set(f+'.ts','export const '+name+' = `\n'+body+'`;\n');}
  const jsonFiles=[DESIGN+'/layout.json',DESIGN+'/assets/manifest.json'];
- const sources=new Map([...rawSources].map(([f,s])=>[path.join(ROOT,f),f.startsWith('typings/')?s:integrate('/'+f.slice(0,-3),s)]));
+ const sources=new Map([...rawSources].map(([f,s])=>[path.join(ROOT,f),f.startsWith('typings/')?s:applyContour('/'+f.slice(0,-3),integrate('/'+f.slice(0,-3),s))]));
  const virtual=new Map(sources);for(const f of jsonFiles)virtual.set(path.join(ROOT,f),read(f));
  const options={target:ts.ScriptTarget.ES2016,module:ts.ModuleKind.CommonJS,moduleResolution:ts.ModuleResolutionKind.NodeJs,noEmit:true,skipLibCheck:true,strict:false,esModuleInterop:true,resolveJsonModule:true,lib:['lib.es2016.d.ts','lib.dom.d.ts']};
  const host=ts.createCompilerHost(options),baseRead=host.readFile.bind(host),baseExists=host.fileExists.bind(host);
@@ -38,7 +40,7 @@ function build(ref=null){
  const {CONFIG}=load('/src/core/config');CONFIG.audio.cloud.enabled=false;
  load('/game');
  const core=load('/src/core/state'),runtime=load('/design/continuous-world/Runtime'),geometry=load('/design/continuous-world/Geometry'),save=load('/design/continuous-world/WorldSave'),render=load('/design/continuous-world/RenderWorld'),hud=load('/design/continuous-world/WorldHUD');
- window.DeepTapeGame={...core,music:load('/src/audio/AdaptiveMusic'),world:{runtime,geometry,save,render,hud,layout:geometry.layout},cave:{config:CONFIG,collision:load('/src/logic/Collision').checkMazeCollision,geometry:load('/src/world/RockGeometry')},ui:{inventory:load('/src/extraction/render/InventoryHUD'),bagPage:load('/src/extraction/render/BagFullPage'),layout:load('/src/core/UILayout').getUILayout,orientation:load('/src/render/RenderOrientation').getScreenOrientationButton,bcdRuntime:load('/src/logic/BCDSystem').getBCDRuntime,decoRuntime:load('/src/logic/DecompressionSystem').getDecoRuntime},interactions:{rope:load('/src/logic/Rope'),wheel:load('/src/logic/RopeWheel'),targets:load('/src/logic/ActionTargets'),work:load('/src/logic/Interaction'),fishGeometry:load('/src/logic/FishGeometry'),layout:load('/src/logic/InteractionLayout')},menu:runtime.exitContinuousWorld,start:()=>load('/src/logic/MazeLogic').resetMazeLogic()};
+ window.DeepTapeGame={...core,music:load('/src/audio/AdaptiveMusic'),world:{runtime,geometry,save,render,hud,layout:geometry.layout,queries:factories['/design/continuous-world/TerrainQueries']?load('/design/continuous-world/TerrainQueries'):null,contours:factories['/design/continuous-world/ContourTerrain']?load('/design/continuous-world/ContourTerrain'):null,surface:factories['/design/continuous-world/TerrainSurface']?load('/design/continuous-world/TerrainSurface'):null,diver:factories['/design/continuous-world/ExpeditionDiver']?load('/design/continuous-world/ExpeditionDiver'):null},cave:{config:CONFIG,collision:load('/src/logic/Collision').checkMazeCollision,geometry:load('/src/world/RockGeometry')},ui:{inventory:load('/src/extraction/render/InventoryHUD'),bagPage:load('/src/extraction/render/BagFullPage'),layout:load('/src/core/UILayout').getUILayout,orientation:load('/src/render/RenderOrientation').getScreenOrientationButton,bcdRuntime:load('/src/logic/BCDSystem').getBCDRuntime,decoRuntime:load('/src/logic/DecompressionSystem').getDecoRuntime},interactions:{rope:load('/src/logic/Rope'),wheel:load('/src/logic/RopeWheel'),targets:load('/src/logic/ActionTargets'),work:load('/src/logic/Interaction'),fishGeometry:load('/src/logic/FishGeometry'),layout:load('/src/logic/InteractionLayout')},menu:runtime.exitContinuousWorld,start:()=>load('/src/logic/MazeLogic').resetMazeLogic()};
  window.DeepTapeGame.start();
  })();`;
  new Function(bundle);

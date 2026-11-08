@@ -1,9 +1,11 @@
 import assetManifest from './assets/manifest.json';
+import { drawTerrainSurface, terrainSurfaceStats, releaseTerrainSurface } from './TerrainSurface';
 import { CONFIG } from '../../src/core/config';
 import { state, player, particles } from '../../src/core/state';
 import { canvas,ctx,dpr,logicW,logicH } from '../../src/render/Canvas';
 import { registerImage,getImage,isImageReady,releaseImages } from '../../src/render/ImageAssets';
 import { drawDiver } from '../../src/render/RenderDiver';
+import { drawExpeditionDiver, ensureExpeditionDiver, releaseExpeditionDiver, expeditionDiverReady, expeditionImageBytes } from './ExpeditionDiver';
 import { drawAllFishEnemies, drawFishBiteEffect, drawFishThreatDirection } from '../../src/render/RenderFishEnemy';
 import { drawBagFullPage } from '../../src/extraction/render/BagFullPage';
 import { drawItemDetailCard } from '../../src/extraction/render/ItemDetailCard';
@@ -28,14 +30,16 @@ import { activeWorld,world,layout,groundAt,stationPosition,clamp,smooth } from '
 import { drawWorldHUD } from './WorldHUD';
 
 const assetRoot='design/continuous-world/assets/';
-const ASSETS=['woodland.jpg','bank-left.png','bank-right.png','shop.png','tent.png','board.png','air.png','fish.png','rock-grain.jpg'];
+const ASSETS=['woodland-native.jpg','woodland-sky-strip.png','limestone-color.jpg','limestone-normal.png','shop.png','tent.png','board.png','air.png','fish.png'];
 let registered=false;
+let backdropProjection:any=null;
+export function backdropProjectionStats(){return backdropProjection;}
 export function updateWorldAssets(){
-    if(activeWorld()&&!registered){registered=true;ASSETS.forEach(f=>registerImage('shore/'+f,assetRoot+f));}
-    else if(!activeWorld()&&registered){releaseImages(ASSETS.map(f=>'shore/'+f));registered=false;}
+    if(activeWorld()&&!registered){registered=true;ensureExpeditionDiver();ASSETS.forEach(f=>registerImage('shore/'+f,assetRoot+f));}
+    else if(!activeWorld()&&registered){releaseTerrainSurface();releaseExpeditionDiver();releaseImages(ASSETS.map(f=>'shore/'+f));registered=false;}
 }
-export function assetsReady(){return ASSETS.every(f=>isImageReady('shore/'+f));}
-export function worldGraphicsStats(){return {webgl:isWebGLAvailable(),pixelSize:getGLCanvasPixelSize(),sceneDecodedRGBABytes:assetManifest.decodedRGBABytes};}
+export function assetsReady(){return ASSETS.every(f=>isImageReady('shore/'+f))&&expeditionDiverReady();}
+export function worldGraphicsStats(){const imageBytes=ASSETS.reduce((n,f)=>{const im=getImage('shore/'+f);return n+(im?im.width*im.height*4:0);},0)+expeditionImageBytes();return {webgl:isWebGLAvailable(),pixelSize:getGLCanvasPixelSize(),materialDecodedRGBABytes:assetManifest.materialRGBABytes,sceneDecodedRGBABytes:imageBytes,terrain:terrainSurfaceStats()};}
 function transform(){const c=state.camera;ctx.translate(logicW/2,logicH/2);ctx.scale(c.zoom,c.zoom);ctx.translate(-c.x-c.swayX,-c.y-c.swayY);}
 function gradient(y1:number,y2:number,stops:[number,string][]) {const g=ctx.createLinearGradient(0,y1,0,y2);for(const [t,c]of stops)g.addColorStop(t,c);return g;}
 function visible(x:number,y:number,w:number,h:number,v:any){return x+w>v.l&&x<v.r&&y+h>v.t&&y<v.b;}
@@ -50,11 +54,16 @@ function leafCluster(x:number,y:number,scale:number,phase:number) {
 }
 function drawBackdrop(v:any) {
     const w=world()!;
-    ctx.fillStyle=gradient(v.t,w.surfaceY,[[0,'#dce3c7'],[.7,'#eff0d2'],[1,'#c2d0ad']]);ctx.fillRect(v.l,v.t,v.r-v.l,Math.max(0,w.surfaceY-v.t));
-    const bg=getImage('shore/woodland.jpg');
-    if(bg){ctx.save();ctx.beginPath();ctx.rect(v.l,v.t,v.r-v.l,Math.max(0,w.surfaceY-v.t));ctx.clip();
-        const bw=Math.max(3300,v.r-v.l+540),bh=bw*bg.height/bg.width,px=state.camera.x+(w.originX-state.camera.x)*.20-bw/2;
-        ctx.drawImage(bg,px,w.surfaceY-1060,bw,bh);ctx.restore();}
+    ctx.fillStyle=gradient(v.t,w.surfaceY,[[0,'#f4efdb'],[.7,'#f1efd7'],[1,'#c2d0ad']]);ctx.fillRect(v.l,v.t,v.r-v.l,Math.max(0,w.surfaceY-v.t));
+    const bg=getImage('shore/woodland-native.jpg');
+    if(bg){const cam=state.camera,waterY=logicH/2+(w.surfaceY-cam.y-cam.swayY)*cam.zoom;
+        ctx.save();ctx.setTransform(dpr,0,0,dpr,0,0);ctx.beginPath();ctx.rect(0,0,logicW,Math.max(0,waterY));ctx.clip();
+        const width=logicH>logicW?Math.max(640,logicW*1.12):logicW*1.12,height=width*bg.height/bg.width,treeline=waterY-48*cam.zoom;
+        const x=(logicW-width)/2+Math.max(-20,Math.min(20,(w.originX-cam.x)*.018));
+        backdropProjection={nativeWidth:bg.width,nativeHeight:bg.height,logicalWidth:width,logicalHeight:height,pixelMagnification:width*dpr/bg.width,independentOfWorldZoom:true};
+        const strip=getImage('shore/woodland-sky-strip.png'),y=treeline-height*.72;
+        if(strip){const cut=strip.height,shown=cut/bg.height*height;ctx.drawImage(bg,0,cut,bg.width,bg.height-cut,x,y+shown,width,height-shown);ctx.drawImage(strip,x,y,width,shown);}
+        else ctx.drawImage(bg,x,y,width,height);ctx.restore();}
     ctx.fillStyle=gradient(w.surfaceY,w.surfaceY+1120,[[0,'#74b7a0'],[.18,'#478f81'],[.46,'#225958'],[.79,'#10383e'],[1,'#061b26']]);
     ctx.fillRect(v.l,w.surfaceY,v.r-v.l,Math.max(0,v.b-w.surfaceY));
     ctx.save();ctx.beginPath();ctx.rect(v.l,w.surfaceY,v.r-v.l,Math.max(0,v.b-w.surfaceY));ctx.clip();
@@ -67,9 +76,10 @@ function drawBackdrop(v:any) {
         ctx.bezierCurveTo(left+260,w.surfaceY+660,left+50,w.surfaceY+990,left+280,w.surfaceY+1260);ctx.lineTo(w.originX-1800,w.surfaceY+1260);ctx.lineTo(w.originX-1800,w.surfaceY);ctx.fill();
     }
     for(let i=0;i<5;i++){
-        const top=w.originX-288+i*176+Math.sin(w.elapsed*.19+i)*9;
-        ctx.fillStyle=gradient(w.surfaceY,w.surfaceY+790,[[0,'rgba(242,245,173,.12)'],[.24,'rgba(203,230,181,.13)'],[1,'rgba(129,206,192,0)']]);
-        ctx.beginPath();ctx.moveTo(top,w.surfaceY);ctx.lineTo(top+32,w.surfaceY);ctx.lineTo(top+166,w.surfaceY+790);ctx.lineTo(top+62,w.surfaceY+790);ctx.fill();
+        const top=w.originX-235+i*170+Math.sin(w.elapsed*.19+i)*9;
+        ctx.save();ctx.translate(top,w.surfaceY+235);ctx.rotate(-.065+(i%3)*.018);ctx.scale(.12+(i%2)*.035,1);
+        const glow=ctx.createRadialGradient(0,-170,12,0,0,570);glow.addColorStop(0,'rgba(233,240,181,.13)');glow.addColorStop(.35,'rgba(198,229,185,.045)');glow.addColorStop(1,'rgba(139,210,192,0)');
+        ctx.fillStyle=glow;ctx.fillRect(-570,-570,1140,1140);ctx.restore();
     }
     ctx.restore();
 }
@@ -165,7 +175,7 @@ export function drawContinuousFrame(){
     const c=state.camera,zoom=c.zoom;
     const v={l:c.x-logicW/(2*zoom)-80,r:c.x+logicW/(2*zoom)+80,t:c.y-logicH/(2*zoom)-80,b:c.y+logicH/(2*zoom)+80};
     ctx.setTransform(dpr,0,0,dpr,0,0);ctx.fillStyle='#08272e';ctx.fillRect(0,0,logicW,logicH);
-    ctx.save();transform();drawBackdrop(v);drawDeepCave(v);drawBanks(v);drawCamp(v);
+    ctx.save();transform();drawBackdrop(v);drawTerrainSurface(ctx,zoom);drawCamp(v);
     drawRopesWorld(v.l,v.r,v.t,v.b);drawRopeTethersWorld(ctx,v.l,v.r,v.t,v.b);drawRemovedRopesWorld(ctx);drawRescueRopeWorld(ctx);
     drawAllFishEnemies(ctx,v.l,v.r,v.t,v.b);drawOxygenTanksWorld(ctx,v.l,v.r,v.t,v.b);drawOxygenFeedbackWorld(ctx);drawRelicsWorld(ctx,v.l,v.r,v.t,v.b);drawDroppedItemsWorld(v.l,v.r,v.t,v.b);
     const visual=w.headWet?getRescueTapeVisual():undefined;
@@ -173,8 +183,8 @@ export function drawContinuousFrame(){
         leftKickProgress:state.manualDrive.leftKickProgress,rightKickProgress:state.manualDrive.rightKickProgress,leftKickStrength:state.manualDrive.leftKickStrength,rightKickStrength:state.manualDrive.rightKickStrength,
         swimEffort:CONFIG.driveMode==='semiAuto'?state.semiAutoDrive.effort:undefined,workPose:getInteractionWorkPose(),bcdInflation:getBCDInflationRatio(),bcdVenting:isBCDVenting(),tapeVisual:visual,
         landPose:{blend:w.landBlend,phase:w.walkPhase,effort:clamp(Math.abs(player.vx)/3.3),facing:w.facing},regulatorAnim:player.regulatorAnim,carryItemAnim:player.carryItemAnim};
-    drawDiver(ctx,player.x,player.y,player.angle,{suit:'#33433b',body:'#657d62',tank:'#c5d2b9',mask:'#9faf92',accent:'#b8a66b',fin:'#334d41'},motion);
-    drawInteractionWorkWorld(ctx);drawBreathBubblesWorld(ctx,v.l,v.r,v.t,v.b);
+    drawExpeditionDiver(ctx,player.x,player.y,player.angle,motion);
+    drawInteractionWorkWorld(ctx);ctx.save();ctx.beginPath();ctx.rect(v.l,w.surfaceY,v.r-v.l,Math.max(0,v.b-w.surfaceY));ctx.clip();drawBreathBubblesWorld(ctx,v.l,v.r,v.t,v.b);ctx.restore();
     for(const p of particles){if(p.x<v.l||p.x>v.r||p.y<v.t||p.y>v.b)continue;ctx.fillStyle=p.type==='silt'?`rgba(91,124,97,${p.life*.17})`:`rgba(193,220,180,${p.life*.3})`;ctx.beginPath();ctx.arc(p.x,p.y,Math.max(.5,p.size),0,Math.PI*2);ctx.fill();}
     ctx.restore();lighting(v);
     ctx.save();transform();drawRescueTarget(ctx,visual);drawSurface(v);drawRopeApproachWorld(ctx,zoom,{left:v.l,right:v.r,top:v.t,bottom:v.b});drawRopeAimWorld(ctx);drawActionPreviewWorld(ctx);drawInteractionOverlayWorld(ctx);ctx.restore();

@@ -6,7 +6,7 @@ import { resetRopeMotion } from '../../src/logic/Rope';
 import { CONFIG } from '../../src/core/config';
 import { world, layout, ShoreWorld } from './Geometry';
 
-export const WORLD_SAVE_KEY = 'continuous_world_v1';
+export const WORLD_SAVE_KEY = 'continuous_world_v2';
 export const WORLD_BACKUP_KEY = WORLD_SAVE_KEY + '_backup';
 let restoredSnapshot: WorldSnapshot | null = null;
 export function getLastRestoreSnapshot() { return restoredSnapshot; }
@@ -62,7 +62,7 @@ export function captureWorld(): WorldSnapshot {
         ropes:state.rope.ropes.map(r => ({start:copy(r.start),end:copy(r.end),path:copy(r.path),mode:r.mode,slackFactor:r.slackFactor,
             threadId:r.threadId,startOnRope:r.startOnRope,endOnRope:r.endOnRope,startLoose:r.startLoose,endLoose:r.endLoose,
             startWall:m.mazeWalls.indexOf(r.startWall),endWall:m.mazeWalls.indexOf(r.endWall)})),
-        links:state.rope.links.map(l => ({id:l.id,start:endpoint(l.start),end:endpoint(l.end),path:copy(l.path),length:l.length,tension:l.tension,age:l.age})),
+        links:state.rope.links.map(l => ({id:l.id,start:endpoint(l.start),end:endpoint(l.end),path:copy(l.path),route:Array.isArray((l as any).route)?copy((l as any).route):undefined,length:l.length,tension:l.tension,age:l.age})),
         current:{...copy({...state.rope.current,startWall:undefined,startAttachment:undefined}),startWall:m.mazeWalls.indexOf(state.rope.current.startWall),startAttachment:endpoint(state.rope.current.startAttachment)},
         ropeActive:state.rope.active, markers:copy(state.markers), maze, world:savedWorld, explored:packExplored(m.mazeExplored),
         extraction:copy((state as any).extraction), story:copy(state.story2), bcd:copy(getBCDRuntime()), deco:copy(getDecoRuntime()),

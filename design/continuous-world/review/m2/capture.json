@@ -1,0 +1,29 @@
+{
+  "scope": "当前实际游戏渲染，明确布置镜头用于效果留存；功能验收由真实输入和压力脚本承担",
+  "graphics": {
+    "webgl": true,
+    "pixelSize": {
+      "w": 750,
+      "h": 1334
+    },
+    "materialDecodedRGBABytes": 9469952,
+    "sceneDecodedRGBABytes": 10986824,
+    "terrain": {
+      "webgl": true,
+      "failed": false,
+      "revision": 1,
+      "draws": 385,
+      "lostCount": 0,
+      "textureCount": 4,
+      "fieldBytes": 1028196,
+      "roots": 18,
+      "edges": 7116,
+      "generationMs": 160
+    }
+  },
+  "coverage": {
+    "samples": 381,
+    "failures": []
+  },
+  "errors": []
+}

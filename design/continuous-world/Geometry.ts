@@ -1,4 +1,5 @@
 import layoutData from './layout.json';
+import { buildContourTerrain, terrainCircle, terrainSample, ContourTerrain } from './ContourTerrain';
 import { state } from '../../src/core/state';
 import { circleHitsRock, pointInRock, RockPoint, RockWall } from '../../src/world/RockGeometry';
 
@@ -8,7 +9,7 @@ export const smooth = (a: number, b: number, v: number) => { const t = clamp((v 
 export type WorldStation = typeof layout.stations[number];
 export interface ShoreWorld {
     layoutVersion: number; originX: number; surfaceY: number; seamY: number;
-    left: RockPoint[]; right: RockPoint[]; banks: RockWall[];
+    left: RockPoint[]; right: RockPoint[]; banks: RockWall[]; terrain?: ContourTerrain;
     wet: number; headWet: boolean; grounded: boolean; landBlend: number; walkPhase: number; facing: number;
     elapsed: number; chapterStatus: 'searching' | 'rescued'; stationId: string | null;
     panel: string | null; notice: string; noticeUntil: number; saveOK: boolean; savedAt: number;
@@ -114,12 +115,16 @@ export function attachWorldTerrain(maze: any): ShoreWorld {
     maze.mazeWalls.push(...banks);
     maze.exitY = w.surfaceY;
     maze.playerPath = [];
+    w.terrain=buildContourTerrain(maze,left,right,x,w.seamY,join);
+    maze.mazeWalls=w.terrain.walls;
+    for(let r=0;r<maze.mazeRows;r++)for(let c=0;c<maze.mazeCols;c++){const px=(c+.5)*ts,py=(r+.5)*ts;maze.mazeMap[r][c]=terrainCircle(w.terrain,px,py,18)?2:0;}
     return w;
 }
 export function circleCollision(x: number, y: number, radius = 20): boolean {
     const m: any = state.mazeRescue, w = world(); if (!m || !w) return false;
     const upper=y<w.seamY-radius,minX=upper?w.originX+layout.minX:0,maxX=upper?w.originX+layout.maxX:m.mazeCols*m.mazeTileSize;
     if (x < minX + radius || x > maxX - radius || y < radius || y > m.mazeRows * m.mazeTileSize - radius) return true;
+    if(w.terrain)return terrainCircle(w.terrain,x,y,radius);
     if (w.banks.some(b => bankCircleCollision(b, x, y, radius))) return true;
     if (upper) return false;
     const ts = m.mazeTileSize, r = Math.floor(y / ts), c = Math.floor(x / ts);

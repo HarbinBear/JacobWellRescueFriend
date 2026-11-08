@@ -1,0 +1,97 @@
+{
+  "scope": "纯内存多种子几何回归；共享实际地图生成器，不建立另一张演示地图",
+  "seeds": [
+    {
+      "seed": 26110941,
+      "roots": 18,
+      "edges": 7116,
+      "ms": 187,
+      "reachable": 2131
+    },
+    {
+      "seed": 0,
+      "roots": 22,
+      "edges": 6408,
+      "ms": 172,
+      "reachable": 1918
+    },
+    {
+      "seed": 1,
+      "roots": 23,
+      "edges": 9164,
+      "ms": 157,
+      "reachable": 2404
+    },
+    {
+      "seed": 2,
+      "roots": 19,
+      "edges": 7730,
+      "ms": 180,
+      "reachable": 2317
+    },
+    {
+      "seed": 128473,
+      "roots": 9,
+      "edges": 6556,
+      "ms": 154,
+      "reachable": 2217
+    },
+    {
+      "seed": 7391,
+      "roots": 14,
+      "edges": 6576,
+      "ms": 161,
+      "reachable": 1935
+    },
+    {
+      "seed": 42017,
+      "roots": 17,
+      "edges": 8310,
+      "ms": 156,
+      "reachable": 2071
+    },
+    {
+      "seed": 82901,
+      "roots": 22,
+      "edges": 9512,
+      "ms": 149,
+      "reachable": 2457
+    },
+    {
+      "seed": 91731,
+      "roots": 14,
+      "edges": 6482,
+      "ms": 146,
+      "reachable": 1788
+    },
+    {
+      "seed": 107773,
+      "roots": 15,
+      "edges": 6726,
+      "ms": 150,
+      "reachable": 1888
+    },
+    {
+      "seed": 192133,
+      "roots": 20,
+      "edges": 8540,
+      "ms": 152,
+      "reachable": 2200
+    },
+    {
+      "seed": 884492,
+      "roots": 22,
+      "edges": 9188,
+      "ms": 162,
+      "reachable": 2474
+    },
+    {
+      "seed": 4294967295,
+      "roots": 24,
+      "edges": 8100,
+      "ms": 164,
+      "reachable": 2518
+    }
+  ],
+  "samples": 5200
+}

@@ -7,7 +7,7 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
  fs.mkdirSync(OUT,{recursive:true});const browser=await openReviewBrowser(URL,1390,850),report={scope:'真实当前游戏模块 + 独立连续章节接入；独立浏览器与原生输入。不是微信真机性能验收。'};
  try{
   const ev=s=>browser.evaluate(s);
-  async function until(expression,timeout=18000){const start=Date.now();while(!await ev(expression)){if(Date.now()-start>timeout)throw Error('等待条件超时: '+expression+'\n'+JSON.stringify(await ev('({player:DeepTapeGame.player,world:{...DeepTapeGame.world.geometry.world(),banks:undefined,left:undefined,right:undefined,events:undefined},input:DeepTapeGame.input})')));await wait(120);}}
+  async function until(expression,timeout=18000){const start=Date.now();while(!await ev(expression)){if(Date.now()-start>timeout)throw Error('等待条件超时: '+expression+'\n'+JSON.stringify(await ev('({player:DeepTapeGame.player,world:{...DeepTapeGame.world.geometry.world(),terrain:undefined,banks:undefined,left:undefined,right:undefined,events:undefined},input:DeepTapeGame.input,fish:DeepTapeGame.state.fishEnemies.filter(f=>f.reviewTow).map(f=>({x:f.x,y:f.y,angle:f.angle,bound:f.bound,knot:DeepTapeGame.interactions.fishGeometry.fishKnotPoint(f)})),links:DeepTapeGame.state.rope.links.map(l=>({id:l.id,length:l.length,tension:l.tension,path:l.path}))})')));await wait(120);}}
   async function key(type,key,code){await browser.command('Input.dispatchKeyEvent',{type,key,code});}
   async function keysOn(keys){for(const [key,code]of keys)await keyEvent('keyDown',key,code);}
   const keyEvent=key;
@@ -18,10 +18,8 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
   assert.equal(await ev('DeepTapeGame.state.mazeRescue.phase'),'play');assert(await ev('DeepTapeGame.world.geometry.world().grounded'));
   report.graphics=await ev('DeepTapeGame.world.render.worldGraphicsStats()');assert(report.graphics.webgl,'必须验证真实 WebGL 路径，而不是静默退化');
   const origin=await ev('DeepTapeGame.world.geometry.world().originX');
-  report.geometry=await ev(`(()=>{const g=DeepTapeGame,w=g.world.geometry.world(),rock=g.cave.geometry;let failures=[],samples=0;let seed=1337;
-   for(const bank of w.banks)for(let i=0;i<1200;i++){seed=(seed*1664525+1013904223)>>>0;const x=bank.x-bank.r+(seed/4294967296)*bank.r*2;seed=(seed*1664525+1013904223)>>>0;const y=400+(seed/4294967296)*750;
-    const r=[0,5,18,26][i%4],a=g.world.geometry.bankCircleCollision(bank,x,y,r),b=rock.circleHitsRock(bank,x,y,r);samples++;if(a!==b&&failures.length<10)failures.push({x,y,r,a,b});}return{samples,failures};})()`);
-  assert.equal(report.geometry.failures.length,0,'快速岸坡碰撞必须与原多边形几何完全一致');
+  report.geometry=await ev(`(()=>{const g=DeepTapeGame,w=g.world.geometry.world(),t=w.terrain;let failures=[],samples=0,seed=1337;for(let i=0;i<1600;i++){seed=(Math.imul(seed,1664525)+1013904223)>>>0;const x=w.originX-1700+seed/4294967296*3200;seed=(Math.imul(seed,1664525)+1013904223)>>>0;const y=450+seed/4294967296*2200,r=[0,5,18,26][i%4],a=g.world.contours.terrainCircle(t,x,y,r),b=t.walls.some(w=>g.cave.geometry.circleHitsRock(w,x,y,r));samples++;if(a!==b&&failures.length<8)failures.push({x,y,r,a,b});}return{samples,failures,allContourWalls:t.walls.every(w=>w.contourTerrain)};})()`);
+  assert.equal(report.geometry.failures.length,0);assert(report.geometry.allContourWalls,'新版默认实际几何必须是连续轮廓，不能仍画圆球');
   report.connectivity=await ev('(()=>{const g=DeepTapeGame,m=g.state.mazeRescue,ts=m.mazeTileSize,start=[Math.floor(g.world.geometry.world().seamY/ts),Math.floor(m.exitX/ts)],goal=[Math.floor(m.npcInitY/ts),Math.floor(m.npcInitX/ts)],queue=[start],seen=new Set([start.join(",")]);for(let i=0;i<queue.length;i++){const [r,c]=queue[i];for(const [dr,dc]of [[1,0],[-1,0],[0,1],[0,-1]]){const y=r+dr,x=c+dc,id=y+","+x;if(y>=start[0]&&m.mazeMap[y]?.[x]===0&&!seen.has(id)){seen.add(id);queue.push([y,x])}}}return{reachable:seen.has(goal.join(",")),reachableCells:seen.size,npc:{x:m.npcInitX,y:m.npcInitY}}})()');assert(report.connectivity.reachable,'泉井接缝必须连到实际原有救援目标');
   await shot('01-camp');
   await ev('window.__WorldTrace=[];window.__WorldTraceOn=true;window.__TraceFrame=()=>{if(!window.__WorldTraceOn)return;const g=DeepTapeGame,w=g.world.geometry.world();window.__WorldTrace.push({t:w.elapsed,x:g.player.x,y:g.player.y,phase:g.state.mazeRescue.phase,wet:w.wet,head:w.headWet,land:w.landBlend});requestAnimationFrame(window.__TraceFrame)};requestAnimationFrame(window.__TraceFrame)');

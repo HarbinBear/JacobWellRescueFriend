@@ -1,0 +1,227 @@
+{
+  "scope": "当前实际游戏代码的完整模拟、真实岸上触控与 GPU 恢复；压力测试起点为明确布置，不作为游戏内移动能力",
+  "graphics": {
+    "webgl": true,
+    "failed": false,
+    "revision": 1,
+    "draws": 4,
+    "lostCount": 0,
+    "textureCount": 4,
+    "fieldBytes": 1028196,
+    "roots": 18,
+    "edges": 7116,
+    "generationMs": 166
+  },
+  "coverage": {
+    "samples": 382,
+    "failures": []
+  },
+  "background": {
+    "nativeWidth": 1376,
+    "nativeHeight": 768,
+    "logicalWidth": 747.0400000000001,
+    "logicalHeight": 416.952558139535,
+    "pixelMagnification": 1.0858139534883722,
+    "independentOfWorldZoom": true
+  },
+  "physicalRoute": {
+    "route": [
+      {
+        "x": 6000,
+        "y": 667
+      },
+      {
+        "x": 5940,
+        "y": 540
+      },
+      {
+        "x": 5865.6,
+        "y": 587
+      }
+    ],
+    "stored": [
+      {
+        "x": 6000,
+        "y": 667
+      },
+      {
+        "x": 5940,
+        "y": 540
+      },
+      {
+        "x": 5865.6,
+        "y": 587
+      }
+    ],
+    "lastLeg": 88.00204543077363,
+    "ignoredDisplayCurve": true
+  },
+  "deepCases": [
+    {
+      "start": {
+        "x": 5460,
+        "y": 1980,
+        "score": 0
+      },
+      "end": {
+        "x": 5398.006351458964,
+        "y": 3752.382625410262
+      },
+      "frames": 1200,
+      "maxMove": 5.249361117618583,
+      "maxPenetration": 0,
+      "logicalSeconds": 20.000000000000142,
+      "violations": []
+    },
+    {
+      "start": {
+        "x": 5460,
+        "y": 3180,
+        "score": 60
+      },
+      "end": {
+        "x": 5278.29896928671,
+        "y": 3872.0536583618036
+      },
+      "frames": 1200,
+      "maxMove": 5.111624302904661,
+      "maxPenetration": 0,
+      "logicalSeconds": 19.999999999998867,
+      "violations": []
+    },
+    {
+      "start": {
+        "x": 5460,
+        "y": 4500,
+        "score": 60
+      },
+      "end": {
+        "x": 5249.424739726949,
+        "y": 4665.827220797525
+      },
+      "frames": 1200,
+      "maxMove": 4.082985518422468,
+      "maxPenetration": 0,
+      "logicalSeconds": 19.999999999998863,
+      "violations": []
+    },
+    {
+      "start": {
+        "x": 5940,
+        "y": 6300,
+        "score": 132
+      },
+      "end": {
+        "x": 6096.598721869445,
+        "y": 6466.28399966725
+      },
+      "frames": 1200,
+      "maxMove": 2.210929620916555,
+      "maxPenetration": 0,
+      "logicalSeconds": 19.99999999999887,
+      "violations": []
+    },
+    {
+      "start": {
+        "x": 7980,
+        "y": 8460,
+        "score": 558
+      },
+      "end": {
+        "x": 8493.606285633507,
+        "y": 9125.04437604014
+      },
+      "frames": 1200,
+      "maxMove": 3.4710047062912373,
+      "maxPenetration": 0,
+      "logicalSeconds": 19.999999999998863,
+      "violations": []
+    },
+    {
+      "start": {
+        "x": 7500,
+        "y": 10260,
+        "score": 306
+      },
+      "end": {
+        "x": 7716.261684360503,
+        "y": 10522.655775939656
+      },
+      "frames": 1200,
+      "maxMove": 2.338912857253668,
+      "maxPenetration": 0,
+      "logicalSeconds": 19.999999999998863,
+      "violations": []
+    }
+  ],
+  "totalDeepFrames": 7200,
+  "shoreWork": {
+    "start": {
+      "x": 5250,
+      "y": 473.8286086973852
+    },
+    "active": true,
+    "feedback": {
+      "point": {
+        "x": 5261.918571304335,
+        "y": 516.9527752721057
+      },
+      "text": "绳结收紧",
+      "success": true,
+      "timer": 80
+    },
+    "frameCount": 51
+  },
+  "contextRestore": {
+    "webgl": true,
+    "failed": false,
+    "revision": 2,
+    "draws": 129,
+    "lostCount": 1,
+    "textureCount": 4,
+    "fieldBytes": 1028196,
+    "roots": 18,
+    "edges": 7116,
+    "generationMs": 166
+  },
+  "reentry": [
+    {
+      "webgl": true,
+      "failed": false,
+      "revision": 3,
+      "draws": 151,
+      "lostCount": 1,
+      "textureCount": 4,
+      "fieldBytes": 1028196,
+      "roots": 18,
+      "edges": 7116,
+      "generationMs": 153
+    },
+    {
+      "webgl": true,
+      "failed": false,
+      "revision": 4,
+      "draws": 174,
+      "lostCount": 1,
+      "textureCount": 4,
+      "fieldBytes": 1028196,
+      "roots": 18,
+      "edges": 7116,
+      "generationMs": 172
+    },
+    {
+      "webgl": true,
+      "failed": false,
+      "revision": 5,
+      "draws": 196,
+      "lostCount": 1,
+      "textureCount": 4,
+      "fieldBytes": 1028196,
+      "roots": 18,
+      "edges": 7116,
+      "generationMs": 152
+    }
+  ],
+  "errors": [],
+  "status": "passed"
+}
