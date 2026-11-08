@@ -13,6 +13,34 @@ export const gameplayConfig = {
         wheelExpandDuration: 150,   // 轮盘展开动画时长（ms）
     },
 
+    // ===== 精确敲晕 / 解绳与统一绑绳动作 =====
+    fishInteraction: {
+        buttonRadius: 29,
+        wheelRadius: 84,
+        wheelInnerRadius: 22,
+        actionRange: 64,          // 固定碰撞范围，只选择方向
+        strikeRange: 40,          // 绳轮敲击的实际接触范围，不能隔空命中
+        safeDistance: 82,         // 普通游动时保持在敲击距离之外
+        stunFrames: 480,          // 约八秒；绑缚与眩晕互相独立
+        playerStunFrames: 34,     // 强烈顶撞短暂打断操作，不触发死亡
+        strikeFrames: 34,         // 收肘、挥击、回弹；命中在挥击落点
+        actionCooldownFrames: 30,
+        tieFishFrames: 72,
+        tieAnchorFrames: 50,
+        tieSelfFrames: 36,
+        untieFrames: 56,
+        cutFrames: 44,
+        handReach: 24,
+        approachLimit: 80,        // 只自动完成最后一小段接近，不自动导航追鱼
+        approachSpeed: 1.35,
+        ropeFadeMs: 900,          // 已拆除整段下沉淡出，非永久物理绳
+        freedNetFrames: 72,
+        tetherSlack: 72,
+        tetherStretch: 46,
+        tetherSpring: .022,
+        maxPlayerLinks: 4,
+    },
+
     // ===== 氧气瓶配置（迷宫模式，每次下潜按同 seed 在原位全量刷新） =====
     oxygenTank: {
         // 生成：聚集点附近（主要来源）

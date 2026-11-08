@@ -1,3 +1,4 @@
+import { updateInteractionMovement, resetInteractions } from './Interaction';
 import { processJoystickDrive } from './JoystickDrive';
 import { resetDriveInput } from './DriveMode';
 import { processSemiAutoDrive } from './SemiAutoDrive';
@@ -101,6 +102,7 @@ export function resetMazeLogic(rockTrial=false) {
         state.fishEnemies = [];
         state.fishBite = null;
         state.fishBump = createFishBumpState();
+        resetInteractions();
         state.flashlightOn = true;
         state.fx.redOverlay = 0;
         state.fx.shake = 0;
@@ -203,6 +205,7 @@ export function resetMazeLogic(rockTrial=false) {
     state.fishEnemies = [];
     state.fishBite = null;
     state.fishBump = createFishBumpState();
+    resetInteractions();
     state.flashlightOn = true;
     state.fx.redOverlay = 0;
     state.fx.shake = 0;
@@ -493,6 +496,7 @@ export function startMazeDive(diveType: string) {
     state.splashes = [];
     state.fishBite = null;
     state.fishBump = createFishBumpState();
+    resetInteractions();
     state.flashlightOn = true;
     state.playerAttack = { active: false, timer: 0, cooldownTimer: 0, angle: 0 };
     state.fx.redOverlay = 0;
@@ -1045,7 +1049,9 @@ export function updateMaze() {
 
     // --- 玩家移动 ---
     // 敲晕和绑绳时仍正常移动、受浮力影响，由玩家自行保持接触距离。
-    if (processManualDrive() || processSemiAutoDrive(CONFIG.maze.moveSpeed || CONFIG.moveSpeed)) {
+    if (updateInteractionMovement()) {
+        // 接近、绑绳、精确动作或短暂撞晕接管推进；碰撞与浮力仍正常更新。
+    } else if (processManualDrive() || processSemiAutoDrive(CONFIG.maze.moveSpeed || CONFIG.moveSpeed)) {
         // 手动挡/半自动：移动已处理
     } else {
         // 自动挡：与半自动共用转向、推进和水阻。
@@ -1440,6 +1446,6 @@ export function exitCaveRockTrial(){
  resetDriveInput(true);releaseBCDControls();resetBreathSystem();resetBreathO2Consumer();restoreLoadoutAfterDive();resetAdaptiveMusic();
  const original=rockTrialSnapshot;rockTrialSnapshot=null;
  (state as any).extraction=original.extraction;state.story2=original.story2;state.mazeRescue=original.maze;
- state.rope=original.rope;state.markers=original.markers;state.npc.active=false;state.fishEnemies=[];state.fishBite=null;state.fishBump=createFishBumpState();
+ state.rope=original.rope;state.markers=original.markers;state.npc.active=false;state.fishEnemies=[];state.fishBite=null;state.fishBump=createFishBumpState();resetInteractions();
  particles.length=0;state.screen='menu';
 }

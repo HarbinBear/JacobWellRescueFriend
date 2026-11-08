@@ -6,17 +6,20 @@ import { drawRopeContactWorld } from './RenderRope';
 import { isLineOfSight } from '../world/Visibility';
 import { getBCDLayout } from './RenderBCD';
 import { drawHunterShark, drawSilverFish } from './RenderFishSpecies';
+import { drawFishHandlingWorld } from './RenderFishHandling';
+import { isFishStunned } from '../logic/FishHandling';
 
 // =============================================
 // 绘制单条凶猛鱼（世界坐标系，已在摄像机变换内调用）
 // =============================================
 export function drawFishEnemy(ctx: CanvasRenderingContext2D, fish: FishEnemy, contact = getRopeContact(fish)) {
-    const caught = contact?.kind === 'snag';
+    const caught = contact?.kind === 'snag' && !isFishStunned(fish);
     const effort = caught ? .54 + contact.pull * .46 : 0;
     const strain = caught ? Math.sin(contact.phase * .6) * effort : 0;
     ctx.save();
     ctx.translate(fish.x, fish.y);
     ctx.rotate(fish.angle + strain * .31);
+    if (isFishStunned(fish)) ctx.scale(1, .84);
     if (caught) ctx.scale(1 - Math.abs(strain) * .11, 1 + Math.abs(strain) * .16);
 
     const cfg = CONFIG.fishEnemy;
@@ -572,12 +575,10 @@ export function drawAllFishEnemies(ctx: CanvasRenderingContext2D,
     if (!state.fishEnemies || state.fishEnemies.length === 0) return;
     for (const fish of state.fishEnemies) {
         if (fish.x < left || fish.x > right || fish.y < top || fish.y > bottom) continue;
-        if (fish.state === 'dying') {
-            // 死亡动画：翻肚皮淡出
-            drawDyingFish(ctx, fish);
-        } else if (!fish.dead) {
+        if (!fish.dead) {
             const contact = getRopeContact(fish);
             drawFishEnemy(ctx, fish, contact);
+            drawFishHandlingWorld(ctx, fish);
             drawRopeContactWorld(ctx, fish, contact, CONFIG.fishEnemy.size * (fish.kind === 'shoal' ? .18 : fish.kind === 'provoked' ? .64 : .43));
             // 绘制状态变化提示图标（问号/感叹号）
             if (contact?.kind !== 'snag' && fish.alertTimer > 0 && fish.alertIcon) {
@@ -764,63 +765,3 @@ function drawFishAlertIcon(ctx: CanvasRenderingContext2D, fish: FishEnemy) {
 // =============================================
 // 绘制死亡动画：翻肚皮 + 淡出
 // =============================================
-function drawDyingFish(ctx: CanvasRenderingContext2D, fish: FishEnemy) {
-    ctx.save();
-    ctx.globalAlpha = fish.dyingAlpha;
-    ctx.translate(fish.x, fish.y);
-    // 翻肚皮：绕 X 轴旋转（用 scaleY 模拟透视翻转）
-    const rollProgress = fish.dyingRoll / Math.PI; // 0 -> 1
-    const scaleY = Math.cos(fish.dyingRoll);       // 1 -> -1°
-    ctx.rotate(fish.angle);
-    ctx.scale(1, scaleY);
-    // 翻转后腹部朝上（白色腹部）
-    const size = CONFIG.fishEnemy.size;
-    if (fish.kind === 'provoked' || fish.kind === 'shoal') {
-        (fish.kind === 'provoked' ? drawHunterShark : drawSilverFish)(ctx, fish, 0);
-        ctx.restore();
-        return;
-    }
-    if (fish.kind === 'rammer') {
-        drawRammerFish(ctx, fish, 0, true);
-        ctx.restore();
-        return;
-    }
-    if (fish.kind === 'curious') {
-        drawCuriousFish(ctx, size, fish.animTime, true, 0);
-        ctx.restore();
-        return;
-    }
-
-    // 简化绘制：死亡状态下身体不摆动
-    // 腹部（白色，翻转后显示）
-    const bellyAlpha = rollProgress;
-    const bodyGrad = ctx.createLinearGradient(0, -size * 0.4, 0, size * 0.4);
-    bodyGrad.addColorStop(0, `rgba(26, 37, 53, ${fish.dyingAlpha})`);
-    bodyGrad.addColorStop(0.4, `rgba(45, 61, 82, ${fish.dyingAlpha})`);
-    bodyGrad.addColorStop(1, `rgba(220, 210, 200, ${bellyAlpha * fish.dyingAlpha})`);
-    ctx.fillStyle = bodyGrad;
-    ctx.beginPath();
-    ctx.moveTo(size * 1.1, 0);
-    ctx.bezierCurveTo(size * 0.9, -size * 0.35, -size * 0.6, -size * 0.38, -size * 1.1, -size * 0.12);
-    ctx.lineTo(-size * 1.1, size * 0.12);
-    ctx.bezierCurveTo(-size * 0.6, size * 0.38, size * 0.9, size * 0.35, size * 1.1, 0);
-    ctx.fill();
-
-    // 尾鳓
-    ctx.save();
-    ctx.translate(-size * 1.1, 0);
-    ctx.fillStyle = `rgba(15, 26, 40, ${fish.dyingAlpha})`;
-    ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.bezierCurveTo(-size * 0.3, -size * 0.15, -size * 0.7, -size * 0.55, -size * 0.5, -size * 0.7);
-    ctx.bezierCurveTo(-size * 0.3, -size * 0.8, size * 0.1, -size * 0.5, 0, 0);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.bezierCurveTo(-size * 0.3, size * 0.15, -size * 0.7, size * 0.55, -size * 0.5, size * 0.7);
-    ctx.bezierCurveTo(-size * 0.3, size * 0.8, size * 0.1, size * 0.5, 0, 0);
-    ctx.fill();
-    ctx.restore();
-
-    ctx.restore();
-}

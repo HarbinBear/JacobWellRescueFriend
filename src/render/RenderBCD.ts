@@ -10,7 +10,8 @@ export interface BCDLayout {
 }
 function cfg(): any { return CONFIG.bcd || {}; }
 export function isBCDUIVisible(): boolean {
-    return !!(cfg().enabled && cfg().uiVisible && state.screen === 'mazeRescue' && state.mazeRescue?.phase === 'play');
+    return !!(cfg().enabled && cfg().uiVisible && state.screen === 'mazeRescue' && state.mazeRescue?.phase === 'play' &&
+        !state.wheel.open && !state.interaction.gesture);
 }
 export function getBCDLayout(): BCDLayout {
     const c = cfg(), cw = CONFIG.screenWidth, ch = CONFIG.screenHeight;

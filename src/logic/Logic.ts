@@ -1,3 +1,4 @@
+import { updateInteractionMovement, resetInteractions } from './Interaction';
 import { processJoystickDrive } from './JoystickDrive';
 import { processSemiAutoDrive } from './SemiAutoDrive';
 import { CONFIG } from '../core/config';
@@ -216,7 +217,9 @@ export function update() {
 
     // 1. 转向系统 + 2. 移动系统
     let angleDiff = 0; // 声明在外层，泥沙逻辑需要引用
-    if (processManualDrive() || processSemiAutoDrive()) {
+    if (updateInteractionMovement()) {
+        // 主动操作接管最后一小段接近，不绕过碰撞。
+    } else if (processManualDrive() || processSemiAutoDrive()) {
         // 手动挡/半自动：移动已处理
     } else {
         // 自动挡：与半自动共用转向、推进和水阻。

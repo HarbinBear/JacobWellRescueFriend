@@ -123,7 +123,9 @@ try {
         if (name === '../logic/BCDSystem') return { getBCDRuntime: () => bcdRuntime, getBCDGaugeInfo: () => { throw new Error('BCD symbol must not read buoyancy/neutral gauge'); } };
         return idle;
     });
+    const interactionLayout = compile('logic/InteractionLayout', name => name === '../core/config' ? { CONFIG } : idle);
     const wheel = compile('render/RenderWheel', name => {
+        if (name === '../logic/InteractionLayout') return interactionLayout;
         if (name === '../core/config') return { CONFIG };
         if (name === '../core/state') return core;
         if (name === './Canvas') return { ctx: c };

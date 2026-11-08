@@ -1,152 +1,95 @@
 import { CONFIG } from '../core/config';
 import { player, state } from '../core/state';
-import { circleHitsRock, closestRockPoint, rayHitsRock } from '../world/RockGeometry';
-import type { RockWall } from '../world/RockGeometry';
-import { getActiveMapContext, isLineOfSight } from '../world/Visibility';
-import { cancelRopePlacement, placeRopeAt } from './Rope';
+import { cancelRopePlacement, playerRopePoint } from './Rope';
 import { resetDriveInput } from './DriveMode';
+import { beginRopeInteraction, cancelInteraction } from './Interaction';
+import { interactionScope } from './ActionTargets';
+import { firstInteractionHit, fishLocalPoint } from './InteractionRay';
+import { getSelfSockets } from './InteractionLayout';
+import { isFishStunned } from './FishHandling';
+import { getRopeNet } from './RopeNet';
 import type { RopeAnchor } from './Rope';
-import { getRopeNet, projectOntoStrand } from './RopeNet';
 import type { RopePoint } from './RopeNet';
 
-const CANCEL_HOLD_MS = 650;
-const DRAG_THRESHOLD = 9;
-
-type AnchorKind = 'rock' | 'strand' | 'knot';
-interface AimTarget { kind: AnchorKind; anchor: RopeAnchor; ropeIndex?: number }
-interface RopeAim { angle: number; reach: number; pointer: RopePoint; target: AimTarget | null }
-interface Gesture { touchId: number; x: number; y: number; startX: number; startY: number; dragged: boolean; openedAt: number }
-let gesture: Gesture | null = null;
-let aim: RopeAim | null = null;
-
+const CANCEL_HOLD_MS = 650, DRAG_THRESHOLD = 7;
+export type AnchorKind = 'rock' | 'strand' | 'knot' | 'fish' | 'self';
+export interface AimTarget { kind: AnchorKind; anchor: RopeAnchor; ropeIndex?: number }
+export interface RopeAim { angle: number; reach: number; pointer: RopePoint; target: AimTarget | null }
+interface Gesture { touchId: number; x: number; y: number; startX: number; startY: number; dragged: boolean; openedAt: number; scope: object; selectionLost?: boolean }
+let gesture: Gesture | null = null, aim: RopeAim | null = null;
 export function canUseRopeWheel() {
-    return !state.fishBite?.active && (state.screen === 'play' && player.y > 0 ||
-        state.screen === 'mazeRescue' && state.mazeRescue?.phase === 'play');
+    return !state.fishBite?.active && state.fishBump.stunTimer <= 0 && !state.interaction.gesture &&
+        (state.screen === 'play' && player.y > 0 || state.screen === 'mazeRescue' && state.mazeRescue?.phase === 'play');
 }
-
-function rockHitDistance(wall: RockWall, dx: number, dy: number, range: number) {
-    if (wall.rockPolygon) return rayHitsRock(wall, player.x, player.y, dx, dy, range);
-    const wx = wall.x - player.x, wy = wall.y - player.y;
-    const across = wx * dy - wy * dx;
-    if (Math.abs(across) > wall.r) return range;
-    const hit = wx * dx + wy * dy - Math.sqrt(Math.max(0, wall.r * wall.r - across * across));
-    return hit > .001 && hit < range ? hit : range;
-}
-
-/** The thumb selects a direction and a reach. Along the ray, two strands at
- * different depths can both be selected. Between rays, the nearest point on a
- * strand or rock face makes small adjustments possible without pixel hunting. */
-export function aimRopeAnchor(angle: number, reach: number): RopeAim {
-    const dx = Math.cos(angle), dy = Math.sin(angle);
-    const range = CONFIG.ropeAnchorDistance;
-    const pointer = { x: player.x + dx * reach, y: player.y + dy * reach };
-    const { strands, knots } = getRopeNet(state.rope.ropes);
-    const walls: RockWall[] = (getActiveMapContext().walls || []).filter(wall =>
-        Math.abs(player.x - wall.x) <= wall.r + range && Math.abs(player.y - wall.y) <= wall.r + range);
-    const start = state.rope.active ? state.rope.current.start : null;
+/** The second legacy parameter has no effect. Collision determines the point. */
+export function aimRopeAnchor(angle: number, _legacyReach?: number): RopeAim {
+    const range = CONFIG.ropeAnchorDistance, hit = firstInteractionHit(angle, range);
+    const pointer = { x: player.x + Math.cos(angle) * range, y: player.y + Math.sin(angle) * range };
     let target: AimTarget | null = null;
-    let best = Infinity;
-    const consider = (kind: AnchorKind, point: RopePoint, wall?: any, ropeIndex?: number) => {
-        const rx = point.x - player.x, ry = point.y - player.y;
-        const depth = rx * dx + ry * dy;
-        const lateral = Math.abs(rx * dy - ry * dx);
-        const distance = Math.hypot(rx, ry);
-        if (depth < 1 || lateral > 9 || distance > range ||
-            (start && Math.hypot(point.x - start.x, point.y - start.y) < 12)) return;
-        const snap = kind === 'knot' && lateral < 5 && Math.abs(depth - reach) < 12 ? 7 : 0;
-        const score = Math.abs(depth - reach) + 2.1 * lateral - snap;
-        if (score >= best || walls.some(w => rockHitDistance(w, rx / distance, ry / distance, distance) < distance - .02) ||
-            !isLineOfSight(player.x, player.y, point.x, point.y, range)) return;
-        best = score;
-        target = { kind, anchor: { point, wall, onRope: !wall }, ropeIndex };
-    };
-    for (const knot of knots) consider('knot', { x: knot.x, y: knot.y }, undefined, knot.ropes.values().next().value);
-    for (const { a, b, rope } of strands) {
-        if (player.x + range < Math.min(a.x, b.x) || player.x - range > Math.max(a.x, b.x) ||
-            player.y + range < Math.min(a.y, b.y) || player.y - range > Math.max(a.y, b.y)) continue;
-        consider('strand', projectOntoStrand(pointer, a, b), undefined, rope);
-        const sx = b.x - a.x, sy = b.y - a.y;
-        const cross = dx * sy - dy * sx;
-        if (Math.abs(cross) < 1e-6) continue;
-        const t = ((a.x - player.x) * dy - (a.y - player.y) * dx) / cross;
-        if (t >= 0 && t <= 1) consider('strand', { x: a.x + sx * t, y: a.y + sy * t }, undefined, rope);
+    if (hit?.kind === 'fish') {
+        if ((hit.fish!.bound || isFishStunned(hit.fish!)) && state.rope.current.startAttachment?.fish !== hit.fish)
+            target = { kind: 'fish', anchor: { point: hit.point, fish: hit.fish, fishContact: fishLocalPoint(hit.fish!, hit.point) } };
+    } else if (hit?.kind === 'rope') {
+        const point = hit.restPoint!, net = getRopeNet(state.rope.ropes);
+        const knot = net.knots.find(k => Math.hypot(k.x - point.x, k.y - point.y) <= 4.5);
+        const at = knot ? { x: knot.x, y: knot.y } : point;
+        target = { kind: knot ? 'knot' : 'strand', anchor: { point: at, onRope: true, rope: hit.rope }, ropeIndex: hit.ropeIndex };
+    } else if (hit?.kind === 'rock' && hit.wall) {
+        const point = { x: hit.point.x - Math.cos(angle) * .3, y: hit.point.y - Math.sin(angle) * .3 };
+        target = { kind: 'rock', anchor: { point, wall: hit.wall } };
     }
-    for (const wall of walls) {
-        const addSurface = (x: number, y: number) => {
-            const length = Math.hypot(player.x - x, player.y - y);
-            if (length < .25) return;
-            // Keep the exact surface anchor just inside the water for line-of-sight and routing.
-            const point = { x: x + (player.x - x) * .25 / length, y: y + (player.y - y) * .25 / length };
-            if (!circleHitsRock(wall, point.x, point.y, 0)) consider('rock', point, wall);
-        };
-        const projected = closestRockPoint(wall, pointer.x, pointer.y);
-        addSurface(projected.x, projected.y);
-        const hit = rockHitDistance(wall, dx, dy, range);
-        if (hit > .25 && hit < range) addSurface(player.x + dx * hit, player.y + dy * hit);
-    }
-    return { angle, reach, pointer, target };
+    const start = state.rope.active ? state.rope.current.start : null;
+    if (target && start && Math.hypot(target.anchor.point.x - start.x, target.anchor.point.y - start.y) < 12) target = null;
+    return { angle, reach: range, pointer, target };
 }
-
 export function startRopeWheelGesture(touchId: number, x: number, y: number, centerX: number, centerY: number) {
     if (!canUseRopeWheel() || state.wheel.open) return false;
-    state.wheel.open = true;
-    state.wheel.expandProgress = 1;
-    state.wheel.touchId = touchId;
-    state.wheel.centerX = centerX;
-    state.wheel.centerY = centerY;
-    gesture = { touchId, x, y, startX: x, startY: y, dragged: false, openedAt: Date.now() };
-    aim = null;
-    resetDriveInput();
-    return true;
+    if (state.interaction.task) { cancelInteraction(true); return true; }
+    state.wheel.open = true; state.wheel.expandProgress = 1; state.wheel.touchId = touchId;
+    state.wheel.centerX = centerX; state.wheel.centerY = centerY;
+    gesture = { touchId, x, y, startX: x, startY: y, dragged: false, openedAt: Date.now(), scope: interactionScope() };
+    aim = null; resetDriveInput(); return true;
 }
-
-export function refreshRopeWheelAim() {
-    if (!state.wheel.open || !gesture || !canUseRopeWheel() || !gesture.dragged) {
-        aim = null;
-        return;
+export function refreshRopeWheelAim(preserveTarget = true) {
+    if (!state.wheel.open || !gesture || !canUseRopeWheel() || !gesture.dragged || gesture.scope !== interactionScope() || preserveTarget && gesture.selectionLost) {
+        aim = null; return;
     }
     const { wheelInnerRadius: inner, wheelOuterRadius: outer } = CONFIG.marker;
+    if (state.rope.active) {
+        const socket = getSelfSockets(state.wheel.centerX, state.wheel.centerY, outer)[0];
+        if (Math.hypot(gesture.x - socket.x, gesture.y - socket.y) <= socket.radius) {
+            const point = playerRopePoint(); aim = { angle: player.angle, reach: 0, pointer: point, target: { kind: 'self', anchor: { point, self: true } } }; return;
+        }
+    }
     const dx = gesture.x - state.wheel.centerX, dy = gesture.y - state.wheel.centerY;
-    const distance = Math.hypot(dx, dy);
-    if (distance <= inner) { aim = null; return; }
-    const fraction = Math.min(1, (distance - inner) / Math.max(1, outer - inner));
-    aim = aimRopeAnchor(Math.atan2(dy, dx), CONFIG.ropeAnchorDistance * fraction);
+    if (Math.hypot(dx, dy) <= inner) { aim = null; return; }
+    const next = aimRopeAnchor(Math.atan2(dy, dx)), previous = aim?.target;
+    if (preserveTarget && previous) {
+        const valid = next.target?.kind === previous.kind && (previous.anchor.fish ? next.target?.anchor.fish === previous.anchor.fish
+            : previous.anchor.rope ? next.target?.anchor.rope === previous.anchor.rope : next.target?.anchor.wall === previous.anchor.wall);
+        if (!valid) gesture.selectionLost = true;
+        aim = { ...next, target: valid ? previous : null };
+    } else aim = next;
 }
-
 export function moveRopeWheelGesture(touchId: number, x: number, y: number) {
     if (!state.wheel.open || gesture?.touchId !== touchId) return false;
-    gesture.x = x;
-    gesture.y = y;
+    gesture.x = x; gesture.y = y; gesture.selectionLost = false;
     gesture.dragged ||= Math.hypot(x - gesture.startX, y - gesture.startY) >= DRAG_THRESHOLD;
-    refreshRopeWheelAim();
-    return true;
+    refreshRopeWheelAim(false); return true;
 }
-
-export function getRopeWheelAim() {
-    return state.wheel.open && canUseRopeWheel() ? aim : null;
-}
-
+export function getRopeWheelAim() { return state.wheel.open && canUseRopeWheel() ? aim : null; }
 export function getRopeCancelProgress(now = Date.now()) {
     if (!state.wheel.open || !state.rope.active || !gesture || gesture.dragged) return 0;
     if (Math.hypot(gesture.x - state.wheel.centerX, gesture.y - state.wheel.centerY) > CONFIG.marker.wheelInnerRadius) return 0;
     return Math.min(1, (now - gesture.openedAt) / CANCEL_HOLD_MS);
 }
-
 export function finishRopeWheelGesture(touchId: number, x: number, y: number, cancelled: boolean) {
     if (!state.wheel.open || gesture?.touchId !== touchId) return null;
     let changed = false;
-    if (!cancelled && canUseRopeWheel()) {
-        if (!aim || Math.hypot(x - gesture.x, y - gesture.y) > 1) moveRopeWheelGesture(touchId, x, y);
-        if (aim?.target) changed = placeRopeAt(aim.target.anchor);
-        else if (getRopeCancelProgress() >= 1) {
-            cancelRopePlacement();
-            changed = true;
-        }
+    if (!cancelled && canUseRopeWheel() && gesture.scope === interactionScope() && Math.hypot(x - gesture.x, y - gesture.y) <= 9) {
+        const centered = gesture.dragged && Math.hypot(x - state.wheel.centerX, y - state.wheel.centerY) <= CONFIG.marker.wheelInnerRadius;
+        if (aim?.target && !centered) changed = beginRopeInteraction(aim.target.anchor);
+        else if (getRopeCancelProgress() >= 1) { cancelRopePlacement(); changed = true; }
     }
-    state.wheel.open = false;
-    state.wheel.expandProgress = 0;
-    state.wheel.touchId = null;
-    gesture = null;
-    aim = null;
-    return changed;
+    state.wheel.open = false; state.wheel.expandProgress = 0; state.wheel.touchId = null; gesture = null; aim = null; return changed;
 }

@@ -6,6 +6,8 @@ import { drawTapeDeck } from './TapeDeckVisual';
 import { sampleTapeBody, drawTapeChestAccent } from './TapeResonance';
 import { drawRelicIconAt } from './RenderRelic';
 import type { RelicKind } from '../logic/Relic';
+import { sampleWorkMotion } from './InteractionPose';
+import type { WorkPose } from './InteractionPose';
 
 type DiverColors = {
     suit: string;
@@ -21,6 +23,7 @@ type DiverMotion = {
     dancePose?: RescueDancePose;
     limpPose?: RescueLimpPose;
     rescueStrike?: number;
+    workPose?: WorkPose;
     fishBump?: number;
     ropeStruggle?: { phase: number; strength: number; pull: number };
     tapeVisual?: TapeVisual;
@@ -236,6 +239,19 @@ function drawArmReach(
     renderCtx.stroke();
 
     return { wristX, wristY, angle: ang };
+}
+
+/** Two-bone IK with explicit bent elbows and cuff/hand silhouettes. */
+function drawWorkingArm(ctx:CanvasRenderingContext2D,sx:number,sy:number,tx:number,ty:number,side:number,c:DiverColors){
+    const dx=tx-sx,dy=ty-sy,d=Math.max(2,Math.min(19.8,Math.hypot(dx,dy))),angle=Math.atan2(dy,dx);
+    const a=10,b=10,alpha=Math.acos(clamp((a*a+d*d-b*b)/(2*a*d),-1,1));
+    const ex=sx+Math.cos(angle+side*alpha)*a,ey=sy+Math.sin(angle+side*alpha)*a;
+    const wx=sx+Math.cos(angle)*d,wy=sy+Math.sin(angle)*d;
+    ctx.lineCap='round';ctx.lineJoin='round';ctx.strokeStyle=c.suit;ctx.lineWidth=5.6;
+    ctx.beginPath();ctx.moveTo(sx,sy);ctx.lineTo(ex,ey);ctx.lineTo(wx,wy);ctx.stroke();
+    ctx.strokeStyle=c.accent;ctx.lineWidth=1.7;ctx.stroke();
+    ctx.fillStyle=c.skin;ctx.beginPath();ctx.arc(wx,wy,2.4,0,Math.PI*2);ctx.fill();
+    return{x:wx,y:wy};
 }
 
 /**
@@ -731,6 +747,7 @@ export function drawDiver(
     const dance = motion.dancePose;
     const limp = motion.limpPose;
     const time = motion.animTime ?? Date.now() / 150;
+    const authoredWork = motion.workPose ? sampleWorkMotion(motion.workPose) : null;
     const struggle = motion.ropeStruggle;
     const struggleAmount = struggle ? clamp(struggle.strength * .72 + struggle.pull * .4, 0, 1) : 0;
     const struggleBeat = (struggle?.phase ?? 0) * .46;
@@ -924,8 +941,10 @@ export function drawDiver(
     const rightArmLower = limp ? limp.rl : strike ? -.9 + strike * .9 : dance ? dance.rl : rightArmLowerBase + (rightArmTargetLower - rightArmLowerBase) * armBlend;
 
     renderCtx.save();
-    renderCtx.translate(x + (limp ? 0 : dance ? dance.sway : driftX), y + (limp ? 0 : dance ? dance.bounce : driftY));
-    renderCtx.rotate(angle + (limp ? 0 : dance ? dance.roll : bodyRoll + resonance.roll));
+    const workOffset = authoredWork ? authoredWork.lean - authoredWork.recoil : 0;
+    renderCtx.translate(x + Math.cos(angle) * workOffset + (limp || authoredWork ? 0 : dance ? dance.sway : driftX),
+        y + Math.sin(angle) * workOffset + (limp || authoredWork ? 0 : dance ? dance.bounce : driftY));
+    renderCtx.rotate(angle + (limp ? 0 : authoredWork ? authoredWork.roll : dance ? dance.roll : bodyRoll + resonance.roll));
     renderCtx.translate(0, -resonance.lift);
     renderCtx.scale(resonance.scaleX, resonance.scaleY);
     // 用 Y 轴压缩模拟 3D 侧倾（roll）：bodyRoll 越大身体越"侧过去"，Y 方向被压扁
@@ -1242,8 +1261,13 @@ export function drawDiver(
         }
     }
 
+    // 绑绳/解扣/剪线/敲晕直接接管双手，手的位置来自实际目标点。
+    const work = motion.workPose;
+    const workMotion = authoredWork;
     // --- 绘制左手臂（regulator 不接管左手；carry 接管时插值到目标手腕） ---
-    if (carryActive && carryArmBlend > 0.01) {
+    if (work) {
+        drawWorkingArm(renderCtx, 4.3, -6.2, workMotion!.left.x, workMotion!.left.y, -1, c);
+    } else if (carryActive && carryArmBlend > 0.01) {
         const lShoulderX = 4.3, lShoulderY = -6.2;
         const lElbowX0 = lShoulderX + Math.cos(leftArmUpper) * ARM_UPPER_LEN;
         const lElbowY0 = lShoulderY + Math.sin(leftArmUpper) * ARM_UPPER_LEN;
@@ -1258,7 +1282,32 @@ export function drawDiver(
 
     // --- 绘制右手臂：regulator 优先；其次 carry；都没有则原姿态 ---
     let rightWristX = 0, rightWristY = 0; // 供气嘴阶段 C 吸附
-    if (regActive && handBlend > 0.01) {
+    if (work && workMotion) {
+        const wrist = drawWorkingArm(renderCtx, 4.3, 6.2, workMotion.right.x, workMotion.right.y, 1, c);
+        renderCtx.save(); renderCtx.translate(wrist.x, wrist.y); renderCtx.rotate(workMotion.toolAngle);
+        if(workMotion.tool==='tank'){
+            renderCtx.strokeStyle='#415852';renderCtx.fillStyle='#c8d5c7';renderCtx.lineWidth=1.5;
+            renderCtx.beginPath();renderCtx.moveTo(-5,-4.5);renderCtx.lineTo(7,-4.5);renderCtx.quadraticCurveTo(11,-4.5,11,0);
+            renderCtx.quadraticCurveTo(11,4.5,7,4.5);renderCtx.lineTo(-5,4.5);renderCtx.quadraticCurveTo(-7,4.5,-7,0);renderCtx.quadraticCurveTo(-7,-4.5,-5,-4.5);
+            renderCtx.fill();renderCtx.stroke();renderCtx.strokeStyle='#eff3da';renderCtx.lineWidth=1.2;
+            renderCtx.beginPath();renderCtx.moveTo(-3,-2.5);renderCtx.lineTo(6,-2.5);renderCtx.stroke();
+            renderCtx.fillStyle='#71908a';renderCtx.fillRect(-2,-4.5,2,9);renderCtx.fillRect(-9,-2,3,4);
+        }else if(workMotion.tool==='shears'){
+            const spread=.14+workMotion.toolOpen*.60;
+            renderCtx.strokeStyle='#dbe7e0';renderCtx.lineWidth=1.6;
+            for(const sign of [-1,1]){
+                renderCtx.beginPath();renderCtx.moveTo(-4,-sign*2);renderCtx.lineTo(0,0);
+                renderCtx.lineTo(Math.cos(spread)*8,Math.sin(spread)*sign*8);renderCtx.stroke();
+                renderCtx.beginPath();renderCtx.arc(-4,-sign*2,2,0,Math.PI*2);renderCtx.stroke();
+            }
+        }
+        renderCtx.restore();
+        if(workMotion.thread.length>1){
+            renderCtx.strokeStyle='#f0d7a1';renderCtx.lineWidth=1.3;renderCtx.lineCap='round';
+            renderCtx.beginPath();renderCtx.moveTo(workMotion.thread[0].x,workMotion.thread[0].y);
+            for(const p of workMotion.thread.slice(1))renderCtx.lineTo(p.x,p.y);renderCtx.stroke();
+        }
+    } else if (regActive && handBlend > 0.01) {
         // 原右手腕（通过原角度反推）：肩 (4.3, 6.2) → upper → lower
         const rShoulderX = 4.3, rShoulderY = 6.2;
         const rElbowX0 = rShoulderX + Math.cos(rightArmUpper) * ARM_UPPER_LEN;

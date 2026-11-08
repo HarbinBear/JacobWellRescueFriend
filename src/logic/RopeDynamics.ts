@@ -1,4 +1,4 @@
-import { projectOntoStrand, sweepRopeNet } from './RopeNet';
+import { pointOnStrand, projectOntoStrand, sweepRopeNet } from './RopeNet';
 import type { RopeGroup, RopeHit, RopeNet, RopePoint } from './RopeNet';
 
 export type NetContactKind = 'glide' | 'rebound' | 'snag';
@@ -20,6 +20,7 @@ export interface NetContactView extends NetApproach {
     pull: number;
     escape: number;
     threads: number;
+    caughtThreads: { rope: number; point: RopePoint }[];
 }
 
 interface NetPull {
@@ -52,6 +53,7 @@ interface Contact extends NetApproach {
 }
 interface Motion {
     contacts: WeakMap<RopeBody, Contact>;
+    bodies: Set<RopeBody>;
     pulls: NetPull[];
 }
 const motionByNet = new WeakMap<RopeNet, Motion>();
@@ -59,10 +61,13 @@ const densityRadius = 86;
 const clamp = (n: number, low: number, high: number) => Math.max(low, Math.min(high, n));
 const unit = (n: number) => clamp(n, 0, 1);
 
+function uniqueThreads(net:RopeNet,indices:Iterable<number>):number{
+    const ids=new Set<number>();for(const index of indices)ids.add(net.ropes[index]?.threadId??-index-1);return ids.size;
+}
 function motionFor(net: RopeNet): Motion {
     let motion = motionByNet.get(net);
     if (!motion) {
-        motion = { contacts: new WeakMap(), pulls: [] };
+        motion = { contacts: new WeakMap(), bodies: new Set(), pulls: [] };
         motionByNet.set(net, motion);
     }
     return motion;
@@ -113,8 +118,8 @@ export function netResponseAlong(net: RopeNet, from: RopePoint, to: RopePoint, r
     const result = response(net, hit, vx, vy, referenceSpeed);
     if (swimmer?.kind) {
         const threads = touchedFishThreads(net, { ...swimmer, ...to }, from, radius, net.groups.get(hit.rope));
-        const crossing = Array.from(threads.values()).filter(thread => thread.across).length;
-        result.kind = threads.size >= fishProfiles[swimmer.kind].required && crossing >= 2 ? 'snag' : 'glide';
+        const crossing = uniqueThreads(net,Array.from(threads).filter(([,t])=>t.across).map(([i])=>i));
+        result.kind = uniqueThreads(net,threads.keys()) >= fishProfiles[swimmer.kind].required && crossing >= 2 ? 'snag' : 'glide';
     }
     return {
         ...result,
@@ -173,7 +178,9 @@ export function viewNetContact(net: RopeNet, body: RopeBody): NetContactView | n
     if (!contact || contact.cooldown > 0) return null;
     const { kind, density, strength, phase, escape, nx, ny, pull } = contact;
     const point = deformNetPoint(net, pull.point, pull.group.indices.values().next().value);
-    return { ...point, kind, density, strength, nx, ny, phase, escape, pull: unit(pull.amount / 36), threads: contact.fish?.threads.size || 1 };
+    return { ...point, kind, density, strength, nx, ny, phase, escape, pull: unit(pull.amount / 36),
+        threads: contact.fish ? uniqueThreads(net,contact.fish.threads.keys()) : 1,
+        caughtThreads: Array.from(contact.fish?.threads || [], ([rope, thread]) => ({ rope, point: { ...thread.point } })) };
 }
 
 function release(contact: Contact, body: RopeBody, impulse: number) {
@@ -271,6 +278,7 @@ function gatherFish(net: RopeNet, motion: Motion, body: RopeBody, from: RopePoin
             fish: { threads: new Map(), entry: null, grip: 0, emptyFrames: 0 },
         };
         motion.contacts.set(body, contact);
+        motion.bodies.add(body);
         motion.pulls.push(pull);
     }
     const fish = contact.fish!;
@@ -288,9 +296,10 @@ function gatherFish(net: RopeNet, motion: Motion, body: RopeBody, from: RopePoin
     if (!fish.threads.size || fish.emptyFrames > 12) {
         contact.pull.driven = false;
         motion.contacts.delete(body);
+        motion.bodies.delete(body);
         return null;
     }
-    const coverage = unit(fish.threads.size / profile.required);
+    const coverage = unit(uniqueThreads(net,fish.threads.keys()) / profile.required);
     const dx = body.x - from.x, dy = body.y - from.y;
     const drag = .035 + coverage * .13;
     const x = body.x - dx * drag, y = body.y - dy * drag;
@@ -310,9 +319,9 @@ function gatherFish(net: RopeNet, motion: Motion, body: RopeBody, from: RopePoin
     const travelled = Math.max(0, (body.x - contact.surface.x) * contact.nx + (body.y - contact.surface.y) * contact.ny + radius);
     const flex = Math.min(23, 2 + travelled * .43 + coverage * 5);
     pull.amount += (flex - pull.amount) * .3;
-    const crossings = Array.from(fish.threads.values()).filter(thread => thread.across).length;
+    const crossings = uniqueThreads(net,Array.from(fish.threads).filter(([,t])=>t.across).map(([i])=>i));
     const entered = fish.entry && (body.x - fish.entry.x) * contact.nx + (body.y - fish.entry.y) * contact.ny > radius * .6;
-    const engaged = fish.threads.size >= profile.required && crossings >= 2 && entered;
+    const engaged = uniqueThreads(net,fish.threads.keys()) >= profile.required && crossings >= 2 && entered;
     // A burst threads through several layers within a few frames. Scale the
     // tightening by distance travelled so it catches inside the mesh as well.
     const tightening = clamp(Math.hypot(dx, dy) / 3, .5, 2.5);
@@ -342,7 +351,7 @@ export function moveThroughNet(
     let contact = motion.contacts.get(body);
     const dx = body.x - from.x, dy = body.y - from.y;
     if (contact?.cooldown > 0) {
-        if (--contact.cooldown === 0) motion.contacts.delete(body);
+        if (--contact.cooldown === 0) { motion.contacts.delete(body); motion.bodies.delete(body); }
         return null;
     }
     if (body.kind && (!contact || contact.kind === 'glide')) {
@@ -363,6 +372,7 @@ export function moveThroughNet(
             cooldown: 0,
         };
         motion.contacts.set(body, contact);
+        motion.bodies.add(body);
         motion.pulls.push(pull);
     }
     contact.phase++;
@@ -424,4 +434,81 @@ export function moveThroughNet(
         release(contact, body, clamp(-contact.speed, 2.2, 7));
     }
     return kind;
+}
+
+
+export function releaseNetBody(net: RopeNet, body: RopeBody) {
+    const motion = motionByNet.get(net), contact = motion?.contacts.get(body);
+    if (!motion) return;
+    if (contact) { contact.pull.driven = false; contact.pull.velocity = -1.4; }
+    motion.contacts.delete(body);
+    motion.bodies.delete(body);
+}
+
+/** Transfer surviving contacts when a rope is split, joined or removed. A cut
+ * does not globally reset the net; separate pockets keep their timers/load. */
+export function remapNetMotion(previous: RopeNet, next: RopeNet, indices: Map<number, number[]>) {
+    if (previous === next) return;
+    const old = motionByNet.get(previous);
+    if (!old) return;
+    const motion = motionFor(next);
+    const mapThread = (index: number, point: RopePoint) => {
+        for (const candidate of indices.get(index) || []) {
+            if (next.strands.some(s => s.rope === candidate && pointOnStrand(point, s.a, s.b))) return candidate;
+        }
+        return -1;
+    };
+    for (const body of old.bodies) {
+        const contact = old.contacts.get(body);
+        if (!contact) continue;
+        let group: RopeGroup | undefined;
+        let fish: Contact['fish'];
+        if (contact.fish) {
+            const threads: NonNullable<Contact['fish']>['threads'] = new Map();
+            for (const [index, thread] of contact.fish.threads) {
+                const mapped = mapThread(index, thread.point), candidate = next.groups.get(mapped);
+                if (!candidate || group && group !== candidate) continue;
+                group = candidate;
+                threads.set(mapped, { ...thread });
+            }
+            const crossings = uniqueThreads(next,Array.from(threads).filter(([,t])=>t.across).map(([i])=>i));
+            if (!group || !threads.size || contact.kind === 'snag' &&
+                (uniqueThreads(next,threads.keys()) < fishProfiles[body.kind!].required || crossings < 2)) continue;
+            fish = { ...contact.fish, threads };
+        } else {
+            for (const index of contact.pull.group.indices) {
+                for (const mapped of indices.get(index) || []) {
+                    group = next.groups.get(mapped);
+                    if (group) break;
+                }
+                if (group) break;
+            }
+            if (!group) continue;
+        }
+        const pull: NetPull = { ...contact.pull, group };
+        const copy: Contact = { ...contact, pull, fish };
+        motion.contacts.set(body, copy);
+        motion.bodies.add(body);
+        motion.pulls.push(pull);
+    }
+}
+
+
+/** The diver's supporting hand holds an already caught fish at contact range.
+ * The mesh still loosens on its real timer; no free fish or other pocket freezes. */
+export function steadyNetBody(net: RopeNet, body: RopeBody): boolean {
+    const contact = motionByNet.get(net)?.contacts.get(body);
+    if (!contact || contact.kind !== 'snag' || contact.cooldown > 0) return false;
+    contact.phase++;
+    contact.escape = unit(contact.escape + .0028);
+    if (contact.escape >= 1) { release(contact, body, 2.2); return false; }
+    const pull = contact.pull;
+    const surface = deformNetPoint(net, pull.point, pull.group.indices.values().next().value);
+    contact.surface = surface; contact.x = surface.x; contact.y = surface.y;
+    contact.depth = (body.x - surface.x) * contact.nx + (body.y - surface.y) * contact.ny + contact.gap;
+    contact.side = (body.y - surface.y) * contact.nx - (body.x - surface.x) * contact.ny;
+    contact.speed = 0;
+    pull.amount = Math.max(0, contact.depth) * .96;
+    pull.velocity = 0; pull.age = 0; pull.driven = true;
+    return true;
 }

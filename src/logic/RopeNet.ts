@@ -3,6 +3,9 @@ export interface NetRope {
     path: RopePoint[];
     startOnRope?: boolean;
     endOnRope?: boolean;
+    startLoose?: boolean;
+    endLoose?: boolean;
+    threadId?: number;
 }
 
 const KNOT_EPSILON = 0.025;
@@ -27,6 +30,7 @@ interface Strand { a: RopePoint; b: RopePoint; rope: number }
 interface Knot extends RopePoint { ropes: Set<number> }
 export interface RopeGroup { indices: Set<number>; strands: Strand[]; knots: Knot[]; pins: RopePoint[] }
 export interface RopeNet {
+    ropes: NetRope[];
     strands: Strand[];
     knots: Knot[];
     woven: Set<number>;
@@ -124,8 +128,8 @@ export function getRopeNet(ropes: NetRope[]): RopeNet {
                 for (const neighbor of knot.ropes) group.indices.add(neighbor);
             }
             const rope = ropes[member], path = rope.path;
-            if (!rope.startOnRope) group.pins.push(path[0]);
-            if (!rope.endOnRope) group.pins.push(path[path.length - 1]);
+            if (!rope.startOnRope && !rope.startLoose) group.pins.push(path[0]);
+            if (!rope.endOnRope && !rope.endLoose) group.pins.push(path[path.length - 1]);
             // A rope going around a rock bears against the bend as well as its nails.
             for (let i = 1; i < path.length - 1; i++) {
                 if (!pointOnStrand(path[i], path[i - 1], path[i + 1])) group.pins.push(path[i]);
@@ -134,7 +138,7 @@ export function getRopeNet(ropes: NetRope[]): RopeNet {
         group.knots = Array.from(seenKnots);
     }
     for (const strand of strands) groups.get(strand.rope)?.strands.push(strand);
-    const net = { strands, knots, woven, groups };
+    const net = { ropes, strands, knots, woven, groups };
     const bounds = { left: Infinity, right: -Infinity, top: Infinity, bottom: -Infinity };
     for (const { a, b, rope } of strands) {
         if (!woven.has(rope)) continue;

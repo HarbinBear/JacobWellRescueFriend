@@ -1,6 +1,11 @@
 import { CONFIG } from './config';
 import type { RescueRagdollState } from '../logic/RescueRagdoll';
 import type { RopePoint } from '../logic/RopeNet';
+import type { InteractionRuntime, RopeEndpoint, TetherLine, RopeFade } from '../logic/InteractionTypes';
+
+export function createInteractionState(): InteractionRuntime {
+    return { gesture: null, aim: null, task: null, feedback: null, cooldown: 0, nextLinkId: 1 };
+}
 
 export function createSemiAutoDriveState() {
     return {
@@ -22,6 +27,7 @@ export function createLooseRope() {
         start: null as RopePoint | null,
         startWall: null as any,
         startOnRope: false,
+        startAttachment: null as RopeEndpoint | null,
         path: [] as RopePoint[],
         slackFactor: 1,
         time: 0,
@@ -29,14 +35,15 @@ export function createLooseRope() {
 }
 
 export function createRopeState() {
-    return { ropes: [] as any[], active: false, current: createLooseRope() };
+    return { ropes: [] as any[], links: [] as TetherLine[], fading: [] as RopeFade[], active: false, current: createLooseRope() };
 }
 
 export function createFishBumpState() {
-    return { timer: 0, cooldown: 0, x: 0, y: 0, nx: 0, ny: 0, strength: 0 };
+    return { timer: 0, stunTimer: 0, stunUntil: 0, cooldown: 0, x: 0, y: 0, nx: 0, ny: 0, strength: 0 };
 }
 
 export const state = {
+    interaction: createInteractionState(),
     screen: 'menu', // menu, progressSelect, mazeRescue, home_evening, dream（旧 play/win/lose/ending/fishArena 已废弃；fishArena 仍可由 GM 强制进入）
     // 主菜单"开始新游戏"确认框开关（运行时，不进存档）
     _menuConfirmNewGame: false,
@@ -547,6 +554,7 @@ export function resetState() {
     state.fishEnemies = [];
     state.fishBite = null;
     state.fishBump = createFishBumpState();
+    state.interaction = createInteractionState();
     state.flashlightOn = true; // 重置手电筒为开启状态
     // 重置屏幕特效，防止重新开始后残留红屏和震动
     state.fx.redOverlay = 0;

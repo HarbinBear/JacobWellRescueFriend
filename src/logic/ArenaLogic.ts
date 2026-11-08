@@ -1,3 +1,4 @@
+import { updateInteractionMovement, resetInteractions } from './Interaction';
 import { processJoystickDrive } from './JoystickDrive';
 import { resetDriveInput } from './DriveMode';
 import { processSemiAutoDrive } from './SemiAutoDrive';
@@ -186,7 +187,9 @@ function updateArenaPlayer() {
         resetDriveInput();
         return;
     }
-    if (processManualDrive() || processSemiAutoDrive()) {
+    if (updateInteractionMovement()) {
+        // 主动操作接管最后一小段接近，不绕过碰撞。
+    } else if (processManualDrive() || processSemiAutoDrive()) {
         // 手动挡/半自动：移动已处理
     } else {
         // 自动挡：与半自动共用转向、推进和水阻。

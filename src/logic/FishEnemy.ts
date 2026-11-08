@@ -5,8 +5,11 @@ import { state, player } from '../core/state';
 import { srand } from '../core/SeededRandom';
 import { playSFX } from '../audio/AudioManager';
 import { stepFishBump, tryFishBump } from './FishBump';
+import { keepFishDistance, stepFishCaptivity, stunFish } from './FishHandling';
+import { triggerQuickAction } from './ActionWheel';
+import { updateRopeTethers } from './RopeTether';
 import { getActiveMapContext, isLineOfSight } from '../world/Visibility';
-import { getRopeContact, getRopeResponseAlong, resolveWovenRopeContact } from './Rope';
+import { getRopeContact, getRopeResponseAlong, resolveWovenRopeContact, steadyRopeContact } from './Rope';
 
 // =============================================
 // 判断当前是否处于迷宫模式
@@ -98,12 +101,18 @@ export type FishEnemyState =
     | 'fear'        // 怕光后退（过渡状态）
     | 'hit'         // 被打中后逃跑
     | 'returning'   // 脱离仇恨后返回聚集点
+    | 'stunned'     // 暂时眩晕，不会死亡
+    | 'bound'       // 已绑但醒着，只能在绳长范围内挣扎
     | 'dying';      // 死亡动画（翻肚皮淘出）
 // =============================================
 // 凶猛鱼实体数据结构
 // =============================================
 export interface FishEnemy {
     kind: FishKind;
+    stunFrames: number;
+    stunUntil: number;
+    bound: boolean;
+    netGraceFrames: number;
     lightFrames: number;
     lightTargetX: number;
     lightTargetY: number;
@@ -180,6 +189,7 @@ export function createFishEnemy(x: number, y: number, denX?: number, denY?: numb
     const angle = Math.random() * Math.PI * 2;
     return {
         kind, lightFrames: 0, lightTargetX: x, lightTargetY: y,
+        stunFrames: 0, stunUntil: 0, bound: false, netGraceFrames: 0,
         x, y,
         vx: Math.cos(angle) * 0.5,
         vy: Math.sin(angle) * 0.5,
@@ -690,7 +700,15 @@ function updateShoalFish(fish: FishEnemy, group: SchoolContext) {
 // =============================================
 export function updateFishEnemy(fish: FishEnemy, dt: number, getGlow = illuminatedRockSpot, school?: SchoolContext) {
     if (fish.dead) return;
-    if (fish.state === 'dying') { updateDying(fish, CFG()); return; }
+    if (fish.state === 'dying') stunFish(fish); // Compatibility: legacy death state becomes temporary stun.
+    if (stepFishCaptivity(fish, applyMovement)) return;
+    const held = state.interaction.task;
+    if (held?.kind === 'stun' && held.phase === 'perform' && held.target?.fish === fish &&
+        Math.hypot(player.x - held.point.x, player.y - held.point.y) <= CONFIG.fishInteraction.handReach + 3) {
+        fish.animTime += .025;
+        applyMovement(fish, { x: 0, y: 0 });
+        return;
+    }
 
     const cfg = CFG();
     fish.stateTimer++;
@@ -744,6 +762,8 @@ export function updateFishEnemy(fish: FishEnemy, dt: number, getGlow = illuminat
         case 'returning': updateReturning(fish, cfg); break;
     }
 
+    // 普通鱼保持距离；困网和绑缚鱼由各自状态处理。
+    keepFishDistance(fish);
     // 应用速度并做碰撞检测
     const ropeContact = applyMovement(fish);
     if (ropeContact && ropeContact !== 'glide') {
@@ -1197,40 +1217,6 @@ function startHitFlee(fish: FishEnemy, cfg: any) {
     fish.alertTimer = 40;
 }
 
-/** 死亡动画：翻肚皮旋转 + 淡出 */
-function updateDying(fish: FishEnemy, cfg: any) {
-    fish.dyingTimer++;
-    const rollDur = cfg.deathRollDuration;
-    const fadeDur = cfg.deathFadeOutDuration;
-    const totalDur = rollDur + fadeDur;
-
-    if (fish.dyingTimer <= rollDur) {
-        // 翻肚皮阶段：绕 Z 轴旋转 180°
-        fish.dyingRoll = (fish.dyingTimer / rollDur) * Math.PI;
-        fish.dyingAlpha = 1;
-        // 缓慢漂移（翻肚皮时微微上浮）
-        fish.vy -= 0.05;
-        fish.vx *= 0.92;
-        fish.vy *= 0.92;
-        fish.x += fish.vx;
-        fish.y += fish.vy;
-    } else {
-        // 淡出阶段
-        const fadeProgress = (fish.dyingTimer - rollDur) / fadeDur;
-        fish.dyingAlpha = Math.max(0, 1 - fadeProgress);
-        fish.dyingRoll = Math.PI; // 保持翻转状态
-        fish.vy -= 0.03;
-        fish.vx *= 0.95;
-        fish.vy *= 0.95;
-        fish.x += fish.vx;
-        fish.y += fish.vy;
-    }
-
-    if (fish.dyingTimer >= totalDur) {
-        fish.dead = true;
-    }
-}
-
 /** 怕光后退（短暂的惊吓反应，然后切换到 flee） */
 function updateFear(fish: FishEnemy, cfg: any) {
     fish.fearTimer--;
@@ -1285,6 +1271,18 @@ function netWillHoldLunge(fish: FishEnemy, vx = fish.vx, vy = fish.vy): boolean 
 }
 
 function applyMovement(fish: FishEnemy, effort = { x: fish.vx, y: fish.vy }) {
+    const work = state.interaction.task;
+    // The supporting hand can restrain a free fish only after actual close contact.
+    if(work?.phase==='perform'&&work.kind==='stun'&&work.target?.fish===fish&&
+        Math.hypot(player.x-work.point.x,player.y-work.point.y)<=CONFIG.fishInteraction.handReach+3){
+        fish.vx*=.12;fish.vy*=.12;
+        if(!getRopeContact(fish))return null;
+    }
+    if (work?.phase === 'perform' && (work.kind === 'stun' && work.target?.fish === fish || work.kind === 'tie' && work.anchor?.fish === fish) &&
+        Math.hypot(player.x - work.point.x, player.y - work.point.y) <= CONFIG.fishInteraction.handReach + 8 && steadyRopeContact(fish)) {
+        fish.vx = fish.vy = 0;
+        return 'snag';
+    }
     const from = { x: fish.x, y: fish.y };
     const nextX = fish.x + fish.vx;
     const nextY = fish.y + fish.vy;
@@ -1301,7 +1299,7 @@ function applyMovement(fish: FishEnemy, effort = { x: fish.vx, y: fish.vy }) {
         fish.vy *= -0.5;
     }
 
-    const ropeContact = resolveWovenRopeContact(fish, from, fishCollisionRadius(fish), effort,
+    const ropeContact = fish.netGraceFrames > 0 ? null : resolveWovenRopeContact(fish, from, fishCollisionRadius(fish), effort,
         (x, y) => !checkCollisionLocal(x, y));
     // 防止游出地图边界（适配迷宫模式）
     if (isMazeMode()) {
@@ -1407,56 +1405,9 @@ export function updateFishBiteState() {
 // 玩家攻击判定：挥氧气瓶
 // =============================================
 export function triggerPlayerAttack() {
-    const cfg = CONFIG.attack;
-    const atkCfg = CONFIG.fishEnemy;
-
-    if (!state.playerAttack) {
-        state.playerAttack = { active: false, timer: 0, cooldownTimer: 0, angle: 0 };
-    }
-
-    // 冷却中不能攻击
-    if (state.playerAttack.cooldownTimer > 0) return;
-
-    // 激活攻击
-    state.playerAttack.active = true;
-    state.playerAttack.timer = 0;
-    state.playerAttack.cooldownTimer = cfg.cooldown;
-    state.playerAttack.angle = player.angle;
-
-    if (!state.fishEnemies) return;
-
-    const halfAngle = (cfg.angle / 2) * (Math.PI / 180);
-
-    for (const fish of state.fishEnemies) {
-        if (fish.dead || fish.state === 'dying') continue;
-
-        const dx = fish.x - player.x;
-        const dy = fish.y - player.y;
-        const dist = Math.hypot(dx, dy);
-
-        // 距离判定
-        if (dist > cfg.range) continue;
-
-        // 方向判定：鱼在攻击扇形内
-        const angleToFish = Math.atan2(dy, dx);
-        let angleDiff = angleToFish - player.angle;
-        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-        if (Math.abs(angleDiff) > halfAngle) continue;
-
-        // 任何状态被打到都会死（鱼很灵敏，常态下根本进不了身，一旦被打到就是真实命中）
-        fish.state = 'dying';
-        fish.stateTimer = 0;
-        fish.dyingTimer = 0;
-        fish.dyingAlpha = 1;
-        fish.dyingRoll = 0;
-        fish.vx *= 0.3;
-        fish.vy *= 0.3;
-
-        // 击中反馈：屏幕震动
-        state.fx.shake = Math.max(state.fx.shake || 0, CONFIG.attack.slashImpactShake);
-    }
+    return triggerQuickAction();
 }
+
 // =============================================
 // 更新玩家攻击状态（在主逻辑循环中调用）
 // =============================================
@@ -1488,11 +1439,11 @@ export function updateAllFishEnemies(dt: number) {
     updatePlayerAttack();
     stepFishBump();
 
-    if (!state.fishEnemies || state.fishEnemies.length === 0) return;
+    if (!state.fishEnemies || state.fishEnemies.length === 0) { updateRopeTethers(); return; }
 
     const schools = new Map<number, FishEnemy[]>();
     for (const fish of state.fishEnemies as FishEnemy[]) {
-        if (fish.kind !== 'shoal' || fish.dead || fish.state === 'dying') continue;
+        if (fish.kind !== 'shoal' || fish.dead || fish.state === 'dying' || fish.bound || fish.stunFrames > 0) continue;
         const id = fish.schoolId || 0;
         if (!schools.has(id)) schools.set(id, []);
         schools.get(id)!.push(fish);
@@ -1508,4 +1459,5 @@ export function updateAllFishEnemies(dt: number) {
             state.fishEnemies.splice(i, 1);
         }
     }
+    updateRopeTethers();
 }

@@ -150,6 +150,9 @@ interface PackedLiveRope {
     endWall: PackedWallRef | null;
     startOnRope?: boolean;
     endOnRope?: boolean;
+    startLoose?: boolean;
+    endLoose?: boolean;
+    threadId?: number;
     path: number[];          // 扁平 [x,y,...]
     slackFactor: number;
     mode: string;
@@ -217,6 +220,9 @@ function packLiveRope(rope: any): PackedLiveRope {
         endWall: packWallRef(rope && rope.endWall),
         startOnRope: rope?.startOnRope || undefined,
         endOnRope: rope?.endOnRope || undefined,
+        startLoose: rope?.startLoose || undefined,
+        endLoose: rope?.endLoose || undefined,
+        threadId: rope?.threadId,
         // Live paths retain the same precision as their tied endpoints.
         path: packPath(rope?.path, 100),
         slackFactor: (rope && typeof rope.slackFactor === 'number') ? rope.slackFactor : 0,
@@ -233,6 +239,9 @@ function unpackLiveRope(p: PackedLiveRope, newMazeWalls: any[]): any {
         endWall: findWallByRef(newMazeWalls, p.endWall),
         startOnRope: p.startOnRope,
         endOnRope: p.endOnRope,
+        startLoose: p.startLoose,
+        endLoose: p.endLoose,
+        threadId: p.threadId,
         path: unpackPath(p.path),
         slackFactor: p.slackFactor,
         mode: p.mode,

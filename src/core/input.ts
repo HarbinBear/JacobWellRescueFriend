@@ -3,7 +3,11 @@ import { resetDriveInput } from '../logic/DriveMode';
 import { CONFIG } from './config';
 import { unlockAdaptiveMusic } from '../audio/AdaptiveMusic';
 import { state, input, touches, player } from './state';
-import { createFishEnemy, triggerPlayerAttack, findSafeSpawnPosition } from '../logic/FishEnemy';
+import { createFishEnemy, findSafeSpawnPosition } from '../logic/FishEnemy';
+import { startActionGesture, moveActionGesture, finishActionGesture } from '../logic/ActionWheel';
+import { getActionControlPosition } from '../logic/InteractionLayout';
+import { cancelInteraction, cancelInteractionInput } from '../logic/Interaction';
+import { isInteractionPlay } from '../logic/ActionTargets';
 import { DEBUG_FISH_BTN, ATTACK_BTN, FLASHLIGHT_BTN } from '../render/RenderUI';
 import { isGMOpen, handleGMTouchStart, handleGMTouchMove, handleGMTouchEnd } from '../gm/GMPanel';
 import { handleHUDTouchStart, handleHUDTouchMove, handleHUDTouchEnd } from '../render/HUDTopLeft';
@@ -140,6 +144,8 @@ function consumeNextManualStrokeSide() {
 }
 
 function beginSwimTouch(id: number, x: number, y: number) {
+    if (state.fishBump.stunTimer > 0) return;
+    if (state.interaction.task) cancelInteraction(true);
     if (CONFIG.driveMode === 'manual') {
         const md = state.manualDrive;
         if (Object.keys(md.activeTouches).length >= CONFIG.manualDrive.maxTouchPoints) return;
@@ -202,6 +208,7 @@ function bcdSyncHeldState(): void {
 
 /** 全部松开（打开全屏页 / 详情卡 / 场景切换时调用，防止按住态卡死一直漏气） */
 function bcdReleaseAll(): void {
+    cancelInteractionInput();
     let had = false;
     for (const k in bcdTouches) { delete bcdTouches[k]; had = true; }
     if (had) releaseBCDControls();
@@ -294,6 +301,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
         };
 
         window.addEventListener('blur', () => {
+            cancelInteractionInput();
             keys.w = keys.a = keys.s = keys.d = keys.shift = false;
             if (state.wheel.touchId !== null) finishRopeWheelGesture(state.wheel.touchId, 0, 0, true);
             resetDriveInput();
@@ -344,7 +352,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
             exitCaveRockTrial();
             return;
         }
-        if (state.wheel.open && canUseRopeWheel()) return;
+        if ((state.wheel.open || state.interaction.gesture) && isInteractionPlay()) return;
 
         // GM 面板优先消费触摸事件（面板本身或 HUD 栏的 GM 齿轮按钮）
         const gmTouch = res.touches[res.touches.length - 1];
@@ -422,6 +430,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
         if (state.screen === 'mazeRescue' && state.mazeRescue && state.mazeRescue.phase === 'play') {
             const hudTouch = res.changedTouches && res.changedTouches.length > 0 ? res.changedTouches[0] : res.touches[res.touches.length - 1];
             if (hudTouch && handleHUDTouchStart(hudTouch.identifier, hudTouch.clientX, hudTouch.clientY)) {
+                cancelInteractionInput();
                 return;
             }
         }
@@ -543,8 +552,12 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
         }
 
         // 遍历所有新增触点，多点触控：摇杆和攻击按钮互不干扰
-        const ropeButton = getWheelBtnPos();
+        const ropeButton = getWheelBtnPos(), actionButton = getActionControlPosition();
         for (const t of res.changedTouches) {
+            if (isInteractionPlay() && Math.hypot(t.clientX - actionButton.x, t.clientY - actionButton.y) <= actionButton.radius) {
+                startActionGesture(t.identifier, t.clientX, t.clientY);
+                continue;
+            }
             if (Math.hypot(t.clientX - ropeButton.x, t.clientY - ropeButton.y) <= CONFIG.marker.btnRadius &&
                 startRopeWheelGesture(t.identifier, t.clientX, t.clientY, ropeButton.x, ropeButton.y)) continue;
 
@@ -556,16 +569,6 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
                 state.screen === 'play' ||
                 (state.screen === 'fishArena' && state.fishArena && state.fishArena.phase === 'fight')
             );
-            if (isGameActive && attackTouchId === null) {
-                const atkBtn = ATTACK_BTN;
-                const adx = t.clientX - atkBtn.x;
-                const ady = t.clientY - atkBtn.y;
-                if (Math.hypot(adx, ady) <= atkBtn.r) {
-                    attackTouchId = t.identifier;
-                    triggerPlayerAttack();
-                    continue;
-                }
-            }
 
             // 检测手电筒开关按钮（游戏进行中或竞技场战斗中均可切换）
             if (isGameActive || (isMazePlay && !isBiting)) {
@@ -719,6 +722,13 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
         if (state.wheel.open) {
             for (const t of res.touches) {
                 if (moveRopeWheelGesture(t.identifier, t.clientX, t.clientY)) break;
+            }
+            return;
+        }
+
+        if (state.interaction.gesture) {
+            for (const t of res.touches) {
+                if (moveActionGesture(t.identifier, t.clientX, t.clientY)) break;
             }
             return;
         }
@@ -1353,7 +1363,10 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
         handleTouchEnd(res.changedTouches);
     });
 
+    if ((wx as any).onHide) (wx as any).onHide(() => { cancelInteractionInput(); resetDriveInput(); bcdReleaseAll(); });
+
     wx.onTouchCancel((res) => {
+        cancelInteractionInput();
         if (res.changedTouches.some(t => t.identifier === touches.joystickId)) resetDriveInput();
         if (state.screen === 'home_evening') {
             for (const t of res.changedTouches) {
@@ -1370,9 +1383,13 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
 }
 
 function finishDiveActionTouch(id: number, tx: number, ty: number, cancelled: boolean) {
+    if (state.interaction.gesture?.touchId === id) {
+        finishActionGesture(id, tx, ty, cancelled);
+        return true;
+    }
     if (state.wheel.open && state.wheel.touchId === id) {
         const placed = finishRopeWheelGesture(id, tx, ty, cancelled);
-        if (!cancelled) playSFX(placed ? 'uiPrimary' : 'uiSecondary');
+        if (!cancelled && !placed) playSFX('uiSecondary');
         return true;
     }
     if (supplyTouch?.id !== id) return false;

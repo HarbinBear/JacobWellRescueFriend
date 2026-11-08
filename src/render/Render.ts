@@ -6,8 +6,10 @@ import { canvas, ctx, dpr, logicW, logicH } from './Canvas';
 import { isLineOfSight, getLightPolygon } from './RenderLight';
 import { initWebGLLight, isWebGLAvailable, uploadPolyData, uploadVPLData, renderLightMask, renderVolumetricLight, getGLCanvas, getVolGLCanvas, getGLCanvasPixelSize } from './WebGLLight';
 import { drawDiver } from './RenderDiver';
+import { drawActionControls, drawActionPreviewWorld, drawInteractionWorkWorld, drawInteractionOverlayWorld, drawRopeTethersWorld, drawRemovedRopesWorld, drawInteractionHUD } from './RenderInteraction';
+import { getInteractionWorkPose } from '../logic/Interaction';
 import { drawFishBumpWorld, fishBumpPose } from './RenderFishSpecies';
-import { drawUI, drawControls, drawSlashEffect } from './RenderUI';
+import { drawUI, drawControls } from './RenderUI';
 import { drawRopesWorld, drawRopeApproachWorld, drawRopeContactWorld } from './RenderRope';
 import { getRopeContact } from '../logic/Rope';
 import { drawRescueRopeWorld, drawNPCDistressWorld } from './RenderRescueRope';
@@ -411,6 +413,8 @@ export function draw() {
     profileBegin('draw.worldObjects');
     // --- 绘制绳索（世界空间，在角色之前）---
     drawRopesWorld(viewL, viewR, viewT, viewB);
+    drawRopeTethersWorld(ctx, viewL, viewR, viewT, viewB);
+    drawRemovedRopesWorld(ctx);
 
     // --- 绘制救援绳（玩家↔NPC，仅迷宫模式绑绳后）---
     drawRescueRopeWorld(ctx);
@@ -466,6 +470,7 @@ export function draw() {
     const ropeContact = isMazeMode ? getRopeContact(player) : null;
     drawDiver(ctx, player.x, player.y, player.angle, playerColors, {
         fishBump: fishBumpPose(),
+        workPose: getInteractionWorkPose(),
         ropeStruggle: ropeContact?.kind === 'snag' ? { phase: ropeContact.phase, strength: ropeContact.strength, pull: ropeContact.pull } : undefined,
         animTime: player.animTime,
         hasTank,
@@ -501,6 +506,7 @@ export function draw() {
     });
 
 
+    drawInteractionWorkWorld(ctx);
     drawFishBumpWorld(ctx);
     drawRopeContactWorld(ctx, player, ropeContact, CONFIG.maze.playerRadius);
 
@@ -690,6 +696,8 @@ export function draw() {
             top: camY - logicH / (2 * zoom), bottom: camY + logicH / (2 * zoom),
         });
         drawRopeAimWorld(ctx);
+        drawActionPreviewWorld(ctx);
+        drawInteractionOverlayWorld(ctx);
         ctx.restore();
     }
 
@@ -713,25 +721,8 @@ export function draw() {
     drawControls();
     drawWheelButton();
     drawWheel();
-
-    // 绘制刀光特效（在 UI 之上，屏幕空间）
-    if (state.playerAttack && state.playerAttack.active) {
-        const zoom = state.camera ? state.camera.zoom : 1;
-        const playerScreenX = logicW / 2 + (player.x - camX) * zoom + shakeX;
-        const playerScreenY = logicH / 2 + (player.y - camY) * zoom + shakeY;
-        const totalSlashDur = CONFIG.attack.slashSwingDuration + CONFIG.attack.slashLingerDuration;
-        if (state.playerAttack.timer <= totalSlashDur) {
-            drawSlashEffect(
-                ctx,
-                logicW,
-                logicH,
-                playerScreenX,
-                playerScreenY,
-                state.playerAttack.angle,
-                state.playerAttack.timer
-            );
-        }
-    }
+    drawActionControls(ctx);
+    drawInteractionHUD(ctx);
 
     drawFishThreatDirection(ctx, logicW, logicH, camX, camY, zoom);
 

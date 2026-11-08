@@ -4,6 +4,8 @@ import { updateHome } from './src/story/HomeScene';
 import { loadStoryProgress } from './src/story/StoryProgressSave';
 import { ensureHomeAssetsRegistered } from './src/story/HomeRoom';
 import { state } from './src/core/state';
+import { cancelInteractionInput } from './src/logic/Interaction';
+import { isInteractionPlay } from './src/logic/ActionTargets';
 import { initInput } from './src/core/input';
 import { initAudio, updateAudio, updateSFXLoops, updateAmbience, playAmbience, stopAmbience } from './src/audio/AudioManager';
 import { updateAdaptiveMusic } from './src/audio/AdaptiveMusic';
@@ -73,6 +75,7 @@ function gameLoop() {
     profileBegin('update');        update();         profileEnd('update');
     profileBegin('updateArena');   updateArena();    profileEnd('updateArena');
     profileBegin('updateMaze');    updateMaze();     profileEnd('updateMaze');
+    if (!isInteractionPlay()) cancelInteractionInput();
     profileBegin('updateHome');    updateHome();     profileEnd('updateHome');
     profileBegin('updateAudio');   updateAudio();    profileEnd('updateAudio');
     updateAdaptiveMusic(getLifeDetectorRuntime());
