@@ -1,0 +1,219 @@
+{
+  "date": "2026-11-08",
+  "status": "design review only, no game integration",
+  "human_body_cm": 175,
+  "human_measurement_px": 1050,
+  "pixels_per_cm": 6,
+  "measurement_method": "Artwork review landmarks are normalized to chosen model sample dimensions; this is not a measurement of source photographed individuals.",
+  "images": [
+    {
+      "id": "01",
+      "name": "黑尾小鲤类",
+      "latin": "Cyprinella venusta",
+      "sample_cm": 7,
+      "measurement_type": "头尾全长",
+      "pixels_per_cm": 6,
+      "measurement_px": 42,
+      "source_measurement_axis_fraction": [
+        0,
+        1
+      ],
+      "display_bitmap_px": [
+        42,
+        17
+      ],
+      "axis_rounding_error_px": 0,
+      "relative_to_175cm_body": 0.04
+    },
+    {
+      "id": "02",
+      "name": "长耳太阳鱼",
+      "latin": "Lepomis megalotis",
+      "sample_cm": 12,
+      "measurement_type": "头尾全长",
+      "pixels_per_cm": 6,
+      "measurement_px": 72,
+      "source_measurement_axis_fraction": [
+        0,
+        1
+      ],
+      "display_bitmap_px": [
+        72,
+        44
+      ],
+      "axis_rounding_error_px": 0,
+      "relative_to_175cm_body": 0.06857142857142857
+    },
+    {
+      "id": "03",
+      "name": "瓜达卢佩黑鲈",
+      "latin": "Micropterus treculii",
+      "sample_cm": 30,
+      "measurement_type": "头尾全长",
+      "pixels_per_cm": 6,
+      "measurement_px": 180,
+      "source_measurement_axis_fraction": [
+        0,
+        1
+      ],
+      "display_bitmap_px": [
+        180,
+        74
+      ],
+      "axis_rounding_error_px": 0,
+      "relative_to_175cm_body": 0.17142857142857143
+    },
+    {
+      "id": "04",
+      "name": "斑点叉尾鮰",
+      "latin": "Ictalurus punctatus",
+      "sample_cm": 45,
+      "measurement_type": "头尾全长，不含口须",
+      "pixels_per_cm": 6,
+      "measurement_px": 270,
+      "source_measurement_axis_fraction": [
+        0,
+        0.981
+      ],
+      "display_bitmap_px": [
+        275,
+        97
+      ],
+      "axis_rounding_error_px": 0.225,
+      "relative_to_175cm_body": 0.2571428571428571
+    },
+    {
+      "id": "05",
+      "name": "克氏原螯虾",
+      "latin": "Procambarus clarkii",
+      "sample_cm": 10,
+      "measurement_type": "额剑至尾节，不含螯/触角",
+      "pixels_per_cm": 6,
+      "measurement_px": 60,
+      "source_measurement_axis_fraction": [
+        0.020000000000000018,
+        0.753
+      ],
+      "display_bitmap_px": [
+        82,
+        48
+      ],
+      "axis_rounding_error_px": 0.106,
+      "relative_to_175cm_body": 0.05714285714285714
+    },
+    {
+      "id": "06",
+      "name": "红耳滑龟",
+      "latin": "Trachemys scripta elegans",
+      "sample_cm": 20,
+      "measurement_type": "背甲直线长，不含头尾",
+      "pixels_per_cm": 6,
+      "measurement_px": 120,
+      "source_measurement_axis_fraction": [
+        0.12,
+        0.8069999999999999
+      ],
+      "display_bitmap_px": [
+        175,
+        108
+      ],
+      "axis_rounding_error_px": 0.225,
+      "relative_to_175cm_body": 0.11428571428571428
+    },
+    {
+      "id": "07",
+      "name": "桃花水母",
+      "latin": "Craspedacusta sowerbii",
+      "sample_cm": 2,
+      "measurement_type": "伞径，仅条件候选",
+      "pixels_per_cm": 6,
+      "measurement_px": 12,
+      "source_measurement_axis_fraction": [
+        0.05714285714285714,
+        0.9428571428571428
+      ],
+      "display_bitmap_px": [
+        14,
+        14
+      ],
+      "axis_rounding_error_px": 0.4,
+      "relative_to_175cm_body": 0.011428571428571429
+    },
+    {
+      "id": "M1",
+      "name": "雀尾螳螂虾",
+      "latin": "Odontodactylus scyllarus",
+      "sample_cm": 15,
+      "measurement_type": "体轴，不含触角",
+      "pixels_per_cm": 6,
+      "measurement_px": 90,
+      "source_measurement_axis_fraction": [
+        0.0050000000000000044,
+        0.926
+      ],
+      "display_bitmap_px": [
+        98,
+        29
+      ],
+      "axis_rounding_error_px": 0.258,
+      "relative_to_175cm_body": 0.08571428571428572
+    },
+    {
+      "id": "M2",
+      "name": "普通寄居蟹",
+      "latin": "Pagurus bernhardus",
+      "sample_cm": 6,
+      "measurement_type": "含壳整体外廓，设计样本",
+      "pixels_per_cm": 6,
+      "measurement_px": 36,
+      "source_measurement_axis_fraction": [
+        0,
+        1
+      ],
+      "display_bitmap_px": [
+        36,
+        30
+      ],
+      "axis_rounding_error_px": 0,
+      "relative_to_175cm_body": 0.03428571428571429
+    },
+    {
+      "id": "M3",
+      "name": "海月水母",
+      "latin": "Aurelia aurita",
+      "sample_cm": 20,
+      "measurement_type": "伞径，不含细缘触手",
+      "pixels_per_cm": 6,
+      "measurement_px": 120,
+      "source_measurement_axis_fraction": [
+        0.037,
+        0.963
+      ],
+      "display_bitmap_px": [
+        130,
+        130
+      ],
+      "axis_rounding_error_px": 0.38,
+      "relative_to_175cm_body": 0.11428571428571428
+    },
+    {
+      "id": "M4",
+      "name": "普通乌贼",
+      "latin": "Sepia officinalis",
+      "sample_cm": 25,
+      "measurement_type": "外套膜长，不含头部与腕",
+      "pixels_per_cm": 6,
+      "measurement_px": 150,
+      "source_measurement_axis_fraction": [
+        0.016000000000000014,
+        0.587
+      ],
+      "display_bitmap_px": [
+        263,
+        140
+      ],
+      "axis_rounding_error_px": 0.173,
+      "relative_to_175cm_body": 0.14285714285714285
+    }
+  ]
+}
