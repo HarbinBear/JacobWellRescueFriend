@@ -86,9 +86,9 @@ assert.equal(result.drawing.logicW, 320);
 assert.equal(result.canvas.height, 1136);
 result = boot({ getWindowInfo: () => ({ windowWidth: 393, windowHeight: 852, pixelRatio: 3,
     statusBarHeight: 59, safeArea: { top: 59, bottom: 818 } }) });
-assert.equal(result.metrics.safeTop, 71);
+assert.equal(result.metrics.safeTop, 67);
 assert.equal(result.metrics.safeBottom, 44);
-assert.equal(result.base.uiSafeTop, 71);
+assert.equal(result.base.uiSafeTop, 67);
 assert.equal(result.base.uiSafeBottom, 44);
 
 console.log('通过：新接口绕开故障旧接口、配置/画布共享查询、旧基础库兼容、SDK 抛错、空/非法字段与窗口兜底。');

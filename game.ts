@@ -6,7 +6,10 @@ import { ensureHomeAssetsRegistered } from './src/story/HomeRoom';
 import { state } from './src/core/state';
 import { cancelInteractionInput } from './src/logic/Interaction';
 import { isInteractionPlay } from './src/logic/ActionTargets';
-import { initInput } from './src/core/input';
+import { initInput, cancelAllInput } from './src/core/input';
+import { initScreenOrientation } from './src/core/ScreenOrientation';
+import { resizeWebGLLight } from './src/render/WebGLLight';
+import { resizeGMPanel } from './src/gm/GMPanel';
 import { initAudio, updateAudio, updateSFXLoops, updateAmbience, playAmbience, stopAmbience } from './src/audio/AudioManager';
 import { updateAdaptiveMusic } from './src/audio/AdaptiveMusic';
 import { getLifeDetectorRuntime } from './src/logic/LifeDetector';
@@ -67,6 +70,7 @@ initInput(
 
 // 启动游戏 (初始化但不开始)
 resetGameLogic(false);
+initScreenOrientation(cancelAllInput, () => { resizeWebGLLight(); resizeGMPanel(); });
 
 // 游戏主循环
 let _lastFrameT = 0;

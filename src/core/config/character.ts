@@ -12,7 +12,7 @@ export const characterConfig = {
         recoveryDuration: 1.8,     // 恒定基础恢复：静止从空到满的秒数
         drainExponent: 1.5,        // 总耗力随实际动力的非线性曲线
         kickFadeDuration: 0.10,
-        staminaPosition: 'bottom', // top / bottom / bcd，可在 GM 中实验
+        staminaPosition: 'top',    // 固定左上短条，不跟随移动触点
         showJoystick: false,       // 隐藏图形时仍正常接受屏幕拖动
     },
     // ===== 手动挡（搓屏移动）配置 =====

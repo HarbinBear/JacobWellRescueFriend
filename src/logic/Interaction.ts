@@ -174,10 +174,9 @@ export function updateInteractionMovement(now = Date.now()): boolean {
     }
     if (runtime.gesture) {
         runtime.aim = aimActionGesture(runtime.gesture, true);
-        player.vx *= .76; player.vy *= .76;
-        return true;
+        return false;
     }
-    if (state.wheel.open) { player.vx *= .76; player.vy *= .76; return true; }
+    if (state.wheel.open) return false;
     const task = runtime.task;
     if (!task) return false;
     if (task.scope !== interactionScope() || (task.source && state.rope.current !== task.source) ||

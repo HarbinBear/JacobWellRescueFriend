@@ -43,10 +43,10 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
   assert.equal(await b.evaluate('DeepTapeGame.state.wheel.open'),true,'Touchdown opens the rope wheel immediately');
   await touch('touchCancel');
   assert.equal(await b.evaluate('DeepTapeGame.state.wheel.open'),false);
-  const swimStart={x:button.x-95,y:button.y};
+  const swimStart={x:await b.evaluate('DeepTapeGame.cave.config.screenWidth*.3'),y:button.y};
   await touch('touchStart',swimStart);
   await touch('touchMove',{x:swimStart.x-42,y:swimStart.y-8});
-  assert(await b.evaluate('DeepTapeGame.state.semiAutoDrive.inputPower > 0'),'Dragging outside the rope button still swims');
+  assert(await b.evaluate('DeepTapeGame.state.semiAutoDrive.inputPower > 0'),'Dragging the left movement area still swims');
   await touch('touchEnd');
   assert.equal(await b.evaluate('DeepTapeGame.state.semiAutoDrive.inputPower'),0);
   // Pick two real wall locations with visible, reachable anchor directions.
@@ -84,6 +84,11 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
    await touch('touchMove',from.target);
    await touch('touchEnd');
    assert.equal(await b.evaluate('DeepTapeGame.state.wheel.open'),false);
+   const began=Date.now();
+   while(await b.evaluate('!!DeepTapeGame.state.interaction?.task')){
+    assert(Date.now()-began<5000,'Contact animation must finish');
+    await wait(30);
+   }
   }
   await wheelPlace(anchors[0]);
   const start=await b.evaluate('DeepTapeGame.state.rope.current.start');
@@ -92,7 +97,8 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
   await wheelPlace(anchors[1]);
   assert.equal(await b.evaluate('DeepTapeGame.state.rope.ropes.length'),1,'Directional wheel must finish the strand');
   const ropeCheck=await b.evaluate('(()=>{const g=DeepTapeGame,m=g.state.mazeRescue,r=g.state.rope.ropes[0];return r.path.length>1&&r.path.slice(1).every((p,i)=>g.cave.geometry.rockSegmentClear(m.mazeWalls,r.path[i],p,0))})()');assert(ropeCheck,'Actual placed rope must not cut through the drawn rock');await shot('rope-completed');
-  await click(315,24);assert.equal(await b.evaluate('DeepTapeGame.state.screen'),'menu');
+  const exit=await b.evaluate('DeepTapeGame.ui?.trialExit?.()||{x:263,y:8,w:104,h:32}');
+  await click(exit.x+exit.w/2,exit.y+exit.h/2);assert.equal(await b.evaluate('DeepTapeGame.state.screen'),'menu');
   const restored=await b.evaluate('JSON.stringify({storage:{...localStorage},ex:DeepTapeGame.state.extraction,story:DeepTapeGame.state.story2})');assert.equal(restored,before,'Exiting actual trial must restore inventory/story/storage');
   await wait(100);const released=await b.evaluate('DeepTapeGame.cave.stats()');assert.equal(released.loaded,false);assert.equal(released.textureBytes,0);assert.equal(released.decodedImageBytes,0);
   await shot('returned-menu');const report={phases,initial,oxygenAfter:after,movement:moved,collision,released,hudTextDraws,errors:b.errors,scope:'Browser performance removed before actual dive; unmodified actual game simulation from native menu; no paused review package; desktop Chrome, not WeChat phone'};

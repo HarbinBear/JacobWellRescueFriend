@@ -56,7 +56,7 @@ export function getMenuButtonRects(): MenuButtonRect[] {
     const gap = 10;
     const groupTop = ch * 0.42;
 
-    return [
+    const buttons: MenuButtonRect[] = [
         {
             id: 'dive', x: cw / 2 - btnW / 2, y: groupTop,
             w: btnW, h: btnH, label: '一键下潜',
@@ -99,6 +99,16 @@ export function getMenuButtonRects(): MenuButtonRect[] {
             enabled: true,
         },
     ];
+    if (cw > ch) {
+        const w = Math.min(220, (cw - 60) / 2), h = Math.min(48, Math.max(36, (ch * .56 - 24) / 3));
+        const startX = cw / 2 - w - 8, startY = ch * .38;
+        buttons.forEach((b, i) => {
+            b.x = i === 4 ? cw / 2 - w / 2 : startX + (i % 2) * (w + 16);
+            b.y = startY + Math.floor(i / 2) * (h + 10);
+            b.w = w; b.h = h;
+        });
+    }
+    return buttons;
 }
 
 // 新游戏确认框矩形

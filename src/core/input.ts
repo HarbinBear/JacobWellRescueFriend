@@ -10,7 +10,10 @@ import { cancelInteraction, cancelInteractionInput } from '../logic/Interaction'
 import { isInteractionPlay } from '../logic/ActionTargets';
 import { DEBUG_FISH_BTN, ATTACK_BTN, FLASHLIGHT_BTN } from '../render/RenderUI';
 import { isGMOpen, handleGMTouchStart, handleGMTouchMove, handleGMTouchEnd } from '../gm/GMPanel';
-import { handleHUDTouchStart, handleHUDTouchMove, handleHUDTouchEnd } from '../render/HUDTopLeft';
+import { handleHUDTouchStart, handleHUDTouchMove, handleHUDTouchEnd, cancelHUDTouches } from '../render/HUDTopLeft';
+import { getScreenOrientationButton } from '../render/RenderOrientation';
+import { toggleScreenOrientation } from './ScreenOrientation';
+import { getUILayout } from './UILayout';
 // BCD 浮力背心：右侧竖直 inflator 控件（充气钮 / 排气钮）
 import { getBCDInflateBtn, getBCDDeflateBtn, isBCDUIVisible } from '../render/RenderBCD';
 import { setBCDInflate, setBCDDeflate, releaseBCDControls } from '../logic/BCDSystem';
@@ -88,6 +91,8 @@ let abandonTouchId = null;
 // 攻击按钮独立触点 ID（多点触控：与摇杆互不干扰）
 let attackTouchId: number | null = null;
 let supplyTouch: { id: number; x: number; y: number; radius: number; supply: DiveSupply } | null = null;
+const orientationTouches = new Set<number>();
+let resetKeyboard = () => {};
 
 // 迷宫救援长按触点 ID
 let mazeRescueTouchId: number | null = null;
@@ -144,6 +149,8 @@ function consumeNextManualStrokeSide() {
 }
 
 function beginSwimTouch(id: number, x: number, y: number) {
+    // 右手区域只分配给操作按钮，空白处不再抢走左手的移动触点。
+    if (x > CONFIG.screenWidth * .52 || y < getUILayout().moveTop) return;
     if (state.fishBump.stunTimer > 0) return;
     if (state.interaction.task) cancelInteraction(true);
     if (CONFIG.driveMode === 'manual') {
@@ -214,6 +221,35 @@ function bcdReleaseAll(): void {
     if (had) releaseBCDControls();
 }
 
+/** 窗口变化/系统中断释放输入，不补体力、不改玩家位置和案件数据。 */
+export function cancelAllInput(): void {
+    cancelInteractionInput();
+    resetDriveInput();
+    bcdReleaseAll();
+    releaseBCDControls();
+    cancelHUDTouches();
+    resetKeyboard();
+    supplyTouch = null; attackTouchId = null; mazeRescueTouchId = null; abandonTouchId = null;
+    if (state.mazeRescue) {
+        state.mazeRescue.npcRescueHolding = false;
+        state.mazeRescue.npcRescueTouchId = null;
+        state.mazeRescue.retreatHolding = false;
+        state.mazeRescue.abandonHolding = false;
+    }
+    for (const map of [_homeTouchPrev, _homeTouchStartX, _homeTouchStartY, _homeTouchMoved]) {
+        for (const id in map) delete map[id];
+    }
+}
+
+function consumeOrientationEnds(res: any): boolean {
+    res.changedTouches = res.changedTouches.filter(t => {
+        if (!orientationTouches.has(t.identifier)) return true;
+        orientationTouches.delete(t.identifier);
+        return false;
+    });
+    return res.changedTouches.length === 0;
+}
+
 function bcdOnTouchStart(id: number, x: number, y: number): boolean {
     const hit = bcdHitTest(x, y);
     if (!hit) return false;
@@ -249,6 +285,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
     // PC 调试键盘支持 
     if (typeof window !== 'undefined' && window.addEventListener) {
         const keys = { w: false, a: false, s: false, d: false, shift: false };
+        resetKeyboard = () => { keys.w = keys.a = keys.s = keys.d = keys.shift = false; };
         
         const updateKeyInput = () => {
             // 如果有触摸操作，优先触摸
@@ -346,13 +383,23 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
 
     wx.onTouchStart((res) => {
         unlockAdaptiveMusic();
+        const orientation = getScreenOrientationButton();
+        const orientationTouch = orientation && res.changedTouches.find(t => Math.hypot(t.clientX - orientation.x, t.clientY - orientation.y) <= orientation.hitRadius);
+        if (orientationTouch) {
+            orientationTouches.add(orientationTouch.identifier);
+            toggleScreenOrientation();
+            return;
+        }
         const trialTouch=res.changedTouches?.[0]||res.touches[res.touches.length-1];
         if (trialTouch && isCaveRockTrialExitHit(trialTouch.clientX, trialTouch.clientY)) {
             if (state.wheel.touchId !== null) finishRopeWheelGesture(state.wheel.touchId, 0, 0, true);
             exitCaveRockTrial();
             return;
         }
-        if ((state.wheel.open || state.interaction.gesture) && isInteractionPlay()) return;
+        if ((state.wheel.open || state.interaction.gesture) && isInteractionPlay()) {
+            for (const t of res.changedTouches) beginSwimTouch(t.identifier, t.clientX, t.clientY);
+            return;
+        }
 
         // GM 面板优先消费触摸事件（面板本身或 HUD 栏的 GM 齿轮按钮）
         const gmTouch = res.touches[res.touches.length - 1];
@@ -723,14 +770,12 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
             for (const t of res.touches) {
                 if (moveRopeWheelGesture(t.identifier, t.clientX, t.clientY)) break;
             }
-            return;
         }
 
         if (state.interaction.gesture) {
             for (const t of res.touches) {
                 if (moveActionGesture(t.identifier, t.clientX, t.clientY)) break;
             }
-            return;
         }
 
         // 手动挡模式：touchMove 只更新当前位置，prev 由逻辑层推进
@@ -788,6 +833,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
     });
 
     wx.onTouchEnd((res) => {
+        if (consumeOrientationEnds(res)) return;
         const remaining = res.changedTouches.filter(t => !finishDiveActionTouch(t.identifier, t.clientX, t.clientY, false));
         if (remaining.length !== res.changedTouches.length) {
             handleTouchEnd(remaining);
@@ -1363,9 +1409,10 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
         handleTouchEnd(res.changedTouches);
     });
 
-    if ((wx as any).onHide) (wx as any).onHide(() => { cancelInteractionInput(); resetDriveInput(); bcdReleaseAll(); });
+    if ((wx as any).onHide) (wx as any).onHide(() => { cancelAllInput(); orientationTouches.clear(); });
 
     wx.onTouchCancel((res) => {
+        if (consumeOrientationEnds(res)) return;
         cancelInteractionInput();
         if (res.changedTouches.some(t => t.identifier === touches.joystickId)) resetDriveInput();
         if (state.screen === 'home_evening') {

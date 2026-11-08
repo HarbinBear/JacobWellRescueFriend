@@ -4,19 +4,19 @@ export const gameplayConfig = {
     // ===== 绳索选点轮盘 =====
     marker: {
         // 交互按钮（轮盘触发器）
-        btnRadius: 36,              // 交互按钮半径
+        btnRadius: 26,              // 常态入口，与展开轮盘分别定尺寸
         btnXRatio: 0.92,            // 按钮X位置比例（右下角，getWheelBtnPos会自动clamp保证轮盘完整显示）
         btnYRatio: 0.88,            // 按钮Y位置比例（右下角）
         // 轮盘
-        wheelOuterRadius: 100,      // 轮盘外圈半径
+        wheelOuterRadius: 68,       // 按住展开 136px 轮盘
         wheelInnerRadius: 24,       // 轮盘内圈半径（松手取消选点）
         wheelExpandDuration: 150,   // 轮盘展开动画时长（ms）
     },
 
     // ===== 精确敲晕 / 解绳与统一绑绳动作 =====
     fishInteraction: {
-        buttonRadius: 29,
-        wheelRadius: 84,
+        buttonRadius: 26,
+        wheelRadius: 68,
         wheelInnerRadius: 22,
         actionRange: 64,          // 固定碰撞范围，只选择方向
         strikeRange: 40,          // 绳轮敲击的实际接触范围，不能隔空命中

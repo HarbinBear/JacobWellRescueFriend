@@ -91,6 +91,9 @@ export function getGLCanvasPixelSize(): { w: number, h: number } {
     return { w: _maskCtx.canvas.width, h: _maskCtx.canvas.height };
 }
 
+/** 保留 GPU 程序和纹理，只同步两张光照画布的尺寸。 */
+export function resizeWebGLLight(): void { applyQualityScale(_currentScale); }
+
 // Shader 源码从独立文件导入，见 src/render/shaders/ 目录
 
 // ============ 初始化 ============

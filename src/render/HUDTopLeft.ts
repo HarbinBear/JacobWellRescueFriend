@@ -1,34 +1,13 @@
-// 左上角 HUD 统一管理器
-//
-// 设计目标：
-// - 所有左上角的HUD元素（氧气环、手动挡切换、音频开关、深流随身听）统一由此管理
-// - 统一的布局：顶部起点固定，每个元素之间有统一间距，竖向排列
-// - 统一的交互：每个图标都支持"短按=主操作+弹tip"、可选"长按=展开详情"
-// - 统一的入场动效：左侧滑入+淡入
-// - 统一的浮窗tip：点按图标自动浮出，2秒后自动淡出消失
-//
-// 为什么不直接在RenderMazeUI里一堆if：
-// - 左上角图标的数量、顺序、显隐会随着项目迭代变化
-// - 每个图标的交互手势都类似，有统一抽象可以避免到处写hit-test和状态管理
-// - tip系统是跨元素的通用能力，必须集中维护
-//
-// HUDItem 渲染契约：
-// - iconDraw(ctx, cx, cy, size, t) 被调用时，(cx,cy)是图标中心屏幕坐标，size是图标可绘制的直径；
-//   实现者负责在这个圈范围内画自己的图标
-// - 超出size范围的绘制应谨慎，会穿出管理器规划区域
-//
-// 交互契约：
-// - 每次点击先等待 touchEnd 判定：移动<8px且时长<300ms=短按，时长>=300ms=长按；
-//   若item不支持长按（supportsLongPress=false），则touchStart就直接触发短按
-// - 短按：onShortTap() 执行并展示 tipText
-// - 长按：onLongHoldStart() 触发，松手时 onLongHoldEnd()
-
+// 原生 HUD：横屏贴顶横排，竖屏贴左竖列；绘制与触摸共用 UILayout。
+// 图标视觉尺寸与 44px 触摸间距分开；切屏统一释放长按副作用。
 import { CONFIG } from '../core/config';
+import { getUILayout } from '../core/UILayout';
+import { drawFlashlightIcon } from './RenderFlashlight';
 import { state, player } from '../core/state';
 import { ctx, logicW, logicH } from './Canvas';
 import { drawTapeDeck, drawTapeSleeve, cutPanel, drawCutPanelProgress, TAPE } from './TapeDeckVisual';
 import { getRescueTapeVisual } from './RescueTape';
-import { drawTapeNowPlaying, drawTapeLoadingHint, getTapeLoadingLabel, retryTapeLoading } from './TapeEntry';
+import { getTapeLoadingLabel, retryTapeLoading } from './TapeEntry';
 import { toggleMuted as audioToggleMuted } from './RenderAudioToggle';
 import { toggleGMOpen, isGMOpen } from '../gm/GMPanel';
 import { getBreathPhaseAngle, getBreathPhase, getBreathPressure, getLungVolume } from '../logic/BreathSystem';
@@ -41,14 +20,6 @@ import {
     setDecoBoost, getCurrentDepthMeters,
 } from '../logic/DecompressionSystem';
 
-// ========== 布局常量 ==========
-// 起点 X/Y，每项尺寸、间距（垂直排列）
-// 注意：HUD_START_Y 必须避开微信小游戏右上角胶囊和设备前置摄像头
-//       设计安全区基线 SAFE_TOP=62，图标顶边 = 62 → 中心 = 62 + ITEM_SIZE/2
-const HUD_START_X = 38;         // 所有图标的中心X（左侧留足边距）
-const HUD_START_Y = 82;         // 第一个图标中心Y（= SAFE_TOP 62 + HUD_ITEM_SIZE/2 22）
-const HUD_ITEM_SIZE = 40;       // 图标直径（作为hitTest和视觉尺寸基准）
-const HUD_ITEM_GAP = 14;        // 图标之间的垂直间距（从边缘到边缘）
 const HUD_TIP_OFFSET_X = 8;     // tip面板相对图标右侧的X偏移
 const HUD_TIP_MAX_WIDTH = 220;
 const HUD_TIP_PADDING = 10;
@@ -58,30 +29,21 @@ const HUD_TIP_FADE_MS = 320;       // tip淡入淡出时长
 const HUD_LONG_PRESS_MS = 280;     // 长按判定阈值
 const HUD_TAP_MOVE_TOLERANCE = 10; // 点击手势允许的位移容差
 
-// ========== 数据结构 ==========
 
-// 每个左上角HUD项的定义
 export interface HUDItem {
     id: string;                  // 唯一ID
     visible?: () => boolean;     // 是否可见（默认true）
-    // 绘制图标（center center坐标，size为图标直径）
     iconDraw: (ctx2: CanvasRenderingContext2D, cx: number, cy: number, size: number, time: number) => void;
-    // 短按回调（点击图标的主要操作）
     onShortTap?: () => void;
     onPressStart?: () => void;
     onPressEnd?: () => void;
-    // 短按后 tip 的内容（可以是动态的，调用时求值）
     tipText?: () => string;
-    // 是否支持长按（支持的话区分短长按，否则任何按都是短按）
     supportsLongPress?: boolean;
-    // 长按开始/结束
     onLongHoldStart?: () => void;
     onLongHoldEnd?: () => void;
-    // 长按过程中的附加绘制（在图标周围绘制，比如氧气环的详情面板）
     longHoldDraw?: (ctx2: CanvasRenderingContext2D, cx: number, cy: number, size: number, progress: number) => void;
 }
 
-// Tip 运行态（模块单例）
 interface TipState {
     itemId: string | null;
     text: string;
@@ -90,7 +52,6 @@ interface TipState {
     anchorY: number;
 }
 
-// 触摸追踪（每个触点关联的HUD item）
 interface HUDTouchTrack {
     touchId: number;
     itemId: string;
@@ -100,7 +61,6 @@ interface HUDTouchTrack {
     longFired: boolean;      // 是否已触发长按
 }
 
-// ========== 模块状态 ==========
 
 const hudItems: HUDItem[] = [];
 const activeTouches: Map<number, HUDTouchTrack> = new Map();
@@ -108,10 +68,8 @@ let currentTip: TipState = { itemId: null, text: '', spawnTime: 0, anchorX: 0, a
 let hudEntryTimer = 0;
 const HUD_ENTRY_FRAMES = 40;
 
-// ========== 注册API ==========
 
 export function registerHUDItem(item: HUDItem): void {
-    // 若已存在同id，则覆盖（支持热替换）
     const idx = hudItems.findIndex(x => x.id === item.id);
     if (idx >= 0) hudItems[idx] = item;
     else hudItems.push(item);
@@ -124,7 +82,6 @@ export function clearHUDItems(): void {
     hudEntryTimer = 0;
 }
 
-// ========== 布局查询（供 input.ts / 渲染共用） ==========
 
 interface HUDSlot {
     item: HUDItem;
@@ -133,49 +90,42 @@ interface HUDSlot {
     size: number;
 }
 
-// 返回当前可见HUD项的布局位置列表
 function getVisibleSlots(): HUDSlot[] {
-    const slots: HUDSlot[] = [];
-    // 氧气环单独放大：参考 CONFIG.breath.oxygenRingSizeMul，其他图标保持原尺寸
-    const cfgBreath: any = (CONFIG as any).breath || {};
-    const oxygenSizeMul: number = Math.min(1.4, cfgBreath.oxygenRingSizeMul ?? 1.0);
-    let y = Math.max(HUD_START_Y, (CONFIG.uiSafeTop || 62) + HUD_ITEM_SIZE / 2);
-    let prevHalf = 0; // 上一项的半径，用于给不同尺寸图标之间留出正确间距
+    const slots: HUDSlot[] = [], L = getUILayout();
+    const positions = { oxygen: L.oxygen, depth: L.depth, deco: L.deco,
+        lifeDetector: L.tape, retreat: L.retreat, gm: L.settings, flashlight: L.flashlight };
     for (const item of hudItems) {
         if (item.visible && !item.visible()) continue;
-        const sizeHere = item.id === 'oxygen' ? HUD_ITEM_SIZE * oxygenSizeMul : item.id === 'lifeDetector' ? 48 : HUD_ITEM_SIZE;
-        const halfHere = sizeHere / 2;
-        if (slots.length === 0) {
-            // 第一个项以固定起点为中心（但若它被放大，起点往下挪让它离顶部有合理留白）
-            y += Math.max(0, halfHere - HUD_ITEM_SIZE / 2);
-        } else {
-            // 后续项基于上一项的下边缘 + 统一间距 + 本项半径
-            y = y + prevHalf + HUD_ITEM_GAP + halfHere;
-        }
-        slots.push({ item, cx: HUD_START_X, cy: y, size: sizeHere });
-        prevHalf = halfHere;
+        const p = positions[item.id];
+        if (p) slots.push({ item, cx: p.x, cy: p.y, size: p.size });
     }
     return slots;
 }
 
-// 返回被击中的slot（触摸点到图标中心 <= size/2 + 容差）
 function hitTest(x: number, y: number): HUDSlot | null {
     const slots = getVisibleSlots();
     for (const slot of slots) {
-        const hitR = slot.size / 2 + 6;
+        const hitR = Math.max(22, slot.size / 2);
         if (Math.hypot(x - slot.cx, y - slot.cy) <= hitR) return slot;
     }
     return null;
 }
 
-// ========== 输入接口（供 input.ts 调用） ==========
 
-// 返回 true 表示触摸已被HUD消费，input.ts应跳过后续逻辑
+export function cancelHUDTouches(): void {
+    for (const track of activeTouches.values()) {
+        const item = hudItems.find(i => i.id === track.itemId);
+        if (item?.onPressEnd) item.onPressEnd();
+        if (track.longFired && item?.onLongHoldEnd) item.onLongHoldEnd();
+    }
+    activeTouches.clear();
+    currentTip.itemId = null;
+}
+
 export function handleHUDTouchStart(touchId: number, x: number, y: number): boolean {
     const slot = hitTest(x, y);
     if (!slot) return false;
 
-    // 记录触摸追踪
     activeTouches.set(touchId, {
         touchId,
         itemId: slot.item.id,
@@ -186,7 +136,6 @@ export function handleHUDTouchStart(touchId: number, x: number, y: number): bool
     });
     if (slot.item.onPressStart) slot.item.onPressStart();
 
-    // 不支持长按的item：touchStart 立刻触发短按
     if (!slot.item.supportsLongPress) {
         fireShortTap(slot);
     }
@@ -200,14 +149,11 @@ export function handleHUDTouchMove(touchId: number, x: number, y: number): boole
     if (pressedSlot?.item.onPressEnd && Math.hypot(x - pressedSlot.cx, y - pressedSlot.cy) > pressedSlot.size / 2 + 10) {
         pressedSlot.item.onPressEnd(); activeTouches.delete(touchId); return true;
     }
-    // 移动超出容差视为取消长按候选
     const moved = Math.hypot(x - track.startX, y - track.startY);
     if (moved > HUD_TAP_MOVE_TOLERANCE) {
-        // 若长按已触发，保持（允许手指在图标上轻微移动），否则直接放弃
         if (!track.longFired) {
             const slot = findSlotById(track.itemId);
             if (slot && slot.item.supportsLongPress) {
-                // 取消追踪，拒绝后续判定
                 if (slot.item.onPressEnd) slot.item.onPressEnd();
                 activeTouches.delete(touchId);
                 return false;
@@ -215,7 +161,6 @@ export function handleHUDTouchMove(touchId: number, x: number, y: number): boole
         }
     }
 
-    // 如果已超过长按阈值还没触发长按，触发长按
     if (!track.longFired) {
         const slot = findSlotById(track.itemId);
         if (slot && slot.item.supportsLongPress) {
@@ -240,10 +185,8 @@ export function handleHUDTouchEnd(touchId: number, x: number, y: number): boolea
     if (slot.item.onPressEnd) slot.item.onPressEnd();
 
     if (track.longFired) {
-        // 长按松手
         if (slot.item.onLongHoldEnd) slot.item.onLongHoldEnd();
     } else {
-        // 短按（对于支持长按的item，松手时才触发；不支持长按的在start时已经触发）
         if (slot.item.supportsLongPress) {
             fireShortTap(slot);
         }
@@ -257,7 +200,6 @@ function findSlotById(id: string): HUDSlot | null {
 }
 
 function fireShortTap(slot: HUDSlot): void {
-    // HUD 栏所有图标点击都统一视为"次按钮"（切换/提示类辅助操作）
     playSFX('uiSecondary');
     if (slot.item.onShortTap) slot.item.onShortTap();
     const tipText = slot.item.tipText ? slot.item.tipText() : '';
@@ -272,11 +214,8 @@ function fireShortTap(slot: HUDSlot): void {
     }
 }
 
-// ========== 渲染入口 ==========
 
-// 绘制整个左上角HUD（每帧由迷宫HUD调用）
 export function drawHUDTopLeft(time: number): void {
-    // A stationary finger must open the sleeve too; touchmove is not guaranteed.
     for (const track of activeTouches.values()) {
         const slot = findSlotById(track.itemId);
         if (!track.longFired && slot && slot.item.supportsLongPress && Date.now() - track.startTime >= HUD_LONG_PRESS_MS) {
@@ -285,7 +224,6 @@ export function drawHUDTopLeft(time: number): void {
             if (slot.item.onLongHoldStart) slot.item.onLongHoldStart();
         }
     }
-    // 入场动效
     if (hudEntryTimer < HUD_ENTRY_FRAMES) hudEntryTimer++;
     const entry = hudEntryTimer / HUD_ENTRY_FRAMES;
     const ease = 1 - Math.pow(1 - entry, 3);
@@ -298,23 +236,12 @@ export function drawHUDTopLeft(time: number): void {
     ctx.globalAlpha = alpha;
     ctx.translate(slideX, 0);
 
-    // 先绘制所有图标（不带长按附加面板）
     for (const slot of slots) {
         slot.item.iconDraw(ctx, slot.cx, slot.cy, slot.size, time);
-        if (slot.item.id === 'lifeDetector') {
-            drawTapeLoadingHint(ctx, slot.cx + slot.size / 2 + 12, slot.cy - 16);
-            drawTapeNowPlaying(ctx, slot.cx + slot.size / 2 + 12, slot.cy - 23);
-        }
-        if (slot.item.id !== 'lifeDetector') {
-            const captions: { [id: string]: string } = { oxygen: 'AIR', depth: 'DEPTH', deco: 'DECO', retreat: 'RETURN', gm: 'TOOLS' };
-            ctx.save(); ctx.font = 'bold 7px Arial'; ctx.textAlign = 'center';
-            ctx.fillStyle = TAPE.paper; ctx.fillText(captions[slot.item.id] || '', slot.cx, slot.cy + slot.size / 2 + 9); ctx.restore();
-        }
     }
 
     ctx.restore();
 
-    // 长按中的附加绘制（不受入场alpha影响，全屏叠加）
     for (const slot of slots) {
         const track = [...activeTouches.values()].find(t => t.itemId === slot.item.id && t.longFired);
         if (track && slot.item.longHoldDraw) {
@@ -324,7 +251,6 @@ export function drawHUDTopLeft(time: number): void {
         }
     }
 
-    // Tip 浮窗
     drawTip();
 }
 
@@ -336,7 +262,6 @@ function drawTip(): void {
         currentTip.itemId = null;
         return;
     }
-    // 淡入/保持/淡出
     let tipAlpha = 1;
     if (age < HUD_TIP_FADE_MS) {
         tipAlpha = age / HUD_TIP_FADE_MS;
@@ -345,26 +270,22 @@ function drawTip(): void {
     }
     tipAlpha = Math.max(0, Math.min(1, tipAlpha));
 
-    // 计算面板尺寸（支持多行，用 \n 分割）
     const lines = currentTip.text.split('\n');
     const metrics = measureTipLines(lines);
     const panelW = metrics.width + HUD_TIP_PADDING * 2;
     const panelH = metrics.height + HUD_TIP_PADDING * 2;
-    const panelX = currentTip.anchorX + HUD_TIP_OFFSET_X;
-    const panelY = currentTip.anchorY - panelH / 2;
+    const panelX = Math.max(8, Math.min(logicW - panelW - 8, currentTip.anchorX + HUD_TIP_OFFSET_X));
+    const panelY = Math.max(8, Math.min(logicH - panelH - 8, currentTip.anchorY + 26));
 
     ctx.save();
     ctx.globalAlpha = tipAlpha;
-    // 背景
     ctx.fillStyle = TAPE.ink;
     cutPanel(ctx, panelX, panelY, panelW, panelH, 6);
     ctx.fill();
-    // 细边
     ctx.strokeStyle = TAPE.orange;
     ctx.lineWidth = 0.6;
     cutPanel(ctx, panelX, panelY, panelW, panelH, 6);
     ctx.stroke();
-    // 文字
     ctx.fillStyle = TAPE.paper;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
@@ -405,13 +326,10 @@ function drawRRect(c: CanvasRenderingContext2D, x: number, y: number, w: number,
     c.closePath();
 }
 
-// ========== 初始化：注册迷宫模式的4个HUD项 ==========
 
-// 在迷宫模式每次进入游戏时调用，确保items已经注册
 export function initMazeHUDTopLeft(): void {
     clearHUDItems();
 
-    // 1. 氧气环（短按弹 tip，不支持长按）
     registerHUDItem({
         id: 'oxygen',
         visible: () => true,
@@ -430,7 +348,6 @@ export function initMazeHUDTopLeft(): void {
         },
     });
 
-    // 2. 深度仪表（显示当前深度 / 装备最大安全深度）
     registerHUDItem({
         id: 'depth',
         visible: () => true,
@@ -446,18 +363,11 @@ export function initMazeHUDTopLeft(): void {
         },
     });
 
-    // 2b. 减压指示灯（只在进入"需要减压"状态或正在执行减压时显示）
-    // 短按：弹 tip 显示氮负荷、下一档深度、剩余时间
-    // 长按：在档位内长按可 5x 加速减压，但氧气 3x 消耗
     registerHUDItem({
         id: 'deco',
         visible: () => {
             const cfg: any = (CONFIG as any).deco;
             if (!cfg || !cfg.enabled || !cfg.hudVisible) return false;
-            // 显示条件：
-            //   - 锁定中（正在做减压任务）→ 始终显示
-            //   - 或氮负荷 > 0（下过深水就显示，让玩家对它有感知）
-            //   - 或系统判定需要减压
             const rt = getDecoRuntime();
             return isDecoLockActive() || rt.nitrogenLoad > 0.001 || isDecompressionRequired();
         },
@@ -492,7 +402,6 @@ export function initMazeHUDTopLeft(): void {
         },
     });
 
-    // 随身听同时接管音量：轻点静音/恢复，按住展开磁带封套。
     registerHUDItem({
         id: 'lifeDetector',
         visible: () => {
@@ -530,9 +439,6 @@ export function initMazeHUDTopLeft(): void {
         onPressEnd: () => { if (state.mazeRescue) state.mazeRescue.retreatHolding = false; },
     });
 
-    // 5. GM 面板切换（调试工具，放在最后）
-    // 旧的屏幕顶部独立 GM 按钮已下线，统一收缩到左上 HUD 栏
-    // 方案 A：仅迷宫模式可切 GM 面板，菜单 / 主线 / 竞技场不提供入口
     registerHUDItem({
         id: 'gm',
         visible: () => true,
@@ -545,27 +451,22 @@ export function initMazeHUDTopLeft(): void {
             return isGMOpen() ? 'GM 面板：已打开' : 'GM 面板：已关闭';
         },
     });
+
+    registerHUDItem({
+        id: 'flashlight', visible: () => true, supportsLongPress: false,
+        iconDraw: (c, x, y, size) => drawFlashlightIcon(c, x, y, size, state.flashlightOn !== false),
+        onShortTap: () => { state.flashlightOn = state.flashlightOn === false; },
+        tipText: () => state.flashlightOn === false ? '手电已关闭' : '手电已开启',
+    });
 }
 
-// ========== 图标绘制函数 ==========
 
-// 氧气环图标：显示氧气百分比的圆环（替代原深度数字，现在只专注氧气视觉）
-//
-// 双瓶模式：用同心两条环表达
-//   - 外圈 = 第一瓶（先被消耗，氧耗时由满 → 空）
-//   - 内圈 = 第二瓶（外圈耗光后才开始消耗）
-// 单瓶模式：保留原来的单一圆环外观（仅外圈）
 function drawOxygenIcon(c: CanvasRenderingContext2D, cx: number, cy: number, size: number, time: number): void {
     const maze = state.mazeRescue;
-    // 动画值优先（拾取时平滑上涨）
     const o2DisplayRaw = (maze && maze.oxygenFeedback && typeof maze.oxygenFeedback.o2DisplayAnim === 'number')
         ? maze.oxygenFeedback.o2DisplayAnim
         : player.o2;
 
-    // === 解析当前携带的氧气瓶组合，算出每瓶的剩余比率 ===
-    // 规则：瓶 0 先被耗光，再耗瓶 1。
-    //   bottleRemaining[i] = clamp(o2 - sumOfPrevCaps, 0, cap[i]) / cap[i]
-    //   bottleCap[i] 从装备表读取，与当次气瓶容量同步。
     const tanks = getActiveAirTanks();
     const tankCaps: number[] = [];
     for (const id of tanks) {
@@ -576,7 +477,6 @@ function drawOxygenIcon(c: CanvasRenderingContext2D, cx: number, cy: number, siz
     for (const c of tankCaps) totalCap += c;
     if (totalCap < 1) totalCap = 1;
 
-    // 各瓶余量 ratio（0~1）
     let remaining = Math.max(0, o2DisplayRaw);
     const bottleRatios: number[] = [];
     for (const cap of tankCaps) {
@@ -584,13 +484,11 @@ function drawOxygenIcon(c: CanvasRenderingContext2D, cx: number, cy: number, siz
         bottleRatios.push(here / cap);
         remaining -= here;
     }
-    // 总比率（用于颜色/低氧脉冲判定）
     const o2Ratio = Math.max(0, Math.min(1, o2DisplayRaw / totalCap));
 
     const ringR = size / 2 - 2;
     const ringW = 3.5;
 
-    // 氧气颜色（按总比率）
     const o2Color = o2Ratio > 0.5 ? TAPE.mint :
                     o2Ratio > 0.25 ? 'rgba(255,200,80,0.95)' : 'rgba(255,80,80,0.95)';
     const o2ColorDim = o2Ratio > 0.5 ? 'rgba(129,227,206,0.18)' :
@@ -598,7 +496,6 @@ function drawOxygenIcon(c: CanvasRenderingContext2D, cx: number, cy: number, siz
 
     c.save();
 
-    // 背景圆（磨砂感）
     c.fillStyle = 'rgba(10,22,38,0.55)';
     c.beginPath();
     c.arc(cx, cy, ringR + 3, 0, Math.PI * 2);
@@ -606,13 +503,11 @@ function drawOxygenIcon(c: CanvasRenderingContext2D, cx: number, cy: number, siz
 
     const start = -Math.PI / 2;
     const drawRing = (radius: number, ratio: number, dim: string, fill: string) => {
-        // 暗色轨道
         c.strokeStyle = dim;
         c.lineWidth = ringW;
         c.beginPath();
         c.arc(cx, cy, radius, 0, Math.PI * 2);
         c.stroke();
-        // 进度环
         if (ratio > 0.005) {
             c.strokeStyle = fill;
             c.lineWidth = ringW;
@@ -625,23 +520,18 @@ function drawOxygenIcon(c: CanvasRenderingContext2D, cx: number, cy: number, siz
     };
 
     if (bottleRatios.length >= 2) {
-        // 双瓶：外圈=瓶 0，内圈=瓶 1（半径再小 5）
         drawRing(ringR, bottleRatios[0], o2ColorDim, o2Color);
         drawRing(ringR - ringW - 1.6, bottleRatios[1], o2ColorDim, o2Color);
     } else {
         drawRing(ringR, bottleRatios[0] || 0, o2ColorDim, o2Color);
     }
 
-    // 撞岩石损失红色弧（按总比率算位置；只画在外圈上，反映"刚损失的总量"）
     const lossT = (maze && maze.oxygenFeedback && maze.oxygenFeedback.o2LossTimer) || 0;
     if (lossT > 0) {
-        // o2LossFromRatio / o2LossToRatio 是按 o2Max 归一化（见 OxygenTank.triggerO2LossFlash）
-        // 这里只展示在外圈，把总比率范围映射到外圈瓶 0 的弧上
         const cap0 = tankCaps[0];
         const cap0Ratio = cap0 / totalCap;   // 瓶 0 占总容量的比例
         const fromTotal = Math.max(0, Math.min(1, maze!.oxygenFeedback!.o2LossFromRatio));
         const toTotal = Math.max(0, Math.min(1, maze!.oxygenFeedback!.o2LossToRatio));
-        // 把"总比率"投影到瓶 0 的弧（瓶 1 的损失我们简单跳过；多数玩家的红条都集中在瓶 0 段）
         const fromRatio = Math.min(1, fromTotal / Math.max(0.0001, cap0Ratio));
         const toRatio = Math.min(1, toTotal / Math.max(0.0001, cap0Ratio));
         if (fromRatio > toRatio + 0.002) {
@@ -667,7 +557,6 @@ function drawOxygenIcon(c: CanvasRenderingContext2D, cx: number, cy: number, siz
         }
     }
 
-    // 低氧脉冲（按总比率）
     if (o2Ratio <= 0.25) {
         const pulse = 0.3 + 0.2 * Math.sin(time * 5);
         c.globalAlpha = pulse;
@@ -680,7 +569,6 @@ function drawOxygenIcon(c: CanvasRenderingContext2D, cx: number, cy: number, siz
         c.globalAlpha = 1;
     }
 
-    // 氧气拾取脉冲
     const pulseT = (maze && maze.oxygenFeedback && maze.oxygenFeedback.o2RingPulse) || 0;
     if (pulseT > 0) {
         const expandR = ringR + 4 + (1 - pulseT) * 22;
@@ -693,36 +581,23 @@ function drawOxygenIcon(c: CanvasRenderingContext2D, cx: number, cy: number, siz
         c.globalAlpha = 1;
     }
 
-    // 中心显示"肺"形图标
     drawLungs(c, cx, cy, ringR, o2Ratio);
 
     c.restore();
 }
 
-// ---- 矢量肺图标：两瓣 + 气管 ----
-// 规模尺寸：以氧气环内圈半径 R 为参考，肺的最大覆盖半径约 0.78R
-// 动画：直接读取 BreathSystem 的肺容积 lungVolume（0~1，0=吐完最小, 1=吸完最大）
-//   exhale 阶段：1→0，连续收缩
-//   holdEmpty：保持 0，肺图标保持最小（玩家能看到"吐完气后的停顿保持"）
-//   inhale 阶段：0→1，连续膨胀
-//   holdFull：保持 1，肺图标保持最大（玩家能看到"吸完气后的停顿保持"）
 function drawLungs(c: CanvasRenderingContext2D, cx: number, cy: number, ringR: number, o2Ratio: number): void {
     const cfg: any = (CONFIG as any).breath || {};
-    // ==== 缩放动画：按肺容积在 exhale 谷值 ~ inhale 峰值之间线性插值 ====
     const lungVolume = Math.max(0, Math.min(1, getLungVolume()));
     const pressure = Math.max(0, Math.min(1, getBreathPressure()));
     const scaleInhale: number = cfg.lungScaleInhale ?? 1.15;
     const scaleExhale: number = cfg.lungScaleExhale ?? 0.85;
-    // lungVolume=0 → 吐完最小缩放；lungVolume=1 → 吸完最大缩放
     let scale = scaleExhale + (scaleInhale - scaleExhale) * lungVolume;
-    // 急促度越高，呼吸起伏越剧烈，整体缩放幅度再加码 30%
     scale = 1 + (scale - 1) * (1 + pressure * 0.3);
-    // phaseAngle/phase 只用于下方气管口气泡判断（exhale 瞬间冒一个白气泡），保持不变
     const phase = getBreathPhase();
     const phaseAngle = getBreathPhaseAngle();
     void phaseAngle;
 
-    // ==== 颜色：按 o2Ratio 分段 ====
     const colorHealthy: string = cfg.lungColorHealthy ?? 'rgba(240,140,150,1)';
     const colorMid: string = cfg.lungColorMid ?? 'rgba(210,120,150,1)';
     const colorLow: string = cfg.lungColorLow ?? 'rgba(150,100,130,1)';
@@ -733,24 +608,20 @@ function drawLungs(c: CanvasRenderingContext2D, cx: number, cy: number, ringR: n
     else if (o2Ratio > 0.1) lungColor = colorLow;
     else lungColor = colorCritical;
 
-    // 基础尺寸：覆盖约环内径的 80%
     const R = ringR * 0.78;
 
     c.save();
     c.translate(cx, cy);
     c.scale(scale, scale);
 
-    // ==== 气管（中央竖线 + 主支气管分叉）====
     const tracheaColor = 'rgba(60, 50, 60, 0.75)';
     c.strokeStyle = tracheaColor;
     c.lineWidth = Math.max(1, R * 0.12);
     c.lineCap = 'round';
     c.beginPath();
-    // 气管顶部到分叉点
     c.moveTo(0, -R * 0.85);
     c.lineTo(0, -R * 0.15);
     c.stroke();
-    // 左右主支气管（短段斜向外）
     c.lineWidth = Math.max(0.8, R * 0.09);
     c.beginPath();
     c.moveTo(0, -R * 0.15);
@@ -759,32 +630,22 @@ function drawLungs(c: CanvasRenderingContext2D, cx: number, cy: number, ringR: n
     c.lineTo(R * 0.35, R * 0.05);
     c.stroke();
 
-    // ==== 肺叶：两瓣对称形（左右）====
-    // 每瓣用贝塞尔曲线勾一个"豆形"，外侧圆弧、内侧平直
     const drawLobe = (sign: number) => {
-        // sign=-1 画左肺，sign=+1 画右肺
         c.save();
         c.scale(sign, 1);
-        // 描边稍暗一点
         c.strokeStyle = 'rgba(90, 40, 55, 0.85)';
         c.lineWidth = Math.max(1, R * 0.08);
         c.fillStyle = lungColor;
         c.beginPath();
-        // 从支气管接入点开始
         c.moveTo(R * 0.15, -R * 0.05);
-        // 上顶：向外向上的圆弧（肺尖）
         c.bezierCurveTo(R * 0.55, -R * 0.55, R * 0.95, -R * 0.15, R * 0.88, R * 0.25);
-        // 外下：外侧向下扩
         c.bezierCurveTo(R * 0.85, R * 0.55, R * 0.55, R * 0.88, R * 0.30, R * 0.80);
-        // 底内：往里收回到内侧
         c.bezierCurveTo(R * 0.10, R * 0.75, R * 0.05, R * 0.55, R * 0.10, R * 0.30);
-        // 内侧回到起点（直上）
         c.lineTo(R * 0.15, -R * 0.05);
         c.closePath();
         c.fill();
         c.stroke();
 
-        // 肺纹（内部淡色曲线，增加识别感）
         c.strokeStyle = 'rgba(255, 210, 220, 0.35)';
         c.lineWidth = Math.max(0.6, R * 0.04);
         c.beginPath();
@@ -797,9 +658,6 @@ function drawLungs(c: CanvasRenderingContext2D, cx: number, cy: number, ringR: n
     drawLobe(-1);
     drawLobe(+1);
 
-    // ==== 吐气阶段从气管顶部冒一个小白气泡（表示"正在吐气"）====
-    // exhale 阶段 lungVolume 从 1 → 0，用 (1 - lungVolume) 作为吐气进度 ep
-    // ep > 0.15 时才画（吐气刚开始的 15% 时间不画，避免一切换就弹）
     if (phase === 'exhale') {
         const ep = 1 - lungVolume;  // 吐气进度 0~1
         if (ep > 0.15) {
@@ -817,13 +675,6 @@ function drawLungs(c: CanvasRenderingContext2D, cx: number, cy: number, ringR: n
     c.restore();
 }
 
-// 深度仪表图标（极简的"两数值"风格）
-//
-// 视觉语义：
-//   上半 = 当前深度（大字）
-//   下半 = 最大可下潜深度（小字，灰色）
-//   两者中间一条短分隔线，像"分子 / 分母"
-//   超过极限：上半数字红色 + 闪烁，描边变红
 function drawDepthIcon(c: CanvasRenderingContext2D, cx: number, cy: number, size: number, _time: number): void {
     const maze = state.mazeRescue;
     const tile = maze ? (maze.mazeTileSize || 120) : 120;
@@ -835,7 +686,6 @@ function drawDepthIcon(c: CanvasRenderingContext2D, cx: number, cy: number, size
 
     c.save();
 
-    // === 底圆（仪表盘背景）===
     const baseColor = overLimit
         ? 'rgba(60, 10, 10, 0.95)'
         : (ratio > 0.85 ? 'rgba(40, 30, 15, 0.92)' : TAPE.ink);
@@ -843,7 +693,6 @@ function drawDepthIcon(c: CanvasRenderingContext2D, cx: number, cy: number, size
     cutPanel(c, cx - r, cy - r, r * 2, r * 2, 6);
     c.fill();
 
-    // 描边（超限脉冲红）
     if (overLimit) {
         const pulse = 0.7 + 0.3 * Math.sin(Date.now() / 150);
         c.strokeStyle = `rgba(255, 90, 90, ${pulse})`;
@@ -855,7 +704,6 @@ function drawDepthIcon(c: CanvasRenderingContext2D, cx: number, cy: number, size
     cutPanel(c, cx - r, cy - r, r * 2, r * 2, 6);
     c.stroke();
 
-    // === 上半：当前深度（大字）===
     if (overLimit) {
         const blink = 0.65 + 0.35 * Math.sin(Date.now() / 110);
         c.fillStyle = `rgba(255, 110, 110, ${blink})`;
@@ -868,12 +716,10 @@ function drawDepthIcon(c: CanvasRenderingContext2D, cx: number, cy: number, size
     c.textAlign = 'center';
     c.textBaseline = 'middle';
     c.fillText(String(curDepth), cx - r * 0.05, cy - r * 0.32);
-    // 单位 m
     c.font = 'bold 8px Arial';
     c.fillStyle = overLimit ? 'rgba(255, 180, 180, 0.95)' : 'rgba(200, 230, 245, 0.85)';
     c.fillText('m', cx + r * 0.45, cy - r * 0.28);
 
-    // === 中间分隔线 ===
     c.strokeStyle = 'rgba(180, 220, 240, 0.5)';
     c.lineWidth = 1;
     c.beginPath();
@@ -881,7 +727,6 @@ function drawDepthIcon(c: CanvasRenderingContext2D, cx: number, cy: number, size
     c.lineTo(cx + r * 0.55, cy + r * 0.05);
     c.stroke();
 
-    // === 下半：最大深度（小字）===
     c.fillStyle = overLimit ? 'rgba(255, 160, 160, 0.85)' : 'rgba(180, 215, 235, 0.8)';
     c.font = 'bold 10px Arial';
     c.textAlign = 'center';
@@ -893,21 +738,6 @@ function drawDepthIcon(c: CanvasRenderingContext2D, cx: number, cy: number, size
     c.restore();
 }
 
-// =============================================
-// 减压指示灯图标
-// ---------------------------------------------
-// 视觉分档：
-//   绿灯（level 0）：暗色底 + 中央小绿点，极低调
-//   黄灯（level 1）：暗色底 + 黄色大写 "DECO" + 半环亮度
-//   红灯（level 2~3）：红环脉冲 + "DECO" 红色 + 小三角警告
-//   正在减压（stop 存在）：
-//     底圆外围画一条蓝绿色 progress 环，按 stopProgress/stopHoldSec 顺时针填充
-//     中心显示当前档位深度数字（12/9/6/3）+ 小字 "m"
-//     如果玩家"在档内"（inHoldWindow），progress 环常亮+缓慢脉冲；
-//     如果偏离，progress 环变暗并闪"!"
-//   长按加速（boost）：
-//     progress 环色变亮黄 + ×5 小字叠加
-// =============================================
 function drawDecoIcon(c: CanvasRenderingContext2D, cx: number, cy: number, size: number, _time: number): void {
     const rt = getDecoRuntime();
     const level = getDecoLevel();
@@ -917,7 +747,6 @@ function drawDecoIcon(c: CanvasRenderingContext2D, cx: number, cy: number, size:
 
     c.save();
 
-    // ==== 底圆 ====
     let bgColor: string;
     if (level >= 3)      bgColor = 'rgba(60, 10, 20, 0.95)';       // 深红
     else if (level === 2) bgColor = 'rgba(55, 15, 15, 0.92)';      // 红
@@ -928,11 +757,9 @@ function drawDecoIcon(c: CanvasRenderingContext2D, cx: number, cy: number, size:
     c.arc(cx, cy, r, 0, Math.PI * 2);
     c.fill();
 
-    // ==== 边框 ====
     let strokeColor: string;
     let strokeW = 1.1;
     if (level >= 2) {
-        // 红/深红：脉冲边框
         const pulse = 0.65 + 0.35 * Math.sin(now / (level >= 3 ? 110 : 180));
         strokeColor = `rgba(255, ${level >= 3 ? 60 : 100}, ${level >= 3 ? 80 : 100}, ${pulse})`;
         strokeW = 1.8;
@@ -948,7 +775,6 @@ function drawDecoIcon(c: CanvasRenderingContext2D, cx: number, cy: number, size:
     c.arc(cx, cy, r, 0, Math.PI * 2);
     c.stroke();
 
-    // ==== 进度环（只在有减压任务时）====
     if (stop) {
         const cfg: any = (CONFIG as any).deco;
         const holdSec = cfg.stopHoldSec[stop.idx] || 3;
@@ -956,16 +782,13 @@ function drawDecoIcon(c: CanvasRenderingContext2D, cx: number, cy: number, size:
         const start = -Math.PI / 2;
         const ringR = r - 3;
 
-        // 暗色轨道
         c.strokeStyle = 'rgba(255, 255, 255, 0.08)';
         c.lineWidth = 3;
         c.beginPath();
         c.arc(cx, cy, ringR, 0, Math.PI * 2);
         c.stroke();
 
-        // 进度弧
         if (p > 0.002) {
-            // 颜色：boost 亮黄、inHoldWindow 蓝绿、偏离时灰色
             let arcColor: string;
             if (rt.boostActive && rt.inHoldWindow) {
                 arcColor = 'rgba(255, 220, 100, 0.98)';
@@ -983,7 +806,6 @@ function drawDecoIcon(c: CanvasRenderingContext2D, cx: number, cy: number, size:
             c.lineCap = 'butt';
         }
 
-        // 在档内脉冲外晕
         if (rt.inHoldWindow) {
             const glow = 0.45 + 0.35 * Math.sin(now / 220);
             c.globalAlpha = glow;
@@ -995,7 +817,6 @@ function drawDecoIcon(c: CanvasRenderingContext2D, cx: number, cy: number, size:
             c.globalAlpha = 1;
         }
 
-        // 中心文字：档位深度（12 / 9 / 6 / 3）
         c.fillStyle = rt.inHoldWindow ? 'rgba(230, 255, 245, 1)' : 'rgba(220, 230, 240, 0.85)';
         c.font = 'bold 16px Arial';
         c.textAlign = 'center';
@@ -1005,7 +826,6 @@ function drawDecoIcon(c: CanvasRenderingContext2D, cx: number, cy: number, size:
         c.fillStyle = rt.inHoldWindow ? 'rgba(200, 255, 230, 0.9)' : 'rgba(200, 215, 225, 0.8)';
         c.fillText('m', cx + 8, cy + 1);
 
-        // 底部小字：剩余秒数 或 "×5"（boost 时）
         if (rt.boostActive && rt.inHoldWindow) {
             c.fillStyle = 'rgba(255, 230, 120, 1)';
             c.font = 'bold 9px Arial';
@@ -1019,14 +839,11 @@ function drawDecoIcon(c: CanvasRenderingContext2D, cx: number, cy: number, size:
         c.textAlign = 'start';
         c.textBaseline = 'alphabetic';
     } else {
-        // ==== 没有减压任务：根据 level 画静态提示 ====
         if (level === 0) {
-            // 绿灯：中央极小绿点
             c.fillStyle = 'rgba(120, 230, 180, 0.9)';
             c.beginPath();
             c.arc(cx, cy, 2.2, 0, Math.PI * 2);
             c.fill();
-            // 暗色字 "N2"
             c.fillStyle = 'rgba(150, 200, 190, 0.55)';
             c.font = 'bold 9px Arial';
             c.textAlign = 'center';
@@ -1035,7 +852,6 @@ function drawDecoIcon(c: CanvasRenderingContext2D, cx: number, cy: number, size:
             c.textAlign = 'start';
             c.textBaseline = 'alphabetic';
         } else {
-            // 黄/红/深红：中间大字 "DECO" + 小三角
             let textColor = 'rgba(255, 215, 110, 1)';
             if (level >= 3) {
                 const blink = 0.6 + 0.4 * Math.sin(now / 130);
@@ -1049,7 +865,6 @@ function drawDecoIcon(c: CanvasRenderingContext2D, cx: number, cy: number, size:
             c.textBaseline = 'middle';
             c.fillText('DECO', cx, cy - 2);
 
-            // 警告三角（红及以上）
             if (level >= 2) {
                 const triY = cy + r * 0.42;
                 const triSize = 5;
@@ -1060,7 +875,6 @@ function drawDecoIcon(c: CanvasRenderingContext2D, cx: number, cy: number, size:
                 c.lineTo(cx - triSize, triY + triSize * 0.6);
                 c.closePath();
                 c.fill();
-                // 中间竖杠
                 c.strokeStyle = 'rgba(40, 10, 10, 0.9)';
                 c.lineWidth = 1.2;
                 c.beginPath();
@@ -1068,7 +882,6 @@ function drawDecoIcon(c: CanvasRenderingContext2D, cx: number, cy: number, size:
                 c.lineTo(cx, triY + 2);
                 c.stroke();
             } else {
-                // 黄色：底部氮负荷百分比
                 const cfg: any = (CONFIG as any).deco;
                 const pct = Math.round((rt.nitrogenLoad / (cfg?.thresholdCritical || 1.5)) * 100);
                 c.fillStyle = 'rgba(255, 225, 150, 0.9)';
@@ -1083,7 +896,6 @@ function drawDecoIcon(c: CanvasRenderingContext2D, cx: number, cy: number, size:
     c.restore();
 }
 
-// 撤离：长按描边沿切角方框前进。
 function drawRetreatIcon(c: CanvasRenderingContext2D, cx: number, cy: number, size: number): void {
     const r = size / 2 - 2, maze = state.mazeRescue;
     c.save(); c.fillStyle = TAPE.ink; c.strokeStyle = maze?.retreatHolding ? 'rgba(129,227,206,.25)' : TAPE.mint; c.lineWidth = 1;
@@ -1103,31 +915,25 @@ function drawLifeDetectorIcon(c: CanvasRenderingContext2D, cx: number, cy: numbe
     drawTapeDeck(c, cx, cy, size, v);
 }
 
-// GM 面板切换图标：橙色齿轮样式，打开时变亮并有轻微旋转
-// 旧的 GM 按钮是屏幕顶部中央的 "GM" 文字圆；迁入 HUD 栏后换一个工具型图标，避免和其他 HUD 项冲突
 function drawGMIcon(c: CanvasRenderingContext2D, cx: number, cy: number, size: number, time: number): void {
     const open = isGMOpen();
     const r = size / 2 - 2;
 
     c.save();
 
-    // 底圆（打开时橙色，关闭时暗灰）
     c.fillStyle = open ? 'rgba(255, 136, 0, 0.65)' : 'rgba(60, 60, 60, 0.55)';
     c.beginPath();
     c.arc(cx, cy, r, 0, Math.PI * 2);
     c.fill();
 
-    // 外框
     c.strokeStyle = open ? 'rgba(255, 180, 80, 0.7)' : 'rgba(180, 180, 180, 0.4)';
     c.lineWidth = 1;
     c.beginPath();
     c.arc(cx, cy, r, 0, Math.PI * 2);
     c.stroke();
 
-    // 齿轮主体
     c.save();
     c.translate(cx, cy);
-    // 打开时缓慢旋转
     const rot = open ? (time * 0.4) : 0;
     c.rotate(rot);
 
@@ -1149,7 +955,6 @@ function drawGMIcon(c: CanvasRenderingContext2D, cx: number, cy: number, size: n
     c.closePath();
     c.fill();
 
-    // 中心孔
     c.globalCompositeOperation = 'destination-out';
     c.beginPath();
     c.arc(0, 0, innerR * 0.55, 0, Math.PI * 2);
@@ -1158,7 +963,6 @@ function drawGMIcon(c: CanvasRenderingContext2D, cx: number, cy: number, size: n
 
     c.restore();
 
-    // 打开时底部显示 "ON" 小字
     if (open) {
         c.fillStyle = 'rgba(255, 255, 255, 0.85)';
         c.font = 'bold 7px Arial';

@@ -1,23 +1,16 @@
 import { CONFIG } from '../core/config';
+import { getUILayout } from '../core/UILayout';
 
 export const clamp = (value: number, low: number, high: number) => Math.max(low, Math.min(high, value));
 
 export function getRopeControlPosition(width = CONFIG.screenWidth, height = CONFIG.screenHeight) {
-    const margin = CONFIG.marker.wheelOuterRadius + 12;
-    const footer = CONFIG.driveMode === 'semiAuto' && CONFIG.semiAutoDrive.staminaPosition === 'bottom'
-        ? Math.max(18, CONFIG.uiSafeBottom || 18) + 36 : 0;
-    return {
-        x: clamp(width * CONFIG.marker.btnXRatio, margin, width - margin),
-        y: clamp(height * CONFIG.marker.btnYRatio, margin, height - margin - footer),
-    };
+    const p = getUILayout(width, height).rope;
+    return { x: p.x, y: p.y };
 }
 
 export function getActionControlPosition(width = CONFIG.screenWidth, height = CONFIG.screenHeight) {
-    const rope = getRopeControlPosition(width, height);
-    const radius = CONFIG.fishInteraction.buttonRadius;
-    const y = Math.min(height - CONFIG.fishInteraction.wheelRadius - 12,
-        Math.max(rope.y - 66, height / 2 + CONFIG.fishInteraction.wheelRadius + 16));
-    return { x: rope.x - CONFIG.marker.btnRadius - radius - 15, y, radius };
+    const p = getUILayout(width, height).action;
+    return { x: p.x, y: p.y, radius: CONFIG.fishInteraction.buttonRadius };
 }
 
 export function getActionWheelCenter(width = CONFIG.screenWidth, height = CONFIG.screenHeight) {

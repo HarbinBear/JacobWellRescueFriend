@@ -1,4 +1,5 @@
 import { CONFIG } from '../core/config';
+import { drawScreenOrientationButton } from './RenderOrientation';
 import { updateCaveRockResources,drawCaveRock,drawCaveRockBase } from './RenderCaveRock';
 import { drawCaveRockTrialExit } from './CaveRockTrialUI';
 import { state, player, particles, touches } from '../core/state';
@@ -76,7 +77,7 @@ function drawSplashes() {
 }
 
 // --- 主渲染函数 ---
-export function draw() {
+function drawFrame() {
     updateCaveRockResources();
     profileBegin('draw.sky');
     // 每帧开始时确保dpr缩放生效
@@ -854,6 +855,14 @@ export function draw() {
     drawPerfHUD(ctx);
     drawCaveRockTrialExit(ctx);
     profileEnd('draw.gm');
+}
+
+export function draw() {
+    drawFrame();
+    ctx.save();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawScreenOrientationButton(ctx);
+    ctx.restore();
 }
 
 // =============================================

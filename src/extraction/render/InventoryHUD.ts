@@ -10,6 +10,7 @@
 //       格子点击/拖拽都在 BagFullPage 内做，HUD 这里不再处理格子 hit-test
 
 import { CONFIG } from '../../core/config';
+import { getUILayout } from '../../core/UILayout';
 import { state } from '../../core/state';
 import { ctx } from '../../render/Canvas';
 import { cutPanel, TAPE } from '../../render/TapeDeckVisual';
@@ -56,13 +57,9 @@ export function getInventoryHUDCapsuleRect(): { x: number; y: number; w: number;
     return _hudCapsuleRect;
 }
 
-/** 背包独立锚定左下角，不再依赖已移入侧栏的撤离按钮。 */
+/** 背包收在左上工具行下方，不占移动区和右手技能区。 */
 function getCapsulePosition(cw: number, ch: number): { x: number; y: number } {
-    const safeTop = Math.max(62, CONFIG.uiSafeTop || 0);
-    const safeBottom = Math.max(18, CONFIG.uiSafeBottom || 0);
-    const x = Math.max(0, Math.min(14, cw - HUD_W - 14));
-    const y = Math.max(safeTop, ch - safeBottom - 112);
-    return { x, y };
+    return getUILayout(cw, ch).bag;
 }
 
 export function drawInventoryHUD(): void {

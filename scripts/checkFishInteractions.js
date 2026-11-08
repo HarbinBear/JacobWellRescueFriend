@@ -44,6 +44,13 @@ function finishTask(limit=220){for(let i=0;i<limit&&state.interaction.task;i++)t
 function aimAt(p,id=41,radius=60){const b=layout.getActionControlPosition(),c=layout.getActionWheelCenter(),a=Math.atan2(p.y-player.y,p.x-player.x);
  assert(actions.startActionGesture(id,b.x,b.y));const pointer={x:c.x+Math.cos(a)*radius,y:c.y+Math.sin(a)*radius};actions.moveActionGesture(id,pointer.x,pointer.y);return{id,pointer};}
 try{
+ setup();core.touches.joystickId=77;input.move=1;
+ let controlButton=layout.getActionControlPosition();assert(actions.startActionGesture(78,controlButton.x,controlButton.y));
+ assert.equal(core.touches.joystickId,77);assert.equal(input.move,1);assert.equal(work.updateInteractionMovement(now),false,'Right-hand aiming must not take over movement');
+ actions.finishActionGesture(78,controlButton.x,controlButton.y,true);
+ controlButton=layout.getRopeControlPosition();assert(wheel.startRopeWheelGesture(78,controlButton.x,controlButton.y,controlButton.x,controlButton.y));
+ assert.equal(core.touches.joystickId,77);assert.equal(work.updateInteractionMovement(now),false);
+ wheel.finishRopeWheelGesture(78,controlButton.x,controlButton.y,true);core.touches.joystickId=null;input.move=0;
  setup();const front=strand(point(476,500),point(476,620)),back=strand(point(508,500),point(508,620));state.rope.ropes=[front,back];
  for(const fakeLength of [1,8,25,63,1000]){assert.equal(wheel.aimRopeAnchor(0,fakeLength).target.anchor.rope,front);assert.equal(targets.pickActionTarget(0,fakeLength).target.rope,front);}
  let gesture=aimAt(point(476,550),1,32);assert.equal(state.interaction.aim.target.rope,front);actions.moveActionGesture(1,layout.getActionWheelCenter().x+78,layout.getActionWheelCenter().y);assert.equal(state.interaction.aim.target.rope,front);

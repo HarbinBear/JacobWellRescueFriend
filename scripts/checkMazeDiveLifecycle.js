@@ -275,17 +275,19 @@ try {
     logic.startMazeDive('scout');
     state.mazeRescue.phase = 'play'; state.npc.active = false;
     const hud = compile('render/HUDTopLeft', name => {
+        if (name === '../core/UILayout') return load('core/UILayout');
         if (name === '../core/state') return core;
         if (name === '../core/config') return { CONFIG };
         return idleSystems;
     });
     hud.initMazeHUDTopLeft();
-    assert(hud.handleHUDTouchStart(900, 38, 268));
+    const retreat = load('core/UILayout').getUILayout().retreat;
+    assert(hud.handleHUDTouchStart(900, retreat.x, retreat.y));
     assert(state.mazeRescue.retreatHolding, 'Compact left-hand button starts retreat');
     now += CONFIG.maze.retreatHoldDuration * 1000 + 50;
     logic.updateMaze();
     assert.equal(state.mazeRescue.phase, 'surfacing', 'Holding the compact button completes the existing safe-return flow');
-    hud.handleHUDTouchEnd(900, 38, 268);
+    hud.handleHUDTouchEnd(900, retreat.x, retreat.y);
     assert.equal(state.mazeRescue.retreatHolding, false);
 
     console.log('通过：旧档死亡坐标归位、绑绳后重新下潜无回拉、操作/反馈状态清理、同次发现不重复台词、下次首次发现重播、案件进度保留、主菜单一键下潜触摸流程。');

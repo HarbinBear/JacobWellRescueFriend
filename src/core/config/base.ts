@@ -9,11 +9,13 @@ export const baseConfig = {
     // 版本信息
     version: 'v1.0.20',
 
-    // 画布设置 (竖屏适配)
+    // 窗口与安全区，运行中切屏时同步更新。
     screenWidth: systemInfo.windowWidth,
     screenHeight: systemInfo.windowHeight,
     uiSafeTop: systemInfo.safeTop,
     uiSafeBottom: systemInfo.safeBottom,
+    uiSafeLeft: systemInfo.safeLeft,
+    uiSafeRight: systemInfo.safeRight,
 
     // 调试
     debug: false,              // 调试模式：显示小地图和实时坐标

@@ -115,15 +115,17 @@ try {
         if (name === 'measureText') return text => ({ width: text.length * 6 });
         return () => {};
     }, set: () => true });
+    const uiLayout = compile('core/UILayout', name => name === './config' ? { CONFIG } : idle);
     const bcdRuntime = { inflating: false, deflating: false, volumeL: 1.2, netAccel: 0 };
     const bcd = compile('render/RenderBCD', name => {
+        if (name === '../core/UILayout') return uiLayout;
         if (name === '../core/config') return { CONFIG };
         if (name === '../core/state') return core;
         if (name === './Canvas') return { ctx: c };
         if (name === '../logic/BCDSystem') return { getBCDRuntime: () => bcdRuntime, getBCDGaugeInfo: () => { throw new Error('BCD symbol must not read buoyancy/neutral gauge'); } };
         return idle;
     });
-    const interactionLayout = compile('logic/InteractionLayout', name => name === '../core/config' ? { CONFIG } : idle);
+    const interactionLayout = compile('logic/InteractionLayout', name => name === '../core/config' ? { CONFIG } : name === '../core/UILayout' ? uiLayout : idle);
     const wheel = compile('render/RenderWheel', name => {
         if (name === '../logic/InteractionLayout') return interactionLayout;
         if (name === '../core/config') return { CONFIG };
@@ -132,6 +134,7 @@ try {
         return idle;
     });
     const feedback = compile('render/RenderSemiAutoDrive', name => {
+        if (name === '../core/UILayout') return uiLayout;
         if (name === '../core/config') return { CONFIG };
         if (name === '../core/state') return core;
         if (name === './RenderBCD') return bcd;
@@ -144,17 +147,14 @@ try {
             CONFIG.semiAutoDrive.staminaPosition = position;
             const L = feedback.getStaminaLayout(...dimensions);
             assert(L.x >= 0 && L.x + L.width <= dimensions[0] && L.y >= 62 && L.y + L.height < dimensions[1]);
-            if (position === 'top') assert(L.y - 15 >= CONFIG.uiSafeTop);
-            if (position === 'bottom') {
-                const marker = wheel.getWheelBtnPos(...dimensions);
-                assert(marker.y + CONFIG.marker.wheelOuterRadius + 12 < L.y - 15, 'Expanded marker wheel stays above stamina labels');
-                assert(marker.y + CONFIG.marker.btnRadius + 22 < L.y - 15, 'Marker button and caption cannot overlap stamina');
-            }
+            assert(L.y - 15 >= CONFIG.uiSafeTop);
+            assert(L.width <= 72 && L.height <= 3, 'Stamina is a compact fixed top-left bar');
+            assert(L.y <= CONFIG.uiSafeTop + 64, 'Stamina remains anchored near the top edge');
             feedback.drawSemiAutoControls(c, ...dimensions);
         }
     }
     assert.equal(arcs.length, 0, 'Default hidden joystick has no ring and no floating stamina popup');
-    CONFIG.semiAutoDrive.showJoystick = true; feedback.drawSemiAutoControls(c, 375, 667); assert(arcs.length > 0);
+    CONFIG.semiAutoDrive.showJoystick = true; feedback.drawSemiAutoControls(c, 375, 667); assert.equal(arcs.length, 0, 'Movement remains invisible during a drag');
     CONFIG.semiAutoDrive.showJoystick = false; CONFIG.semiAutoDrive.staminaPosition = 'bottom';
     CONFIG.screenWidth = 375; CONFIG.screenHeight = 667;
     const emptyShape = bcd.getBCDInflationShape(0, 4, 52);
@@ -191,6 +191,7 @@ try {
     // Real HUD lifecycle: compact return button cancels on release/move and cassette owns mute.
     const registry = load('extraction/core/ExtractionRegistry');
     const hud = compile('render/HUDTopLeft', name => {
+        if (name === '../core/UILayout') return uiLayout;
         if (name === '../core/config') return { CONFIG };
         if (name === '../core/state') return core;
         if (name === './Canvas') return { ctx: c, logicW: 375, logicH: 667 };
@@ -205,19 +206,15 @@ try {
     state.mazeRescue.npcRescued = false; textCalls.length = 0;
     hud.initMazeHUDTopLeft(); hud.drawHUDTopLeft(now / 1000);
     const captions = textCalls.map(call => call[0]);
-    assert(captions.includes('RETURN') && captions.includes('DEPTH'));
-    assert(!captions.includes('SOUND') && !captions.includes('DRIVE'));
-    const returnCaption = textCalls.find(call => call[0] === 'RETURN');
-    const returnX = returnCaption[1], returnY = returnCaption[2] - 29;
+    assert(!['RETURN', 'DEPTH', 'SOUND', 'DRIVE'].some(t => captions.includes(t)), 'Small native icons have no extra caption row');
+    const L = uiLayout.getUILayout();
+    const returnX = L.retreat.x, returnY = L.retreat.y;
     assert(hud.handleHUDTouchStart(70, returnX, returnY)); assert(state.mazeRescue.retreatHolding);
     now += 500; hud.handleHUDTouchEnd(70, returnX, returnY); assert(!state.mazeRescue.retreatHolding);
     hud.handleHUDTouchStart(71, returnX, returnY); hud.handleHUDTouchMove(71, returnX + 70, returnY);
     assert(!state.mazeRescue.retreatHolding, 'Moving away cancels compact return');
     const muted = state.audio.muted;
-    // Tape follows the depth item when deco is hidden: use the known gap plus its different size.
-    const depthCaption = textCalls.find(call => call[0] === 'DEPTH');
-    const tapeY = depthCaption[2] - 29 + 20 + 14 + 24;
-    hud.handleHUDTouchStart(72, 38, tapeY); hud.handleHUDTouchEnd(72, 38, tapeY);
+    hud.handleHUDTouchStart(72, L.tape.x, L.tape.y); hud.handleHUDTouchEnd(72, L.tape.x, L.tape.y);
     assert.notEqual(state.audio.muted, muted, 'Cassette short-tap toggles audio');
     assert.equal(registry.getEquipmentEffects('suitBasic').maxDepthMeters, 90);
     assert.equal(registry.getEquipmentEffects('airTankS').startO2, 120);
@@ -272,5 +269,5 @@ try {
     for (let i = 0; i < 20; i++) { tick(5); keys.keydown({ key: 'w', code: 'KeyW', repeat: true }); }
     assert(state.semiAutoDrive.remaining < keyStamina);
     keys.blur(); assert.equal(state.semiAutoDrive.thrusting, false);
-    console.log('Passed: continuous steering/release, analog exertion, constant recovery, sustainable empty-tank propulsion without exhaustion lock, rapid inputs, 60/120Hz, three safe HUD positions, hidden joystick, volume-only BCD silhouette without neutral cues, matching square hold progress, glide pose and keyboard cancellation.');
+    console.log('Passed: steering/release, stamina recovery and exhaustion, 60/120Hz, compact fixed top-left stamina, always-hidden joystick, native HUD taps/holds, BCD silhouette, matching hold progress, glide pose and keyboard cancellation.');
 } finally { Date.now = originalNow; delete global.wx; delete global.window; }

@@ -1,7 +1,6 @@
 import { CONFIG } from '../core/config';
 import { player, state } from '../core/state';
 import { cancelRopePlacement, playerRopePoint } from './Rope';
-import { resetDriveInput } from './DriveMode';
 import { beginRopeInteraction, cancelInteraction } from './Interaction';
 import { interactionScope } from './ActionTargets';
 import { firstInteractionHit, fishLocalPoint } from './InteractionRay';
@@ -48,7 +47,7 @@ export function startRopeWheelGesture(touchId: number, x: number, y: number, cen
     state.wheel.open = true; state.wheel.expandProgress = 1; state.wheel.touchId = touchId;
     state.wheel.centerX = centerX; state.wheel.centerY = centerY;
     gesture = { touchId, x, y, startX: x, startY: y, dragged: false, openedAt: Date.now(), scope: interactionScope() };
-    aim = null; resetDriveInput(); return true;
+    aim = null; return true;
 }
 export function refreshRopeWheelAim(preserveTarget = true) {
     if (!state.wheel.open || !gesture || !canUseRopeWheel() || !gesture.dragged || gesture.scope !== interactionScope() || preserveTarget && gesture.selectionLost) {

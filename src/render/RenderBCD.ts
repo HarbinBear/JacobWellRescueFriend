@@ -1,11 +1,12 @@
 // BCD：用气囊轮廓的收瘪/鼓起提示实际体积，配平由玩家感受。
 import { CONFIG } from '../core/config';
+import { getUILayout } from '../core/UILayout';
 import { state } from '../core/state';
 import { ctx } from './Canvas';
 import { getBCDRuntime } from '../logic/BCDSystem';
 
 export interface BCDLayout {
-    cx: number; cy: number; btnR: number; inflateY: number; deflateY: number;
+    cx: number; cy: number; btnR: number; inflateX: number; deflateX: number; inflateY: number; deflateY: number;
     indicatorX: number; indicatorY: number; indicatorSize: number;
 }
 function cfg(): any { return CONFIG.bcd || {}; }
@@ -14,17 +15,17 @@ export function isBCDUIVisible(): boolean {
         !state.wheel.open && !state.interaction.gesture);
 }
 export function getBCDLayout(): BCDLayout {
-    const c = cfg(), cw = CONFIG.screenWidth, ch = CONFIG.screenHeight;
-    const size = c.uiIndicatorSize || 52;
-    const btnR = c.uiBtnRadius || 21, gap = Math.max(c.uiBtnGap || 72, size / 2 + btnR + 14);
-    const cx = cw - (c.uiXFromRight || 46), halfSpan = gap + btnR + 20;
-    const safeTop = Math.max(62, CONFIG.uiSafeTop || 62);
-    const cy = Math.max(halfSpan + safeTop, Math.min(ch - halfSpan - 32, ch * (c.uiCenterYRatio || .52)));
-    return { cx, cy, btnR, inflateY: cy - gap, deflateY: cy + gap,
+    const L = getUILayout(), cw = CONFIG.screenWidth, ch = CONFIG.screenHeight;
+    const size = 40, btnR = 18;
+    const horizontal = L.landscape || ch < 440;
+    const cx = horizontal ? L.rope.x : cw - L.right - 24;
+    const cy = horizontal ? L.action.y - 82 : Math.min(L.action.y - 112, Math.max(L.top + 115, ch * .48));
+    return { cx, cy, btnR, inflateX: horizontal ? cx + 44 : cx, deflateX: horizontal ? cx - 44 : cx,
+        inflateY: horizontal ? cy : cy - 64, deflateY: horizontal ? cy : cy + 64,
         indicatorX: cx - size / 2, indicatorY: cy - size / 2, indicatorSize: size };
 }
-export function getBCDInflateBtn() { const L = getBCDLayout(); return { cx: L.cx, cy: L.inflateY, r: L.btnR + 6 }; }
-export function getBCDDeflateBtn() { const L = getBCDLayout(); return { cx: L.cx, cy: L.deflateY, r: L.btnR + 6 }; }
+export function getBCDInflateBtn() { const L = getBCDLayout(); return { cx: L.inflateX, cy: L.inflateY, r: 22 }; }
+export function getBCDDeflateBtn() { const L = getBCDLayout(); return { cx: L.deflateX, cy: L.deflateY, r: 22 }; }
 
 /**
  * 只读实际气囊体积，不读净浮力或中性体积。
@@ -41,8 +42,8 @@ export function drawBCDController(_time: number): void {
     ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillStyle = 'rgba(185,209,210,.65)'; ctx.font = 'bold 8px Arial'; ctx.fillText('BCD', L.cx, L.cy - L.indicatorSize * .6);
     drawBCDBladder(L.cx, L.cy, rt.volumeL, cfg().capacityL || 4, L.indicatorSize);
-    drawBCDButton(L.cx, L.inflateY, L.btnR, 1, rt.inflating, rt.overflow);
-    drawBCDButton(L.cx, L.deflateY, L.btnR, -1, rt.deflating, false);
+    drawBCDButton(L.inflateX, L.inflateY, L.btnR, 1, rt.inflating, rt.overflow);
+    drawBCDButton(L.deflateX, L.deflateY, L.btnR, -1, rt.deflating, false);
     ctx.restore();
 }
 

@@ -1,6 +1,5 @@
 import { CONFIG } from '../core/config';
 import { player, state } from '../core/state';
-import { resetDriveInput } from './DriveMode';
 import { getActionWheelCenter } from './InteractionLayout';
 import { aimActionGesture, interactionScope, isInteractionPlay, pickActionTarget } from './ActionTargets';
 import { beginActionInteraction, cancelInteraction, interactionFeedback } from './Interaction';
@@ -17,7 +16,7 @@ export function startActionGesture(touchId: number, x: number, y: number) {
     state.interaction.gesture = { touchId, x, y, startX: x, startY: y, centerX: center.x, centerY: center.y,
         dragged: false, scope: interactionScope() };
     state.interaction.aim = aimActionGesture(state.interaction.gesture);
-    resetDriveInput();
+    // 预选期间保留左手移动；真正下达动作时由 Interaction 统一停住。
     return true;
 }
 

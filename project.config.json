@@ -11,6 +11,7 @@
       { "type": "folder", "value": "design" },
       { "type": "folder", "value": "code" },
       { "type": "file", "value": "README.md" },
+      { "type": "file", "value": "AGENTS.md" },
       { "type": "file", "value": "ToDo.md" },
       { "type": "file", "value": "package-lock.json" },
       { "type": "file", "value": "tsconfig.json" },

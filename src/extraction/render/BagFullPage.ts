@@ -330,12 +330,12 @@ export function drawBagFullPage(): void {
 
     // === 顶部：关闭按钮（左）+ 标题（中）+ 容量（右，避开胶囊）===
     // 全部在 SAFE_TOP 之下，避开微信胶囊和摄像头
-    const titleY = SAFE_TOP + 14;
+    const titleY = (cw > ch ? CONFIG.uiSafeTop : SAFE_TOP) + 14;
 
     // 关闭按钮（左侧，圆形 X）
     {
         const r = 16;
-        const cx = SAFE_LEFT + r;
+        const cx = (CONFIG.uiSafeLeft || SAFE_LEFT) + r;
         const cy = titleY;
         ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
         ctx.beginPath();
@@ -376,8 +376,8 @@ export function drawBagFullPage(): void {
     ctx.fillText('单击查看 · 按住拖动 · 拖到顶部丢弃', titleCx, titleY + 42);
 
     // === 顶部丢弃区 ===
-    const discardZoneH = 52;
-    const discardZoneY = titleY + 60;
+    const discardZoneH = cw > ch ? 32 : 52;
+    const discardZoneY = titleY + (cw > ch ? 48 : 60);
     const dragging = _page.drag != null;
     {
         const x = 24;

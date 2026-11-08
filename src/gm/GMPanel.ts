@@ -7,6 +7,7 @@ import { CONFIG } from '../core/config';
 import {
     TABS, GMNumberItem, GMActionItem, GMSelectItem,
     PANEL_DEFAULT_X, PANEL_DEFAULT_Y, PANEL_W, PANEL_H,
+    resizeGMLayout,
     DRAG_BAR_H, TAB_H, TAB_FIXED_W,
     ITEM_H, ITEM_PAD, LABEL_W_RATIO, INPUT_H,
 } from './GMConfig';
@@ -76,6 +77,13 @@ export function getGMState() {
         panelY: _panelY,
         tabScrollX: _tabScrollX,
     };
+}
+
+export function resizeGMPanel() {
+    resizeGMLayout();
+    _panelX = Math.max(CONFIG.uiSafeLeft || 14, Math.min(CONFIG.screenWidth - PANEL_W - 14, _panelX));
+    _panelY = Math.max(12, Math.min(CONFIG.screenHeight - PANEL_H - 12, _panelY));
+    _dragging = false; _tabScrolling = false;
 }
 
 // ============ CONFIG 读写工具 ============

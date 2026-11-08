@@ -16,7 +16,7 @@ export function getDiveSupplyButton() {
     const supply = state.wheel.nearbyInfo as DiveSupply | null;
     if (!supply || state.wheel.open || state.interaction.task || !canUseRopeWheel()) return null;
     const center = getWheelBtnPos();
-    return { x: center.x - CONFIG.marker.btnRadius - 36, y: center.y, radius: 24, supply };
+    return { x: center.x - 80, y: center.y + 22, radius: 24, supply };
 }
 
 function circle(g: CanvasRenderingContext2D, x: number, y: number, radius: number) {

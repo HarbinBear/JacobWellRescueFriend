@@ -1,4 +1,5 @@
 import { CONFIG } from '../core/config';
+import { getUILayout } from '../core/UILayout';
 import { player, state } from '../core/state';
 import { actionTargetLabel, actionTargetPoint, isInteractionPlay } from '../logic/ActionTargets';
 import { getActionControlPosition, getSelfSockets } from '../logic/InteractionLayout';
@@ -160,8 +161,9 @@ export function drawInteractionOverlayWorld(c:CanvasRenderingContext2D){
     c.restore();
 }
 export function getInteractionStatusRect() {
-    const width = Math.min(240, CONFIG.screenWidth - 160);
-    return { x: (CONFIG.screenWidth - width) / 2, y: Math.max(70, (CONFIG.uiSafeTop || 58) + 13), width, height: 34 };
+    const L = getUILayout(), x = L.left + (L.landscape ? (state.mazeRescue?.rockTrial ? 300 : 190) : 56);
+    const right = CONFIG.screenWidth - (L.landscape ? Math.max(112, L.right) : L.right);
+    return { x, y: L.top + (L.landscape ? 50 : 8), width: Math.min(240, right - x), height: 34 };
 }
 export function drawInteractionHUD(c: CanvasRenderingContext2D) {
     if (!isInteractionPlay()) return;
@@ -183,7 +185,7 @@ export function drawInteractionHUD(c: CanvasRenderingContext2D) {
     const rect = getInteractionStatusRect();
     c.save(); c.fillStyle = 'rgba(5,22,29,.82)'; c.fillRect(rect.x, rect.y, rect.width, secondary ? rect.height : 21);
     c.fillStyle = color; c.font = '11px Arial'; c.textAlign = 'center'; c.textBaseline = 'middle';
-    c.fillText(text, CONFIG.screenWidth / 2, rect.y + 10.5, rect.width - 10);
-    if (secondary) { c.fillStyle = '#a2b7b6'; c.font = '9px Arial'; c.fillText(secondary, CONFIG.screenWidth / 2, rect.y + 26, rect.width - 10); }
+    c.fillText(text, rect.x + rect.width / 2, rect.y + 10.5, rect.width - 10);
+    if (secondary) { c.fillStyle = '#a2b7b6'; c.font = '9px Arial'; c.fillText(secondary, rect.x + rect.width / 2, rect.y + 26, rect.width - 10); }
     c.restore();
 }
