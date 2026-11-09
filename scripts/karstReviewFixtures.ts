@@ -60,6 +60,9 @@ export function chooseKarstVersion(version = 'E01', preservePosition = true) {
     const maze: any = state.mazeRescue, w = world(); if (!maze || !w) return false;
     const generation = version === 'V01' || version === 'E01' ? 'legacy' : 'chambers';
     const previous = getKarstTerrain(maze), wasHidden = w.hidden;
+    if (previous?.generation !== generation && (state.rope.ropes.length || state.rope.links.length)) {
+        w.notice='已有绳网时请用新评审档比较不同洞形'; w.noticeUntil=w.elapsed+5; return false;
+    }
     w.hidden = true; resetDriveInput();
     CONFIG.karst.surfaceMode = version === 'V01' ? 'baseline' : 'sculpted';
     CONFIG.karst.style = version === 'E03' ? 'engraved' : version === 'E04' ? 'cinematic' : 'natural';

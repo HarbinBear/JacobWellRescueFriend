@@ -20,6 +20,7 @@ const URL = 'http://127.0.0.1:60972/node_modules/.cache/karst-review/live/game.h
             assert.deepEqual(await ev('({x:DeepTapeGame.player.x,y:DeepTapeGame.player.y,angle:DeepTapeGame.player.angle})'), originalPose);
             report.versions.push({ version, samePose: true, surface: await ev('DeepTapeGame.cave.karst.karstSurfaceStats()') });
         }
+        report.legacyFingerprint=await ev('(()=>{const a=DeepTapeGame.cave.terrain.getKarstTerrain(DeepTapeGame.state.mazeRescue).texture;let h=2166136261;for(let i=0;i<a.length;i+=31)h=Math.imul(h^a[i],16777619);return h>>>0})()');
         await ev('DeepTapeGame.review.chooseKarstVersion("E02",false);DeepTapeGame.world.geometry.world().hidden=true');
         await until('DeepTapeGame.cave.karst.karstSurfaceStats().ready');
         const sites = await ev('DeepTapeGame.review.karstReviewSites()');
@@ -41,7 +42,12 @@ const URL = 'http://127.0.0.1:60972/node_modules/.cache/karst-review/live/game.h
             for(let y=c.height*.2|0;y<c.height*.78;y+=2)for(let x=c.width*.10|0;x<c.width*.80;x+=2){const i=(y*c.width+x)*4,d=Math.abs(a[i]-b[i])+Math.abs(a[i+1]-b[i+1])+Math.abs(a[i+2]-b[i+2]);if(d>8)changed++;energy+=d;}
             return{changedWorldSamples:changed,absolutePixelDifference:energy};})()`);
         assert(report.bounce.changedWorldSamples > 200, 'bounce必须改变实际岩壁/水体像素，而非只上传数据');
-        await ev('DeepTapeGame.cave.config.karst.bounceStrength=1;wx.setDeviceOrientation({value:"portrait",success(){}})'); await wait(180); await shot('portrait-E02');
+        await ev('DeepTapeGame.cave.config.karst.bounceStrength=1');
+        assert(await ev('DeepTapeGame.review.chooseKarstVersion("E01",false)'));
+        report.backtrack=await ev('(()=>{const g=DeepTapeGame,t=g.cave.terrain.getKarstTerrain(g.state.mazeRescue),a=t.texture;let h=2166136261;for(let i=0;i<a.length;i+=31)h=Math.imul(h^a[i],16777619);return {generation:t.generation,hash:h>>>0,shader:g.cave.karst.karstSurfaceStats().surfaceMode}})()');
+        assert.equal(report.backtrack.generation,'legacy');assert.equal(report.backtrack.hash,report.legacyFingerprint);
+        await ev('DeepTapeGame.review.chooseKarstVersion("E02",false);DeepTapeGame.world.geometry.world().hidden=true');await wait(130);
+        await ev('wx.setDeviceOrientation({value:"portrait",success(){}})'); await wait(180); await shot('portrait-E02');
         assert.deepEqual((await ev('DeepTapeGame.cave.karst.karstCoverageDiagnostics()')).failures, []);
         await ev('wx.setDeviceOrientation({value:"landscape",success(){}})'); await wait(130);
         report.surface = await ev('DeepTapeGame.cave.karst.karstSurfaceStats()');

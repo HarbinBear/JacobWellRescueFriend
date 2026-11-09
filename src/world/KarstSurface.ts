@@ -4,14 +4,15 @@ import { karstClamp as clamp, karstSmooth as smooth, karstMix as mix, karstNoise
 
 export const KARST_SURFACE_HEIGHT = 288;
 export const KARST_SURFACE_UV = 32768;
+export const KARST_CHAMBER_UV = 65536;
 export interface KarstSurface {
     geometry: Uint8Array; coordinates: Uint8Array; geology: Uint8Array;
     bakeMs: number; mappedFeatures: number; version: number;
 }
 const cache = new WeakMap<KarstTerrain, KarstSurface>();
 const BUCKET = 192;
-function pack(value: number, out: Uint8Array, index: number) {
-    const v = Math.round(clamp(value / KARST_SURFACE_UV + .5) * 65535);
+function pack(value: number, out: Uint8Array, index: number, range: number) {
+    const v = Math.round(clamp(value / range + .5) * 65535);
     out[index] = v >>> 8; out[index + 1] = v & 255;
 }
 export function formationFrame(f: KarstFormation, x: number, y: number) {
@@ -83,7 +84,8 @@ export function getKarstSurface(t: KarstTerrain): KarstSurface {
         h *= smooth(-2, 16, dep + (t.field[i] < 0 ? 2 : 0));
         out.geometry[k + 2] = Math.round(clamp(h / KARST_SURFACE_HEIGHT) * 255);
         out.geometry[k + 3] = Math.round(growth * 255);
-        pack(u, out.coordinates, k); pack(v, out.coordinates, k + 2);
+        const range=t.generation==='legacy'?KARST_SURFACE_UV:KARST_CHAMBER_UV;
+        pack(u, out.coordinates, k,range); pack(v, out.coordinates, k + 2,range);
         out.geology[k] = Math.round(clamp(family / 3) * 255);
         out.geology[k + 1] = Math.round(clamp(tint) * 255);
         out.geology[k + 2] = Math.round(clamp(growth) * 255);
@@ -95,9 +97,10 @@ export function releaseKarstSurfaceData(t: KarstTerrain) { cache.delete(t); }
 export function sampleKarstSurface(t: KarstTerrain, x: number, y: number) {
     const s = getKarstSurface(t), u = (x - t.x) / t.step, v = (y - t.y) / t.step;
     const c = Math.max(0, Math.min(t.cols - 1, Math.round(u))), r = Math.max(0, Math.min(t.rows - 1, Math.round(v))), k = (r * t.cols + c) * 4;
+    const range=t.generation==='legacy'?KARST_SURFACE_UV:KARST_CHAMBER_UV;
     return { height: s.geometry[k + 2] / 255 * KARST_SURFACE_HEIGHT, family: s.geology[k] / 255 * 3,
         tint: s.geology[k + 1] / 255, growth: s.geology[k + 2] / 255,
-        u: (s.coordinates[k] * 256 + s.coordinates[k + 1]) / 65535 * KARST_SURFACE_UV - KARST_SURFACE_UV * .5,
-        v: (s.coordinates[k + 2] * 256 + s.coordinates[k + 3]) / 65535 * KARST_SURFACE_UV - KARST_SURFACE_UV * .5,
+        u: (s.coordinates[k] * 256 + s.coordinates[k + 1]) / 65535 * range - range * .5,
+        v: (s.coordinates[k + 2] * 256 + s.coordinates[k + 3]) / 65535 * range - range * .5,
         solid: sampleKarst(t, x, y) < 0 };
 }

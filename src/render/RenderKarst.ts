@@ -4,7 +4,7 @@ import { logicW, logicH } from './Canvas';
 import { registerImage, getImage, releaseImages } from './ImageAssets';
 import { getLightPolygon } from './RenderLight';
 import { getKarstTerrain, KarstTerrain, releaseKarstTerrain, sampleKarst } from '../world/KarstTerrain';
-import { getKarstSurface, releaseKarstSurfaceData, KARST_SURFACE_HEIGHT, KARST_SURFACE_UV, type KarstSurface } from '../world/KarstSurface';
+import { getKarstSurface, releaseKarstSurfaceData, KARST_SURFACE_HEIGHT, KARST_SURFACE_UV, KARST_CHAMBER_UV, type KarstSurface } from '../world/KarstSurface';
 import { getKarstBounce, releaseKarstBounce, karstBounceStats } from './KarstBounce';
 import { KARST_FRAG_SRC } from './shaders/karstFrag.glsl';
 import { KARST_COHERENT_FRAG_SRC } from './shaders/karstCoherentFrag.glsl';
@@ -164,7 +164,7 @@ export function drawKarstSurface(ctx: CanvasRenderingContext2D, zoom: number, po
         gl.uniform1f(location('pixelWorld'), (v.r - v.l) / w); gl.uniform1f(location('inspect'), inspection);
         gl.uniform1f(location('normalStrength'), quality.normalStrength); gl.uniform1f(location('occlusionStrength'), quality.occlusionStrength);
         gl.uniform1f(location('lightEnergy'), quality.lightEnergy); gl.uniform1f(location('scatterStrength'), quality.scatterStrength);
-        gl.uniform1f(location('surfaceHeight'), KARST_SURFACE_HEIGHT); gl.uniform1f(location('surfaceUVRange'), KARST_SURFACE_UV);
+        gl.uniform1f(location('surfaceHeight'), KARST_SURFACE_HEIGHT); gl.uniform1f(location('surfaceUVRange'), t.generation === 'legacy' ? KARST_SURFACE_UV : KARST_CHAMBER_UV);
         gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); gl.drawArrays(gl.TRIANGLES, 0, 6); gl.flush(); draws++; key = next;
     } else cacheHits++;
     ctx.save(); ctx.imageSmoothingEnabled = true; ctx.drawImage(surface, v.l, v.top, v.r - v.l, v.b - v.top); ctx.restore(); cpuMs = Math.max(0, now() - start);
@@ -179,7 +179,7 @@ export function karstSurfaceStats() {
     return { ready: loaded && !!program, mode: program && gl && !gl.isContextLost() ? (enhanced() ? 'shape-bound-normal-surface' : 'height-normal-surface') : 'fallback',
         surfaceMode: activeMode, failure, draws, cacheHits, generation, lostCount, beamUploads, surfacePixels: pixels, surfaceCPUms: cpuMs,
         skinBakeMs: skin?.bakeMs || 0, mappedSamples: skin?.mappedFeatures || 0, bounce: karstBounceStats(),
-        gpuBytes: program ? (geometry?.texture.byteLength || 0) * (skin ? 3 : 1) + 1024 * 1024 * 4 * 2 * (skin&&geometry?.generation==='chambers'?4/3:1) + 512 * 4 + (skin ? 64 * 6 * 4 : 0) + pixels * 4 : 0,
+        gpuBytes: program ? (geometry?.texture.byteLength || 0) * (skin ? 3 : 1) + 1024 * 1024 * 4 * 2 + (skin && geometry?.generation === 'chambers' ? 2796200 : 0) + 512 * 4 + (skin ? 64 * 6 * 4 : 0) + pixels * 4 : 0,
         decodedImageBytes: loaded ? 1024 * 1024 * 4 * 2 : 0 };
 }
 export function karstCoverageDiagnostics() {
