@@ -98,9 +98,9 @@ export function getLightPolygon(sx: number, sy: number, angle: number, maxDist: 
     if(terrain){
         rays=Math.min(240,Math.max(48,rays));const step=fovRad/rays;
         const banks=(state.mazeRescue as any).continuous;
-        for(let i=0;i<=rays;i++){const a=startAngle+i*step,dx=Math.cos(a),dy=Math.sin(a);let d=karstRay(terrain,sx,sy,dx,dy,maxDist).distance;
+        for(let i=0;i<=rays;i++){const a=startAngle+i*step,dx=Math.cos(a),dy=Math.sin(a);const hit=karstRay(terrain,sx,sy,dx,dy,maxDist);let d=hit.distance;
             if(sy-maxDist<banks.seamY)for(const wall of [...banks.banks,...banks.boundaries])d=rayHitsRock(wall,sx,sy,dx,dy,d);
-            points.push({x:sx+dx*d,y:sy+dy*d,dist:d});}
+            points.push({x:sx+dx*d,y:sy+dy*d,dist:d,nx:hit.nx,ny:hit.ny,wall:hit.wall});}
         return points;
     }
     let step = fovRad / rays;

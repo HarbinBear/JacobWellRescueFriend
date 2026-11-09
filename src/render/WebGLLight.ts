@@ -21,6 +21,7 @@ import { VERT_SRC } from './shaders/vert.glsl';
 import { MASK_FRAG_SRC } from './shaders/maskFrag.glsl';
 import { VOLUMETRIC_FRAG_SRC } from './shaders/volumetricFrag.glsl';
 import { getLevelParams, onQualitySwitch } from './QualityManager';
+import type { KarstBounceFrame } from './KarstBounce';
 
 // ============ 单个 WebGL 渲染器上下文（一个 canvas + 一个 gl + 一个 program + 一套纹理） ============
 interface GLCtx {
@@ -33,6 +34,8 @@ interface GLCtx {
     vplTexture: WebGLTexture | null;                      // VPL 点纹理
     vplTexData: Float32Array | null;                      // 上传前的 CPU 端 buffer
     uniforms: Record<string, WebGLUniformLocation | null>;
+    karstBounceTexture: WebGLTexture | null;
+    karstBounceKey: string;
     useFloatTex: boolean;                                 // 是否支持 OES_texture_float
     npcVolGate: number;                                   // 画质档位缓存（体积光 context 才用）
 }
@@ -48,6 +51,8 @@ function createEmptyCtx(): GLCtx {
         vplTexture: null,
         vplTexData: null,
         uniforms: {},
+        karstBounceTexture: null,
+        karstBounceKey: '',
         useFloatTex: false,
         npcVolGate: 1.0,
     };
@@ -226,7 +231,8 @@ function initOneCtx(ctx: GLCtx, fragSrc: string, label: string): boolean {
         'u_vplVolStrength',
         // 后处理
         'u_exposure', 'u_enableToneMapping', 'u_toneMappingMode', 'u_reinhardWhitePoint',
-        'u_karstMode', 'u_extinction', 'u_karstScatter'
+        'u_karstMode', 'u_extinction', 'u_karstScatter',
+        'u_karstBounceTex', 'u_karstBounceCount', 'u_karstBouncePositions[0]', 'u_karstBounceDirections[0]', 'u_karstBounceColors[0]'
     ];
     ctx.uniforms = getUniforms(gl, ctx.program, uniformNames);
 
@@ -321,6 +327,22 @@ export function initWebGLLight(): boolean {
         _maskCtx.gl = null;
         _volCtx.gl = null;
         return false;
+    }
+}
+
+export function uploadKarstBounceData(frame: KarstBounceFrame | null) {
+    for(const ctx of [_maskCtx,_volCtx]){
+        const gl=ctx.gl;if(!gl||!ctx.program)continue;gl.useProgram(ctx.program);const u=ctx.uniforms;
+        if(!frame){gl.uniform1f(u['u_karstBounceCount']!,0);ctx.karstBounceKey='';continue;}
+        if(ctx.karstBounceKey===frame.key)continue;
+        if(!ctx.karstBounceTexture){
+            ctx.karstBounceTexture=gl.createTexture();gl.activeTexture(gl.TEXTURE2);gl.bindTexture(gl.TEXTURE_2D,ctx.karstBounceTexture);
+            gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
+            gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+            gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,64,6,0,gl.RGBA,gl.UNSIGNED_BYTE,frame.visibility);
+        }else{gl.activeTexture(gl.TEXTURE2);gl.bindTexture(gl.TEXTURE_2D,ctx.karstBounceTexture);gl.texSubImage2D(gl.TEXTURE_2D,0,0,0,64,6,gl.RGBA,gl.UNSIGNED_BYTE,frame.visibility);}
+        gl.uniform1f(u['u_karstBounceCount']!,frame.count);gl.uniform4fv(u['u_karstBouncePositions[0]']!,frame.positions);
+        gl.uniform4fv(u['u_karstBounceDirections[0]']!,frame.directions);gl.uniform4fv(u['u_karstBounceColors[0]']!,frame.colors);ctx.karstBounceKey=frame.key;
     }
 }
 
@@ -542,7 +564,7 @@ function setCommonUniforms(ctx: GLCtx, params: {
     gl.uniform1f(u['u_maxDist']!, params.maxDist);
     gl.uniform1f(u['u_flashlightActive']!, params.flashlightActive ? 1.0 : 0.0);
     gl.uniform1f(u['u_centerFov']!, centerFovRad);
-    gl.uniform1f(u['u_karstMode']!, (params as any).karstMode ? 1 : 0);
+    gl.uniform1f(u['u_karstMode']!, (params as any).karstMode ? ((params as any).karstEnhanced ? 2 : 1) : 0);
     const absorption=CONFIG.karst.extinction;
     gl.uniform3f(u['u_extinction']!,absorption[0],absorption[1],absorption[2]);
     gl.uniform1f(u['u_karstScatter']!,CONFIG.karst.scatterStrength);
@@ -607,6 +629,9 @@ function bindTextures(ctx: GLCtx) {
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, ctx.vplTexture);
     gl.uniform1i(u['u_vplTex']!, 1);
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_2D,ctx.karstBounceTexture||ctx.polyTexture);
+    gl.uniform1i(u['u_karstBounceTex']!,2);
 }
 
 // 渲染光照遮罩层（独立的遮罩 canvas）

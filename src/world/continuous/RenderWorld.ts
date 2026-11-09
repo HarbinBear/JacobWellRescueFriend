@@ -2,6 +2,7 @@ import assetManifest from './Assets';
 import { drawMazeWallShape } from '../../render/RenderMazeScene';
 import { drawKarstSurface, karstSurfaceStats, karstAssetsReady } from '../../render/RenderKarst';
 import { getKarstTerrain, karstStats } from '../KarstTerrain';
+import { getKarstBounce } from '../../render/KarstBounce';
 import { CONFIG } from '../../core/config';
 import { state, player, particles } from '../../core/state';
 import { canvas,ctx,dpr,logicW,logicH } from '../../render/Canvas';
@@ -24,7 +25,7 @@ import { getRescueTapeVisual } from '../../render/RescueTape';
 import { getActiveAirTanks } from '../../extraction/logic/Loadout';
 import { getBCDInflationRatio,isBCDVenting } from '../../logic/BCDSystem';
 import { getLightPolygon } from '../../render/RenderLight';
-import { isWebGLAvailable,uploadPolyData,uploadVPLData,renderLightMask,renderVolumetricLight,getGLCanvas,getVolGLCanvas,getGLCanvasPixelSize } from '../../render/WebGLLight';
+import { isWebGLAvailable,uploadPolyData,uploadVPLData,uploadKarstBounceData,renderLightMask,renderVolumetricLight,getGLCanvas,getVolGLCanvas,getGLCanvasPixelSize } from '../../render/WebGLLight';
 import { drawGMPanel } from '../../gm/GMPanel';
 import { drawPerfHUD } from '../../debug/PerfHUD';
 import { activeWorld,world,layout,groundAt,stationPosition,clamp,smooth } from './Geometry';
@@ -137,8 +138,10 @@ function lighting(v:any) {
         const light=state.flashlightOn!==false&&w.wet>.3,range=CONFIG.lightRange;
         const poly=light?getLightPolygon(player.x,player.y,player.angle,range,CONFIG.fov):[];surfacePoly=poly;
         uploadPolyData(poly,range);const count=uploadVPLData(poly,range)||0;
+        const terrain=getKarstTerrain(state.mazeRescue);
+        uploadKarstBounceData(light&&terrain&&CONFIG.karst.surfaceMode!=='baseline'?getKarstBounce(terrain,poly,player.x,player.y,player.angle,range):null);
         const base={playerX:player.x,playerY:player.y,cameraX:c.x+c.swayX,cameraY:c.y+c.swayY,zoom:c.zoom,shakeX:0,shakeY:0,angle:player.angle,maxDist:range,
-            flashlightActive:light,karstMode:!!getKarstTerrain(state.mazeRescue),npcX:state.npc.x,npcY:state.npc.y,npcAngle:state.npc.angle,npcDist:range*.5,npcActive:false,polyCount:poly.length,vplCount:count};
+            flashlightActive:light,karstMode:!!terrain,karstEnhanced:!!terrain&&CONFIG.karst.surfaceMode!=='baseline',npcX:state.npc.x,npcY:state.npc.y,npcAngle:state.npc.angle,npcDist:range*.5,npcActive:false,polyCount:poly.length,vplCount:count};
         renderVolumetricLight(base);const size=getGLCanvasPixelSize();
         ctx.globalCompositeOperation='screen';ctx.drawImage(getVolGLCanvas() as any,0,0,size.w,size.h,0,0,logicW,logicH);ctx.globalCompositeOperation='source-over';
         renderLightMask({...base,maskAlpha,worldSurfaceY:w.surfaceY} as any);ctx.drawImage(getGLCanvas() as any,0,0,size.w,size.h,0,0,logicW,logicH);

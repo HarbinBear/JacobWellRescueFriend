@@ -100,7 +100,7 @@ function blur(a: Float32Array, cols: number, rows: number) {
     }
     return out;
 }
-function redistance(t: KarstTerrain) {
+export function karstDistances(t: KarstTerrain) {
     const a = t.field, d = new Float32Array(a.length), cols = t.cols, rows = t.rows, step = t.step, diag = step * Math.SQRT2;
     d.fill(FIELD_RANGE);
     for (let r = 1; r < rows - 1; r++) for (let c = 1; c < cols - 1; c++) {
@@ -271,7 +271,7 @@ export function buildKarstTerrain(maze: any): KarstTerrain {
     }
     const calcite = new Float32Array(raw.length), relief = new Float32Array(raw.length);
     growFormations(t, maze, calcite, relief);
-    const distance = redistance(t); t.texture = new Uint8Array(raw.length * 4);
+    const distance = karstDistances(t); t.texture = new Uint8Array(raw.length * 4);
     for (let r = 0; r < t.rows; r++) for (let c = 0; c < t.cols; c++) {
         const i = r * t.cols + c, x = t.x + c * STEP, y = t.y + r * STEP, inside = t.field[i] < 0;
         const broad = noise(x, y, 173, t.seed + 359), flowing = noise(x, y, 370, t.seed + 241);

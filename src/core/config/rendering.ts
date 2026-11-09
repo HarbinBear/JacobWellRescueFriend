@@ -2,6 +2,10 @@
 
 export const renderingConfig = {
     karst: {
+        surfaceMode: 'sculpted' as string,
+        geometryMode: 'legacy' as string,
+        style: 'natural' as string,
+        bounceStrength: 1.0,
         normalStrength: 1.30,
         occlusionStrength: 0.86,
         lightEnergy: 3.4,

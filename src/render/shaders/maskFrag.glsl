@@ -18,6 +18,12 @@ uniform float u_flashlightActive;
 uniform float u_karstMode;
 uniform vec3 u_extinction;
 uniform float u_karstScatter;
+uniform sampler2D u_karstBounceTex;
+uniform float u_karstBounceCount;
+uniform vec4 u_karstBouncePositions[6];
+uniform vec4 u_karstBounceDirections[6];
+uniform vec4 u_karstBounceColors[6];
+
 
 // 中心光束
 uniform float u_centerFov;
@@ -151,6 +157,24 @@ float computeFlashlight(vec2 worldPos, vec2 lightPos, float lightAngle, float ma
     return clamp(brightness, 0.0, 1.0);
 }
 
+vec3 karstReflectedWater(vec2 p) {
+    vec3 reflected=vec3(0.0);
+    for(int i=0;i<6;i++){
+        if(float(i)>=u_karstBounceCount)break;
+        vec4 source=u_karstBouncePositions[i],dir=u_karstBounceDirections[i];
+        vec2 delta=p-source.xy;float d=length(delta),radius=dir.z;if(d>radius)continue;
+        float a=(atan(delta.y,delta.x)/6.2831853+0.5)*64.0,index=floor(a);
+        vec2 v0=texture2D(u_karstBounceTex,vec2((index+0.5)/64.0,(float(i)+0.5)/6.0)).rg;
+        vec2 v1=texture2D(u_karstBounceTex,vec2((mod(index+1.0,64.0)+0.5)/64.0,(float(i)+0.5)/6.0)).rg;
+        float limit=mix(v0.r*65280.0+v0.g*255.0,v1.r*65280.0+v1.g*255.0,fract(a))/65535.0*radius;
+        float visibility=1.0-smoothstep(limit-1.0,limit+4.0,d);
+        float hemi=0.18+0.82*max(0.0,dot(delta/max(d,0.01),dir.xy));
+        float spread=pow(1.0-smoothstep(0.0,radius,d),2.0)/(1.0+pow(d/88.0,2.0));
+        reflected+=u_karstBounceColors[i].rgb*source.w*hemi*spread*visibility;
+    }
+    return reflected*u_flashlightActive;
+}
+
 void main() {
     vec2 worldPos = screenToWorld(v_uv);
     
@@ -172,7 +196,8 @@ void main() {
         float incident = (spill * 0.65 + hot * 0.55) * visible * fall * luminance * u_flashlightActive;
         float self = (1.0 - smoothstep(12.0, 90.0, dist)) * 0.42;
         float indirect = exp(-dist / 170.0) * 0.065 * u_flashlightActive * u_karstScatter;
-        float light = clamp(incident * 1.45 + self + indirect, 0.0, 0.92);
+        vec3 bounce=u_karstMode>1.5?karstReflectedWater(worldPos):vec3(0.0);
+        float light = clamp(incident * 1.45 + self + indirect + dot(bounce,vec3(0.2126,0.7152,0.0722))*1.9, 0.0, 0.92);
         vec3 dark = vec3(0.001, 0.003, 0.005);
         gl_FragColor = vec4(dark, darkness * (1.0 - light));
         return;
