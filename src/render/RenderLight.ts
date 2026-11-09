@@ -5,6 +5,7 @@ import { getActiveMapContext } from '../world/Visibility';
 export { isLineOfSight } from '../world/Visibility';
 import { getMazeThemeColorByCell } from './RenderMazeScene';
 import { rayHitsRock } from '../world/RockGeometry';
+import { getKarstTerrain, karstRay } from '../world/KarstTerrain';
 
 // 射线-圆相交检测
 export function rayCircleIntersect(ox: number, oy: number, dx: number, dy: number, cx: number, cy: number, cr: number): number {
@@ -93,6 +94,15 @@ export function getLightPolygon(sx: number, sy: number, angle: number, maxDist: 
     let rays = (CONFIG as any).quality?.rayCount ?? CONFIG.rayCount ?? 360;
     const rockTrial=state.screen==='mazeRescue' && !!state.mazeRescue?.caveRockRoom;
     if(rockTrial)rays=Math.min(360,Math.max(128,rays));
+    const terrain=getKarstTerrain(state.screen==='mazeRescue'?state.mazeRescue:null);
+    if(terrain){
+        rays=Math.min(240,Math.max(48,rays));const step=fovRad/rays;
+        const banks=(state.mazeRescue as any).continuous;
+        for(let i=0;i<=rays;i++){const a=startAngle+i*step,dx=Math.cos(a),dy=Math.sin(a);let d=karstRay(terrain,sx,sy,dx,dy,maxDist).distance;
+            if(sy-maxDist<banks.seamY)for(const wall of [...banks.banks,...banks.boundaries])d=rayHitsRock(wall,sx,sy,dx,dy,d);
+            points.push({x:sx+dx*d,y:sy+dy*d,dist:d});}
+        return points;
+    }
     let step = fovRad / rays;
     if(rockTrial){const walls=state.mazeRescue!.mazeWalls;for(let i=0;i<=rays;i++){const a=startAngle+i*step,dx=Math.cos(a),dy=Math.sin(a);let d=maxDist;for(const wall of walls)d=rayHitsRock(wall,sx,sy,dx,dy,d);points.push({x:sx+dx*d,y:sy+dy*d,dist:d});}return points;}
 

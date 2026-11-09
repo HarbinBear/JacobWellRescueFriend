@@ -15,6 +15,9 @@ uniform float u_angle;
 uniform float u_fov;
 uniform float u_maxDist;
 uniform float u_flashlightActive;
+uniform float u_karstMode;
+uniform vec3 u_extinction;
+uniform float u_karstScatter;
 uniform float u_centerFov;
 uniform sampler2D u_polyTex;
 uniform float u_polyCount;
@@ -127,7 +130,33 @@ vec3 computeVolumetric(vec2 worldPos, vec2 lightPos, float lightAngle, float max
 void main() {
     vec2 worldPos = screenToWorld(v_uv);
     vec3 color = vec3(0.0);
-    
+    if (u_karstMode > 0.5) {
+        vec2 delta = worldPos - u_playerPos;
+        float dist = length(delta), theta = atan(delta.y, delta.x) - u_angle;
+        theta = atan(sin(theta), cos(theta));
+        float spill = exp(-pow(abs(theta) / max(0.01, u_fov * 0.36), 4.0));
+        spill *= 1.0 - smoothstep(u_fov * 0.43, u_fov * 0.5, abs(theta));
+        float hot = exp(-theta * theta / 0.031);
+        float occ = queryOcclusionDist(atan(delta.y, delta.x), u_angle, u_fov);
+        float visible = 1.0 - smoothstep(occ - 1.0, occ + 4.0, dist);
+        float endFade = 1.0 - smoothstep(u_maxDist * 0.65, u_maxDist, dist);
+        // Single-scattering through a finite beam thickness. As its path grows,
+        // red is absorbed first while blue/green survive; no colored rings.
+        float path = 22.0 + dist * 0.25;
+        vec3 transmission = exp(-u_extinction * (dist * 1.50 + 24.0));
+        vec3 scatter = vec3(0.12, 0.39, 0.46) * (1.0 - exp(-vec3(0.006) * path)) * transmission;
+        // Forward-scattered primary beam remains slightly neutral near the diver;
+        // transmitted reds die first, cyan survives further into the water.
+        vec3 forward = vec3(0.32, 0.36, 0.29) * transmission;
+        forward *= (1.0 - exp(-dist / 42.0)) / (1.0 + pow(dist / 260.0, 2.0));
+        float phase = 0.54 + hot * 0.32;
+        color = (scatter * (spill * 0.63 + hot * 0.25) * phase * 3.0 + forward * (spill * 0.45 + hot * 0.32) * 0.48) * visible * endFade;
+        color *= (1.0 - smoothstep(0.0, 16.0, 16.0 - dist)) * u_flashlightActive * u_karstScatter;
+        // Opaque black is neutral for the existing additive/screen composite,
+        // preventing a second accidental multiplication by scatter alpha.
+        gl_FragColor = vec4(color, 1.0);
+        return;
+    }
     // 主手电筒体积光
     if (u_flashlightActive > 0.5) {
         color += computeVolumetric(worldPos, u_playerPos, u_angle, u_maxDist, u_fov, u_centerFov);

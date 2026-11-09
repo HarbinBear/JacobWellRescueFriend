@@ -8,7 +8,7 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
   async function tap(rect){const p=await ev(`(()=>{const r=document.getElementById('game').getBoundingClientRect(),c=DeepTapeGame.cave.config,b=${JSON.stringify(rect)};return{x:r.x+(b.x+b.w/2)/c.screenWidth*r.width,y:r.y+(b.y+b.h/2)/c.screenHeight*r.height,id:1}})()`);await b.command('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[p]});await b.command('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});}
   await until('!!window.DeepTapeGame');assert.equal(await ev('DeepTapeGame.state.screen'),'menu');
   await tap(await ev('DeepTapeGame.ui.menu().find(b=>b.id==="continue")'));await until('DeepTapeGame.world.render.assetsReady()');await wait(150);
-  assert.equal(await ev('DeepTapeGame.world.render.worldGraphicsStats().character'),'original');assert.equal(await ev('DeepTapeGame.world.render.worldGraphicsStats().rocks'),'original-circles');
+  assert.equal(await ev('DeepTapeGame.world.render.worldGraphicsStats().character'),'original');assert.equal(await ev('DeepTapeGame.world.render.worldGraphicsStats().rocks'),'continuous-karst');
   await ev('DeepTapeGame.world.geometry.world().hidden=true;DeepTapeGame.world.runtime.setupTowReview(3)');
   const before=await ev('DeepTapeGame.world.save.captureWorld()');await ev('DeepTapeGame.menu()');assert.equal(await ev('DeepTapeGame.state.screen'),'menu');await tap(await ev('DeepTapeGame.ui.menu().find(b=>b.id==="continue")'));
   await until('!!DeepTapeGame.world.save.getLastRestoreSnapshot()');const after=await ev('DeepTapeGame.world.save.getLastRestoreSnapshot()');assert.equal(after.player.x,before.player.x);assert.equal(after.player.y,before.player.y);assert.deepEqual(after.links,before.links);report.returnFromMenu='真实点击继续，位置和三鱼绳端保持';

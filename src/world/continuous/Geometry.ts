@@ -1,6 +1,7 @@
 import { layout as layoutData } from './Layout';
 
 import { state } from '../../core/state';
+import { buildKarstTerrain, getKarstTerrain, karstCircle } from '../KarstTerrain';
 import { circleHitsRock, pointInRock, RockPoint, RockWall } from '../../world/RockGeometry';
 
 export const layout = layoutData;
@@ -120,6 +121,7 @@ export function attachWorldTerrain(maze: any): ShoreWorld {
     maze.mazeWalls.push(...banks,...w.boundaries);
     maze.exitY = w.surfaceY;
     maze.playerPath = [];
+    buildKarstTerrain(maze);
     return w;
 }
 export function circleCollision(x: number, y: number, radius = 20): boolean {
@@ -127,6 +129,8 @@ export function circleCollision(x: number, y: number, radius = 20): boolean {
     const upper=y<w.seamY-radius,minX=upper?w.originX+layout.minX:0,maxX=upper?w.originX+layout.maxX:m.mazeCols*m.mazeTileSize;
     if (x < minX + radius || x > maxX - radius || y < radius || y > m.mazeRows * m.mazeTileSize - radius) return true;
     if (w.banks.some(b => bankCircleCollision(b, x, y, radius)) || w.boundaries.some(b => circleHitsRock(b,x,y,radius))) return true;
+    const terrain = getKarstTerrain(m);
+    if (terrain && y + radius >= terrain.y && !upper) return karstCircle(terrain, x, y, radius);
     if (upper) return false;
     const ts = m.mazeTileSize, r = Math.floor(y / ts), c = Math.floor(x / ts);
     for (let dr = -2; dr <= 2; dr++) for (let dc = -2; dc <= 2; dc++) {

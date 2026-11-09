@@ -1,5 +1,7 @@
 import assetManifest from './Assets';
 import { drawMazeWallShape } from '../../render/RenderMazeScene';
+import { drawKarstSurface, karstSurfaceStats, karstAssetsReady } from '../../render/RenderKarst';
+import { getKarstTerrain, karstStats } from '../KarstTerrain';
 import { CONFIG } from '../../core/config';
 import { state, player, particles } from '../../core/state';
 import { canvas,ctx,dpr,logicW,logicH } from '../../render/Canvas';
@@ -39,7 +41,7 @@ export function updateWorldAssets(){
     else if(!activeWorld()&&registered){releaseImages(ASSETS.map(f=>'shore/'+f));registered=false;}
 }
 export function assetsReady(){return ASSETS.every(f=>isImageReady('shore/'+f));}
-export function worldGraphicsStats(){const imageBytes=ASSETS.reduce((n,f)=>{const im=getImage('shore/'+f);return n+(im?im.width*im.height*4:0);},0);return {webgl:isWebGLAvailable(),pixelSize:getGLCanvasPixelSize(),sceneDecodedRGBABytes:imageBytes,character:"original",rocks:"original-circles",crossfade:true};}
+export function worldGraphicsStats(){const imageBytes=ASSETS.reduce((n,f)=>{const im=getImage('shore/'+f);return n+(im?im.width*im.height*4:0);},0);return {webgl:isWebGLAvailable(),pixelSize:getGLCanvasPixelSize(),sceneDecodedRGBABytes:imageBytes,character:"original",rocks:getKarstTerrain(state.mazeRescue)?"continuous-karst":"original-circles",karst:karstStats(state.mazeRescue),surface:karstSurfaceStats(),crossfade:true};}
 function transform(){const c=state.camera;ctx.translate(logicW/2,logicH/2);ctx.scale(c.zoom,c.zoom);ctx.translate(-c.x-c.swayX,-c.y-c.swayY);}
 function gradient(y1:number,y2:number,stops:[number,string][]) {const g=ctx.createLinearGradient(0,y1,0,y2);for(const [t,c]of stops)g.addColorStop(t,c);return g;}
 function visible(x:number,y:number,w:number,h:number,v:any){return x+w>v.l&&x<v.r&&y+h>v.t&&y<v.b;}
@@ -85,7 +87,7 @@ function drawBackdrop(v:any) {
 }
 function drawDeepCave(v:any) {
     const m:any=state.mazeRescue,w=world()!,ts=m.mazeTileSize;
-    if(v.b<w.seamY-180)return;
+    if(v.b<w.seamY-180||getKarstTerrain(m))return;
     const r0=Math.max(Math.floor((w.seamY-180)/ts),Math.floor(v.t/ts)-1),r1=Math.min(m.mazeRows-1,Math.floor(v.b/ts)+1);
     for(let r=r0;r<=r1;r++)for(let c=Math.max(0,Math.floor(v.l/ts)-1);c<=Math.min(m.mazeCols-1,Math.floor(v.r/ts)+1);c++)if(m.mazeMap[r]?.[c]===2){ctx.fillStyle='#222';ctx.fillRect(c*ts-.4,r*ts-.4,ts+.8,ts+.8);}
     for(const wall of m.mazeWalls){
@@ -128,19 +130,20 @@ function drawCamp(v:any){
 function lighting(v:any) {
     const w=world()!,c=state.camera,depth=clamp((player.y-w.surfaceY)/1100),maskAlpha=.03+.965*Math.pow(depth,1.48);
     const waterScreen=logicH/2+(w.surfaceY-c.y-c.swayY)*c.zoom;
+    let surfacePoly:any[]|undefined;
     if(waterScreen>=logicH)return;
     ctx.save();ctx.beginPath();ctx.rect(0,Math.max(0,waterScreen),logicW,logicH-Math.max(0,waterScreen));ctx.clip();
     if(isWebGLAvailable()){
         const light=state.flashlightOn!==false&&w.wet>.3,range=CONFIG.lightRange;
-        const poly=light?getLightPolygon(player.x,player.y,player.angle,range,CONFIG.fov):[];
+        const poly=light?getLightPolygon(player.x,player.y,player.angle,range,CONFIG.fov):[];surfacePoly=poly;
         uploadPolyData(poly,range);const count=uploadVPLData(poly,range)||0;
         const base={playerX:player.x,playerY:player.y,cameraX:c.x+c.swayX,cameraY:c.y+c.swayY,zoom:c.zoom,shakeX:0,shakeY:0,angle:player.angle,maxDist:range,
-            flashlightActive:light,npcX:state.npc.x,npcY:state.npc.y,npcAngle:state.npc.angle,npcDist:range*.5,npcActive:false,polyCount:poly.length,vplCount:count};
+            flashlightActive:light,karstMode:!!getKarstTerrain(state.mazeRescue),npcX:state.npc.x,npcY:state.npc.y,npcAngle:state.npc.angle,npcDist:range*.5,npcActive:false,polyCount:poly.length,vplCount:count};
         renderVolumetricLight(base);const size=getGLCanvasPixelSize();
         ctx.globalCompositeOperation='screen';ctx.drawImage(getVolGLCanvas() as any,0,0,size.w,size.h,0,0,logicW,logicH);ctx.globalCompositeOperation='source-over';
         renderLightMask({...base,maskAlpha,worldSurfaceY:w.surfaceY} as any);ctx.drawImage(getGLCanvas() as any,0,0,size.w,size.h,0,0,logicW,logicH);
     }else{const g=ctx.createLinearGradient(0,waterScreen,0,waterScreen+1100*c.zoom);g.addColorStop(0,'rgba(1,15,21,.03)');g.addColorStop(.4,'rgba(1,15,21,.45)');g.addColorStop(1,'rgba(1,15,21,.995)');ctx.fillStyle=g;ctx.fillRect(0,0,logicW,logicH);}
-    ctx.restore();
+    ctx.restore();return surfacePoly;
 }
 function drawSurface(v:any){
     const w=world()!,t=w.elapsed;
@@ -181,8 +184,8 @@ export function drawContinuousFrame(){
     else drawDiver(ctx,player.x,player.y,player.angle,null,motion);
     drawInteractionWorkWorld(ctx);ctx.save();ctx.beginPath();ctx.rect(v.l,w.surfaceY,v.r-v.l,Math.max(0,v.b-w.surfaceY));ctx.clip();drawBreathBubblesWorld(ctx,v.l,v.r,v.t,v.b);ctx.restore();
     for(const p of particles){if(p.x<v.l||p.x>v.r||p.y<v.t||p.y>v.b)continue;ctx.fillStyle=p.type==='silt'?`rgba(91,124,97,${p.life*.17})`:`rgba(193,220,180,${p.life*.3})`;ctx.beginPath();ctx.arc(p.x,p.y,Math.max(.5,p.size),0,Math.PI*2);ctx.fill();}
-    ctx.restore();lighting(v);
-    ctx.save();transform();drawRescueTarget(ctx,visual);drawSurface(v);drawRopeApproachWorld(ctx,zoom,{left:v.l,right:v.r,top:v.t,bottom:v.b});drawRopeAimWorld(ctx);drawActionPreviewWorld(ctx);drawInteractionOverlayWorld(ctx);ctx.restore();
+    ctx.restore();const surfacePoly=lighting(v);
+    ctx.save();transform();drawKarstSurface(ctx,zoom,surfacePoly);drawRescueTarget(ctx,visual);drawSurface(v);drawRopeApproachWorld(ctx,zoom,{left:v.l,right:v.r,top:v.t,bottom:v.b});drawRopeAimWorld(ctx);drawActionPreviewWorld(ctx);drawInteractionOverlayWorld(ctx);ctx.restore();
     if((w as any).overview){
         ctx.save();ctx.fillStyle='rgba(226,231,199,.89)';ctx.fillRect(logicW-260,13,245,30);ctx.fillStyle='#52664a';ctx.font='11px PingFang SC';ctx.textAlign='left';ctx.fillText('营地与泉井 · 同一张地图的验收总览',logicW-250,32);
         ctx.font='9px PingFang SC';ctx.textAlign='center';
@@ -190,5 +193,5 @@ export function drawContinuousFrame(){
         ctx.restore();return;
     }
     drawWorldHUD(ctx);if(!w.panel){drawWheelButton();drawWheel();drawActionControls(ctx);drawInteractionHUD(ctx);}drawFishThreatDirection(ctx,logicW,logicH,c.x,c.y,c.zoom);drawFishBiteEffect(ctx,logicW,logicH);drawBagFullPage();drawItemDetailCard();drawGMPanel(ctx);drawPerfHUD(ctx);
-    if(!assetsReady()){ctx.fillStyle='rgba(231,231,204,.9)';ctx.fillRect(logicW/2-88,logicH/2-18,176,36);ctx.fillStyle='#65755a';ctx.textAlign='center';ctx.font='11px PingFang SC';ctx.fillText('正在铺设林泉营地素材',logicW/2,logicH/2+4);ctx.textAlign='left';}
+    if(!assetsReady()||!karstAssetsReady()){ctx.fillStyle='rgba(231,231,204,.9)';ctx.fillRect(logicW/2-88,logicH/2-18,176,36);ctx.fillStyle='#65755a';ctx.textAlign='center';ctx.font='11px PingFang SC';ctx.fillText('正在铺设林泉营地素材',logicW/2,logicH/2+4);ctx.textAlign='left';}
 }

@@ -225,7 +225,8 @@ function initOneCtx(ctx: GLCtx, fragSrc: string, label: string): boolean {
         'u_volOuterColor', 'u_volCenterColor',
         'u_vplVolStrength',
         // 后处理
-        'u_exposure', 'u_enableToneMapping', 'u_toneMappingMode', 'u_reinhardWhitePoint'
+        'u_exposure', 'u_enableToneMapping', 'u_toneMappingMode', 'u_reinhardWhitePoint',
+        'u_karstMode', 'u_extinction', 'u_karstScatter'
     ];
     ctx.uniforms = getUniforms(gl, ctx.program, uniformNames);
 
@@ -541,6 +542,10 @@ function setCommonUniforms(ctx: GLCtx, params: {
     gl.uniform1f(u['u_maxDist']!, params.maxDist);
     gl.uniform1f(u['u_flashlightActive']!, params.flashlightActive ? 1.0 : 0.0);
     gl.uniform1f(u['u_centerFov']!, centerFovRad);
+    gl.uniform1f(u['u_karstMode']!, (params as any).karstMode ? 1 : 0);
+    const absorption=CONFIG.karst.extinction;
+    gl.uniform3f(u['u_extinction']!,absorption[0],absorption[1],absorption[2]);
+    gl.uniform1f(u['u_karstScatter']!,CONFIG.karst.scatterStrength);
     gl.uniform1f(u['u_polyCount']!, params.polyCount);
     gl.uniform1f(u['u_vplCount']!, params.vplCount);
 

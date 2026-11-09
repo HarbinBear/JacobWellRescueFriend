@@ -44,6 +44,16 @@ export interface GMTab {
 
 export const TABS: GMTab[] = [
     {
+        name: '溶洞',
+        items: [
+            { type: 'number', label: '岩面粗糙法线', path: 'karst.normalStrength', min: 0, max: 2, step: 0.1, precision: 1 },
+            { type: 'number', label: '凹陷自遮挡', path: 'karst.occlusionStrength', min: 0, max: 1, step: 0.05, precision: 2 },
+            { type: 'number', label: '灯光能量', path: 'karst.lightEnergy', min: 0.5, max: 8, step: 0.1, precision: 1 },
+            { type: 'number', label: '散射与弱反射', path: 'karst.scatterStrength', min: 0, max: 2, step: 0.1, precision: 1 },
+            { type: 'number', label: '岩面像素预算', path: 'karst.pixelBudget', min: 150000, max: 1200000, step: 50000, precision: 0 },
+        ]
+    },
+    {
         name: '手电筒',
         items: [
             { type: 'number', label: 'flatRatio(全亮区占比)', path: 'flashlight.flatRatio', min: 0, max: 1, step: 0.05, precision: 2 },

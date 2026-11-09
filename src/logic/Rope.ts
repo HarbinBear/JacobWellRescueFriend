@@ -6,6 +6,7 @@ import { fishWorldPoint } from './InteractionRay';
 import { getRopeTopology, ropeSpanAt, planRopeRemoval, isRemovalPlanValid, ropePathSlice } from './RopeTopology';
 import type { RopeRemovalPlan, RopeSpan, RopeNode } from './RopeTopology';
 import { closestRockPoint, circleHitsRock } from '../world/RockGeometry';
+import { getKarstTerrain, karstNearest } from '../world/KarstTerrain';
 import { isLineOfSight } from '../world/Visibility';
 import { getRopeNet, pointOnStrand, projectOntoStrand, sweepRopeNet } from './RopeNet';
 import { applyNetBodyImpulse, deformNetPoint, moveThroughNet, netResponseAlong, resetNetMotion, stepNetMotion, viewNetContact, releaseNetBody, remapNetMotion, steadyNetBody } from './RopeDynamics';
@@ -23,6 +24,13 @@ export function findNearestWall(x: number, y: number, maxDist: number): any {
     let nearest: any = null, minDist = maxDist;
     const walls = getActiveWalls();
     if (!walls) return null;
+    const terrain=getKarstTerrain(state.screen==='mazeRescue'?state.mazeRescue:null);
+    if(terrain){
+        const p=karstNearest(terrain,x,y,maxDist);if(p.wall){nearest=p.wall;minDist=p.dist;}
+        const w=(state.mazeRescue as any).continuous;
+        for(const wall of [...w.banks,...w.boundaries]){const q=closestRockPoint(wall,x,y);if(q.dist<minDist){nearest=wall;minDist=q.dist;}}
+        return nearest?{wall:nearest,dist:minDist}:null;
+    }
     for (const wall of walls) {
         const point = closestRockPoint(wall, x, y);
         if (wall.rockPolygon && walls.some(other => other !== wall && circleHitsRock(other, point.x, point.y, 0))) continue;

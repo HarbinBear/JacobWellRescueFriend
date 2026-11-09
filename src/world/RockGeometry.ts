@@ -1,6 +1,18 @@
 export type RockPoint = { x: number; y: number };
 export type RockWall = { x: number; y: number; r: number; row: number; col: number; rockPolygon?: RockPoint[] };
 
+export interface RockSurface {
+    closest(x: number, y: number): RockPoint & { dist: number };
+    circle(x: number, y: number, radius: number): boolean;
+    ray(x: number, y: number, dx: number, dy: number, range: number): number;
+}
+// Semantic wall handles stay in their seeded order. Runtime surface delegates
+// live outside state/JSON, so neither old rope indices nor save sizes change.
+const surfaces = new WeakMap<object, RockSurface>();
+export function registerRockSurface(wall: RockWall, surface: RockSurface) { surfaces.set(wall, surface); }
+export function hasRockSurface(wall: RockWall) { return surfaces.has(wall); }
+export function unregisterRockSurface(wall: RockWall) { surfaces.delete(wall); }
+
 export function pointInRock(points: RockPoint[], x: number, y: number): boolean {
     let inside = false;
     for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
@@ -10,6 +22,8 @@ export function pointInRock(points: RockPoint[], x: number, y: number): boolean 
     return inside;
 }
 export function closestRockPoint(wall: RockWall, x: number, y: number): RockPoint & { dist: number } {
+    const surface = surfaces.get(wall);
+    if (surface) return surface.closest(x, y);
     if (!wall.rockPolygon) {
         const dx = x - wall.x, dy = y - wall.y, distance = Math.hypot(dx, dy) || 1;
         return { x: wall.x + dx / distance * wall.r, y: wall.y + dy / distance * wall.r, dist: distance - wall.r };
@@ -26,12 +40,16 @@ export function closestRockPoint(wall: RockWall, x: number, y: number): RockPoin
     return best;
 }
 export function circleHitsRock(wall: RockWall, x: number, y: number, radius: number): boolean {
+    const surface = surfaces.get(wall);
+    if (surface) return surface.circle(x, y, radius);
     if (!wall.rockPolygon) return Math.hypot(x - wall.x, y - wall.y) < wall.r + radius;
     if (Math.abs(x - wall.x) > wall.r + radius || Math.abs(y - wall.y) > wall.r + radius) return false;
     if (pointInRock(wall.rockPolygon, x, y)) return true;
     return radius > 0 && closestRockPoint(wall, x, y).dist < radius;
 }
 export function rayHitsRock(wall: RockWall, x: number, y: number, dx: number, dy: number, range: number): number {
+    const surface = surfaces.get(wall);
+    if (surface) return surface.ray(x, y, dx, dy, range);
     const p = wall.rockPolygon;
     if (!p) return range;
     let distance = range;
@@ -41,7 +59,7 @@ export function rayHitsRock(wall: RockWall, x: number, y: number, dx: number, dy
         if (Math.abs(det) < 1e-9) continue;
         const ax = a.x - x, ay = a.y - y;
         const t = (ax * ey - ay * ex) / det, u = (ax * dy - ay * dx) / det;
-        if (t > .001 && t < distance && u >= 0 && u <= 1) distance = t;
+        if (t > .001 && t < distance && u >= -1e-8 && u <= 1 + 1e-8) distance = t;
     }
     return distance;
 }
@@ -50,7 +68,7 @@ export function rockSegmentClear(walls: RockWall[], a: RockPoint, b: RockPoint, 
     if (length < .001) return true;
     const dx = (b.x - a.x) / length, dy = (b.y - a.y) / length;
     for (const wall of walls) {
-        if (!wall.rockPolygon) continue;
+        if (!wall.rockPolygon && !surfaces.has(wall)) continue;
         if (rayHitsRock(wall, a.x, a.y, dx, dy, length) < length - .01) return false;
         // Padding is intentionally eased only at the two physical anchor endpoints.
         for (let d = .5; d < length; d += 3) {

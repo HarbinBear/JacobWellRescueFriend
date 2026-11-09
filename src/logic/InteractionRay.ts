@@ -2,6 +2,7 @@ import { CONFIG } from '../core/config';
 import { player, state } from '../core/state';
 import { getActiveMapContext } from '../world/Visibility';
 import { rayHitsRock, circleHitsRock } from '../world/RockGeometry';
+import { getKarstTerrain, karstRay } from '../world/KarstTerrain';
 import { fishShape, fishKnotPoint, fishNetHandlePoint } from './FishGeometry';
 import { getRopeContact, getRopeDeformedPoint } from './Rope';
 import { projectOntoStrand } from './RopeNet';
@@ -74,6 +75,13 @@ export function firstRockHit(angle: number, range: number): DirectionHit | null 
         if (distance === null || distance > range || hit && distance >= hit.distance) return;
         hit = { kind: 'rock', distance, point: { x: player.x + dx * distance, y: player.y + dy * distance }, wall };
     };
+    const terrain=getKarstTerrain(state.screen==='mazeRescue'?state.mazeRescue:null);
+    if(terrain){
+        const contact=karstRay(terrain,player.x,player.y,dx,dy,range+.01);
+        if(contact.wall)add(contact.distance,contact.wall);
+        const w=(state.mazeRescue as any).continuous;for(const wall of [...w.banks,...w.boundaries])add(rayHitsRock(wall,player.x,player.y,dx,dy,range+.01),wall);
+        return hit;
+    }
     for (const wall of map.walls || []) {
         const distance = wall.rockPolygon ? rayHitsRock(wall, player.x, player.y, dx, dy, range + .01)
             : rayCircle(player, angle, wall, wall.r, range);

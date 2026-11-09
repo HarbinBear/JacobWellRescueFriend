@@ -15,6 +15,9 @@ uniform float u_angle;
 uniform float u_fov;
 uniform float u_maxDist;
 uniform float u_flashlightActive;
+uniform float u_karstMode;
+uniform vec3 u_extinction;
+uniform float u_karstScatter;
 
 // 中心光束
 uniform float u_centerFov;
@@ -154,7 +157,26 @@ void main() {
     float darkness = u_maskAlpha;
     if (u_worldSurfaceY >= 0.0) { float depth = clamp((worldPos.y-u_worldSurfaceY)/1100.0,0.0,1.0); darkness = mix(0.03,0.995,pow(depth,1.48)); }
     float totalLight = 0.0;
-    
+    if (u_karstMode > 0.5) {
+        vec2 delta = worldPos - u_playerPos;
+        float dist = length(delta), theta = atan(delta.y, delta.x) - u_angle;
+        theta = atan(sin(theta), cos(theta));
+        float spill = exp(-pow(abs(theta) / max(0.01, u_fov * 0.36), 4.0));
+        spill *= 1.0 - smoothstep(u_fov * 0.43, u_fov * 0.5, abs(theta));
+        float hot = exp(-theta * theta / 0.031);
+        float occ = queryOcclusionDist(atan(delta.y, delta.x), u_angle, u_fov);
+        float visible = 1.0 - smoothstep(occ - 1.0, occ + 8.0, dist);
+        float fall = (1.0 - smoothstep(u_maxDist * 0.72, u_maxDist, dist)) / (1.0 + pow(dist / 188.0, 2.0));
+        vec3 transmission = exp(-u_extinction * (dist * 1.48 + 34.0));
+        float luminance = dot(transmission, vec3(0.2126, 0.7152, 0.0722));
+        float incident = (spill * 0.65 + hot * 0.55) * visible * fall * luminance * u_flashlightActive;
+        float self = (1.0 - smoothstep(12.0, 90.0, dist)) * 0.42;
+        float indirect = exp(-dist / 170.0) * 0.065 * u_flashlightActive * u_karstScatter;
+        float light = clamp(incident * 1.45 + self + indirect, 0.0, 0.92);
+        vec3 dark = vec3(0.001, 0.003, 0.005);
+        gl_FragColor = vec4(dark, darkness * (1.0 - light));
+        return;
+    }
     // 主手电筒
     if (u_flashlightActive > 0.5) {
         totalLight += computeFlashlight(worldPos, u_playerPos, u_angle, u_maxDist, u_fov, u_centerFov, true);

@@ -1,3 +1,4 @@
+import { updateKarstResources } from './RenderKarst';
 import { updateWorldAssets, drawContinuousFrame } from '../world/continuous/RenderWorld';
 import { activeWorld } from '../world/continuous/Geometry';
 import { CONFIG } from '../core/config';
@@ -80,6 +81,7 @@ function drawSplashes() {
 
 // --- 主渲染函数 ---
 function drawFrame() {
+    updateKarstResources();
     updateWorldAssets();
     if (activeWorld()) { updateCaveRockResources(); drawContinuousFrame(); return; }
     updateCaveRockResources();

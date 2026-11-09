@@ -5,6 +5,7 @@ import { rayHitsRock, rockTrialCollision } from '../world/RockGeometry';
 import type { RockPoint } from '../world/RockGeometry';
 import { state, player } from '../core/state';
 import { srand } from '../core/SeededRandom';
+import { getKarstTerrain, karstRay } from '../world/KarstTerrain';
 import { playSFX } from '../audio/AudioManager';
 import { stepFishBump, tryFishBump } from './FishBump';
 import { keepFishDistance, stepFishCaptivity, stunFish } from './FishHandling';
@@ -494,7 +495,9 @@ function illuminatedRockSpot(): RockPoint | null {
     const range = Math.min(CONFIG.lightRange * .76, CFG().curious.glowRange);
     const maze = state.mazeRescue;
     let hit = range;
-    if (isMazeMode() && maze?.caveRockRoom) {
+    const terrain=getKarstTerrain(isMazeMode()?maze:null);
+    if(terrain)hit=karstRay(terrain,player.x,player.y,ux,uy,range).distance;
+    else if (isMazeMode() && maze?.caveRockRoom) {
         for (const wall of maze.mazeWalls) hit = rayHitsRock(wall, player.x, player.y, ux, uy, hit);
     } else {
         const { map, tileSize } = getActiveMapContext();

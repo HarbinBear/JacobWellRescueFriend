@@ -1,6 +1,14 @@
 // 渲染相关：悬浮尘埃 / 手电筒光照 / 画质分档 / 性能 HUD / 后处理
 
 export const renderingConfig = {
+    karst: {
+        normalStrength: 1.30,
+        occlusionStrength: 0.86,
+        lightEnergy: 3.4,
+        scatterStrength: 1.0,
+        extinction: [0.0028, 0.00086, 0.00048],
+        pixelBudget: 750000,
+    },
     // ===== 悬浮尘埃配置 =====
     dust: {
         enabled: true,              // 是否启用悬浮尘埃

@@ -1,4 +1,5 @@
 import { state } from '../../core/state';
+import { getKarstTerrain, karstNearest, karstSegmentClear } from '../KarstTerrain';
 import { closestRockPoint, RockPoint, RockWall, rockSegmentClear } from '../RockGeometry';
 import { circleCollision, world, clamp } from './Geometry';
 
@@ -9,6 +10,8 @@ export function closestWorldSurface(x:number,y:number,maxDistance=Infinity){
     for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++){
         const cell=m.mazeMap[r+dy]?.[c+dx];if(cell&&typeof cell==='object'){walls.add(cell);for(const extra of cell.extras||[])walls.add(extra);}
     }
+    const terrain=getKarstTerrain(m);
+    if(terrain&&y>=terrain.y){const p=karstNearest(terrain,x,y,maxDistance);if(p.dist<best.dist)best={x:p.x,y:p.y,dist:p.dist,nx:p.nx,ny:p.ny};}
     for(const wall of walls){const p=closestRockPoint(wall,x,y);if(p.dist>=best.dist)continue;
         const sign=p.dist<0?-1:1,dx=(x-p.x)*sign,dy=(y-p.y)*sign,len=Math.hypot(dx,dy)||1;
         best={...p,nx:dx/len,ny:dy/len};
@@ -18,6 +21,8 @@ export function worldSegmentClear(a:RockPoint,b:RockPoint,padding=0){
     const w=world();if(!w)return true;const length=Math.hypot(b.x-a.x,b.y-a.y);
     if(length<.01)return !circleCollision(a.x,a.y,padding);
     if(!rockSegmentClear([...w.banks,...w.boundaries],a,b,0))return false;
+    const terrain=getKarstTerrain(state.mazeRescue);
+    if(terrain&&Math.min(a.y,b.y)>=w.seamY)return karstSegmentClear(terrain,a,b,padding);
     const count=Math.max(1,Math.ceil(length/3));
     for(let i=1;i<count;i++){const f=i/count,r=Math.min(padding,length*f*.45,length*(1-f)*.45);if(circleCollision(a.x+(b.x-a.x)*f,a.y+(b.y-a.y)*f,r))return false;}
     return true;
