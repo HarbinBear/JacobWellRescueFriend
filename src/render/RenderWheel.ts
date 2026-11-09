@@ -2,7 +2,7 @@ import { CONFIG } from '../core/config';
 import { player, state } from '../core/state';
 import type { DiveSupply } from '../logic/Marker';
 import { getPlayerRopeEnds, getRopeDeformedPoint, ropeAnchorPoint } from '../logic/Rope';
-import { canUseRopeWheel, getRopeCancelProgress, getRopeWheelAim } from '../logic/RopeWheel';
+import { canUseRopeWheel, getRopeCancelProgress, getRopeSelfProgress, getRopeWheelAim } from '../logic/RopeWheel';
 import { getRopeControlPosition, getSelfSockets } from '../logic/InteractionLayout';
 import { fishName, fishShape } from '../logic/FishGeometry';
 import { ctx } from './Canvas';
@@ -43,7 +43,7 @@ export function drawWheelButton() {
         ctx.beginPath(); ctx.moveTo(-6, -6); ctx.lineTo(6, 6); ctx.moveTo(-6, 6); ctx.lineTo(6, -6); ctx.stroke();
     } else drawSpool();
     ctx.restore(); ctx.fillStyle = '#e8f3ef'; ctx.font = 'bold 12px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(busy ? '取消' : active ? '收绳' : '起绳', 0, 12); ctx.restore();
+    ctx.fillText(busy ? '取消' : active ? '接终点' : '起绳', 0, 12); ctx.restore();
     const attached = getPlayerRopeEnds().length;
     if (attached) {
         ctx.fillStyle = TIED; ctx.font = '10px Arial'; ctx.textAlign = 'center';
@@ -89,7 +89,7 @@ export function drawWheel() {
         ctx.strokeStyle = TIED; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(0, 0, inner, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * cancel); ctx.stroke();
     }
     ctx.fillStyle = color; ctx.font = 'bold 11px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(aim?.target ? LABEL[aim.target.kind] : state.rope.active ? '收绳' : '起绳', 0, 0);
+    ctx.fillText(aim?.target ? LABEL[aim.target.kind] : state.rope.active ? '接终点' : '起绳', 0, 0);
     ctx.fillStyle = '#c2d3d6'; ctx.font = '11px Arial';
     ctx.fillText(state.rope.active && !aim ? '长按中心撤回未完成的绳' : '只选方向 · 中心取消', 0, outer + 13);
     ctx.restore();
@@ -98,7 +98,9 @@ export function drawWheel() {
         ctx.save(); circle(ctx, socket.x, socket.y, socket.radius); ctx.fillStyle = selected ? '#3d3c2b' : INK; ctx.fill();
         ctx.strokeStyle = selected ? TIED : '#9bafa6'; ctx.lineWidth = selected ? 2 : 1.2; ctx.stroke();
         ctx.fillStyle = selected ? TIED : '#d9e5d8'; ctx.font = 'bold 10px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText('自己', socket.x, socket.y); ctx.font = '9px Arial'; ctx.fillText('系腰扣', socket.x, socket.y + socket.radius + 10); ctx.restore();
+        const progress = getRopeSelfProgress();
+        if (progress > 0) { ctx.strokeStyle = TIED; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(socket.x,socket.y,socket.radius+3,-Math.PI/2,-Math.PI/2+progress*Math.PI*2); ctx.stroke(); }
+        ctx.fillText('自己', socket.x, socket.y); ctx.font = '9px Arial'; ctx.fillText('停留确认腰扣', socket.x, socket.y + socket.radius + 10); ctx.restore();
     }
 }
 

@@ -1,5 +1,5 @@
 import { CONFIG } from '../core/config';
-import { player, state } from '../core/state';
+import { player, state, input } from '../core/state';
 import { cancelRopePlacement, playerRopePoint } from './Rope';
 import { beginRopeInteraction, cancelInteraction } from './Interaction';
 import { interactionScope } from './ActionTargets';
@@ -10,11 +10,11 @@ import { getRopeNet } from './RopeNet';
 import type { RopeAnchor } from './Rope';
 import type { RopePoint } from './RopeNet';
 
-const CANCEL_HOLD_MS = 650, DRAG_THRESHOLD = 7;
+const CANCEL_HOLD_MS = 650, SELF_CONFIRM_MS = 350, DRAG_THRESHOLD = 7;
 export type AnchorKind = 'rock' | 'strand' | 'knot' | 'fish' | 'self';
 export interface AimTarget { kind: AnchorKind; anchor: RopeAnchor; ropeIndex?: number }
 export interface RopeAim { angle: number; reach: number; pointer: RopePoint; target: AimTarget | null }
-interface Gesture { touchId: number; x: number; y: number; startX: number; startY: number; dragged: boolean; openedAt: number; scope: object; selectionLost?: boolean }
+interface Gesture { touchId: number; x: number; y: number; startX: number; startY: number; dragged: boolean; openedAt: number; scope: object; selectionLost?: boolean; selfSince?: number }
 let gesture: Gesture | null = null, aim: RopeAim | null = null;
 export function canUseRopeWheel() {
     return !state.fishBite?.active && state.fishBump.stunTimer <= 0 && !state.interaction.gesture &&
@@ -49,6 +49,12 @@ export function startRopeWheelGesture(touchId: number, x: number, y: number, cen
     gesture = { touchId, x, y, startX: x, startY: y, dragged: false, openedAt: Date.now(), scope: interactionScope() };
     aim = null; return true;
 }
+/** Sliding a direction across the waist socket is not consent to finish a rope. */
+export function getRopeSelfProgress(now = Date.now()) {
+    if (!state.wheel.open || !state.rope.active || !gesture?.selfSince) return 0;
+    if (input.move > 0 || Object.keys(state.manualDrive.activeTouches).length) return 0;
+    return Math.min(1, (now - gesture.selfSince) / SELF_CONFIRM_MS);
+}
 export function refreshRopeWheelAim(preserveTarget = true) {
     if (!state.wheel.open || !gesture || !canUseRopeWheel() || !gesture.dragged || gesture.scope !== interactionScope() || preserveTarget && gesture.selectionLost) {
         aim = null; return;
@@ -57,9 +63,13 @@ export function refreshRopeWheelAim(preserveTarget = true) {
     if (state.rope.active) {
         const socket = getSelfSockets(state.wheel.centerX, state.wheel.centerY, outer)[0];
         if (Math.hypot(gesture.x - socket.x, gesture.y - socket.y) <= socket.radius) {
-            const point = playerRopePoint(); aim = { angle: player.angle, reach: 0, pointer: point, target: { kind: 'self', anchor: { point, self: true } } }; return;
+            if (!gesture.selfSince || input.move > 0 || Object.keys(state.manualDrive.activeTouches).length) gesture.selfSince = Date.now();
+            const point = playerRopePoint();
+            aim = { angle: player.angle, reach: 0, pointer: point, target: getRopeSelfProgress() >= 1 ? { kind: 'self', anchor: { point, self: true } } : null };
+            return;
         }
     }
+    gesture.selfSince = undefined;
     const dx = gesture.x - state.wheel.centerX, dy = gesture.y - state.wheel.centerY;
     if (Math.hypot(dx, dy) <= inner) { aim = null; return; }
     const next = aimRopeAnchor(Math.atan2(dy, dx)), previous = aim?.target;
@@ -72,6 +82,7 @@ export function refreshRopeWheelAim(preserveTarget = true) {
 }
 export function moveRopeWheelGesture(touchId: number, x: number, y: number) {
     if (!state.wheel.open || gesture?.touchId !== touchId) return false;
+    if (Math.hypot(x - gesture.x, y - gesture.y) > 4) { gesture.selfSince = undefined; }
     gesture.x = x; gesture.y = y; gesture.selectionLost = false;
     gesture.dragged ||= Math.hypot(x - gesture.startX, y - gesture.startY) >= DRAG_THRESHOLD;
     refreshRopeWheelAim(false); return true;
@@ -87,7 +98,7 @@ export function finishRopeWheelGesture(touchId: number, x: number, y: number, ca
     let changed = false;
     if (!cancelled && canUseRopeWheel() && gesture.scope === interactionScope() && Math.hypot(x - gesture.x, y - gesture.y) <= 9) {
         const centered = gesture.dragged && Math.hypot(x - state.wheel.centerX, y - state.wheel.centerY) <= CONFIG.marker.wheelInnerRadius;
-        if (aim?.target && !centered) changed = beginRopeInteraction(aim.target.anchor);
+        if (aim?.target && !centered && (aim.target.kind !== 'self' || getRopeSelfProgress() >= 1)) changed = beginRopeInteraction(aim.target.anchor);
         else if (getRopeCancelProgress() >= 1) { cancelRopePlacement(); changed = true; }
     }
     state.wheel.open = false; state.wheel.expandProgress = 0; state.wheel.touchId = null; gesture = null; aim = null; return changed;

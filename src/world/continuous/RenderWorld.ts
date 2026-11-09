@@ -27,6 +27,7 @@ import { drawGMPanel } from '../../gm/GMPanel';
 import { drawPerfHUD } from '../../debug/PerfHUD';
 import { activeWorld,world,layout,groundAt,stationPosition,clamp,smooth } from './Geometry';
 import { drawWorldHUD } from './WorldHUD';
+import { drawCampLeisure, drawNaturalBoundaries } from './Camp';
 
 const assetRoot='images/shore/';
 const ASSETS=['woodland-native.jpg','woodland-sky-strip.png','bank-left.jpg','bank-right.jpg','shop.png','tent.png','board.png','air.png','fish.png'];
@@ -88,7 +89,7 @@ function drawDeepCave(v:any) {
     const r0=Math.max(Math.floor((w.seamY-180)/ts),Math.floor(v.t/ts)-1),r1=Math.min(m.mazeRows-1,Math.floor(v.b/ts)+1);
     for(let r=r0;r<=r1;r++)for(let c=Math.max(0,Math.floor(v.l/ts)-1);c<=Math.min(m.mazeCols-1,Math.floor(v.r/ts)+1);c++)if(m.mazeMap[r]?.[c]===2){ctx.fillStyle='#222';ctx.fillRect(c*ts-.4,r*ts-.4,ts+.8,ts+.8);}
     for(const wall of m.mazeWalls){
-        if(wall.shoreBank||!visible(wall.x-wall.r,wall.y-wall.r,wall.r*2,wall.r*2,v))continue;
+        if(wall.shoreBank||(wall as any).shoreObstacle||!visible(wall.x-wall.r,wall.y-wall.r,wall.r*2,wall.r*2,v))continue;
         ctx.save();ctx.globalAlpha=smooth(w.seamY-160,w.seamY+100,wall.y);drawMazeWallShape(ctx,wall,wall.row,wall.col);ctx.restore();
     }
 }
@@ -104,6 +105,7 @@ function drawBanks(v:any){
 }
 function drawCamp(v:any){
     const w=world()!;
+    drawCampLeisure(ctx,v);
     for(const s of layout.stations){
         const p=stationPosition(s),asset=(assetManifest.props as any)[s.kind],image=getImage('shore/'+asset.file);
         const width=s.width*1.14,height=width*asset.height/asset.width;
@@ -117,7 +119,7 @@ function drawCamp(v:any){
     }
     for(const [dx,size]of [[-1870,1.5],[-1605,.8],[-1330,1],[-1180,.65],[-895,.7],[-645,.6],[-482,.4],[815,1.2],[1150,1.5]]as const){const x=w.originX+dx,y=groundAt(x);if(visible(x-50,y-80,100,100,v))leafCluster(x,y,size,dx);}
     // Cast contact shadow onto the real ground, not a floating circle below him.
-    if(w.landBlend>.1){const gy=groundAt(player.x);ctx.fillStyle=`rgba(20,40,27,${w.landBlend*.19})`;ctx.beginPath();ctx.ellipse(player.x+4,gy+1,19,3.2,0,0,Math.PI*2);ctx.fill();}
+    if(w.landBlend>.1&&!w.resting){const gy=groundAt(player.x);ctx.fillStyle=`rgba(20,40,27,${w.landBlend*.19})`;ctx.beginPath();ctx.ellipse(player.x+4,gy+1,19,3.2,0,0,Math.PI*2);ctx.fill();}
     if(w.pendingAction==='air'){
         const s=stationPosition(layout.stations.find(s=>s.id==='air')!);
         ctx.strokeStyle='#45674e';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(s.x+12,s.y-72);ctx.bezierCurveTo(s.x+30,s.y-12,player.x-31,player.y+24,player.x-4,player.y+5);ctx.stroke();
@@ -167,7 +169,7 @@ export function drawContinuousFrame(){
     const c=state.camera,zoom=c.zoom;
     const v={l:c.x-logicW/(2*zoom)-80,r:c.x+logicW/(2*zoom)+80,t:c.y-logicH/(2*zoom)-80,b:c.y+logicH/(2*zoom)+80};
     ctx.setTransform(dpr,0,0,dpr,0,0);ctx.fillStyle='#08272e';ctx.fillRect(0,0,logicW,logicH);
-    ctx.save();transform();drawBackdrop(v);drawDeepCave(v);drawBanks(v);drawCamp(v);
+    ctx.save();transform();drawBackdrop(v);drawDeepCave(v);drawBanks(v);drawNaturalBoundaries(ctx,v);drawCamp(v);
     drawRopesWorld(v.l,v.r,v.t,v.b);drawRopeTethersWorld(ctx,v.l,v.r,v.t,v.b);drawRemovedRopesWorld(ctx);drawRescueRopeWorld(ctx);
     drawAllFishEnemies(ctx,v.l,v.r,v.t,v.b);drawOxygenTanksWorld(ctx,v.l,v.r,v.t,v.b);drawOxygenFeedbackWorld(ctx);drawRelicsWorld(ctx,v.l,v.r,v.t,v.b);drawDroppedItemsWorld(v.l,v.r,v.t,v.b);
     const visual=w.headWet?getRescueTapeVisual():undefined;
@@ -175,7 +177,8 @@ export function drawContinuousFrame(){
         leftKickProgress:state.manualDrive.leftKickProgress,rightKickProgress:state.manualDrive.rightKickProgress,leftKickStrength:state.manualDrive.leftKickStrength,rightKickStrength:state.manualDrive.rightKickStrength,
         swimEffort:CONFIG.driveMode==='semiAuto'?state.semiAutoDrive.effort:undefined,workPose:getInteractionWorkPose(),bcdInflation:getBCDInflationRatio(),bcdVenting:isBCDVenting(),tapeVisual:visual,
         landPose:{blend:w.landBlend,phase:w.walkPhase,effort:clamp(Math.abs(player.vx)/3.3),facing:w.facing},regulatorAnim:player.regulatorAnim,carryItemAnim:player.carryItemAnim};
-    drawDiver(ctx,player.x,player.y,player.angle,null,motion);
+    if(w.resting)drawDiver(ctx,w.originX+layout.rest.x-20,groundAt(w.originX+layout.rest.x)-43,Math.PI+.28,null,{...motion,hasTank:false,tankCount:0,autoSwim:false,swimEffort:0});
+    else drawDiver(ctx,player.x,player.y,player.angle,null,motion);
     drawInteractionWorkWorld(ctx);ctx.save();ctx.beginPath();ctx.rect(v.l,w.surfaceY,v.r-v.l,Math.max(0,v.b-w.surfaceY));ctx.clip();drawBreathBubblesWorld(ctx,v.l,v.r,v.t,v.b);ctx.restore();
     for(const p of particles){if(p.x<v.l||p.x>v.r||p.y<v.t||p.y>v.b)continue;ctx.fillStyle=p.type==='silt'?`rgba(91,124,97,${p.life*.17})`:`rgba(193,220,180,${p.life*.3})`;ctx.beginPath();ctx.arc(p.x,p.y,Math.max(.5,p.size),0,Math.PI*2);ctx.fill();}
     ctx.restore();lighting(v);

@@ -9,7 +9,7 @@ export const smooth = (a: number, b: number, v: number) => { const t = clamp((v 
 export type WorldStation = typeof layout.stations[number];
 export interface ShoreWorld {
     layoutVersion: number; originX: number; surfaceY: number; seamY: number;
-    left: RockPoint[]; right: RockPoint[]; banks: RockWall[];
+    left: RockPoint[]; right: RockPoint[]; banks: RockWall[]; boundaries: RockWall[]; resting: boolean;
     wet: number; headWet: boolean; grounded: boolean; landBlend: number; walkPhase: number; facing: number;
     elapsed: number; chapterStatus: 'searching' | 'rescued'; stationId: string | null;
     panel: string | null; notice: string; noticeUntil: number; saveOK: boolean; savedAt: number;
@@ -45,6 +45,11 @@ function makeWall(id: string, surface: RockPoint[], x: number, edgeX: number, se
         row: -1, col: -1, isBorder: true, shoreBank: true, rockPolygon: polygon };
     return wall;
 }
+function makeBoundary(id: string, points: number[][], originX: number): RockWall {
+    const rockPolygon = points.map(([x,y]) => ({x:x+originX,y}));
+    const minX=Math.min(...rockPolygon.map(p=>p.x)),maxX=Math.max(...rockPolygon.map(p=>p.x)),minY=Math.min(...rockPolygon.map(p=>p.y)),maxY=Math.max(...rockPolygon.map(p=>p.y));
+    return {id,x:(minX+maxX)/2,y:(minY+maxY)/2,r:Math.hypot(maxX-minX,maxY-minY)/2,row:-1,col:-1,isBorder:true,shoreObstacle:true,rockPolygon} as RockWall;
+}
 function profileIndex(bank: RockPoint[], x: number) {
     let lo=1,hi=bank.length-1;const ascending=bank[hi].x>bank[0].x;
     while(lo<hi){const mid=(lo+hi)>>1;if(ascending?bank[mid].x<x:bank[mid].x>x)lo=mid+1;else hi=mid;}
@@ -78,7 +83,7 @@ export function stationPosition(s: WorldStation) { const x = (world()?.originX |
 export function attachWorldTerrain(maze: any): ShoreWorld {
     const left = sampleBank(layout.leftBank), right = sampleBank(layout.rightBank), x = maze.exitX;
     const banks = [makeWall('shore-left', left, x, layout.minX, layout.seamY), makeWall('shore-right', right, x, layout.maxX, layout.seamY)];
-    const w: ShoreWorld = { layoutVersion: layout.version, originX: x, surfaceY: layout.surfaceY, seamY: layout.seamY, left, right, banks,
+    const w: ShoreWorld = { layoutVersion: layout.version, originX: x, surfaceY: layout.surfaceY, seamY: layout.seamY, left, right, banks, boundaries:layout.naturalBoundaries.map(b=>makeBoundary(b.id,b.points,x)), resting:false,
         wet: 0, headWet: false, grounded: true, landBlend: 1, walkPhase: 0, facing: 1, elapsed: 0, chapterStatus: 'searching', stationId: null,
         panel: null, notice: '沿浅滩走进泉水；不需要按下潜按钮', noticeUntil: 9, saveOK: false, savedAt: 0, events: [], nextFishId: 1,
         airTanks: [], journal: [], pendingAction: null, actionTime: 0, hidden: false };
@@ -112,7 +117,7 @@ export function attachWorldTerrain(maze: any): ShoreWorld {
             else if (cell.extras) cell.extras = cell.extras.filter((v: any) => retained.has(v));
         }
     }
-    maze.mazeWalls.push(...banks);
+    maze.mazeWalls.push(...banks,...w.boundaries);
     maze.exitY = w.surfaceY;
     maze.playerPath = [];
     return w;
@@ -121,7 +126,7 @@ export function circleCollision(x: number, y: number, radius = 20): boolean {
     const m: any = state.mazeRescue, w = world(); if (!m || !w) return false;
     const upper=y<w.seamY-radius,minX=upper?w.originX+layout.minX:0,maxX=upper?w.originX+layout.maxX:m.mazeCols*m.mazeTileSize;
     if (x < minX + radius || x > maxX - radius || y < radius || y > m.mazeRows * m.mazeTileSize - radius) return true;
-    if (w.banks.some(b => bankCircleCollision(b, x, y, radius))) return true;
+    if (w.banks.some(b => bankCircleCollision(b, x, y, radius)) || w.boundaries.some(b => circleHitsRock(b,x,y,radius))) return true;
     if (upper) return false;
     const ts = m.mazeTileSize, r = Math.floor(y / ts), c = Math.floor(x / ts);
     for (let dr = -2; dr <= 2; dr++) for (let dc = -2; dc <= 2; dc++) {

@@ -6,7 +6,7 @@ import { drawBCDController } from '../../render/RenderBCD';
 import { drawInventoryHUD } from '../../extraction/render/InventoryHUD';
 import { getDecoRuntime } from '../../logic/DecompressionSystem';
 import { activeWorld, world, layout, depthMeters, stationPosition } from './Geometry';
-import { useNearestStation, closeWorldPanel, exitContinuousWorld, toggleOverview, restartTestChapter } from './Runtime';
+import { useNearestStation, closeWorldPanel, exitContinuousWorld, toggleOverview } from './Runtime';
 import { saveWorldProgress } from './WorldSave';
 
 let initialized=false;
@@ -18,10 +18,9 @@ export function worldButtons():Button[] {
     const top:Button[]=[];
     if(w.panel) {
         top.push({id:'close',x:cw/2+Math.min(300,cw-36)/2-34,y:ch*.16+10,w:24,h:24,label:'×'});
-        if(w.panel==='depleted')top.push({id:'restart',x:cw/2-90,y:ch*.16+Math.min(284,ch*.73)-45,w:180,h:30,label:'重新开始测试章节'});
         return top;
     }
-    if(w.stationId){const s=layout.stations.find(s=>s.id===w.stationId)!;top.push({id:'station',x:cw/2-100,y:ch-55,w:200,h:33,label:w.pendingAction?'正在补气 · 可随时离开':w.stationId==='medical'&&w.chapterStatus==='rescued'?'查看营地救援记录':s.action});}
+    if(w.stationId){const s=layout.stations.find(s=>s.id===w.stationId);top.push({id:'station',x:cw/2-100,y:ch-55,w:200,h:33,label:w.stationId==='rest'?(w.resting?'起身继续探索':'躺下晒太阳'):w.pendingAction?'正在补气 · 可随时离开':w.stationId==='medical'&&w.chapterStatus==='rescued'?'查看营地救援记录':s?.action||'查看营地'});}
     return top;
 }
 function hit(x:number,y:number){return worldButtons().find(b=>x>=b.x&&x<=b.x+b.w&&y>=b.y&&y<=b.y+b.h);}
@@ -38,7 +37,7 @@ export function worldTouchEnd(res:any,cancel=false):boolean {
     if(!res.changedTouches?.length)return false;let consumed=false;
     for(const t of res.changedTouches){const h=held.get(t.identifier);if(!h)continue;held.delete(t.identifier);consumed=true;
         if(cancel||Math.hypot(t.clientX-h.x,t.clientY-h.y)>10)continue;
-        if(h.id==='overview')toggleOverview();if(h.id==='close')closeWorldPanel();if(h.id==='station')useNearestStation();if(h.id==='restart')restartTestChapter();
+        if(h.id==='overview')toggleOverview();if(h.id==='close')closeWorldPanel();if(h.id==='station')useNearestStation();
     }
     return consumed;
 }
@@ -68,7 +67,7 @@ export function drawWorldHUD(c:CanvasRenderingContext2D) {
     if(!initialized){initMazeHUDTopLeft();initialized=true;}
     c.save();c.textAlign='left';
     drawHUDTopLeft(w.elapsed);drawInventoryHUD();if(w.headWet)drawBCDController(w.elapsed);
-    const mode=w.landBlend>.7?(w.wet>.12?'涉水':'岸上步行'):w.headWet?'水下游泳':'水面换气';
+    const mode=w.resting?'竹躺椅休息':w.landBlend>.7?(w.wet>.12?'涉水':'岸上步行'):w.headWet?'水下游泳':'水面换气';
     c.textAlign='right';text(c,`${w.chapterStatus==='rescued'?'救援已完成':'搜寻中'} · ${mode}`,logicW-27,58,10,w.headWet?'#c6dfc5':'#587051');
     text(c,w.saveOK?'原位自动保存':'尚未写入存档',logicW-27,logicH-13,9,w.saveOK?'#779886':'#ad795c');
     c.textAlign='left';
@@ -90,18 +89,16 @@ export function drawWorldHUD(c:CanvasRenderingContext2D) {
         c.fillStyle='rgba(16,36,30,.27)';c.fillRect(0,0,logicW,logicH);
         panelPath(c,px,py,pw,ph,9);c.fillStyle='#e5e1c8';c.fill();c.strokeStyle='#929c75';c.lineWidth=1;c.stroke();
         text(c,'近身交互',px+17,py+22,9,'#879174');
-        const titles:any={map:'调查地图',shop:'潜水装备铺',fish:'鱼档 · 预留场地',medical:'救援营地',depleted:'气瓶已耗尽'};
+        const titles:any={map:'调查地图',shop:'潜水装备铺',fish:'鱼档 · 预留场地',medical:'救援营地'};
         text(c,titles[w.panel]||'营地',px+17,py+44,17,'#3d5745');
         if(w.panel==='map')drawMap(c,px+15,py+60,pw-30,ph-76);
         else {
             const lines:any={shop:['货架、面镜、气瓶和脚蹼是场景里的实体。','必须先走到这里，再查看陈列。','','本节点只验收空间与交互。','购买、库存、价格和换装将在下一阶段接入。'],
                 fish:['这个位置将接收实际拖过来的鱼。','鱼目前仍绑在你的腰上，不会变成背包数字。','','卖鱼、烧烤、水族馆和资源转化本次不做。'],
-                medical:w.chapterStatus==='rescued'?['被救者已经实际移交营地。','章节完成，但泉井、鱼和绳网仍然保留。','你可以继续上岸下水，不必立刻换洞。','','跨章节出发将在下一个验收节点接入。']:['把救援对象连同安全绳实际带到帐篷旁。','仅自己浮到水面不会触发完成。','','这顶帐篷是本洞章节的交接位置。'],
-                depleted:['气量耗尽，当前测试暂不做正式失败结算。','可重开测试章节，清除本章节的鱼、绳和进度。','','点击下方重开，或退出后从主菜单选择新游戏。']};
+                medical:w.chapterStatus==='rescued'?['被救者已经实际移交营地。','章节完成，但泉井、鱼和绳网仍然保留。','你可以继续上岸下水，不必立刻换洞。','','跨章节出发将在下一个验收节点接入。']:['把救援对象连同安全绳实际带到帐篷旁。','仅自己浮到水面不会触发完成。','','这顶帐篷是本洞章节的交接位置。']};
             (lines[w.panel]||[]).forEach((line:string,i:number)=>text(c,line,px+17,py+71+i*22,10,'#69765d'));
             if(w.panel==='medical')text(c,`累计调查 ${(w.elapsed/60).toFixed(1)} 分钟`,px+17,py+ph-20,10,'#8a9878');
         }
-        const restart=worldButtons().find(b=>b.id==='restart');if(restart){panelPath(c,restart.x,restart.y,restart.w,restart.h,5);c.fillStyle='#48674f';c.fill();c.textAlign='center';text(c,restart.label,restart.x+restart.w/2,restart.y+20,11,'#f1eed6');c.textAlign='left';}
         const close=worldButtons().find(b=>b.id==='close')!;c.textAlign='center';text(c,'×',close.x+12,close.y+18,18,'#617158');c.textAlign='left';
     }
     c.restore();

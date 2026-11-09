@@ -1,6 +1,7 @@
 import { CONFIG } from '../core/config';
 import { state, player } from '../core/state';
 import { rayHitsRock } from '../world/RockGeometry';
+import { world } from '../world/continuous/Geometry';
 
 // === 自适应缩放运行态（模块内部状态，不挂全局state） ===
 let _azFrameCounter = 0;       // 帧计数器，用于降频更新
@@ -54,10 +55,12 @@ function castSpaceRays(px: number, py: number): number[] {
         const dirX = Math.cos(angle);
         const dirY = Math.sin(angle);
         let hitDist = maxDist;
+        const shore = isMaze ? world() : null;
+        if (shore) for (const wall of [...shore.banks, ...shore.boundaries]) hitDist = rayHitsRock(wall, px, py, dirX, dirY, hitDist);
         if(isMaze && state.mazeRescue!.caveRockRoom){for(const wall of state.mazeRescue!.mazeWalls)hitDist=rayHitsRock(wall,px,py,dirX,dirY,hitDist);distances.push(hitDist);continue;}
 
         // 沿射线步进检测
-        for (let d = step; d <= maxDist; d += step) {
+        for (let d = step; d <= hitDist; d += step) {
             const sx = px + dirX * d;
             const sy = py + dirY * d;
             const r = Math.floor(sy / tileSize);

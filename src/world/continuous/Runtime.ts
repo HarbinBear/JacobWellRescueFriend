@@ -3,11 +3,13 @@ import { fishKnotPoint } from '../../logic/FishGeometry';
 import { closestWorldSurface } from './Routes';
 import { state, player, input, createFishBumpState } from '../../core/state';
 import { resetDriveInput } from '../../logic/DriveMode';
+import { updateCameraSpringArm, snapCameraToPlayer, getAdaptiveZoom } from '../../logic/CameraLogic';
+import { resetCollisionImpact } from '../../logic/CollisionImpact';
 import { processJoystickDrive } from '../../logic/JoystickDrive';
 import { processSemiAutoDrive } from '../../logic/SemiAutoDrive';
 import { processManualDrive } from '../../logic/ManualDrive';
-import { updateInteractionMovement, resetInteractions } from '../../logic/Interaction';
-import { updateRopeMotion, updateRopeSystem, resolveWovenRopeContact, getRopeContact, steadyRopeContact } from '../../logic/Rope';
+import { updateInteractionMovement, resetInteractions, cancelInteractionInput } from '../../logic/Interaction';
+import { updateRopeMotion, updateRopeSystem, resolveWovenRopeContact, getRopeContact, steadyRopeContact, cancelRopePlacement, getPlayerRopeEnds, removeTether, releaseRopeContact } from '../../logic/Rope';
 import { updateAllFishEnemies, createFishEnemy, FishEnemy } from '../../logic/FishEnemy';
 import { updateOxygenTanks, triggerO2LossFlash } from '../../logic/OxygenTank';
 import { updateLifeDetector } from '../../logic/LifeDetector';
@@ -19,7 +21,7 @@ import { updateWheelButtonVisibility } from '../../logic/Marker';
 import { updateParticles, updateSplashes } from '../../logic/Particle';
 import { resetBreathSystem, updateBreathSystem, consumeBreathO2, computeBuoyancyOffset } from '../../logic/BreathSystem';
 import { updateBCDSystem, computeBCDBuoyancyAccel, consumeBCDO2, releaseBCDControls, getBCDRuntime, resetBCDSystem } from '../../logic/BCDSystem';
-import { updateDecompressionSystem } from '../../logic/DecompressionSystem';
+import { updateDecompressionSystem, resetDecompressionSystem } from '../../logic/DecompressionSystem';
 import { updateRegulatorAnim } from '../../logic/CollisionImpact';
 import { updateCarryItemAnim } from '../../extraction';
 import { getActiveAirTanks } from '../../extraction/logic/Loadout';
@@ -57,8 +59,7 @@ export function enterContinuousWorld(originalBootstrap: () => void) {
         state.fishBump=createFishBumpState();resetInteractions();resetDriveInput();releaseBCDControls();resetBreathSystem();
         if (pending) restoreWorld(pending);
         else { player.x=w.originX+layout.spawn[0];player.y=groundAt(player.x)-layout.footReach;player.vx=player.vy=0;player.angle=player.targetAngle=-Math.PI/2; resetBCDSystem(); }
-        state.camera.x=player.x+90;state.camera.y=player.y+35;state.camera.targetX=state.camera.x;state.camera.targetY=state.camera.y;
-        state.camera.zoom=state.camera.targetZoom=.92;state.camera.swayX=state.camera.swayY=0;state.camera.vx=state.camera.vy=0;
+        snapCameraToPlayer();state.camera.zoom=state.camera.targetZoom=1;
         state.screen='mazeRescue';lastFrame=0;accumulated=0;nextSave=w.elapsed+4;
         if (!pending) saveWorldProgress();
         if (!lifecycleBound) {
@@ -77,8 +78,42 @@ export function restartTestChapter(){clearWorldSnapshot();resetDriveInput();rele
 export function toggleOverview() {const w:any=world();if(w)w.overview=!w.overview;}
 export function closeWorldPanel() {const w=world();if(w)w.panel=null;resetDriveInput();}
 
+export function returnToShoreAfterDeath() {
+    const w=world(),m=state.mazeRescue;if(!w||!m)return;
+    cancelInteractionInput();cancelRopePlacement();releaseRopeContact(player);
+    for(const {link} of getPlayerRopeEnds())removeTether(link);
+    // Disconnect only the lost diver: neither the fish nor the casualty teleport.
+    if(state.npc.active){m.npcRescued=false;m.npcSecuredAt=0;}
+    m.npcRescueHolding=false;m.npcRescueHoldStart=0;m.npcRescueTouchId=null;
+    resetDriveInput(true);releaseBCDControls();resetBCDSystem();resetBreathSystem();resetDecompressionSystem();resetCollisionImpact();
+    state.fishBump=createFishBumpState();state.fishBite=null;
+    player.x=w.originX+layout.spawn[0];player.y=groundAt(player.x)-layout.footReach;
+    player.vx=player.vy=0;player.angle=player.targetAngle=-Math.PI/2;player.o2=player.o2Max;
+    Object.assign(w,{grounded:true,landBlend:1,wet:0,headWet:false,resting:false,panel:null,pendingAction:null,actionTime:0,stationId:null});
+    state.fx.shake=0;state.fx.redOverlay=0;
+    w.journal.push({time:w.elapsed,text:'水下遇险，返回岸上休息区；已探索的洞穴与固定绳网保留'});
+    notice('已回到岸上休息区。洞穴进度与固定绳网保留；可以再下水寻找未带回的鱼和被救者。',7);
+    snapCameraToPlayer();state.camera.zoom=state.camera.targetZoom=1;saveWorldProgress();nextSave=w.elapsed+4;
+}
+export function toggleRest() {
+    const w=world();if(!w)return;
+    if(w.resting){w.resting=false;notice('休息好了，继续探索吧');}
+    else {
+        if(w.headWet||!w.grounded||Math.abs(player.x-w.originX-layout.rest.x)>105)return;
+        if(getPlayerRopeEnds().length||state.mazeRescue?.npcRescued){notice('先解开腰扣上的牵引绳，再躺下休息');return;}
+        cancelInteractionInput();resetDriveInput();w.pendingAction=null;w.resting=true;
+        player.x=w.originX+layout.rest.x-20;player.y=groundAt(player.x)-layout.footReach;player.vx=player.vy=0;
+        notice('躺在竹躺椅上晒会儿太阳；拖动空白处或点起身即可继续探索',5);
+    }
+    saveWorldProgress();
+}
 function movePlayer() {
-    const w=world()!, from={x:player.x,y:player.y}, supportTarget=landAmount(player.x);
+    const w=world()!;
+    if(w.resting){
+        if(input.move>0||Object.keys(state.manualDrive.activeTouches).length||state.interaction.task)w.resting=false;
+        else {player.vx=player.vy=0;state.semiAutoDrive.remaining=Math.min(1,state.semiAutoDrive.remaining+1/240);state.semiAutoDrive.exhausted=false;return;}
+    }
+    const from={x:player.x,y:player.y}, supportTarget=landAmount(player.x);
     const groundGap=groundAt(player.x)-player.y;
     const nearGround=Number.isFinite(groundGap)&&groundGap>=0&&groundGap<90;
     const slope=slopeAt(player.x);
@@ -168,12 +203,14 @@ export function stepAirFish(fish:FishEnemy):boolean {
 function cameraStep() {
     const w:any=world()!, c=state.camera;
     const overview=!!w.overview;
-    c.targetZoom=overview?Math.min(CONFIG.screenWidth/(layout.maxX-layout.minX+160),CONFIG.screenHeight/1080):(CONFIG.screenWidth>CONFIG.screenHeight?.76:.82);
-    c.zoom+=(c.targetZoom-c.zoom)*.08;
-    c.targetX=overview?w.originX+(layout.minX+layout.maxX)/2:player.x+Math.cos(input.targetAngle)*input.move*58;
-    c.targetY=overview?690:player.y+(CONFIG.screenHeight>CONFIG.screenWidth?20:-64)*w.landBlend;
-    c.x+=(c.targetX-c.x)*.105;c.y+=(c.targetY-c.y)*.085;
-    c.swayTime+=1/60;c.swayX=Math.sin(c.swayTime*.63)*w.wet*.8;c.swayY=Math.sin(c.swayTime*.81)*w.wet*.6;
+    if(overview){
+        c.targetZoom=Math.min(CONFIG.screenWidth/(layout.maxX-layout.minX+160),CONFIG.screenHeight/1080);
+        c.zoom+=(c.targetZoom-c.zoom)*.08;c.targetX=w.originX+(layout.minX+layout.maxX)/2;c.targetY=690;
+        c.x+=(c.targetX-c.x)*.105;c.y+=(c.targetY-c.y)*.085;c.vx=c.vy=0;c.swayX=c.swayY=0;return;
+    }
+    updateCameraSpringArm();
+    c.targetZoom=getAdaptiveZoom();c.zoom+=(c.targetZoom-c.zoom)*.02;
+    c.swayX*=w.wet;c.swayY*=w.wet;
 }
 export function tickWorld() {
     const m:any=state.mazeRescue,w=world()!;w.elapsed+=1/60;
@@ -202,14 +239,15 @@ export function tickWorld() {
     updateDecompressionSystem(1/60);updateRegulatorAnim();updateCarryItemAnim();updateAllFishEnemies(1);
     // There is no success radius at the old exit, no debrief and no inventory
     // liquidation. A casualty remains a physical body until the camp receives it.
-    if(m.phase!=='play'){m.phase='play';notice('需要处理身体状态；章节世界与所有牵引仍然保留',6);}
-    if(player.o2<=0&&w.headWet)w.panel='depleted';
+    if(m.phase==='failed'||player.o2<=0&&w.headWet){m.phase='play';returnToShoreAfterDeath();}
+    else if(m.phase!=='play'){m.phase='play';notice('章节世界仍然开放',4);}
     const ground=groundAt(player.x);if(w.landBlend>.5&&Number.isFinite(ground)&&player.y>ground-layout.footReach+12)bankSupport(player,layout.footReach,true);
     m.maxDepthReached=Math.max(m.maxDepthReached||0,Math.max(0,player.y-w.surfaceY));
     const ts=m.mazeTileSize,r=Math.floor(player.y/ts),c=Math.floor(player.x/ts);
     for(let y=r-3;y<=r+3;y++)for(let x=c-3;x<=c+3;x++)if(m.mazeExplored[y]&&x>=0&&x<m.mazeCols&&Math.hypot(y-r,x-c)<=3)m.mazeExplored[y][x]=true;
     if(!m.playerPath.length||Math.hypot(player.x-m.playerPath[m.playerPath.length-1].x,player.y-m.playerPath[m.playerPath.length-1].y)>22)m.playerPath.push({x:player.x,y:player.y});
     w.stationId=null;let near=Infinity;
+    if(!w.headWet&&w.landBlend>.5&&Math.abs(player.x-w.originX-layout.rest.x)<105){w.stationId='rest';near=Math.abs(player.x-w.originX-layout.rest.x);}
     if(!w.headWet&&w.landBlend>.5)for(const station of layout.stations){const p=stationPosition(station),d=Math.abs(player.x-p.x);if(d<station.width*.55+46&&d<near){w.stationId=station.id;near=d;}}
     if(w.pendingAction==='air'){
         const s=layout.stations.find(s=>s.id==='air')!,p=stationPosition(s);
@@ -230,6 +268,7 @@ export function useNearestStation() {
     const w=world(),m:any=state.mazeRescue;if(!w||!w.stationId)return;
     resetDriveInput();
     switch(w.stationId){
+        case 'rest':toggleRest();break;
         case 'map':w.panel='map';break;
         case 'shop':w.panel='shop';break;
         case 'fish':w.panel='fish';break;

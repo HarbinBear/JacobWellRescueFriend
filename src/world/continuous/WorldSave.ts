@@ -14,7 +14,7 @@ export function clearWorldSnapshot() { removeKey(WORLD_SAVE_KEY); removeKey(WORL
 const copy = <T>(v: T): T => JSON.parse(JSON.stringify(v));
 const MAZE_FIELDS = ['npcFound','npcRescued','npcStunned','rescueRagdoll','maxDepthReached','totalRopePlaced','discoveredThemes',
     'thisNewThemes','currentThemeKey','consumedTankIds','discoveredRelicIds','codexKinds','maxDepthAllowed','playerPath'];
-const WORLD_FIELDS = ['elapsed','chapterStatus','walkPhase','facing','wet','headWet','grounded','landBlend','nextFishId','airTanks','journal'];
+const WORLD_FIELDS = ['elapsed','chapterStatus','walkPhase','facing','wet','headWet','grounded','landBlend','nextFishId','airTanks','journal','resting'];
 interface PackedEndpoint { kind: string; point: {x: number; y: number}; wall: number; rope: number; fish: number; vx?: number; vy?: number }
 export interface WorldSnapshot {
     version: number; layoutVersion: number; timestamp: number; seed: number; rows: number; cols: number;
@@ -56,7 +56,7 @@ export function captureWorld(): WorldSnapshot {
     const m: any = state.mazeRescue, w = world(); if (!m || !w) throw new Error('没有连续章节');
     const maze: any = {}, savedWorld: any = {},clock=w.hidden?(w.hiddenAt||Date.now()):Date.now();
     for (const k of MAZE_FIELDS) if (m[k] !== undefined) maze[k] = copy(m[k]);
-    for (const k of WORLD_FIELDS) savedWorld[k] = copy((w as any)[k]);
+    for (const k of WORLD_FIELDS) if((w as any)[k]!==undefined) savedWorld[k] = copy((w as any)[k]);
     return {version:1, layoutVersion:layout.version, timestamp:Date.now(), seed:m.seed, rows:m.mazeRows, cols:m.mazeCols,
         player:copy(player), npc:copy(state.npc), fish:state.fishEnemies.map((f:any) => ({...copy(f), stunRemaining:Math.max(0,(f.stunUntil-clock)/1000)})),
         ropes:state.rope.ropes.map(r => ({start:copy(r.start),end:copy(r.end),path:copy(r.path),mode:r.mode,slackFactor:r.slackFactor,

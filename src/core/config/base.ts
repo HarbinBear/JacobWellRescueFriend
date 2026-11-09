@@ -7,7 +7,7 @@ const systemInfo = getWindowMetrics();
 
 export const baseConfig = {
     // 版本信息
-    version: 'v1.0.21',
+    version: 'v1.0.22',
     continuousWorld: true,
 
     // 窗口与安全区，运行中切屏时同步更新。

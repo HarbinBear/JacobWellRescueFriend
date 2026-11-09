@@ -40,7 +40,9 @@
     "cave:versions": "node scripts/buildCaveVersions.js",
     "cave:versions:check": "node scripts/checkCaveVersions.js",
     "cave:sculpt:browser": "node scripts/checkCaveRockBrowser.js --sculpt",
-    "world:entry": "node scripts/checkContinuousGameplayEntry.js"
+    "world:entry": "node scripts/checkContinuousGameplayEntry.js",
+    "rope:check": "node scripts/checkRopePlacementRegression.js",
+    "world:regression": "node scripts/checkShoreRegressionBrowser.js"
   },
   "devDependencies": {
     "typescript": "^5.3.3"

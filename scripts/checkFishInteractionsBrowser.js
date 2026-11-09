@@ -52,7 +52,8 @@ const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
   assert(await evaluate('DeepTapeGame.state.fishEnemies[0].bound&&DeepTapeGame.state.rope.active'));
   const ropeButton=await evaluate('DeepTapeGame.interactions.layout.getRopeControlPosition()');await touch('touchStart',ropeButton);
   const self=await evaluate('DeepTapeGame.interactions.layout.getSelfSockets(DeepTapeGame.state.wheel.centerX,DeepTapeGame.state.wheel.centerY,DeepTapeGame.cave.config.marker.wheelOuterRadius)[0]');
-  await touch('touchMove',self);assert.equal(await evaluate('DeepTapeGame.interactions.wheel.getRopeWheelAim()?.target?.kind'),'self');await touch('touchEnd');report.self=await trace('06-self');
+  const waistBefore=await evaluate('({x:DeepTapeGame.player.x,y:DeepTapeGame.player.y,vx:DeepTapeGame.player.vx,vy:DeepTapeGame.player.vy,input:DeepTapeGame.input.move})');
+  await touch('touchMove',self);await wait(450);const waistAfter=await evaluate('({x:DeepTapeGame.player.x,y:DeepTapeGame.player.y,vx:DeepTapeGame.player.vx,vy:DeepTapeGame.player.vy,input:DeepTapeGame.input.move,progress:DeepTapeGame.interactions.wheel.getRopeSelfProgress(),open:DeepTapeGame.state.wheel.open,active:DeepTapeGame.state.rope.active,bump:DeepTapeGame.state.fishBump.stunTimer})');assert.equal(await evaluate('DeepTapeGame.interactions.wheel.getRopeWheelAim()?.target?.kind'),'self',JSON.stringify({waistBefore,waistAfter}));await touch('touchEnd');report.self=await trace('06-self');
   assert.equal(await evaluate('DeepTapeGame.interactions.rope.getPlayerRopeEnds().length'),1);
 
   await evaluate('DeepTapeGame.interactions.near("net")');await gesture('a.fishGeometry.fishNetHandlePoint(g.state.fishEnemies[0])');

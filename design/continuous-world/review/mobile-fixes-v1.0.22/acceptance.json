@@ -1,0 +1,217 @@
+{
+  "version": "v1.0.22",
+  "scope": "实际手机源码，隔离桌面浏览器验收；不是微信真机性能结论",
+  "camera": {
+    "actual": 1.1286867220180434,
+    "target": 1.1352111961152096,
+    "inputAhead": 0,
+    "springDifference": 0,
+    "playerMove": 0,
+    "targetAhead": 0
+  },
+  "unfinishedRope": {
+    "missAndMovementPreserveStart": true,
+    "accidentalWaistSlideDoesNotCommit": true,
+    "explicitWaistConfirmation": true,
+    "naturalBuoyancyDoesNotCancelConfirmation": true
+  },
+  "naturalBarriers": [
+    {
+      "local": -1816.793462117328,
+      "physicalClear": true,
+      "nearRock": true,
+      "distanceToOuterEdge": 83.20653788267191
+    },
+    {
+      "local": 1274.666651400119,
+      "physicalClear": true,
+      "nearRock": true,
+      "distanceToOuterEdge": 225.333348599881
+    }
+  ],
+  "rest": "原生按钮躺下、休息状态原位恢复、移动起身",
+  "death": {
+    "seedSame": true,
+    "spawn": -1205,
+    "expectedSpawn": -1205,
+    "headWet": false,
+    "o2": 120,
+    "ropes": 1,
+    "links": 0,
+    "fishSame": true,
+    "fishUnmoved": true,
+    "explored": true,
+    "relics": [
+      17
+    ],
+    "savedX": 4975,
+    "actualX": 4975
+  },
+  "fishDeath": {
+    "spawn": -1205,
+    "expectedSpawn": -1205,
+    "phase": "play",
+    "headWet": false,
+    "bite": null
+  },
+  "entry": {
+    "returnFromMenu": "真实点击继续，位置和三鱼绳端保持",
+    "newGame": "原生确认清除本章节测试进度，不迁移旧档",
+    "depleted": "水下耗尽气量自动返回岸上出生点，不重开章节",
+    "errors": [],
+    "status": "passed"
+  },
+  "movement": {
+    "samples": 1104,
+    "halfSubmerged": true,
+    "phaseAlwaysPlay": true,
+    "maxObservedFrameDisplacement": 6.890606130318281
+  },
+  "tow": {
+    "fishIDs": [
+      15,
+      16,
+      17
+    ],
+    "tethers": 3,
+    "allBodiesAboveWater": true,
+    "fishStayBound": true,
+    "returnToShoreInput": "原生 Shift+W+A 强力划水，等同充分拖动触控方向"
+  },
+  "save": {
+    "land": {
+      "position": {
+        "x": 5479.076956272224,
+        "y": 478.541424390937
+      },
+      "o2": 119.58712923938498,
+      "fishIDs": [
+        15,
+        16,
+        17
+      ],
+      "elapsed": 25.133333333333187,
+      "offlineFrozen": true,
+      "stamina": {
+        "remaining": 0.42,
+        "exhausted": false
+      }
+    },
+    "water": {
+      "position": {
+        "x": 6083.289903270985,
+        "y": 708.7938025435984
+      },
+      "o2": 119.20397020839285,
+      "fishIDs": [
+        15,
+        16,
+        17
+      ],
+      "elapsed": 33.31666666666606,
+      "offlineFrozen": true,
+      "stamina": {
+        "remaining": 1,
+        "exhausted": false
+      }
+    }
+  },
+  "orientation": "原生触控切屏，章节与实体保持不变",
+  "air": {
+    "requiresPhysicalStation": true,
+    "gradualRefill": true
+  },
+  "handoff": {
+    "chapterResolved": true,
+    "worldStillPlayable": true,
+    "noLiquidation": true,
+    "fishTethersRetained": true
+  },
+  "stress": {
+    "frames": 7200,
+    "cases": 6,
+    "violations": 0
+  },
+  "nativeFish": {
+    "passed": true,
+    "scope": "真实游戏、原生触控、实际岩体与绳网，不暂停全场；逐帧检查前摇/冲击/后摇与有限整网淡出。桌面浏览器通过，微信真机仍需验收。",
+    "errors": []
+  },
+  "package": {
+    "bytes": 6241340,
+    "MiB": 5.952205657958984,
+    "limit": 8388608,
+    "reserve": 131072,
+    "headroom": 2147268,
+    "files": 191,
+    "groups": {
+      "audio": 30448,
+      "game.json": 32,
+      "game.ts": 5285,
+      "images": 4093116,
+      "project.config.json": 2988,
+      "src": 2109471
+    },
+    "largest": [
+      {
+        "path": "images/cave-rock/room-albedo.png",
+        "bytes": 1505412
+      },
+      {
+        "path": "images/shore/woodland-native.jpg",
+        "bytes": 437045
+      },
+      {
+        "path": "images/home/living_room_night.jpg",
+        "bytes": 407618
+      },
+      {
+        "path": "images/shore/bank-left.jpg",
+        "bytes": 274142
+      },
+      {
+        "path": "images/home/characters/girl_stand.jpg",
+        "bytes": 214705
+      },
+      {
+        "path": "images/cave-rock/room-normal.png",
+        "bytes": 213272
+      },
+      {
+        "path": "images/home/characters/girl_playful.jpg",
+        "bytes": 211808
+      },
+      {
+        "path": "images/shore/bank-right.jpg",
+        "bytes": 209348
+      },
+      {
+        "path": "images/home/characters/girl_talk.jpg",
+        "bytes": 201531
+      },
+      {
+        "path": "images/cave-rock/room-detail.png",
+        "bytes": 186074
+      },
+      {
+        "path": "images/shore/woodland-sky-strip.png",
+        "bytes": 79071
+      },
+      {
+        "path": "src/core/input.ts",
+        "bytes": 70941
+      }
+    ],
+    "scope": "Pre-compiler file estimate only. Official IDE preview info is authoritative; this does not simulate phone performance."
+  },
+  "otherChecks": [
+    "typecheck",
+    "rope:check",
+    "fish:check",
+    "movement:check",
+    "platform:check",
+    "inventory:check",
+    "maze:check"
+  ],
+  "status": "passed"
+}
