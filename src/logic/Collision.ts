@@ -1,3 +1,4 @@
+import { activeWorld, circleCollision } from '../world/continuous/Geometry';
 import { CONFIG } from '../core/config';
 import { state, player } from '../core/state';
 import { rockTrialCollision } from '../world/RockGeometry';
@@ -71,6 +72,7 @@ export function getNearestWallDist(x: number, y: number): number {
  * 迷宫模式碰撞检测（使用迷宫专属地图数据）
  */
 export function checkMazeCollision(x: number, y: number, maze: any): boolean {
+    if (activeWorld()) return circleCollision(x,y,CONFIG.maze.playerRadius);
     if(maze?.caveRockRoom)return rockTrialCollision(maze,x,y,CONFIG.maze.playerRadius);
     const ts = maze.mazeTileSize;
     const playerRadius = CONFIG.maze.playerRadius;

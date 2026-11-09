@@ -1,10 +1,10 @@
 const fs=require('fs'),path=require('path'),assert=require('assert/strict');
 const {openReviewBrowser}=require('../design/cave-room/browser.cjs');
-const OUT=path.resolve(__dirname,'../node_modules/.cache/continuous-world/acceptance');
+const OUT=path.resolve(__dirname,process.env.JWR_MOBILE_WORLD==='1'?'../node_modules/.cache/continuous-gameplay/acceptance':'../node_modules/.cache/continuous-world/acceptance');
 const URL=process.env.JWR_PREVIEW_URL||'http://127.0.0.1:60972/node_modules/.cache/continuous-world/game.html';
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 (async()=>{
- fs.mkdirSync(OUT,{recursive:true});const browser=await openReviewBrowser(URL,1390,850),report={scope:'真实当前游戏模块 + 独立连续章节接入；独立浏览器与原生输入。不是微信真机性能验收。'};
+ fs.mkdirSync(OUT,{recursive:true});const browser=await openReviewBrowser(URL,1390,850),report={scope:process.env.JWR_MOBILE_WORLD==='1'?'真实手机版 game.ts + src；无源码临时接入。隔离浏览器与原生输入，不是微信真机验收。':'真实当前游戏模块 + 独立连续章节接入；独立浏览器与原生输入。不是微信真机性能验收。'};
  try{
   const ev=s=>browser.evaluate(s);
   async function until(expression,timeout=18000){const start=Date.now();while(!await ev(expression)){if(Date.now()-start>timeout)throw Error('等待条件超时: '+expression+'\n'+JSON.stringify(await ev('({player:DeepTapeGame.player,world:{...DeepTapeGame.world.geometry.world(),terrain:undefined,banks:undefined,left:undefined,right:undefined,events:undefined},input:DeepTapeGame.input,fish:DeepTapeGame.state.fishEnemies.filter(f=>f.reviewTow).map(f=>({x:f.x,y:f.y,angle:f.angle,bound:f.bound,knot:DeepTapeGame.interactions.fishGeometry.fishKnotPoint(f)})),links:DeepTapeGame.state.rope.links.map(l=>({id:l.id,length:l.length,tension:l.tension,path:l.path}))})')));await wait(120);}}
@@ -13,13 +13,22 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
   const keyEvent=key;
   async function keysOff(keys){for(const [key,code]of keys)await keyEvent('keyUp',key,code);}
   async function shot(name){const image=await ev('document.getElementById("game").toDataURL("image/png")');fs.writeFileSync(path.join(OUT,name+'.png'),Buffer.from(image.split(',')[1],'base64'));}
+  if(process.env.JWR_MOBILE_WORLD==='1'){
+   await until('!!window.DeepTapeGame');assert.equal(await ev('DeepTapeGame.source'),'actual-mobile-src');assert.equal(await ev('DeepTapeGame.state.screen'),'menu');
+   const p=await ev('(()=>{const c=DeepTapeGame.cave.config,b=DeepTapeGame.ui.menu().find(b=>b.id==="continue"),r=document.getElementById("game").getBoundingClientRect();return{x:r.x+(b.x+b.w/2)/c.screenWidth*r.width,y:r.y+(b.y+b.h/2)/c.screenHeight*r.height,id:1}})()');
+   await browser.command('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[p]});await browser.command('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await until('!!DeepTapeGame.world.geometry.world()');report.entry='原生触控从手机版主菜单进入章节，无自动旁路启动';
+  }
   await until('DeepTapeGame.world.render.assetsReady()',10000);await wait(350);
   await ev('localStorage.setItem("deeptape-game-review/untouched-fixture","用户旧档不应被实验改写");DeepTapeGame.cave.config.infiniteO2=false');
   assert.equal(await ev('DeepTapeGame.state.mazeRescue.phase'),'play');assert(await ev('DeepTapeGame.world.geometry.world().grounded'));
   report.graphics=await ev('DeepTapeGame.world.render.worldGraphicsStats()');assert(report.graphics.webgl,'必须验证真实 WebGL 路径，而不是静默退化');
   const origin=await ev('DeepTapeGame.world.geometry.world().originX');
+  if(process.env.JWR_MOBILE_WORLD==='1'){
+    report.geometry=await ev('(()=>{const g=DeepTapeGame,w=g.world.geometry.world(),walls=g.state.mazeRescue.mazeWalls;return{circleWalls:walls.filter(b=>!b.rockPolygon).length,shoreBanks:w.banks.length,contourWalls:walls.filter(b=>b.contourTerrain).length}})()');assert(report.geometry.circleWalls>100);assert.equal(report.geometry.contourWalls,0);assert.equal(report.graphics.character,'original');assert.equal(report.graphics.rocks,'original-circles');
+  }else{
   report.geometry=await ev(`(()=>{const g=DeepTapeGame,w=g.world.geometry.world(),t=w.terrain;let failures=[],samples=0,seed=1337;for(let i=0;i<1600;i++){seed=(Math.imul(seed,1664525)+1013904223)>>>0;const x=w.originX-1700+seed/4294967296*3200;seed=(Math.imul(seed,1664525)+1013904223)>>>0;const y=450+seed/4294967296*2200,r=[0,5,18,26][i%4],a=g.world.contours.terrainCircle(t,x,y,r),b=t.walls.some(w=>g.cave.geometry.circleHitsRock(w,x,y,r));samples++;if(a!==b&&failures.length<8)failures.push({x,y,r,a,b});}return{samples,failures,allContourWalls:t.walls.every(w=>w.contourTerrain)};})()`);
   assert.equal(report.geometry.failures.length,0);assert(report.geometry.allContourWalls,'新版默认实际几何必须是连续轮廓，不能仍画圆球');
+  }
   report.connectivity=await ev('(()=>{const g=DeepTapeGame,m=g.state.mazeRescue,ts=m.mazeTileSize,start=[Math.floor(g.world.geometry.world().seamY/ts),Math.floor(m.exitX/ts)],goal=[Math.floor(m.npcInitY/ts),Math.floor(m.npcInitX/ts)],queue=[start],seen=new Set([start.join(",")]);for(let i=0;i<queue.length;i++){const [r,c]=queue[i];for(const [dr,dc]of [[1,0],[-1,0],[0,1],[0,-1]]){const y=r+dr,x=c+dc,id=y+","+x;if(y>=start[0]&&m.mazeMap[y]?.[x]===0&&!seen.has(id)){seen.add(id);queue.push([y,x])}}}return{reachable:seen.has(goal.join(",")),reachableCells:seen.size,npc:{x:m.npcInitX,y:m.npcInitY}}})()');assert(report.connectivity.reachable,'泉井接缝必须连到实际原有救援目标');
   await shot('01-camp');
   await ev('window.__WorldTrace=[];window.__WorldTraceOn=true;window.__TraceFrame=()=>{if(!window.__WorldTraceOn)return;const g=DeepTapeGame,w=g.world.geometry.world();window.__WorldTrace.push({t:w.elapsed,x:g.player.x,y:g.player.y,phase:g.state.mazeRescue.phase,wet:w.wet,head:w.headWet,land:w.landBlend});requestAnimationFrame(window.__TraceFrame)};requestAnimationFrame(window.__TraceFrame)');
@@ -42,10 +51,15 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
   report.tow={fishIDs,tethers:3,allBodiesAboveWater:true,fishStayBound:true};
 
   function canonical(s){return {seed:s.seed,player:{x:s.player.x,y:s.player.y,vx:s.player.vx,vy:s.player.vy,angle:s.player.angle,o2:s.player.o2,o2Max:s.player.o2Max},npc:s.npc,fish:s.fish.map(f=>({...f,stunUntil:0,stunRemaining:0})),ropes:s.ropes,links:s.links,current:s.current,ropeActive:s.ropeActive,markers:s.markers,maze:s.maze,explored:s.explored,extraction:s.extraction,story:s.story,gas:s.bcd.gasNL,nitrogen:s.deco.nitrogenLoad,stamina:s.stamina,world:{elapsed:s.world.elapsed,chapterStatus:s.world.chapterStatus,nextFishId:s.world.nextFishId,airTanks:s.world.airTanks}};}
+  async function enterAfterReload(){
+    if(process.env.JWR_MOBILE_WORLD!=='1')return;
+    await until('!!window.DeepTapeGame');const p=await ev('(()=>{const c=DeepTapeGame.cave.config,b=DeepTapeGame.ui.menu().find(b=>b.id==="continue"),r=document.getElementById("game").getBoundingClientRect();return{x:r.x+(b.x+b.w/2)/c.screenWidth*r.width,y:r.y+(b.y+b.h/2)/c.screenHeight*r.height,id:1}})()');
+    await browser.command('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[p]});await browser.command('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+  }
   async function reloadAt(name){
    await ev('window.__ShoreLifecycle.hide()');const before=await ev('DeepTapeGame.world.save.captureWorld()');await wait(850);
    const paused=await ev('DeepTapeGame.world.save.captureWorld()');assert.deepEqual(canonical(paused),canonical(before),'后台期间不能推进世界');assert.deepEqual(paused.fish.map(f=>f.stunRemaining),before.fish.map(f=>f.stunRemaining),'后台等待不能减少眩晕');assert(await ev('DeepTapeGame.world.save.saveWorldProgress()'));
-   await browser.command('Page.reload',{});await until('!!window.DeepTapeGame?.world.geometry.world()',15000);await until('!!DeepTapeGame.world.save.getLastRestoreSnapshot()',12000);
+   await browser.command('Page.reload',{});await enterAfterReload();await until('!!window.DeepTapeGame?.world.geometry.world()',15000);await until('!!DeepTapeGame.world.save.getLastRestoreSnapshot()',12000);
    const restored=await ev('DeepTapeGame.world.save.getLastRestoreSnapshot()');assert.deepEqual(canonical(restored),canonical(before),'读档必须恢复实际对象图，而不仅是存了一个坐标');
    restored.fish.forEach((f,i)=>assert(Math.abs(f.stunRemaining-before.fish[i].stunRemaining)<.03,'离线眩晕必须按剩余时间重锚定'));
    assert(await ev('DeepTapeGame.state.rope.links.every(l=>[l.start,l.end].every(e=>e.kind!=="fish"||DeepTapeGame.state.fishEnemies.includes(e.fish)))'),'绳端引用必须重新挂到恢复的鱼实体');

@@ -2,6 +2,7 @@ const fs=require('fs'),path=require('path'),ts=require('typescript'),cp=require(
 const ROOT=path.resolve(__dirname,'..'),DESIGN='design/continuous-world';
 function walk(dir){return fs.readdirSync(dir,{withFileTypes:true}).flatMap(e=>e.isDirectory()?walk(path.join(dir,e.name)):e.name.endsWith('.ts')?[path.relative(ROOT,path.join(dir,e.name)).split(path.sep).join('/')]:[]);}
 function build(ref=null){
+ if(!ref)return require('./buildContinuousGameplayPreview').build();
  if(ref&&!/^[A-Za-z0-9_./-]+$/.test(ref))throw Error('Invalid version ref');
  const tree=ref?cp.execFileSync('git',['-C',ROOT,'ls-tree','-r','--name-only',ref],{encoding:'utf8'}).trim().split('\n'):null;
  const tracked=tree?new Set(tree):null;

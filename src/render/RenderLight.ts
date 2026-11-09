@@ -1,3 +1,4 @@
+import { activeWorld } from '../world/continuous/Geometry';
 import { CONFIG } from '../core/config';
 import { state } from '../core/state';
 import { getActiveMapContext } from '../world/Visibility';
@@ -98,7 +99,7 @@ export function getLightPolygon(sx: number, sy: number, angle: number, maxDist: 
     // ---- 低档跳过遮挡计算（low 档位最贵的 CPU 段：每条射线对所有障碍物的求交循环）----
     // 启用后光锥不受岩壁遮挡直接延伸到 maxDist，视觉上手电会"穿墙"，但 CPU 端几乎零成本
     // 适合低端机极限省电；shader 端逻辑完全不用改，VPL 反弹点自动落在 maxDist 处
-    if ((CONFIG as any).quality?.skipOcclusion) {
+    if ((CONFIG as any).quality?.skipOcclusion && !activeWorld()) {
         for (let i = 0; i <= rays; i++) {
             let a = startAngle + i * step;
             points.push({
@@ -148,6 +149,7 @@ export function getLightPolygon(sx: number, sy: number, angle: number, maxDist: 
         for (let w of active.walls) {
             // 跳过已经从 map 格子中收集过的
             if (mapWallSet && mapWallSet.has(w)) continue;
+            if (w.rockPolygon) { if(Math.abs(w.x-sx)<w.r+maxDist && Math.abs(w.y-sy)<w.r+maxDist)obstacles.push({type:'poly',wall:w}); continue; }
             let dx = w.x - sx, dy = w.y - sy;
             if (dx*dx+dy*dy < maxDistPlusR*maxDistPlusR) {
                 obstacles.push({ type:'circle', x:w.x, y:w.y, r:w.r });
@@ -159,7 +161,7 @@ export function getLightPolygon(sx: number, sy: number, angle: number, maxDist: 
         let dx=Math.cos(a), dy=Math.sin(a);
         let closestDist = maxDist;
         for (let obs of obstacles) {
-            let hitDist = obs.type==='circle'
+            let hitDist = obs.type==='poly' ? rayHitsRock(obs.wall,sx,sy,dx,dy,closestDist) : obs.type==='circle'
                 ? rayCircleIntersect(sx,sy,dx,dy,obs.x,obs.y,obs.r)
                 : rayBoxIntersect(sx,sy,dx,dy,obs.x,obs.y,obs.half);
             if (hitDist < closestDist) closestDist = hitDist;

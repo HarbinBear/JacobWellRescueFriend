@@ -1,3 +1,4 @@
+import { activeWorld, world, circleCollision } from '../world/continuous/Geometry';
 import { CONFIG } from '../core/config';
 import { player, state, input, createInteractionState } from '../core/state';
 import { playSFX } from '../audio/AudioManager';
@@ -40,6 +41,7 @@ export function resetInteractions() {
 }
 
 function canOccupy(point: RopePoint) {
+    if(activeWorld())return !circleCollision(point.x,point.y,18);
     const map = getActiveMapContext(), radius = state.screen === 'mazeRescue' ? CONFIG.maze.playerRadius : CONFIG.playerRadius;
     const r = Math.floor(point.y / map.tileSize), c = Math.floor(point.x / map.tileSize);
     if (r < 0 || c < 0 || r >= map.rows || c >= map.cols || map.map[r]?.[c] === 2) return false;
@@ -63,6 +65,7 @@ function clearApproach(from: RopePoint, to: RopePoint) {
 /** The final approach is a short body movement, not long-range pathfinding. */
 function workStance(point: RopePoint): RopePoint | null {
     const distance = Math.hypot(point.x - player.x, point.y - player.y), reach = CONFIG.fishInteraction.handReach;
+    if(activeWorld() && world()!.grounded && world()!.landBlend>.6)return distance<=reach+24 && visibleInteractionPoint(point)?{x:player.x,y:player.y}:null;
     if (distance <= reach + 2 && visibleInteractionPoint(point)) return { x: player.x, y: player.y };
     if (distance > CONFIG.fishInteraction.approachLimit) return null;
     const bearing = Math.atan2(player.y - point.y, player.x - point.x);
@@ -192,7 +195,8 @@ export function updateInteractionMovement(now = Date.now()): boolean {
         cancelInteraction(); interactionFeedback(task.target?.fish ? '鱼游开了' : '目标离开了操作位置', task.point); return false;
     }
     const angle = Math.atan2(point.y - player.y, point.x - player.x);
-    if (!task.anchor?.self && task.target?.kind !== 'self') {
+    if(activeWorld() && world()!.grounded && Math.abs(point.x-player.x)>2)world()!.facing=point.x>player.x?1:-1;
+    if (!task.anchor?.self && task.target?.kind !== 'self' && !(activeWorld()&&world()!.grounded)) {
         let delta = angle - player.angle;
         while (delta > Math.PI) delta -= Math.PI * 2;
         while (delta < -Math.PI) delta += Math.PI * 2;
@@ -215,7 +219,7 @@ export function updateInteractionMovement(now = Date.now()): boolean {
             return true;
         }
     }
-    if (!task.anchor?.self && task.target?.kind !== 'self' && Math.hypot(point.x - player.x, point.y - player.y) > CONFIG.fishInteraction.handReach + 8) {
+    if (!task.anchor?.self && task.target?.kind !== 'self' && Math.hypot(point.x - player.x, point.y - player.y) > CONFIG.fishInteraction.handReach + (activeWorld()&&world()!.grounded&&task.kind==='tie'?24:8)) {
         cancelInteraction(); interactionFeedback('失去接触，操作取消', point); return false;
     }
     player.vx *= .35; player.vy *= .35;

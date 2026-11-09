@@ -29,6 +29,7 @@ uniform float u_ambientIntensity;
 
 // 遮罩基础
 uniform float u_maskAlpha;
+uniform float u_worldSurfaceY;
 
 // 手电筒参数化
 uniform float u_flatRatio;        // 径向全亮区占比
@@ -151,6 +152,7 @@ void main() {
     vec2 worldPos = screenToWorld(v_uv);
     
     float darkness = u_maskAlpha;
+    if (u_worldSurfaceY >= 0.0) { float depth = clamp((worldPos.y-u_worldSurfaceY)/1100.0,0.0,1.0); darkness = mix(0.03,0.995,pow(depth,1.48)); }
     float totalLight = 0.0;
     
     // 主手电筒

@@ -1,3 +1,6 @@
+import { activeWorld, circleCollision } from '../world/continuous/Geometry';
+import { routeWorldTether, worldSegmentClear } from '../world/continuous/Routes';
+import { fishKnotPoint } from './FishGeometry';
 import { CONFIG } from '../core/config';
 import { player, state } from '../core/state';
 import { getActiveMapContext, isLineOfSight } from '../world/Visibility';
@@ -13,7 +16,11 @@ function bodyFor(endpoint: RopeEndpoint) {
 
 function canMove(body: any, from: RopePoint, to: RopePoint) {
     const context = getActiveMapContext();
-    const radius = state.screen === 'mazeRescue' ? CONFIG.maze.playerRadius : CONFIG.playerRadius;
+    const radius = activeWorld() ? (body===player?18:CONFIG.fishEnemy.size*(body.kind==='shoal'?.18:body.kind==='rammer'?.48:body.kind==='provoked'?.64:.38)) : (state.screen === 'mazeRescue' ? CONFIG.maze.playerRadius : CONFIG.playerRadius);
+    if(activeWorld()){
+        if(body!==player&&body.bound){const knot=fishKnotPoint(body);if(circleCollision(to.x+knot.x-body.x,to.y+knot.y-body.y,1.5))return false;}
+        return !circleCollision(to.x,to.y,radius)&&worldSegmentClear(from,to,radius)&&!traceWovenRopes(from,to,radius);
+    }
     const row = Math.floor(to.y / context.tileSize), col = Math.floor(to.x / context.tileSize);
     if (row < 0 || col < 0 || row >= context.rows || col >= context.cols || context.map[row]?.[col] === 2) return false;
     if ((context.walls || []).some(wall => circleHitsRock(wall, to.x, to.y, radius))) return false;
@@ -21,6 +28,7 @@ function canMove(body: any, from: RopePoint, to: RopePoint) {
 }
 
 function routeLine(link: TetherLine, start: RopePoint, end: RopePoint) {
+    if(activeWorld())return routeWorldTether(link,start,end);
     if (isLineOfSight(start.x, start.y, end.x, end.y, Infinity)) return [{ ...start }, { ...end }];
     // Full routing is needed only when the moving endpoint invalidates the old final leg.
     const old = link.path;
@@ -37,7 +45,7 @@ function pullBody(endpoint: RopeEndpoint, neighbour: RopePoint, extension: numbe
     if (!body) return;
     const at = ropeEndpointPoint(endpoint), dx = neighbour.x - at.x, dy = neighbour.y - at.y;
     const distance = Math.hypot(dx, dy) || 1, nx = dx / distance, ny = dy / distance;
-    const mass = body === player ? (otherMoves ? .34 : .68) : .8;
+    const mass = activeWorld() ? (body === player ? (otherMoves ? .10 : .68) : endpoint.fish?.kind==='shoal' ? 2.1 : endpoint.fish?.kind==='curious' ? 1.6 : endpoint.fish?.kind==='rammer' ? 1.0 : .8) : (body === player ? (otherMoves ? .34 : .68) : .8);
     const along = body.vx * nx + body.vy * ny;
     const force = Math.max(0, Math.min(1.25, extension * CONFIG.fishInteraction.tetherSpring - along * .06)) * mass;
     body.vx += nx * force;

@@ -1,3 +1,5 @@
+import { stepAirFish, moveContinuousFish } from '../world/continuous/Runtime';
+import { activeWorld, circleCollision } from '../world/continuous/Geometry';
 import { CONFIG } from '../core/config';
 import { rayHitsRock, rockTrialCollision } from '../world/RockGeometry';
 import type { RockPoint } from '../world/RockGeometry';
@@ -50,6 +52,7 @@ function checkCollisionLocal(x: number, y: number): boolean {
 // 迷宫模式碰撞检测（读取 mazeRescue 地图数据）
 // =============================================
 function checkCollisionMazeLocal(x: number, y: number): boolean {
+    if (activeWorld()) return circleCollision(x,y,CONFIG.maze.playerRadius);
     const maze = state.mazeRescue;
     if (!maze) return false;
     if(maze.caveRockRoom)return rockTrialCollision(maze,x,y,CONFIG.maze.playerRadius);
@@ -699,6 +702,8 @@ function updateShoalFish(fish: FishEnemy, group: SchoolContext) {
 // 主更新函数：更新单条凶猛鱼的 AI
 // =============================================
 export function updateFishEnemy(fish: FishEnemy, dt: number, getGlow = illuminatedRockSpot, school?: SchoolContext) {
+    if(activeWorld() && !fish.bound && (Math.abs(fish.x-player.x)>1150 || Math.abs(fish.y-player.y)>900)) return;
+    if(activeWorld() && stepAirFish(fish)) return;
     if (fish.dead) return;
     if (fish.state === 'dying') stunFish(fish); // Compatibility: legacy death state becomes temporary stun.
     if (stepFishCaptivity(fish, applyMovement)) return;
@@ -1271,6 +1276,7 @@ function netWillHoldLunge(fish: FishEnemy, vx = fish.vx, vy = fish.vy): boolean 
 }
 
 function applyMovement(fish: FishEnemy, effort = { x: fish.vx, y: fish.vy }) {
+    if(activeWorld()) return moveContinuousFish(fish,effort);
     const work = state.interaction.task;
     // The supporting hand can restrain a free fish only after actual close contact.
     if(work?.phase==='perform'&&work.kind==='stun'&&work.target?.fish===fish&&

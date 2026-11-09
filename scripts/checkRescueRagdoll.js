@@ -11,6 +11,7 @@ const player = { x: 500, y: 0, vx: 0, vy: 0, angle: 0 };
 let wall = false, netBlocks = false;
 const CONFIG = { maze: { npcTetherIdealDist: 70, npcTetherMaxDist: 220 } };
 const tow = compile('logic/RescueTow', {
+    '../world/continuous/Geometry': { activeWorld: () => false },
     '../core/config': { CONFIG }, '../core/state': { state, player }, './RescueRagdoll': physics,
     './Collision': { checkMazeCollision: x => wall && x > 3 && x < 175 },
     './Rope': { getRopeContact: () => null, traceWovenRopes: () => netBlocks },

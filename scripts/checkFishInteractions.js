@@ -1,6 +1,7 @@
 const assert=require('assert/strict'),fs=require('fs'),path=require('path'),ts=require('typescript');
 const root=path.resolve(__dirname,'../src'),cache=new Map(),storage=new Map(),noop=()=>0;
 function load(file){
+ if(file==='world/continuous/Runtime')return{stepAirFish:()=>false,moveContinuousFish:()=>null,isBootingWorld:()=>false};
  if(file==='audio/AudioManager')return{playSFX:noop};if(file==='logic/BreathSystem')return{spawnImpactBurst:noop};
  if(file==='render/Canvas')return{ctx:{},logicW:375,logicH:667};
  if(file==='core/SaveStorage')return{saveJSON:(k,v)=>{storage.set(k,JSON.parse(JSON.stringify(v)));return true},loadJSON:k=>storage.get(k),removeKey:k=>storage.delete(k)};
@@ -9,6 +10,7 @@ function load(file){
  new Function('exports','require',code)(out,n=>load(path.posix.normalize(path.posix.join(path.posix.dirname(file),n))));return out;
 }
 const core=load('core/state'),{state,player,input}=core,{CONFIG}=load('core/config');
+CONFIG.continuousWorld=false;
 const fishLogic=load('logic/FishEnemy'),handling=load('logic/FishHandling'),geometry=load('logic/FishGeometry'),rope=load('logic/Rope');
 const actions=load('logic/ActionWheel'),targets=load('logic/ActionTargets'),work=load('logic/Interaction'),wheel=load('logic/RopeWheel');
 const layout=load('logic/InteractionLayout'),rocks=load('world/RockGeometry'),topology=load('logic/RopeTopology'),net=load('logic/RopeNet');

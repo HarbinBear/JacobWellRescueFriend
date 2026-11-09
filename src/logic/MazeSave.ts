@@ -1,3 +1,6 @@
+import { CONFIG } from '../core/config';
+import { isBootingWorld } from '../world/continuous/Runtime';
+import { saveWorldProgress, clearWorldSnapshot } from '../world/continuous/WorldSave';
 // 迷宫模式本地存档模块（v3 种子版）
 //
 // 需求：迷宫模式当前关卡进度持久化，退出到主界面或退出小游戏后再回来能接上。
@@ -327,6 +330,8 @@ export function hasMazeSave(): boolean {
  * 保存当前迷宫进度到本地
  */
 export function saveMazeProgress(): boolean {
+    if (isBootingWorld()) return false;
+    if ((state.mazeRescue as any)?.continuous) return saveWorldProgress();
     const maze: any = state.mazeRescue;
     if (!maze || maze.rockTrial) return false;
     if (maze.seed == null) {
@@ -457,6 +462,7 @@ export function saveMazeProgress(): boolean {
  *   4. 绳索 wall 端点用"最近匹配"在新 mazeWalls 里找回对象引用
  */
 export function loadMazeProgress(): boolean {
+    if (CONFIG.continuousWorld) return false;
     const data = loadJSON<MazeSaveData>(MAZE_SAVE_KEY);
     if (!data) return false;
     if (data.version !== MAZE_SAVE_VERSION) {
@@ -611,6 +617,7 @@ export function loadMazeProgress(): boolean {
  * 清除迷宫存档
  */
 export function clearMazeSave(): void {
+    clearWorldSnapshot();
     if(state.mazeRescue?.rockTrial)return;
     removeKey(MAZE_SAVE_KEY);
     // 顺便清除老 v1 / v2 存档，避免占用空间

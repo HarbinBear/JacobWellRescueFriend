@@ -2,25 +2,98 @@
   "description": "项目配置文件",
   "packOptions": {
     "ignore": [
-      { "type": "folder", "value": ".codebuddy" },
-      { "type": "folder", "value": ".git" },
-      { "type": "folder", "value": "node_modules" },
-      { "type": "folder", "value": "dist" },
-      { "type": "folder", "value": "scripts" },
-      { "type": "folder", "value": "typings" },
-      { "type": "folder", "value": "design" },
-      { "type": "folder", "value": "code" },
-      { "type": "file", "value": "README.md" },
-      { "type": "file", "value": "AGENTS.md" },
-      { "type": "file", "value": "ToDo.md" },
-      { "type": "file", "value": "package-lock.json" },
-      { "type": "file", "value": "tsconfig.json" },
-      { "type": "file", "value": ".DS_Store" },
-      { "type": "file", "value": ".gitignore" },
-      { "type": "folder", "value": "texture" },
-      { "type": "file", "value": "project.private.config.json" },
-      { "type": "file", "value": "package.json" },
-      { "type": "suffix", "value": ".glsl" }
+      {
+        "type": "folder",
+        "value": ".codebuddy"
+      },
+      {
+        "type": "folder",
+        "value": ".git"
+      },
+      {
+        "type": "folder",
+        "value": "node_modules"
+      },
+      {
+        "type": "folder",
+        "value": "dist"
+      },
+      {
+        "type": "folder",
+        "value": "scripts"
+      },
+      {
+        "type": "folder",
+        "value": "typings"
+      },
+      {
+        "type": "folder",
+        "value": "design"
+      },
+      {
+        "type": "folder",
+        "value": "code"
+      },
+      {
+        "type": "file",
+        "value": "README.md"
+      },
+      {
+        "type": "file",
+        "value": "AGENTS.md"
+      },
+      {
+        "type": "file",
+        "value": "ToDo.md"
+      },
+      {
+        "type": "file",
+        "value": "package-lock.json"
+      },
+      {
+        "type": "file",
+        "value": "tsconfig.json"
+      },
+      {
+        "type": "file",
+        "value": ".DS_Store"
+      },
+      {
+        "type": "file",
+        "value": ".gitignore"
+      },
+      {
+        "type": "folder",
+        "value": "texture"
+      },
+      {
+        "type": "file",
+        "value": "project.private.config.json"
+      },
+      {
+        "type": "file",
+        "value": "package.json"
+      },
+      {
+        "type": "suffix",
+        "value": ".glsl"
+      },
+      {
+        "type": "file",
+        "value": "images/home/living_room_night.png"
+      },
+      {
+        "type": "file",
+        "value": "images/home/characters/girl_stand.png"
+      },
+      {
+        "type": "file",
+        "value": "images/home/characters/girl_talk.png"
+      },
+      {
+        "type": "file",
+        "value": "images/home/characters/girl_playful.png"
+      }
     ],
     "include": []
   },

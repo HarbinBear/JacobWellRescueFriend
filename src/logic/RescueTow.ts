@@ -1,3 +1,4 @@
+import { activeWorld } from '../world/continuous/Geometry';
 import { CONFIG } from '../core/config';
 import { state, player } from '../core/state';
 import { checkMazeCollision } from './Collision';
@@ -42,7 +43,8 @@ export function updateRescueTow(): void {
         // into one figure after stopping or reversing direction.
         const nx = dist > .001 ? -dx / dist : -Math.cos(player.angle);
         const ny = dist > .001 ? -dy / dist : -Math.sin(player.angle);
-        const x = npc.x + nx * (44 - dist), y = npc.y + ny * (44 - dist);
+        const correction=activeWorld()?Math.min(2.4,44-dist):44-dist;
+        const x = npc.x + nx * correction, y = npc.y + ny * correction;
         if (canMove(npc.x, npc.y, x, y)) {
             npc.x = x; npc.y = y;
             npc.vx += nx * .12; npc.vy += ny * .12;
@@ -54,11 +56,11 @@ export function updateRescueTow(): void {
         // Split the hard rope correction by mass. If rock blocks the casualty,
         // the diver bears the correction instead of teleporting him through it.
         const over = dist - max, nx = dx / dist, ny = dy / dist;
-        let npcCorrection = over * .78;
+        let npcCorrection = activeWorld()?Math.min(2.8,over*.78):over*.78;
         const x = npc.x + nx * npcCorrection, y = npc.y + ny * npcCorrection;
         if (canMove(npc.x, npc.y, x, y)) { npc.x = x; npc.y = y; }
         else npcCorrection = 0;
-        const pull = over - npcCorrection;
+        const pull = activeWorld()?Math.min(2.2,over-npcCorrection):over-npcCorrection;
         const px = player.x - nx * pull, py = player.y - ny * pull;
         const contact = getRopeContact(player);
         if (canMove(player.x, player.y, px, py)) {

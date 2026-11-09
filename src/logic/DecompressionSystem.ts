@@ -1,3 +1,4 @@
+import { activeWorld, depthMeters } from '../world/continuous/Geometry';
 // =============================================
 // 减压停留系统（Decompression System）
 // ---------------------------------------------
@@ -106,6 +107,7 @@ export function getDecoLevel(): 0 | 1 | 2 | 3 {
 
 /** 玩家当前深度（米）。读 player.y / mazeTileSize。 */
 export function getCurrentDepthMeters(): number {
+    if (activeWorld()) return depthMeters(player.y);
     const maze: any = state.mazeRescue;
     if (!maze) return 0;
     const tile = maze.mazeTileSize || 120;

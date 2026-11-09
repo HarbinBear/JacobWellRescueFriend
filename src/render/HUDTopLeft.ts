@@ -1,3 +1,4 @@
+import { activeWorld, depthMeters } from '../world/continuous/Geometry';
 // 原生 HUD：横屏贴顶横排，竖屏贴左竖列；绘制与触摸共用 UILayout。
 // 图标视觉尺寸与 44px 触摸间距分开；切屏统一释放长按副作用。
 import { CONFIG } from '../core/config';
@@ -342,7 +343,7 @@ export function initMazeHUDTopLeft(): void {
             const tanks = getActiveAirTanks();
             const tankCnt = tanks.length;
             const maze = state.mazeRescue;
-            const depth = maze ? Math.max(0, Math.floor(player.y / (maze.mazeTileSize || 40))) : 0;
+            const depth = maze ? Math.floor(depthMeters(player.y)) : 0;
             const tankLine = tankCnt > 1 ? `\n气瓶：双瓶携带` : (tankCnt === 1 ? `\n气瓶：单瓶` : '');
             return `氧气：${o2}/${o2Max}${tankLine}\n深度：${depth}m`;
         },
@@ -356,7 +357,7 @@ export function initMazeHUDTopLeft(): void {
         onShortTap: () => { /* 只弹 tip */ },
         tipText: () => {
             const maze = state.mazeRescue;
-            const depth = maze ? Math.max(0, Math.floor(player.y / (maze.mazeTileSize || 120))) : 0;
+            const depth = maze ? Math.floor(depthMeters(player.y)) : 0;
             const maxAllowed = maze ? ((maze as any).maxDepthAllowed || 90) : 90;
             const overFlag = depth > maxAllowed ? '\n⚠ 已超出潜水衣极限！' : '';
             return `当前深度：${depth}m\n潜水衣极限：${maxAllowed}m${overFlag}`;
@@ -429,7 +430,7 @@ export function initMazeHUDTopLeft(): void {
     });
 
     registerHUDItem({
-        id: 'retreat', visible: () => !state.mazeRescue?.npcRescued,
+        id: 'retreat', visible: () => !activeWorld() && !state.mazeRescue?.npcRescued,
         iconDraw: drawRetreatIcon, supportsLongPress: true,
         onPressStart: () => {
             const maze = state.mazeRescue;
@@ -678,7 +679,7 @@ function drawLungs(c: CanvasRenderingContext2D, cx: number, cy: number, ringR: n
 function drawDepthIcon(c: CanvasRenderingContext2D, cx: number, cy: number, size: number, _time: number): void {
     const maze = state.mazeRescue;
     const tile = maze ? (maze.mazeTileSize || 120) : 120;
-    const curDepth = maze ? Math.max(0, Math.floor(player.y / tile)) : 0;
+    const curDepth = maze ? Math.floor(depthMeters(player.y)) : 0;
     const maxAllowed = maze ? ((maze as any).maxDepthAllowed || 90) : 90;
     const ratio = curDepth / Math.max(1, maxAllowed);
     const overLimit = curDepth > maxAllowed;

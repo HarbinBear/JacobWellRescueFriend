@@ -1,3 +1,5 @@
+import { activeWorld } from '../world/continuous/Geometry';
+import { buildWorldPath } from '../world/continuous/Routes';
 import { CONFIG } from '../core/config';
 import { state } from '../core/state';
 import { buildCaveRockPath } from '../world/CaveRockTrial';
@@ -184,6 +186,7 @@ function simplifyPath(path: any[]): any[] {
 
 // 使用网格 A* 构建绕障路径
 export function buildAvoidedPath(start: any, end: any, padding: number): any[] {
+    if(activeWorld())return buildWorldPath(start,end,padding);
     if(state.screen==='mazeRescue' && state.mazeRescue?.caveRockRoom)return buildCaveRockPath(state.mazeRescue,start,end,padding);
     if(!lineHitsSolid(start.x, start.y, end.x, end.y)) {
         return [{ x: start.x, y: start.y }, { x: end.x, y: end.y }];

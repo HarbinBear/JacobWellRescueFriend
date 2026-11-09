@@ -88,7 +88,7 @@ function gameLoop() {
     // briefing / resolved / abandoned 三个叙事弹窗以及下潜中、菜单全部停（弹窗自带声音由叙事层另做）
     {
         const maze: any = state.mazeRescue;
-        const inCamp = state.screen === 'mazeRescue' && maze && (maze.phase === 'shore' || maze.phase === 'resolved_idle');
+        const inCamp = state.screen === 'mazeRescue' && maze && (maze.continuous ? !maze.continuous.headWet : (maze.phase === 'shore' || maze.phase === 'resolved_idle'));
         if (inCamp) {
             playAmbience('campAmbience');
         } else {

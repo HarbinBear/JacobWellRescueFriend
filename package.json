@@ -25,12 +25,12 @@
     "controls:check": "node scripts/checkScreenOrientation.js",
     "controls:preview": "node scripts/buildGamePreview.js --controls",
     "controls:browser": "node scripts/checkControlsBrowser.js",
-    "world:art": "python3 design/continuous-world/bake.py && python3 scripts/bakeContinuousWorldMaterials.py && python3 scripts/bakeExpeditionDiver.py",
+    "world:art": "python3 scripts/buildContinuousGameplayAssets.py",
     "world:preview": "node scripts/buildContinuousWorldPreview.js",
-    "world:check": "tsc --noEmit -p design/continuous-world/tsconfig.json && node scripts/buildContinuousWorldPreview.js && node scripts/checkContourTerrain.js",
-    "world:browser": "node scripts/checkContinuousWorldBrowser.js",
-    "world:stability": "node scripts/checkContinuousWorldStability.js",
-    "world:stress": "node scripts/checkContinuousWorldStressBrowser.js",
+    "world:check": "tsc --noEmit && node scripts/buildContinuousGameplayPreview.js",
+    "world:browser": "node scripts/checkContinuousGameplayBrowser.js",
+    "world:stability": "node scripts/checkContinuousGameplayStress.js",
+    "world:stress": "node scripts/checkContinuousGameplayStress.js",
     "cave:check": "node scripts/checkCaveRockTrial.js && node scripts/checkCaveRockResources.js",
     "cave:browser": "node scripts/checkCaveRockBrowser.js",
     "package:check": "node scripts/checkPackageBudget.js",
@@ -39,7 +39,8 @@
     "cave:sculpt:check": "node scripts/checkCaveRockTrial.js --sculpt && node scripts/checkCaveRockResources.js --sculpt && tsc --noEmit -p design/cave-room/sculpt/tsconfig.json",
     "cave:versions": "node scripts/buildCaveVersions.js",
     "cave:versions:check": "node scripts/checkCaveVersions.js",
-    "cave:sculpt:browser": "node scripts/checkCaveRockBrowser.js --sculpt"
+    "cave:sculpt:browser": "node scripts/checkCaveRockBrowser.js --sculpt",
+    "world:entry": "node scripts/checkContinuousGameplayEntry.js"
   },
   "devDependencies": {
     "typescript": "^5.3.3"

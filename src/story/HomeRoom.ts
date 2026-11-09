@@ -73,10 +73,10 @@ let _registered = false;
 export function ensureHomeAssetsRegistered() {
     if (_registered) return;
     _registered = true;
-    registerImage(HOME_ASSET_KEYS.bgNight,     'images/home/living_room_night.png');
-    registerImage(HOME_ASSET_KEYS.girlStand,   'images/home/characters/girl_stand.png');
-    registerImage(HOME_ASSET_KEYS.girlTalk,    'images/home/characters/girl_talk.png');
-    registerImage(HOME_ASSET_KEYS.girlPlayful, 'images/home/characters/girl_playful.png');
+    registerImage(HOME_ASSET_KEYS.bgNight,     'images/home/living_room_night.jpg');
+    registerImage(HOME_ASSET_KEYS.girlStand,   'images/home/characters/girl_stand.jpg');
+    registerImage(HOME_ASSET_KEYS.girlTalk,    'images/home/characters/girl_talk.jpg');
+    registerImage(HOME_ASSET_KEYS.girlPlayful, 'images/home/characters/girl_playful.jpg');
 }
 
 // ---- 渲染时调用：确认 ROOM_WIDTH 与图同步 ----

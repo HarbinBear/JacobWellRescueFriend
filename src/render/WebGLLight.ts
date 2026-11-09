@@ -612,6 +612,7 @@ export function renderLightMask(params: {
     angle: number, maxDist: number,
     flashlightActive: boolean,
     maskAlpha: number,
+    worldSurfaceY?: number,
     npcX: number, npcY: number, npcAngle: number, npcDist: number, npcActive: boolean,
     polyCount: number, vplCount: number
 }) {
@@ -637,6 +638,7 @@ export function renderLightMask(params: {
     gl.uniform1f(u['u_ambientRadius']!, CONFIG.ambientPerceptionRadius || 80);
     gl.uniform1f(u['u_ambientIntensity']!, CONFIG.ambientPerceptionIntensity || 0.35);
     gl.uniform1f(u['u_maskAlpha']!, params.maskAlpha);
+    gl.uniform1f(gl.getUniformLocation(ctx.program,'u_worldSurfaceY'),Number.isFinite(params.worldSurfaceY)?params.worldSurfaceY!:-1);
 
     bindTextures(ctx);
 

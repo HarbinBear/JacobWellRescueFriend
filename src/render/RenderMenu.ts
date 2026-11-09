@@ -59,7 +59,7 @@ export function getMenuButtonRects(): MenuButtonRect[] {
     const buttons: MenuButtonRect[] = [
         {
             id: 'dive', x: cw / 2 - btnW / 2, y: groupTop,
-            w: btnW, h: btnH, label: '一键下潜',
+            w: btnW, h: btnH, label: CONFIG.continuousWorld?'继续章节':'一键下潜',
             enabled: true, primary: true,
         },
         {
@@ -67,8 +67,8 @@ export function getMenuButtonRects(): MenuButtonRect[] {
             x: cw / 2 - btnW / 2,
             y: groupTop + (btnH + gap),
             w: btnW, h: btnH,
-            label: '继续游戏',
-            subLabel: hasProgress ? `营地 · 第 ${Math.max(1, story2.nightIndex)} 晚` : '营地与准备',
+            label: CONFIG.continuousWorld?'进入林泉营地':'继续游戏',
+            subLabel: CONFIG.continuousWorld?'连续岸水 · 原位续接':(hasProgress ? `营地 · 第 ${Math.max(1, story2.nightIndex)} 晚` : '营地与准备'),
             enabled: true,
         },
         {
@@ -317,7 +317,7 @@ function drawNewGameConfirm() {
 
     ctx.fillStyle = 'rgba(180,200,220,0.85)';
     ctx.font = '12px Arial';
-    ctx.fillText('当前进度（夜晚 / 装备 / 物品）将全部清空。', r.panel.x + r.panel.w / 2, r.panel.y + 60);
+    ctx.fillText(CONFIG.continuousWorld?'章节位置、鱼、绳和探索将重新开始。':'当前进度（夜晚 / 装备 / 物品）将全部清空。', r.panel.x + r.panel.w / 2, r.panel.y + 60);
     ctx.fillText('此操作不可撤销。', r.panel.x + r.panel.w / 2, r.panel.y + 78);
 
     drawSimpleBtn(r.confirm, '确认', 'rgba(180,80,80,0.8)', '#fff');

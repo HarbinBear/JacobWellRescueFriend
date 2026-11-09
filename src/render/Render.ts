@@ -1,3 +1,5 @@
+import { updateWorldAssets, drawContinuousFrame } from '../world/continuous/RenderWorld';
+import { activeWorld } from '../world/continuous/Geometry';
 import { CONFIG } from '../core/config';
 import { drawScreenOrientationButton } from './RenderOrientation';
 import { updateCaveRockResources,drawCaveRock,drawCaveRockBase } from './RenderCaveRock';
@@ -78,6 +80,8 @@ function drawSplashes() {
 
 // --- 主渲染函数 ---
 function drawFrame() {
+    updateWorldAssets();
+    if (activeWorld()) { updateCaveRockResources(); drawContinuousFrame(); return; }
     updateCaveRockResources();
     profileBegin('draw.sky');
     // 每帧开始时确保dpr缩放生效

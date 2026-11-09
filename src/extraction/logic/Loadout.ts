@@ -1,3 +1,4 @@
+import { world } from '../../world/continuous/Geometry';
 // 出发准备 + 装备运行时效果应用
 //
 // 阶段 1 简化版：
@@ -94,6 +95,7 @@ function consumeAirTanks(tanks: string[]): void {
 
 /** 取本次下潜实际带着的氧气瓶 id 列表（用于 HUD 双圈、潜水员双瓶视觉） */
 export function getActiveAirTanks(): string[] {
+    if(world()?.airTanks.length)return world()!.airTanks.slice();
     return _activeAirTanks.slice();
 }
 

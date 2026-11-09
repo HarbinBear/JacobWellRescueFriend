@@ -10,6 +10,7 @@ const idleSystems = new Proxy({}, { get: () => noop });
 let visible = false, now = 1000000;
 let breathBuoyancy = 0, bcdBuoyancy = 0;
 const overrides = {
+    'world/continuous/Runtime': idleSystems,
     'core/SaveStorage': {
         saveJSON: (key, data) => { storage.set(key, JSON.parse(JSON.stringify(data))); return true; },
         loadJSON: key => storage.has(key) ? JSON.parse(JSON.stringify(storage.get(key))) : null,
@@ -59,6 +60,7 @@ Date.now = () => now;
 try {
     const core = load('core/state'), { state, player, input, touches } = core;
     const { CONFIG } = load('core/config');
+    CONFIG.continuousWorld=false;
     assert.equal(CONFIG.driveMode, 'semiAuto');
     CONFIG.driveMode = 'auto'; // Keep legacy lifecycle assertions independent of stamina.
     CONFIG.maze.fishEnabled = false;

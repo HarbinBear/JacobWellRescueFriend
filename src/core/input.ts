@@ -1,3 +1,6 @@
+import { activeWorld } from '../world/continuous/Geometry';
+import { exitContinuousWorld } from '../world/continuous/Runtime';
+import { worldTouchStart, worldTouchMove, worldTouchEnd } from '../world/continuous/WorldHUD';
 import { updateSemiAutoJoystick, releaseSemiAutoDrive } from '../logic/SemiAutoDrive';
 import { resetDriveInput } from '../logic/DriveMode';
 import { CONFIG } from './config';
@@ -113,7 +116,7 @@ const _homeTouchStartX: { [id: number]: number } = {};
 const _homeTouchStartY: { [id: number]: number } = {};
 const _homeTouchMoved: { [id: number]: boolean } = {};
 
-function returnToMainMenu(){if(state.mazeRescue?.rockTrial)exitCaveRockTrial();else state.screen='menu';}
+function returnToMainMenu(){if(activeWorld())exitContinuousWorld();else if(state.mazeRescue?.rockTrial)exitCaveRockTrial();else state.screen='menu';}
 
 // 主菜单按钮 → 行为
 function handleMenuButton(id: MenuButtonId, onMaze?: () => void, onMazeDive?: (kind: string) => void) {
@@ -390,6 +393,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
     }
 
     wx.onTouchStart((res) => {
+        if (worldTouchStart(res)) return;
         unlockAdaptiveMusic();
         const orientation = getScreenOrientationButton();
         const orientationTouch = orientation && res.changedTouches.find(t => Math.hypot(t.clientX - orientation.x, t.clientY - orientation.y) <= orientation.hitRadius);
@@ -695,6 +699,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
     });
 
     wx.onTouchMove((res) => {
+        if (worldTouchMove(res)) return;
         // === 家场景：镜头拖拽 ===
         if (state.screen === 'home_evening') {
             const t = res.changedTouches[0] || res.touches[res.touches.length - 1];
@@ -842,6 +847,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
     });
 
     wx.onTouchEnd((res) => {
+        if (worldTouchEnd(res)) return;
         if (consumeOrientationEnds(res)) return;
         const remaining = res.changedTouches.filter(t => !finishDiveActionTouch(t.identifier, t.clientX, t.clientY, false));
         if (remaining.length !== res.changedTouches.length) {
@@ -1421,6 +1427,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
     if ((wx as any).onHide) (wx as any).onHide(() => { cancelAllInput(); orientationTouches.clear(); });
 
     wx.onTouchCancel((res) => {
+        if (worldTouchEnd(res, true)) return;
         if (consumeOrientationEnds(res)) return;
         cancelInteractionInput();
         if (res.changedTouches.some(t => t.identifier === touches.joystickId)) resetDriveInput();

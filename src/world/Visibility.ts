@@ -1,6 +1,8 @@
+import { worldSegmentClear } from './continuous/Routes';
+import { activeWorld, world } from './continuous/Geometry';
 import { CONFIG } from '../core/config';
 import { state } from '../core/state';
-import { rockSegmentClear } from './RockGeometry';
+import { rockSegmentClear, circleHitsRock } from './RockGeometry';
 
 export function getActiveMapContext() {
     if (state.screen === 'mazeRescue' && state.mazeRescue) {
@@ -22,6 +24,7 @@ export function getActiveMapContext() {
 }
 
 export function isLineOfSight(x1: number, y1: number, x2: number, y2: number, maxDist: number): boolean {
+    if(activeWorld())return Math.hypot(x2-x1,y2-y1)<=maxDist&&worldSegmentClear({x:x1,y:y1},{x:x2,y:y2});
     let dist = Math.hypot(x2-x1, y2-y1);
     if(dist > maxDist) return false;
     if(state.screen==='mazeRescue' && state.mazeRescue?.caveRockRoom)return rockSegmentClear(state.mazeRescue.mazeWalls,{x:x1,y:y1},{x:x2,y:y2});
@@ -52,7 +55,7 @@ export function isLineOfSight(x1: number, y1: number, x2: number, y2: number, ma
             for (let i = 0; i <= steps; i++) {
                 let t = i / steps;
                 let cx = x1 + dx * t, cy = y1 + dy * t;
-                if (Math.hypot(cx - w.x, cy - w.y) < w.r) return false;
+                if (circleHitsRock(w,cx,cy,0)) return false;
             }
         }
     }

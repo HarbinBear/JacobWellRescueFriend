@@ -1,3 +1,5 @@
+import { activeWorld } from '../world/continuous/Geometry';
+import { shouldEnterWorld, enterContinuousWorld, previewSeed, continueWithoutDiveReset, updateContinuousWorld } from '../world/continuous/Runtime';
 import { updateInteractionMovement, resetInteractions } from './Interaction';
 import { processJoystickDrive } from './JoystickDrive';
 import { resetDriveInput } from './DriveMode';
@@ -87,6 +89,7 @@ function placePlayerAtMazeEntrance(maze: { exitX: number; mazeTileSize: number; 
 // 读档失败（无存档/版本不兼容/数据损坏）才走原来的流程生成新地图。
 // =============================================
 export function resetMazeLogic(rockTrial=false) {
+    if (shouldEnterWorld(rockTrial)) { enterContinuousWorld(() => { resetMazeLogic(); startMazeDive('scout'); }); return; }
     if(rockTrialSnapshot && !rockTrial)exitCaveRockTrial();
     resetDriveInput(true);
     // === 优先尝试读取本地存档 ===
@@ -219,7 +222,7 @@ export function resetMazeLogic(rockTrial=false) {
     state.rope = createRopeState();
 
     // 生成迷宫地图
-    const mazeData = rockTrial?createCaveRockTrialMap():generateMazeMap();
+    const mazeData = rockTrial?createCaveRockTrialMap():generateMazeMap(previewSeed());
 
     // 初始化相机
     state.camera = {
@@ -388,6 +391,7 @@ export function resetMazeLogic(rockTrial=false) {
 // 迷宫多次下潜闭环：从岸上开始下潜
 // =============================================
 export function startMazeDive(diveType: string) {
+    if (continueWithoutDiveReset()) return;
     const maze = state.mazeRescue;
     if (!maze) return;
 
@@ -851,6 +855,7 @@ export function goHome() {
 // 迷宫多次下潜闭环：每帧更新
 // =============================================
 export function updateMaze() {
+    if (activeWorld()) { updateContinuousWorld(); return; }
     if (state.screen !== 'mazeRescue') return;
     const maze = state.mazeRescue;
     if (!maze) return;

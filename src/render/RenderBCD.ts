@@ -1,3 +1,4 @@
+import { world } from '../world/continuous/Geometry';
 // BCD：用气囊轮廓的收瘪/鼓起提示实际体积，配平由玩家感受。
 import { CONFIG } from '../core/config';
 import { getUILayout } from '../core/UILayout';
@@ -11,7 +12,7 @@ export interface BCDLayout {
 }
 function cfg(): any { return CONFIG.bcd || {}; }
 export function isBCDUIVisible(): boolean {
-    return !!(cfg().enabled && cfg().uiVisible && state.screen === 'mazeRescue' && state.mazeRescue?.phase === 'play' &&
+    return !!(cfg().enabled && cfg().uiVisible && state.screen === 'mazeRescue' && state.mazeRescue?.phase === 'play' && (!world() || world()!.headWet) &&
         !state.wheel.open && !state.interaction.gesture);
 }
 export function getBCDLayout(): BCDLayout {

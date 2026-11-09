@@ -1,3 +1,4 @@
+import { activeWorld, world } from '../world/continuous/Geometry';
 import { CONFIG } from '../core/config';
 import { player, state } from '../core/state';
 import { fishShape, fishKnotPoint } from '../logic/FishGeometry';
@@ -56,6 +57,7 @@ export function drawFishHandlingWorld(c: CanvasRenderingContext2D, fish: FishEne
             Math.sin(angle + i * Math.PI * 2 / 3) * 5, 2.6);
         c.restore();
     }
+    if (activeWorld() && fish.y < world()!.surfaceY) return;
     if (state.interaction.task || Math.hypot(player.x - fish.x, player.y - fish.y) > 140) return;
     const zoom = Math.max(.5, state.camera.zoom);
     c.save(); c.translate(fish.x, fish.y - shape.radius - 29); c.scale(1 / zoom, 1 / zoom);

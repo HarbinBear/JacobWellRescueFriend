@@ -20,6 +20,7 @@ type DiverColors = {
 };
 
 type DiverMotion = {
+    landPose?: { blend:number; phase:number; effort:number; facing:number };
     dancePose?: RescueDancePose;
     limpPose?: RescueLimpPose;
     rescueStrike?: number;
@@ -330,6 +331,7 @@ function drawLegAndFin(
     colors: DiverColors,
     danceBend = 0,
     limp?: { thigh: number; shin: number },
+    groundPose?: { blend:number; phase:number; effort:number; facing:number },
 ) {
     const cfg = CONFIG.diver;
 
@@ -375,17 +377,27 @@ function drawLegAndFin(
     const kneeForward = -(cfg.thighLength + thighStretch) * (1 - danceBend * .46);
     // 侧向：只有转向修正 + 静态基础张开（side * kickBaseSpread 当前为 0）
     const kneeLateral = side * (cfg.kickBaseSpread + danceBend * 8) + turnOffset * 0.7;
-    const kneePX = hipPX + (limp ? Math.cos(limp.thigh) * cfg.thighLength : kneeForward);
-    const kneePY = hipPY + (limp ? Math.sin(limp.thigh) * cfg.thighLength : kneeLateral);
+    let kneePX = hipPX + (limp ? Math.cos(limp.thigh) * cfg.thighLength : kneeForward);
+    let kneePY = hipPY + (limp ? Math.sin(limp.thigh) * cfg.thighLength : kneeLateral);
 
     // 小腿：沿 -x 延伸，叠加更强的鞭状伸缩（纯前后运动）
     const calfStretch = ankleWave * cfg.kickStretchAmp * 0.8;
     const ankleForward = -(cfg.calfLength + calfStretch) * (1 - danceBend * .32);
     // 侧向：只保留转向修正（衰减到 0.25，膝盖侧向的延续）
     const ankleLateral = turnOffset * 0.25 - side * danceBend * 4;
-    const anklePX = kneePX + (limp ? Math.cos(limp.shin) * cfg.calfLength : ankleForward);
-    const anklePY = kneePY + (limp ? Math.sin(limp.shin) * cfg.calfLength : ankleLateral);
+    let anklePX = kneePX + (limp ? Math.cos(limp.shin) * cfg.calfLength : ankleForward);
+    let anklePY = kneePY + (limp ? Math.sin(limp.shin) * cfg.calfLength : ankleLateral);
 
+    const land = groundPose?.blend || 0;
+    if (land > 0) {
+        const phase = (groundPose!.phase + (side > 0 ? .5 : 0)) * Math.PI * 2;
+        const stride = Math.sin(phase) * 13 * groundPose!.effort * groundPose!.facing;
+        const lift = Math.max(0,Math.cos(phase)) * 5.5 * groundPose!.effort;
+        kneePX += (hipPX - 17 + lift*.4 - kneePX) * land;
+        kneePY += (side*2.5 + stride*.45 - kneePY) * land;
+        anklePX += (-43 + lift - anklePX) * land;
+        anklePY += (side*2.7 + stride - anklePY) * land;
+    }
     // ===== 绘制大腿 =====
     drawTaperedLimb(renderCtx, hipPX, hipPY, kneePX, kneePY,
         cfg.thighWidthHip, cfg.thighWidthKnee, colors.suit, '#1c262c');
@@ -413,8 +425,8 @@ function drawLegAndFin(
     const calfDX = anklePX - kneePX;
     const calfDY = anklePY - kneePY;
     const calfLen = Math.hypot(calfDX, calfDY) || 1;
-    const footDirX = calfDX / calfLen;
-    const footDirY = calfDY / calfLen;
+    const footDirX = calfDX / calfLen * (1-land);
+    const footDirY = calfDY / calfLen * (1-land) + (groundPose?.facing || 1)*land;
 
     // 蛙鞋末端柔性偏摆：只保留"转向修正"（玩家主动转弯时脚蹼偏转一点方向）
     // **关键**：完全去掉 side * whipSignal 分量——左右腿本来用 side 相反符号驱动会形成"画圈"错觉
@@ -748,6 +760,7 @@ export function drawDiver(
     const limp = motion.limpPose;
     const time = motion.animTime ?? Date.now() / 150;
     const authoredWork = motion.workPose ? sampleWorkMotion(motion.workPose) : null;
+    const landBlend = motion.landPose?.blend || 0;
     const struggle = motion.ropeStruggle;
     const struggleAmount = struggle ? clamp(struggle.strength * .72 + struggle.pull * .4, 0, 1) : 0;
     const struggleBeat = (struggle?.phase ?? 0) * .46;
@@ -935,16 +948,23 @@ export function drawDiver(
     const rightArmTargetLower = rightArmTargetUpper - .18 - struggleAmount * .96;
 
     const strike = motion.rescueStrike || 0;
-    const leftArmUpper = limp ? limp.lu : dance ? dance.lu : leftArmUpperBase + (leftArmTargetUpper - leftArmUpperBase) * armBlend;
-    const leftArmLower = limp ? limp.ll : dance ? dance.ll : leftArmLowerBase + (leftArmTargetLower - leftArmLowerBase) * armBlend;
-    const rightArmUpper = limp ? limp.ru : strike ? -1.8 + strike * 2.1 : dance ? dance.ru : rightArmUpperBase + (rightArmTargetUpper - rightArmUpperBase) * armBlend;
-    const rightArmLower = limp ? limp.rl : strike ? -.9 + strike * .9 : dance ? dance.rl : rightArmLowerBase + (rightArmTargetLower - rightArmLowerBase) * armBlend;
+    let leftArmUpper = limp ? limp.lu : dance ? dance.lu : leftArmUpperBase + (leftArmTargetUpper - leftArmUpperBase) * armBlend;
+    let leftArmLower = limp ? limp.ll : dance ? dance.ll : leftArmLowerBase + (leftArmTargetLower - leftArmLowerBase) * armBlend;
+    let rightArmUpper = limp ? limp.ru : strike ? -1.8 + strike * 2.1 : dance ? dance.ru : rightArmUpperBase + (rightArmTargetUpper - rightArmUpperBase) * armBlend;
+    let rightArmLower = limp ? limp.rl : strike ? -.9 + strike * .9 : dance ? dance.rl : rightArmLowerBase + (rightArmTargetLower - rightArmLowerBase) * armBlend;
 
+    if (landBlend > 0 && !authoredWork) {
+        const swing = Math.sin(motion.landPose!.phase*Math.PI*2)*.38*motion.landPose!.effort;
+        leftArmUpper += (Math.PI + .13 + swing-leftArmUpper)*landBlend;
+        leftArmLower += (Math.PI + .19 + swing-leftArmLower)*landBlend;
+        rightArmUpper += (Math.PI - .13 - swing-rightArmUpper)*landBlend;
+        rightArmLower += (Math.PI - .19 - swing-rightArmLower)*landBlend;
+    }
     renderCtx.save();
     const workOffset = authoredWork ? authoredWork.lean - authoredWork.recoil : 0;
     renderCtx.translate(x + Math.cos(angle) * workOffset + (limp || authoredWork ? 0 : dance ? dance.sway : driftX),
-        y + Math.sin(angle) * workOffset + (limp || authoredWork ? 0 : dance ? dance.bounce : driftY));
-    renderCtx.rotate(angle + (limp ? 0 : authoredWork ? authoredWork.roll : dance ? dance.roll : bodyRoll + resonance.roll));
+        y + Math.sin(angle) * workOffset + (limp || authoredWork ? 0 : dance ? dance.bounce : driftY*(1-landBlend)));
+    renderCtx.rotate(angle + (limp ? 0 : authoredWork ? authoredWork.roll : dance ? dance.roll : (bodyRoll + resonance.roll)*(1-landBlend)));
     renderCtx.translate(0, -resonance.lift);
     renderCtx.scale(resonance.scaleX, resonance.scaleY);
     // 用 Y 轴压缩模拟 3D 侧倾（roll）：bodyRoll 越大身体越"侧过去"，Y 方向被压扁
@@ -995,10 +1015,10 @@ export function drawDiver(
     const rightBend = dance ? dance.rightBend : Math.max(0, -yank * .9);
 
     drawLegAndFin(renderCtx, -8.2, -4.2, -1, legPhaseVal, legAmp, leftTurnProgress, leftTurnStrength, limp ? 0 : bodyYaw, c, leftBend,
-        limp ? { thigh: limp.leftThigh, shin: limp.leftShin } : undefined);
+        limp ? { thigh: limp.leftThigh, shin: limp.leftShin } : undefined, motion.landPose);
     // 右腿相位 +0.5，实现左右交替鞭打
     drawLegAndFin(renderCtx, -8.2, 4.2, 1, (legPhaseVal + 0.5) % 1, legAmp, rightTurnProgress, rightTurnStrength, limp ? 0 : bodyYaw, c, rightBend,
-        limp ? { thigh: limp.rightThigh, shin: limp.rightShin } : undefined);
+        limp ? { thigh: limp.rightThigh, shin: limp.rightShin } : undefined, motion.landPose);
 
     renderCtx.save();
     renderCtx.scale(limp ? 1 : dance ? dance.compress : torsoCompress, 1);

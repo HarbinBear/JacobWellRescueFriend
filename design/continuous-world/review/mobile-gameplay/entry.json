@@ -1,0 +1,7 @@
+{
+  "returnFromMenu": "真实点击继续，位置和三鱼绳端保持",
+  "newGame": "原生确认清除本章节测试进度，不迁移旧档",
+  "depleted": "明确点击重开测试章节，恢复可用状态，不自动传送",
+  "errors": [],
+  "status": "passed"
+}

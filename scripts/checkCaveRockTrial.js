@@ -24,6 +24,7 @@ function load(file){
  new Function('exports','require',code)(exports,n=>load(path.posix.normalize(path.posix.join(path.posix.dirname(file),n))));return exports;
 }
 const {state,player}=load('core/state'),{CONFIG}=load('core/config');
+CONFIG.continuousWorld=false;
 const {createCaveRockTrialMap,buildCaveRockPath}=load('world/CaveRockTrial'),geom=load('world/RockGeometry');
 const maze=createCaveRockTrialMap();
 assert(!geom.rockTrialCollision(maze,maze.spawnX,maze.spawnY,CONFIG.maze.playerRadius));
