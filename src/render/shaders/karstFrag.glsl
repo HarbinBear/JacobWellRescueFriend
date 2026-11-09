@@ -113,6 +113,7 @@ void main() {
     float coverage = 1.0 - smoothstep(-pixelWorld * 0.9, pixelWorld * 0.9, density(g));
     if (coverage < 0.003) { gl_FragColor = vec4(0.0); return; }
     float h = g.b * surfaceHeight;
+    vec2 gridOrigin=terrainBounds.xy+floor((p-terrainBounds.xy)/(terrainBounds.zw/(terrainPixels-1.0)))*(terrainBounds.zw/(terrainPixels-1.0));
     vec4 g0 = texture2D(geometry, st - vec2(texel.x, 0.0)), g1 = texture2D(geometry, st + vec2(texel.x, 0.0));
     vec4 g2 = texture2D(geometry, st - vec2(0.0, texel.y)), g3 = texture2D(geometry, st + vec2(0.0, texel.y));
     vec2 macro = vec2(g1.b - g0.b, g3.b - g2.b) * surfaceHeight / 24.0;
@@ -123,15 +124,32 @@ void main() {
     vec2 jacY = clamp((my1 - my0) / 24.0, vec2(-2.2), vec2(2.2));
     float family = geo.r * 3.0, growth = geo.b;
     float bedType = family > 1.6 ? floor(family + 0.5) : 0.0;
-    vec2 q = mapping / vec2(295.0, 338.0);
-    Mineral detail = sampleMineral(q, bedType);
+    // Shape-aware triplanar stone: steep sides see the actual height coordinate,
+    // not a camera-facing piece of a wallpaper. Smooth weights avoid face seams.
+    vec3 macroNormal=normalize(vec3(-macro,1.0));
+    vec3 projection=pow(abs(macroNormal),vec3(4.0));projection/=max(.001,projection.x+projection.y+projection.z);
+    Mineral detail=sampleMineral(p/347.0,bedType);
+    vec3 mineralColor=detail.color*projection.z;
+    float materialAO=detail.ao*projection.z;
+    vec2 micro=detail.slope*projection.z;
+    if(projection.x>.018){
+        Mineral side=sampleMineral(vec2(p.y,h)/347.0,bedType);
+        mineralColor+=side.color*projection.x;materialAO+=side.ao*projection.x;
+        micro+=vec2(side.slope.y*macro.x,side.slope.x+side.slope.y*macro.y)*projection.x;
+    }
+    if(projection.y>.018){
+        Mineral side=sampleMineral(vec2(p.x,h)/347.0,bedType);
+        mineralColor+=side.color*projection.y;materialAO+=side.ao*projection.y;
+        micro+=vec2(side.slope.x+side.slope.y*macro.x,side.slope.y*macro.y)*projection.y;
+    }
+    detail.color=mineralColor;detail.ao=materialAO;
     if (growth > 0.02) {
-        float type = family > 1.6 ? floor(family + 0.5) : 1.0;
+        float type = floor(family + 0.5);
         Mineral deposit = sampleMineral(mapping / vec2(245.0, 410.0), type);
         detail.color = mix(detail.color, deposit.color, growth);
-        detail.slope = mix(detail.slope, deposit.slope, growth); detail.ao = mix(detail.ao, deposit.ao, growth);
+        micro=mix(micro,vec2(dot(deposit.slope,jacX),dot(deposit.slope,jacY)),growth);
+        detail.ao = mix(detail.ao, deposit.ao, growth);
     }
-    vec2 micro = vec2(dot(detail.slope, jacX), dot(detail.slope, jacY));
     // Silhouette slope is primary. At a sharp edge, micro texture cannot flatten
     // the contour into a pasted plank, nor put a stripe over unrelated rock.
     float edge = 1.0 - smoothstep(2.0, 30.0, -density(g));
@@ -139,8 +157,9 @@ void main() {
     vec3 n = normalize(vec3(-macro + micro, 1.0));
     vec3 base = detail.color;
     float stain = smoothstep(0.28, 0.82, geo.g);
-    vec3 iron = family > 2.5 ? vec3(1.02, 0.70, 0.42) : vec3(0.91, 0.81, 0.66);
-    base *= mix(vec3(1.07, 1.03, 0.97), iron, stain);
+    vec3 rockPalette=family>2.5?vec3(1.22,0.66,0.34):family>1.5?vec3(0.77,0.86,0.93):family>0.5?vec3(1.08,1.03,0.91):mix(vec3(1.04,1.02,0.96),vec3(.93,.68,.42),smoothstep(.36,.82,geo.g));
+    base*=rockPalette;
+    base*=mix(vec3(1.04,1.01,.96),vec3(.99,.87,.73),stain*.30);
     base = pow(clamp(base, 0.0, 1.0), vec3(2.2));
     float ao = mix(0.55, 1.0, detail.ao);
     vec2 delta = p - light;
@@ -151,7 +170,7 @@ void main() {
     float hot = exp(-theta * theta / 0.031), cone = (spill * 0.65 + hot * 0.55) * enabled;
     float limit = beamDistance(theta), reach = 1.0 - smoothstep(limit + 12.0, limit + 170.0, distance);
     float fall = (1.0 - smoothstep(range * 0.72, range, distance)) / (1.0 + pow(distance / 188.0, 2.0));
-    float lightHeight = 238.0;
+    float lightHeight = 300.0;
     vec3 l = normalize(vec3(-delta, lightHeight - h));
     float diffuse = max(0.0, dot(n, l)), cameraPath = 30.0 + max(0.0, 160.0 - h) * 0.26;
     vec3 transmission = exp(-extinction * (distance * 1.48 + cameraPath));

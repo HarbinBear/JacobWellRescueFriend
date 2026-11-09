@@ -15,7 +15,9 @@ function load(file) {
 }
 const core = load('src/core/state'), map = load('src/world/map'), geometry = load('src/world/continuous/Geometry');
 const karst = load('src/world/KarstTerrain'), rocks = load('src/world/RockGeometry');
-const report = { scope: '实际地图生成器与手机版连续溶洞；内存测试，不是微信GPU实测', seeds: [], samples: 0, status: 'passed' };
+const config=load('src/core/config').CONFIG;
+config.karst.geometryMode=process.env.JWR_KARST_GENERATION==='chambers'?'chambers':'legacy';
+const report = { scope: '实际地图生成器与手机版连续溶洞；内存测试，不是微信GPU实测', generation:config.karst.geometryMode,seeds: [], samples: 0, status: 'passed' };
 const fingerprint = data => crypto.createHash('sha256').update(Buffer.from(data.buffer, data.byteOffset, data.byteLength)).digest('hex').slice(0, 12);
 function build(seed) {
     const maze = map.generateMazeMap(seed);
@@ -26,6 +28,7 @@ function build(seed) {
     try { world = geometry.attachWorldTerrain(maze); } finally { Math.random = random; }
     const terrain = karst.getKarstTerrain(maze);
     assert(terrain && terrain.formations.length > 0 && terrain.edges.length > 1000);
+    if(config.karst.geometryMode==='chambers'){assert(terrain.chambers?.rooms.length>=4);assert.equal(new Set(terrain.chambers.rooms.map(r=>r.grammar)).size,4);assert(terrain.formations.some(f=>f.length>130));}
     assert.equal(karst.buildKarstTerrain(maze), terrain, '同一地图不可重复分配地质场');
     assert(terrain.handles.every(wall => maze.mazeWalls.includes(wall)));
     return { maze, world, terrain };
@@ -102,6 +105,6 @@ for (const seed of [26110941, 0, 1, 7391, 4294967295]) {
     assert(t.handles.every(w => !rocks.hasRockSurface(w)), '退出必须解除墙面委托并释放地质场');
     report.seeds.push(info);
 }
-const out = path.join(ROOT, 'node_modules/.cache/karst-review/geometry-report.json');
+const out = path.join(ROOT, 'node_modules/.cache/karst-review/geometry-'+config.karst.geometryMode+'-report.json');
 fs.mkdirSync(path.dirname(out), { recursive: true }); fs.writeFileSync(out, JSON.stringify(report, null, 2));
 console.log(JSON.stringify(report, null, 2));

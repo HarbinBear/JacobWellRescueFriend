@@ -46,6 +46,7 @@ export const TABS: GMTab[] = [
     {
         name: '溶洞',
         items: [
+            { type: 'select', label: '造型（仅新章节）', path: 'karst.geometryMode', options: ['legacy','chambers'], optionLabels: ['保留原轮廓','四种洞室语法'] },
             { type: 'select', label: '表面版本（即时）', path: 'karst.surfaceMode', options: ['baseline','sculpted'], optionLabels: ['保留第一版','造型绑定材质'] },
             { type: 'number', label: '真实岩面反射', path: 'karst.bounceStrength', min: 0, max: 2, step: 0.1, precision: 1 },
             { type: 'number', label: '岩面粗糙法线', path: 'karst.normalStrength', min: 0, max: 2, step: 0.1, precision: 1 },

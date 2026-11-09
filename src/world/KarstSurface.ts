@@ -66,8 +66,8 @@ export function getKarstSurface(t: KarstTerrain): KarstSurface {
             const mappedV = p.depth + noise(p.depth, best.x, 91, best.seed) * 4;
             const rootBroad=noise(best.x,best.y,255,t.seed+1151),rootEroded=noise(best.x+rootBroad*37,best.y-rootBroad*29,74,t.seed+619);
             const originU=best.x*ca+best.y*sa+rootBroad*43,originV=-best.x*sa+best.y*ca+rootEroded*18;
-            u = mix(u, mappedU + originU, weight);
-            v = mix(v, mappedV + originV, weight);
+            u = t.generation==='legacy'?mix(u,mappedU+originU,weight):mappedU+originU;
+            v = t.generation==='legacy'?mix(v,mappedV+originV,weight):mappedV+originV;
             const asymmetry = e.faceOffset ?? (noise(best.x, best.y, 380, best.seed) * .22);
             const rounded = Math.sqrt(Math.max(0, 1 - Math.pow(clamp(cross - asymmetry, -1, 1), 2)));
             const localHeight = e.kind === 'blade' ? Math.max(0, 1 - Math.abs(cross - asymmetry) * .78) : rounded;

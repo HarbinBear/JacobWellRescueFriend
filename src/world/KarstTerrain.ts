@@ -1,3 +1,5 @@
+import { CONFIG } from '../core/config';
+import { planKarstChambers, chamberErosion, sculptKarstChambers, continuousKarstProtection, type KarstChambers } from './KarstChambers';
 import { RockPoint, RockWall, registerRockSurface, unregisterRockSurface } from './RockGeometry';
 import { karstClamp as clamp, karstMix as mix, karstSmooth as smooth, karstNoise as noise, karstHash as hash } from './KarstNoise';
 
@@ -8,7 +10,7 @@ export interface KarstFormation {
     x: number; y: number; length: number; width: number; bend: number; direction: number; seed: number;
 }
 export interface KarstTerrain {
-    seed: number; version: number; x: number; y: number; step: number; cols: number; rows: number;
+    seed: number; version: number; generation: 'legacy'|'chambers'; chambers?: KarstChambers; x: number; y: number; step: number; cols: number; rows: number;
     field: Float32Array; texture: Uint8Array; edges: KarstEdge[]; buckets: Map<string, KarstEdge[]>;
     owned: Map<RockWall, KarstEdge[]>; handles: RockWall[]; formations: KarstFormation[]; generationMs: number;
 }
@@ -232,14 +234,18 @@ function createEdges(t: KarstTerrain, maze: any) {
         ray: (x, y, dx, dy, range) => karstRay(t, x, y, dx, dy, range, wall).distance,
     });
 }
-export function buildKarstTerrain(maze: any): KarstTerrain {
+export function buildKarstTerrain(maze: any, requested?: string): KarstTerrain {
     const previous = getKarstTerrain(maze); if (previous) return previous;
     const start = Date.now(), seam = maze.continuous?.seamY || 1080, ts = maze.mazeTileSize;
+    const generation: 'legacy'|'chambers'=(requested||maze.karstGeneration||CONFIG.karst.geometryMode)==='chambers'?'chambers':'legacy';
+    maze.karstGeneration=generation;
     const x0 = -STEP * 2, y0 = Math.floor((seam - 144) / STEP) * STEP;
-    const t: KarstTerrain = { seed: maze.seed >>> 0, version: KARST_VERSION, x: x0, y: y0, step: STEP,
+    const t: KarstTerrain = { seed: maze.seed >>> 0, version: generation==='legacy'?KARST_VERSION:2, generation, x: x0, y: y0, step: STEP,
         cols: Math.ceil((maze.mazeCols * ts - x0 + STEP * 2) / STEP) + 1, rows: Math.ceil((maze.mazeRows * ts - y0 + STEP * 2) / STEP) + 1,
         field: null!, texture: null!, edges: [], buckets: new Map(), owned: new Map(),
         handles: maze.mazeWalls.filter((w: any) => !w.shoreBank && !w.shoreObstacle), formations: [], generationMs: 0 };
+    if(generation==='chambers')t.chambers=planKarstChambers(maze);
+    const protect=t.chambers?continuousKarstProtection(maze):(x:number,y:number)=>routeClearance(maze,x,y);
     const raw = new Float32Array(t.cols * t.rows), bankWalls = maze.continuous?.banks || [];
     for (let r = 0; r < t.rows; r++) for (let c = 0; c < t.cols; c++) {
         const x = t.x + c * STEP, y = t.y + r * STEP, u = x / ts - .5, v = y / ts - .5, cc = Math.floor(u), rr = Math.floor(v);
@@ -264,13 +270,14 @@ export function buildKarstTerrain(maze: any): KarstTerrain {
     t.field = blur(raw, t.cols, t.rows);
     for (let r = 0; r < t.rows; r++) for (let c = 0; c < t.cols; c++) {
         const x = t.x + c * STEP, y = t.y + r * STEP, i = r * t.cols + c, gate = smooth(seam - 16, seam + 160, y);
-        const erosion = noise(x, y, 207, t.seed) * 21 + noise(x + noise(x,y,139,t.seed+83)*22, y, 67, t.seed + 31) * 10 + noise(x, y, 29, t.seed + 77) * 3.5;
-        t.field[i] = Math.max(t.field[i] + erosion * gate, routeClearance(maze, x, y));
+        const erosion = t.chambers?chamberErosion(t.chambers.at(x,y),x,y):noise(x, y, 207, t.seed) * 21 + noise(x + noise(x,y,139,t.seed+83)*22, y, 67, t.seed + 31) * 10 + noise(x, y, 29, t.seed + 77) * 3.5;
+        t.field[i] = Math.max(t.field[i] + erosion * gate, protect(x, y));
         if (c === 0 || c === t.cols - 1 || r === t.rows - 1) t.field[i] = -192;
         if (Math.abs(t.field[i]) < .0001) t.field[i] = .0001;
     }
     const calcite = new Float32Array(raw.length), relief = new Float32Array(raw.length);
-    growFormations(t, maze, calcite, relief);
+    if(t.chambers)sculptKarstChambers(t,maze,protect,t.chambers);
+    else growFormations(t, maze, calcite, relief);
     const distance = karstDistances(t); t.texture = new Uint8Array(raw.length * 4);
     for (let r = 0; r < t.rows; r++) for (let c = 0; c < t.cols; c++) {
         const i = r * t.cols + c, x = t.x + c * STEP, y = t.y + r * STEP, inside = t.field[i] < 0;
@@ -293,7 +300,7 @@ export function buildKarstTerrain(maze: any): KarstTerrain {
 }
 export function karstStats(maze: any) {
     const t = getKarstTerrain(maze);
-    return t ? { version: t.version, seed: t.seed, step: t.step, grid: [t.cols, t.rows], edges: t.edges.length,
+    return t ? { version: t.version, generation:t.generation, chambers:t.chambers?.rooms.map(r=>({id:r.id,grammar:r.grammar,x:r.x,y:r.y,radius:r.radius})), seed: t.seed, step: t.step, grid: [t.cols, t.rows], edges: t.edges.length,
         formations: t.formations.length, cpuFieldBytes: t.field.byteLength + t.texture.byteLength,
         gpuFieldBytes: t.texture.byteLength, generationMs: t.generationMs, deterministic: true } : null;
 }

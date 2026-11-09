@@ -46,7 +46,9 @@ export function enterContinuousWorld(originalBootstrap: () => void) {
     pending = readWorldSnapshot(); bootstrap = originalBootstrap; booting = true;
     try {
         originalBootstrap();
-        const m: any = state.mazeRescue, w = attachWorldTerrain(m);
+        const m: any = state.mazeRescue;
+        m.karstGeneration=pending?(pending.config.karstGeneration||'legacy'):CONFIG.karst.geometryMode;
+        const w = attachWorldTerrain(m);
         w.airTanks = getActiveAirTanks(); m.phase='play';m.briefingShown=true;m.startTime=Date.now();
         m.caseNumber='林泉营地 · 连续章节';m.npcSecuredAt=0;
         state.fishEnemies.forEach((f:any) => f.worldId=w.nextFishId++);

@@ -21,7 +21,7 @@ export interface WorldSnapshot {
     player: any; npc: any; fish: any[]; ropes: any[]; links: any[]; current: any; ropeActive: boolean; markers: any[];
     maze: any; world: Partial<ShoreWorld>; explored: number[]; extraction: any; story: any; bcd: any; deco: any;
     stamina?: { remaining: number; exhausted: boolean };
-    config: { lightRange: number; moveSpeed: number; breathPeak: number };
+    config: { lightRange: number; moveSpeed: number; breathPeak: number; karstGeneration?: string; karstSurface?: string; karstStyle?: string };
 }
 export function packExplored(matrix: boolean[][]): number[] {
     const out: number[] = []; let count = 0, last = false;
@@ -67,7 +67,7 @@ export function captureWorld(): WorldSnapshot {
         ropeActive:state.rope.active, markers:copy(state.markers), maze, world:savedWorld, explored:packExplored(m.mazeExplored),
         extraction:copy((state as any).extraction), story:copy(state.story2), bcd:copy(getBCDRuntime()), deco:copy(getDecoRuntime()),
         stamina:{remaining:state.semiAutoDrive.remaining,exhausted:state.semiAutoDrive.exhausted},
-        config:{lightRange:CONFIG.lightRange,moveSpeed:CONFIG.maze.moveSpeed,breathPeak:CONFIG.breath.o2PerBreathPeak}};
+        config:{lightRange:CONFIG.lightRange,moveSpeed:CONFIG.maze.moveSpeed,breathPeak:CONFIG.breath.o2PerBreathPeak,karstGeneration:m.karstGeneration||'legacy',karstSurface:CONFIG.karst.surfaceMode,karstStyle:CONFIG.karst.style}};
 }
 export function validSnapshot(data: any): data is WorldSnapshot {
     return !!data && data.version === 1 && data.layoutVersion === layout.version && Number.isInteger(data.seed) &&
@@ -115,6 +115,8 @@ export function restoreWorld(data: WorldSnapshot) {
     (state as any).extraction=copy(data.extraction);state.story2=copy(data.story);
     Object.assign(getBCDRuntime(),copy(data.bcd),{inflateHeld:false,deflateHeld:false,inflateBurstRemain:0,deflateBurstRemain:0,inflating:false,deflating:false});
     Object.assign(getDecoRuntime(),copy(data.deco),{boostActive:false});
+    if(data.config.karstSurface)CONFIG.karst.surfaceMode=data.config.karstSurface;
+    if(data.config.karstStyle)CONFIG.karst.style=data.config.karstStyle;
     CONFIG.lightRange=data.config.lightRange;CONFIG.maze.moveSpeed=data.config.moveSpeed;CONFIG.breath.o2PerBreathPeak=data.config.breathPeak;
     state.interaction=createInteractionState();state.interaction.nextLinkId=Math.max(0,...state.rope.links.map(l=>l.id))+1;
     resetRopeMotion();m.phase='play';

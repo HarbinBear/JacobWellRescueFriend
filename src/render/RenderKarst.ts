@@ -7,6 +7,7 @@ import { getKarstTerrain, KarstTerrain, releaseKarstTerrain, sampleKarst } from 
 import { getKarstSurface, releaseKarstSurfaceData, KARST_SURFACE_HEIGHT, KARST_SURFACE_UV, type KarstSurface } from '../world/KarstSurface';
 import { getKarstBounce, releaseKarstBounce, karstBounceStats } from './KarstBounce';
 import { KARST_FRAG_SRC } from './shaders/karstFrag.glsl';
+import { KARST_COHERENT_FRAG_SRC } from './shaders/karstCoherentFrag.glsl';
 import { KARST_LEGACY_FRAG_SRC } from './shaders/karstLegacyFrag.glsl';
 
 const ASSETS = ['mineral-albedo.jpg', 'mineral-relief.png'];
@@ -62,7 +63,7 @@ function initialize(t: KarstTerrain) {
         }
         return shader;
     };
-    const mode = enhanced(), vertex = compile(gl.VERTEX_SHADER, VERTEX), fragment = compile(gl.FRAGMENT_SHADER, mode ? KARST_FRAG_SRC : KARST_LEGACY_FRAG_SRC);
+    const mode = enhanced(), vertex = compile(gl.VERTEX_SHADER, VERTEX), fragment = compile(gl.FRAGMENT_SHADER, mode ? (t.generation==='legacy'?KARST_COHERENT_FRAG_SRC:KARST_FRAG_SRC) : KARST_LEGACY_FRAG_SRC);
     program = gl.createProgram()!; gl.attachShader(program, vertex); gl.attachShader(program, fragment); gl.linkProgram(program);
     gl.deleteShader(vertex); gl.deleteShader(fragment);
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw Error(gl.getProgramInfoLog(program) || '溶洞着色器链接失败');
@@ -73,8 +74,8 @@ function initialize(t: KarstTerrain) {
     skin = mode ? getKarstSurface(t) : null;
     for (let i = 0; i < (mode ? 7 : 4); i++) {
         const texture = gl.createTexture()!; textures.push(texture); gl.activeTexture(gl.TEXTURE0 + i); gl.bindTexture(gl.TEXTURE_2D, texture);
-        const filter = i === 3 || i === 6 ? gl.NEAREST : gl.LINEAR;
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
+        const filter = i === 3 || i === 6 ? gl.NEAREST : (mode&&t.generation==='chambers'&&(i===1||i===2)?gl.LINEAR_MIPMAP_LINEAR:gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, i === 3 || i === 6 ? gl.NEAREST : gl.LINEAR);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
         gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0); gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
         if (i === 0) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, t.cols, t.rows, 0, gl.RGBA, gl.UNSIGNED_BYTE, skin?.geometry || t.texture);
@@ -82,6 +83,7 @@ function initialize(t: KarstTerrain) {
         else if (i === 3) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 512, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, beamBytes);
         else if (i < 6) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, t.cols, t.rows, 0, gl.RGBA, gl.UNSIGNED_BYTE, i === 4 ? skin!.coordinates : skin!.geology);
         else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 64, 6, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(64 * 6 * 4));
+        if(mode&&t.generation==='chambers'&&(i===1||i===2))gl.generateMipmap(gl.TEXTURE_2D);
         gl.uniform1i(location(['geometry', 'mineral', 'relief', 'beam', 'coordinates', 'geology', 'bounceVisibility'][i]), i);
     }
     geometry = t; generation++; failure = ''; activeMode = CONFIG.karst.surfaceMode; return true;
@@ -177,7 +179,7 @@ export function karstSurfaceStats() {
     return { ready: loaded && !!program, mode: program && gl && !gl.isContextLost() ? (enhanced() ? 'shape-bound-normal-surface' : 'height-normal-surface') : 'fallback',
         surfaceMode: activeMode, failure, draws, cacheHits, generation, lostCount, beamUploads, surfacePixels: pixels, surfaceCPUms: cpuMs,
         skinBakeMs: skin?.bakeMs || 0, mappedSamples: skin?.mappedFeatures || 0, bounce: karstBounceStats(),
-        gpuBytes: program ? (geometry?.texture.byteLength || 0) * (skin ? 3 : 1) + 1024 * 1024 * 4 * 2 + 512 * 4 + (skin ? 64 * 6 * 4 : 0) + pixels * 4 : 0,
+        gpuBytes: program ? (geometry?.texture.byteLength || 0) * (skin ? 3 : 1) + 1024 * 1024 * 4 * 2 * (skin&&geometry?.generation==='chambers'?4/3:1) + 512 * 4 + (skin ? 64 * 6 * 4 : 0) + pixels * 4 : 0,
         decodedImageBytes: loaded ? 1024 * 1024 * 4 * 2 : 0 };
 }
 export function karstCoverageDiagnostics() {

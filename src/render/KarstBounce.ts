@@ -10,7 +10,7 @@ export interface KarstBounceFrame {
 }
 let cached: KarstBounceFrame | null = null, lastTerrain: KarstTerrain | null = null, builds = 0;
 export function getKarstBounce(t: KarstTerrain, poly: any[], x: number, y: number, angle: number, range: number) {
-    const k = CONFIG.karst, key = [x, y, angle, range, poly.length, k.lightEnergy, k.bounceStrength, CONFIG.quality.vplMax].join('/');
+    const k = CONFIG.karst, key = [t.seed,t.generation,t.version,x,y,angle,range,poly.length,k.lightEnergy,k.bounceStrength,k.extinction.join(),CONFIG.quality.scale,CONFIG.quality.vplMax].join('/');
     if (cached?.key === key && lastTerrain === t) return cached;
     const frame: KarstBounceFrame = { key, positions: new Float32Array(24), directions: new Float32Array(24), colors: new Float32Array(24),
         visibility: new Uint8Array(KARST_BOUNCE_RAYS * KARST_BOUNCE_COUNT * 4), count: 0, energy: 0, builds: ++builds };
