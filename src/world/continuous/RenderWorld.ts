@@ -3,6 +3,7 @@ import { drawMazeWallShape } from '../../render/RenderMazeScene';
 import { drawKarstSurface, karstSurfaceStats, karstAssetsReady } from '../../render/RenderKarst';
 import { getKarstTerrain, karstStats } from '../KarstTerrain';
 import { getKarstBounce } from '../../render/KarstBounce';
+import { drawKarstVolume, restoreKarstVolumeLight, karstVolumeStats } from '../../render/RenderKarstVolume';
 import { CONFIG } from '../../core/config';
 import { state, player, particles } from '../../core/state';
 import { canvas,ctx,dpr,logicW,logicH } from '../../render/Canvas';
@@ -42,7 +43,7 @@ export function updateWorldAssets(){
     else if(!activeWorld()&&registered){releaseImages(ASSETS.map(f=>'shore/'+f));registered=false;}
 }
 export function assetsReady(){return ASSETS.every(f=>isImageReady('shore/'+f));}
-export function worldGraphicsStats(){const imageBytes=ASSETS.reduce((n,f)=>{const im=getImage('shore/'+f);return n+(im?im.width*im.height*4:0);},0);return {webgl:isWebGLAvailable(),pixelSize:getGLCanvasPixelSize(),sceneDecodedRGBABytes:imageBytes,character:"original",rocks:getKarstTerrain(state.mazeRescue)?"continuous-karst":"original-circles",karst:karstStats(state.mazeRescue),surface:karstSurfaceStats(),crossfade:true};}
+export function worldGraphicsStats(){const imageBytes=ASSETS.reduce((n,f)=>{const im=getImage('shore/'+f);return n+(im?im.width*im.height*4:0);},0);return {webgl:isWebGLAvailable(),pixelSize:getGLCanvasPixelSize(),sceneDecodedRGBABytes:imageBytes,character:"original",rocks:getKarstTerrain(state.mazeRescue)?"continuous-karst":"original-circles",karst:karstStats(state.mazeRescue),surface:karstSurfaceStats(),volume:karstVolumeStats(),crossfade:true};}
 function transform(){const c=state.camera;ctx.translate(logicW/2,logicH/2);ctx.scale(c.zoom,c.zoom);ctx.translate(-c.x-c.swayX,-c.y-c.swayY);}
 function gradient(y1:number,y2:number,stops:[number,string][]) {const g=ctx.createLinearGradient(0,y1,0,y2);for(const [t,c]of stops)g.addColorStop(t,c);return g;}
 function visible(x:number,y:number,w:number,h:number,v:any){return x+w>v.l&&x<v.r&&y+h>v.t&&y<v.b;}
@@ -138,10 +139,10 @@ function lighting(v:any) {
         const light=state.flashlightOn!==false&&w.wet>.3,range=CONFIG.lightRange;
         const poly=light?getLightPolygon(player.x,player.y,player.angle,range,CONFIG.fov):[];surfacePoly=poly;
         uploadPolyData(poly,range);const count=uploadVPLData(poly,range)||0;
-        const terrain=getKarstTerrain(state.mazeRescue);
-        uploadKarstBounceData(light&&terrain&&CONFIG.karst.surfaceMode!=='baseline'?getKarstBounce(terrain,poly,player.x,player.y,player.angle,range):null);
+        const terrain=getKarstTerrain(state.mazeRescue),sculpted=!!terrain&&terrain.generation!=='volume'&&CONFIG.karst.surfaceMode!=='baseline';
+        uploadKarstBounceData(light&&terrain&&sculpted?getKarstBounce(terrain,poly,player.x,player.y,player.angle,range):null);
         const base={playerX:player.x,playerY:player.y,cameraX:c.x+c.swayX,cameraY:c.y+c.swayY,zoom:c.zoom,shakeX:0,shakeY:0,angle:player.angle,maxDist:range,
-            flashlightActive:light,karstMode:!!terrain,karstEnhanced:!!terrain&&CONFIG.karst.surfaceMode!=='baseline',npcX:state.npc.x,npcY:state.npc.y,npcAngle:state.npc.angle,npcDist:range*.5,npcActive:false,polyCount:poly.length,vplCount:count};
+            flashlightActive:light,karstMode:!!terrain,karstEnhanced:sculpted,npcX:state.npc.x,npcY:state.npc.y,npcAngle:state.npc.angle,npcDist:range*.5,npcActive:false,polyCount:poly.length,vplCount:count};
         renderVolumetricLight(base);const size=getGLCanvasPixelSize();
         ctx.globalCompositeOperation='screen';ctx.drawImage(getVolGLCanvas() as any,0,0,size.w,size.h,0,0,logicW,logicH);ctx.globalCompositeOperation='source-over';
         renderLightMask({...base,maskAlpha,worldSurfaceY:w.surfaceY} as any);ctx.drawImage(getGLCanvas() as any,0,0,size.w,size.h,0,0,logicW,logicH);
@@ -175,7 +176,10 @@ export function drawContinuousFrame(){
     const c=state.camera,zoom=c.zoom;
     const v={l:c.x-logicW/(2*zoom)-80,r:c.x+logicW/(2*zoom)+80,t:c.y-logicH/(2*zoom)-80,b:c.y+logicH/(2*zoom)+80};
     ctx.setTransform(dpr,0,0,dpr,0,0);ctx.fillStyle='#08272e';ctx.fillRect(0,0,logicW,logicH);
-    ctx.save();transform();drawBackdrop(v);drawDeepCave(v);drawBanks(v);drawNaturalBoundaries(ctx,v);drawCamp(v);
+    // 三维洞腔画在潜水员、鱼和绳索的后面；旧的平面岩壁仍然画在光照遮罩之后。
+    const terrain=getKarstTerrain(state.mazeRescue),volume=!!terrain&&terrain.generation==='volume';
+    ctx.save();transform();drawBackdrop(v);drawDeepCave(v);
+    const volumeDrawn=volume&&drawKarstVolume(ctx,terrain!,zoom,state.flashlightOn!==false&&w.wet>.3);drawBanks(v);drawNaturalBoundaries(ctx,v);drawCamp(v);
     drawRopesWorld(v.l,v.r,v.t,v.b);drawRopeTethersWorld(ctx,v.l,v.r,v.t,v.b);drawRemovedRopesWorld(ctx);drawRescueRopeWorld(ctx);
     drawAllFishEnemies(ctx,v.l,v.r,v.t,v.b);drawOxygenTanksWorld(ctx,v.l,v.r,v.t,v.b);drawOxygenFeedbackWorld(ctx);drawRelicsWorld(ctx,v.l,v.r,v.t,v.b);drawDroppedItemsWorld(v.l,v.r,v.t,v.b);
     const visual=w.headWet?getRescueTapeVisual():undefined;
@@ -188,7 +192,8 @@ export function drawContinuousFrame(){
     drawInteractionWorkWorld(ctx);ctx.save();ctx.beginPath();ctx.rect(v.l,w.surfaceY,v.r-v.l,Math.max(0,v.b-w.surfaceY));ctx.clip();drawBreathBubblesWorld(ctx,v.l,v.r,v.t,v.b);ctx.restore();
     for(const p of particles){if(p.x<v.l||p.x>v.r||p.y<v.t||p.y>v.b)continue;ctx.fillStyle=p.type==='silt'?`rgba(91,124,97,${p.life*.17})`:`rgba(193,220,180,${p.life*.3})`;ctx.beginPath();ctx.arc(p.x,p.y,Math.max(.5,p.size),0,Math.PI*2);ctx.fill();}
     ctx.restore();const surfacePoly=lighting(v);
-    ctx.save();transform();drawKarstSurface(ctx,zoom,surfacePoly);drawRescueTarget(ctx,visual);drawSurface(v);drawRopeApproachWorld(ctx,zoom,{left:v.l,right:v.r,top:v.t,bottom:v.b});drawRopeAimWorld(ctx);drawActionPreviewWorld(ctx);drawInteractionOverlayWorld(ctx);ctx.restore();
+    if(volumeDrawn&&isWebGLAvailable()){const size=getGLCanvasPixelSize();restoreKarstVolumeLight(ctx,getGLCanvas(),size.w,size.h,Math.max(0,logicH/2+(w.surfaceY-c.y-c.swayY)*zoom));}
+    ctx.save();transform();if(!volumeDrawn)drawKarstSurface(ctx,zoom,surfacePoly);drawRescueTarget(ctx,visual);drawSurface(v);drawRopeApproachWorld(ctx,zoom,{left:v.l,right:v.r,top:v.t,bottom:v.b});drawRopeAimWorld(ctx);drawActionPreviewWorld(ctx);drawInteractionOverlayWorld(ctx);ctx.restore();
     if((w as any).overview){
         ctx.save();ctx.fillStyle='rgba(226,231,199,.89)';ctx.fillRect(logicW-260,13,245,30);ctx.fillStyle='#52664a';ctx.font='11px PingFang SC';ctx.textAlign='left';ctx.fillText('营地与泉井 · 同一张地图的验收总览',logicW-250,32);
         ctx.font='9px PingFang SC';ctx.textAlign='center';
@@ -196,5 +201,5 @@ export function drawContinuousFrame(){
         ctx.restore();return;
     }
     drawWorldHUD(ctx);if(!w.panel){drawWheelButton();drawWheel();drawActionControls(ctx);drawInteractionHUD(ctx);}drawFishThreatDirection(ctx,logicW,logicH,c.x,c.y,c.zoom);drawFishBiteEffect(ctx,logicW,logicH);drawBagFullPage();drawItemDetailCard();drawGMPanel(ctx);drawPerfHUD(ctx);
-    if(!assetsReady()||!karstAssetsReady()){ctx.fillStyle='rgba(231,231,204,.9)';ctx.fillRect(logicW/2-88,logicH/2-18,176,36);ctx.fillStyle='#65755a';ctx.textAlign='center';ctx.font='11px PingFang SC';ctx.fillText('正在铺设林泉营地素材',logicW/2,logicH/2+4);ctx.textAlign='left';}
+    if(!assetsReady()||!volume&&!karstAssetsReady()){ctx.fillStyle='rgba(231,231,204,.9)';ctx.fillRect(logicW/2-88,logicH/2-18,176,36);ctx.fillStyle='#65755a';ctx.textAlign='center';ctx.font='11px PingFang SC';ctx.fillText('正在铺设林泉营地素材',logicW/2,logicH/2+4);ctx.textAlign='left';}
 }

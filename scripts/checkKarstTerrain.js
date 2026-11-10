@@ -16,7 +16,7 @@ function load(file) {
 const core = load('src/core/state'), map = load('src/world/map'), geometry = load('src/world/continuous/Geometry');
 const karst = load('src/world/KarstTerrain'), rocks = load('src/world/RockGeometry');
 const config=load('src/core/config').CONFIG;
-config.karst.geometryMode=process.env.JWR_KARST_GENERATION==='chambers'?'chambers':'legacy';
+config.karst.geometryMode=['chambers','volume'].includes(process.env.JWR_KARST_GENERATION)?process.env.JWR_KARST_GENERATION:'legacy';
 const report = { scope: '实际地图生成器与手机版连续溶洞；内存测试，不是微信GPU实测', generation:config.karst.geometryMode,seeds: [], samples: 0, status: 'passed' };
 const fingerprint = data => crypto.createHash('sha256').update(Buffer.from(data.buffer, data.byteOffset, data.byteLength)).digest('hex').slice(0, 12);
 function build(seed) {
@@ -27,7 +27,9 @@ function build(seed) {
     let world;
     try { world = geometry.attachWorldTerrain(maze); } finally { Math.random = random; }
     const terrain = karst.getKarstTerrain(maze);
-    assert(terrain && terrain.formations.length > 0 && terrain.edges.length > 1000);
+    assert(terrain && terrain.edges.length > 1000);
+    if(config.karst.geometryMode==='volume'){assert.equal(terrain.generation,'volume');assert(terrain.volume.stats.segments>100);}
+    else assert(terrain.formations.length > 0);
     if(config.karst.geometryMode==='chambers'){assert(terrain.chambers?.rooms.length>=4);assert.equal(new Set(terrain.chambers.rooms.map(r=>r.grammar)).size,4);assert(terrain.formations.some(f=>f.length>130));}
     assert.equal(karst.buildKarstTerrain(maze), terrain, '同一地图不可重复分配地质场');
     assert(terrain.handles.every(wall => maze.mazeWalls.includes(wall)));
@@ -99,7 +101,7 @@ for (const seed of [26110941, 0, 1, 7391, 4294967295]) {
     assert.equal(fingerprint(repeat.terrain.texture), digest, '相同种子必须生成相同高度、材质与轮廓');
     assert.deepEqual(repeat.terrain.formations, t.formations);
     const info = { seed, fingerprint: digest, edges: t.edges.length, formations: t.formations.length,
-        protectedCells: seen.size, navigationNodes: navigation.length, trueRadiusNavigation: reached, rayChecks: rays, maxDensityError: maximumError, generationMs: t.generationMs };
+        volume: t.volume&&t.volume.stats, protectedCells: seen.size, navigationNodes: navigation.length, trueRadiusNavigation: reached, rayChecks: rays, maxDensityError: maximumError, generationMs: t.generationMs };
     karst.releaseKarstTerrain(maze); karst.releaseKarstTerrain(repeat.maze);
     assert.equal(karst.getKarstTerrain(maze), null);
     assert(t.handles.every(w => !rocks.hasRockSurface(w)), '退出必须解除墙面委托并释放地质场');

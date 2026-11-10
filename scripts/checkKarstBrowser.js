@@ -1,7 +1,7 @@
 const fs = require('fs'), path = require('path'), assert = require('assert/strict');
 const { openReviewBrowser } = require('../design/cave-room/browser.cjs');
 const ROOT = path.resolve(__dirname, '..'), OUT = path.join(ROOT, 'node_modules/.cache/karst-review/validation');
-const URL = process.env.JWR_PREVIEW_URL || 'http://127.0.0.1:60972/node_modules/.cache/karst-review/live/game.html';
+const URL = process.env.JWR_PREVIEW_URL || 'http://127.0.0.1:60972/node_modules/.cache/karst-review/live/game.html?legacy';
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 (async () => {
     fs.mkdirSync(OUT, { recursive: true });

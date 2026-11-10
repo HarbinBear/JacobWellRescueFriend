@@ -1,6 +1,6 @@
 import { CONFIG } from '../src/core/config';
 import { state, player, input } from '../src/core/state';
-import { getKarstTerrain, buildKarstTerrain, karstRay } from '../src/world/KarstTerrain';
+import { getKarstTerrain, buildKarstTerrain, karstRay, karstNearest } from '../src/world/KarstTerrain';
 import { releaseKarstSurface, inspectKarst } from '../src/render/RenderKarst';
 import { world, circleCollision } from '../src/world/continuous/Geometry';
 import { snapCameraToPlayer } from '../src/logic/CameraLogic';
@@ -58,7 +58,7 @@ export function inspectKarstSite(index = 0) {
 }
 export function chooseKarstVersion(version = 'E01', preservePosition = true) {
     const maze: any = state.mazeRescue, w = world(); if (!maze || !w) return false;
-    const generation = version === 'V01' || version === 'E01' ? 'legacy' : 'chambers';
+    const generation = version === 'S03' ? 'volume' : version === 'V01' || version === 'E01' ? 'legacy' : 'chambers';
     const previous = getKarstTerrain(maze), wasHidden = w.hidden;
     if (previous?.generation !== generation && (state.rope.ropes.length || state.rope.links.length)) {
         w.notice='已有绳网时请用新评审档比较不同洞形'; w.noticeUntil=w.elapsed+5; return false;
@@ -68,8 +68,33 @@ export function chooseKarstVersion(version = 'E01', preservePosition = true) {
     CONFIG.karst.style = version === 'E03' ? 'engraved' : version === 'E04' ? 'cinematic' : 'natural';
     CONFIG.karst.geometryMode = generation; inspectKarst(0);
     if (previous?.generation !== generation) { releaseKarstSurface(); maze.karstGeneration = generation; buildKarstTerrain(maze, generation); }
-    if (!preservePosition || circleCollision(player.x, player.y, 26)) inspectKarstSite(0);
+    if (!preservePosition || circleCollision(player.x, player.y, 26)) generation === 'volume' ? inspectVolumeSite(0) : inspectKarstSite(0);
     w.hidden = wasHidden; return true;
+}
+// 三维洞腔的观察点：0 最开阔的大厅，1 一段窄道，2 泉井井底，3 第二个大厅。
+export function volumeReviewSites() {
+    const maze: any = state.mazeRescue, t = getKarstTerrain(maze), w = world(); if (!t || !w) return [];
+    const ts = maze.mazeTileSize, first = Math.floor(w.seamY / ts) + 1, cells: { x: number; y: number; clear: number; far: number }[] = [];
+    for (let r = first; r < maze.mazeRows; r++) for (let c = 0; c < maze.mazeCols; c++) {
+        if (maze.mazeMap[r]?.[c] !== 0) continue;
+        const x = (c + .5) * ts, y = (r + .5) * ts, far = Math.hypot(x - w.originX, y - w.seamY); if (far > 2600 || circleCollision(x, y, 26)) continue;
+        cells.push({ x, y, far, clear: Math.min(260, karstNearest(t, x, y, 260).dist) });
+    }
+    if (!cells.length) return [];
+    const pick = (score: (c: typeof cells[number]) => number, avoid: { x: number; y: number }[] = []) => cells.filter(c => avoid.every(a => Math.hypot(a.x - c.x, a.y - c.y) > 500)).sort((a, b) => score(b) - score(a))[0] || cells[0];
+    const hall = pick(c => c.clear * 5 - c.far * .08), narrow = pick(c => -Math.abs(c.clear - 46) * 4 - c.far * .05, [hall]), second = pick(c => c.clear * 5 - c.far * .05, [hall, narrow]);
+    return [hall, narrow, { x: w.originX, y: w.seamY + ts * .5, clear: 44, far: 0 }, second].map(p => {
+        let best = 0, angle = 0;
+        for (let i = 0; i < 24; i++) { const a = i / 24 * Math.PI * 2, d = karstRay(t, p.x, p.y, Math.cos(a), Math.sin(a), 620).distance; if (d > best) { best = d; angle = a; } }
+        return { x: p.x, y: p.y, angle, clear: p.clear };
+    });
+}
+export function inspectVolumeSite(index = 0) {
+    const w = world(), site = volumeReviewSites()[index]; if (!w || !site) return false;
+    resetDriveInput(); Object.assign(player, { x: site.x, y: site.y, vx: 0, vy: 0 });
+    player.angle = player.targetAngle = input.targetAngle = site.angle;
+    Object.assign(w, { wet: 1, headWet: true, grounded: false, landBlend: 0, stationId: null, resting: false, panel: null, notice: '', noticeUntil: 0 });
+    CONFIG.infiniteO2 = true; resetBCDSystem(); snapCameraToPlayer(); return true;
 }
 export function rotateKarstLight(delta = .13) { player.angle += delta; player.targetAngle = input.targetAngle = player.angle; }
 export function freezeKarstReview() { const w = world(); if (w) w.hidden = !w.hidden; }

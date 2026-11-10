@@ -6,6 +6,7 @@ import { getLightPolygon } from './RenderLight';
 import { getKarstTerrain, KarstTerrain, releaseKarstTerrain, sampleKarst } from '../world/KarstTerrain';
 import { getKarstSurface, releaseKarstSurfaceData, KARST_SURFACE_HEIGHT, KARST_SURFACE_UV, KARST_CHAMBER_UV, type KarstSurface } from '../world/KarstSurface';
 import { getKarstBounce, releaseKarstBounce, karstBounceStats } from './KarstBounce';
+import { releaseKarstVolume } from './RenderKarstVolume';
 import { KARST_FRAG_SRC } from './shaders/karstFrag.glsl';
 import { KARST_COHERENT_FRAG_SRC } from './shaders/karstCoherentFrag.glsl';
 import { KARST_LEGACY_FRAG_SRC } from './shaders/karstLegacyFrag.glsl';
@@ -27,6 +28,8 @@ export function updateKarstResources() {
     if (!maze) { if (registered || lastMaze) releaseKarstSurface(); return; }
     if (lastMaze && lastMaze !== maze) releaseKarstSurface();
     lastMaze = maze;
+    // 三维洞腔不用矿物贴图，不占这部分解码内存。
+    if (getKarstTerrain(maze)?.generation === 'volume') { if (registered) { releaseImages(ASSETS.map(f => 'karst/' + f)); registered = false; } return; }
     if (!registered) { for (const file of ASSETS) registerImage('karst/' + file, 'images/karst/' + file); registered = true; }
 }
 export function karstAssetsReady() { return ASSETS.every(f => !!getImage('karst/' + f)); }
@@ -196,7 +199,7 @@ export function karstCoverageDiagnostics() {
     return { samples, failures };
 }
 export function releaseKarstSurface() {
-    const t = geometry; disposeGL(); gl = null; retryAt = 0; failure = ''; width = height = 0;
+    const t = geometry; disposeGL(); gl = null; retryAt = 0; failure = ''; width = height = 0; releaseKarstVolume();
     if (surface) surface.width = surface.height = 1;
     releaseImages(ASSETS.map(f => 'karst/' + f)); registered = false; releaseKarstBounce();
     if (t) releaseKarstSurfaceData(t); if (lastMaze) releaseKarstTerrain(lastMaze); lastMaze = null;

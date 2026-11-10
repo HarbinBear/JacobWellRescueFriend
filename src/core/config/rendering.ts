@@ -3,7 +3,7 @@
 export const renderingConfig = {
     karst: {
         surfaceMode: 'sculpted' as string,
-        geometryMode: 'legacy' as string,
+        geometryMode: 'volume' as string,   // 新章节的洞形：volume 三维洞腔；legacy、chambers 是保留的旧版平面岩壁
         style: 'natural' as string,
         bounceStrength: 1.0,
         normalStrength: 1.30,

@@ -2,7 +2,7 @@ const fs = require('fs'), path = require('path'), assert = require('assert/stric
 const { openReviewBrowser } = require('../design/cave-room/browser.cjs');
 const ROOT = path.resolve(__dirname, '..'), OUT = path.join(ROOT, 'node_modules/.cache/karst-iterations/variants');
 const wait = ms => new Promise(r => setTimeout(r, ms));
-const URL = 'http://127.0.0.1:60972/node_modules/.cache/karst-review/live/game.html';
+const URL = 'http://127.0.0.1:60972/node_modules/.cache/karst-review/live/game.html?legacy';
 (async () => {
     fs.mkdirSync(OUT, { recursive: true }); const b = await openReviewBrowser(URL, 1440, 880);
     const report = { scope: '实际手机版相同渲染器，可选生成与表面；浏览器自动测试不代表真机或美术定稿', rooms: [], versions: [] };
