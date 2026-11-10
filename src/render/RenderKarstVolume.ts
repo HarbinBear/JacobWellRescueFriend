@@ -13,11 +13,15 @@ interface Chunk { key: number; ci: number; cj: number; vb: WebGLBuffer; nb: WebG
 const DEPTH_VERT = 'attribute vec3 position;uniform mat4 lightVP;void main(){gl_Position=lightVP*vec4(position,1.0);}';
 const DEPTH_FRAG = 'precision mediump float;void main(){gl_FragColor=vec4(1.0);}';
 const SHADOW = 1024, KEEP = 40, VISIBLE_DEPTH = 600, FRAME_BUDGET = 6, FIRST_BUDGET = 28;
+// 小样只取光轴落点。游戏大厅更宽，柔光边缘也可能先照到侧壁。
+const bounceRays = [[0, .5], [-.26, .32], [.26, .32], [-.52, .24], [.52, .24], [-.9, .14], [.9, .14]];
+const bounceLights = new Float32Array(bounceRays.length * 4);
 let job: KarstVolumeJob | null = null, pending = 0, longestStep = 0, shownFrame = -1, overlay: any = null, overlayCtx: any = null;
 let surface: any = null, gl: WebGLRenderingContext | null = null, main: any = null, depth: any = null, terrain: KarstTerrain | null = null;
 let shadowFB: WebGLFramebuffer | null = null, shadowTex: WebGLTexture | null = null, sliceTex: WebGLTexture | null = null;
 let chunks = new Map<number, Chunk>(), empty = new Set<number>(), frame = 0, key = '', uploads = 0, retryAt = 0, failure = '', inspection = 0;
-let width = 0, height = 0, draws = 0, cacheHits = 0, lostCount = 0, lastBuildMs = 0, maxBuildMs = 0, builds = 0, triangles = 0, cpuMs = 0, dropped = 0;
+let width = 0, height = 0, roomLight = 0;
+let draws = 0, cacheHits = 0, lostCount = 0, lastBuildMs = 0, maxBuildMs = 0, builds = 0, triangles = 0, cpuMs = 0, dropped = 0;
 function now() { return typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now(); }
 function program(vs: string, fs: string) {
     const p = gl!.createProgram()!;
@@ -95,8 +99,30 @@ function drawChunks(list: Chunk[]) {
         gl!.bindBuffer(gl!.ELEMENT_ARRAY_BUFFER, c.ib); gl!.drawElements(gl!.TRIANGLES, c.count, gl!.UNSIGNED_SHORT, 0);
     }
 }
+function updateBounce(t: KarstTerrain, lightOn: boolean, range: number, strength: number) {
+    bounceLights.fill(0);
+    if (!lightOn || strength <= 0 || range <= 0) return 0;
+    const limit = range * 1.2;
+    let returnedLight = 0;
+    for (let i = 0; i < bounceRays.length; i++) {
+        const [offset, weight] = bounceRays[i], angle = player.angle + offset;
+        const dx = Math.cos(angle), dy = Math.sin(angle);
+        const { distance } = karstRay(t, player.x, player.y, dx, dy, limit);
+        if (distance >= limit) continue;
+        const back = Math.max(0, distance - 18), fade = Math.min(1, (limit - distance) / (limit * .22));
+        const power = 1.6 * strength * weight * fade * fade * (3 - 2 * fade) / (1 + (distance / 200) ** 2);
+        const j = i * 4;
+        bounceLights[j] = player.x + dx * back;
+        bounceLights[j + 1] = player.y + dy * back;
+        bounceLights[j + 2] = 30;
+        bounceLights[j + 3] = power;
+        returnedLight += power;
+    }
+    return returnedLight;
+}
 // 返回 true 表示这一帧的岩石已由三维洞腔画出。
 export function drawKarstVolume(ctx: CanvasRenderingContext2D, t: KarstTerrain, zoom: number, lightOn: boolean) {
+    shownFrame = -1;
     if (t.generation !== 'volume' || !t.volume) return false;
     const start = now(), c = state.camera, cx = c.x + c.swayX, cy = c.y + c.swayY, halfW = logicW / (2 * zoom), halfH = logicH / (2 * zoom);
     // 还在岸上时就开始准备井口附近的洞壁，下水时不用等。
@@ -133,13 +159,13 @@ export function drawKarstVolume(ctx: CanvasRenderingContext2D, t: KarstTerrain, 
     const quality = CONFIG.karst, resolution = Math.max(.65, Math.min(1.6, CONFIG.quality.scale * 2));
     let w = Math.ceil(logicW * resolution), h = Math.ceil(logicH * resolution);
     const shrink = Math.min(1, Math.sqrt(quality.pixelBudget / Math.max(1, w * h))); w = Math.max(2, Math.round(w * shrink)); h = Math.max(2, Math.round(h * shrink));
-    const next = [cx, cy, zoom, w, h, player.x, player.y, player.angle, lightOn, CONFIG.lightRange, CONFIG.fov, quality.lightEnergy, quality.bounceStrength, quality.extinction.join(), uploads, visible.length, inspection].join('/');
+    const shadowOn = !!shadowFB && lightOn && !inspection && CONFIG.quality.scale > .3;
+    const next = [cx, cy, zoom, w, h, player.x, player.y, player.angle, lightOn, shadowOn, CONFIG.lightRange, quality.lightEnergy, quality.bounceStrength, quality.extinction.join(), uploads, visible.length, inspection].join('/');
     if (next !== key) {
         if (surface.width !== w) surface.width = w; if (surface.height !== h) surface.height = h; width = w; height = h;
         const viewProj = multiply(perspective(2 * Math.atan(halfH / D), halfW / halfH, D * .3, D + VOLUME_DEPTH + 200), lookAt([cx, cy, -D], [cx, cy, 0], [0, -1, 0]));
-        const lightPos = [player.x, player.y, 8], dir = [Math.cos(player.angle), Math.sin(player.angle), 0], range = CONFIG.lightRange;
+        const lightPos = [player.x, player.y, 0], dir = [Math.cos(player.angle), Math.sin(player.angle), 0], range = CONFIG.lightRange;
         const lightVP = multiply(perspective(152 * Math.PI / 180, 1, 8, Math.max(1100, range * 1.3)), lookAt(lightPos, [lightPos[0] + dir[0], lightPos[1] + dir[1], lightPos[2]], [0, 0, -1]));
-        const shadowOn = !!shadowFB && lightOn && !inspection && CONFIG.quality.scale > .3;
         gl.enable(gl.DEPTH_TEST); gl.disable(gl.BLEND); gl.disable(gl.CULL_FACE); gl.enableVertexAttribArray(0);
         if (shadowOn) {
             gl.bindFramebuffer(gl.FRAMEBUFFER, shadowFB); gl.viewport(0, 0, SHADOW, SHADOW); gl.clearColor(0, 0, 0, 1); gl.clear(gl.DEPTH_BUFFER_BIT | gl.COLOR_BUFFER_BIT);
@@ -147,12 +173,14 @@ export function drawKarstVolume(ctx: CanvasRenderingContext2D, t: KarstTerrain, 
             gl.useProgram(depth.p); gl.uniformMatrix4fv(depth.u.lightVP, false, lightVP); drawChunks(visible); gl.bindFramebuffer(gl.FRAMEBUFFER, null);
         }
         gl.enableVertexAttribArray(1); gl.viewport(0, 0, w, h); gl.clearColor(0, 0, 0, 0); gl.clear(gl.DEPTH_BUFFER_BIT | gl.COLOR_BUFFER_BIT); gl.useProgram(main.p);
-        const hit = lightOn ? karstRay(t, player.x, player.y, dir[0], dir[1], 520).distance : 520, back = Math.max(0, hit - 18);
+        const returnedLight = updateBounce(t, lightOn && !inspection, range, quality.bounceStrength * quality.lightEnergy / 3.4);
+        roomLight = returnedLight * .92 / (.32 + returnedLight);
         gl.uniformMatrix4fv(main.u.viewProj, false, viewProj); gl.uniformMatrix4fv(main.u.lightVP, false, lightVP);
         gl.uniform3fv(main.u.lightPos, lightPos); gl.uniform3fv(main.u.lightDir, dir);
-        gl.uniform4f(main.u.bounce, player.x + dir[0] * back, player.y + dir[1] * back, 30, hit < 520 ? 1.6 * quality.bounceStrength / (1 + Math.pow(hit / 200, 2)) : 0);
+        gl.uniform4fv(main.u['bounce[0]'], bounceLights);
+        gl.uniform1f(main.u.roomLight, roomLight);
         gl.uniform3f(main.u.extinction, quality.extinction[0], quality.extinction[1], quality.extinction[2]);
-        gl.uniform1f(main.u.coneCos, Math.cos(CONFIG.fov * Math.PI / 360)); gl.uniform1f(main.u.range, range); gl.uniform1f(main.u.camDist, D); gl.uniform1f(main.u.farDepth, VOLUME_DEPTH); gl.uniform1f(main.u.enabled, lightOn ? 1 : 0);
+        gl.uniform1f(main.u.range, range); gl.uniform1f(main.u.farDepth, VOLUME_DEPTH); gl.uniform1f(main.u.enabled, lightOn ? 1 : 0);
         gl.uniform1f(main.u.shadowOn, shadowOn ? 1 : 0); gl.uniform1f(main.u.energy, quality.lightEnergy); gl.uniform1f(main.u.inspect, inspection);
         gl.uniform1f(main.u.surfaceY, (state.mazeRescue as any)?.continuous?.surfaceY || 0); gl.uniform1f(main.u.fadeTop, t.y);
         gl.uniform2f(main.u.gridOrigin, t.x, t.y); gl.uniform2f(main.u.gridSize, t.cols, t.rows); gl.uniform1f(main.u.cellSize, t.step);
@@ -166,7 +194,7 @@ export function drawKarstVolume(ctx: CanvasRenderingContext2D, t: KarstTerrain, 
 // 游戏的黑暗遮罩是为二维画面做的，盖在洞壁上会把洞壁再压暗一次，反照和近处的微光都会被盖掉。
 // 这里把遮罩压掉的那部分洞壁亮度原样加回去：洞壁最终只按自己的三维光照显示，人物、鱼和绳索仍然被遮罩压暗。
 // 要在遮罩画完之后、屏幕坐标下调用。mask 是遮罩画布，clipTop 是水面在屏幕上的位置。
-export function restoreKarstVolumeLight(ctx: CanvasRenderingContext2D, mask: any, maskW: number, maskH: number, clipTop: number) {
+export function restoreKarstVolumeLight(ctx: CanvasRenderingContext2D, mask: any, maskW: number, maskH: number, clipTop: number, volumeMix: number) {
     if (!gl || !main || shownFrame !== frame || !width || !height || !mask) return;
     if (!overlay) { overlay = wx.createCanvas(); overlayCtx = overlay.getContext('2d'); }
     if (!overlayCtx) return;
@@ -174,7 +202,21 @@ export function restoreKarstVolumeLight(ctx: CanvasRenderingContext2D, mask: any
     overlayCtx.globalCompositeOperation = 'source-over'; overlayCtx.clearRect(0, 0, width, height); overlayCtx.drawImage(surface, 0, 0, width, height);
     overlayCtx.globalCompositeOperation = 'destination-in'; overlayCtx.drawImage(mask, 0, 0, maskW, maskH, 0, 0, width, height);
     ctx.save(); ctx.beginPath(); ctx.rect(0, clipTop, logicW, Math.max(0, logicH - clipTop)); ctx.clip();
-    ctx.globalCompositeOperation = 'lighter'; ctx.drawImage(overlay, 0, 0, width, height, 0, 0, logicW, logicH); ctx.restore();
+    ctx.globalCompositeOperation = 'lighter'; ctx.drawImage(overlay, 0, 0, width, height, 0, 0, logicW, logicH);
+    // 回光在水里散开一点，衬出深处的轮廓，身后和画面外缘渐暗。
+    const strength = Math.min(.28, roomLight * .65) * volumeMix;
+    if (strength > 0) {
+        const c = state.camera, radius = Math.max(logicW, logicH) * .66;
+        ctx.translate(logicW / 2 + (player.x - c.x - c.swayX) * c.zoom, logicH / 2 + (player.y - c.y - c.swayY) * c.zoom);
+        ctx.rotate(player.angle); ctx.scale(1, .80); ctx.translate(radius * .46, 0);
+        const haze = ctx.createRadialGradient(0, 0, 0, 0, 0, radius);
+        haze.addColorStop(0, `rgba(12,56,105,${strength})`);
+        haze.addColorStop(.56, `rgba(12,56,105,${strength * .64})`);
+        haze.addColorStop(1, 'rgba(12,56,105,0)');
+        ctx.globalCompositeOperation = 'screen'; ctx.fillStyle = haze;
+        ctx.fillRect(-radius, -radius, radius * 2, radius * 2);
+    }
+    ctx.restore();
 }
 export function inspectKarstVolume(mode = 0) { inspection = mode; key = ''; }
 export function loseKarstVolumeContext() {

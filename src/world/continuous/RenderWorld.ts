@@ -129,7 +129,7 @@ function drawCamp(v:any){
         ctx.strokeStyle='#45674e';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(s.x+12,s.y-72);ctx.bezierCurveTo(s.x+30,s.y-12,player.x-31,player.y+24,player.x-4,player.y+5);ctx.stroke();
     }
 }
-function lighting(v:any) {
+function lighting(volumeMix:number) {
     const w=world()!,c=state.camera,depth=clamp((player.y-w.surfaceY)/1100),maskAlpha=.03+.965*Math.pow(depth,1.48);
     const waterScreen=logicH/2+(w.surfaceY-c.y-c.swayY)*c.zoom;
     let surfacePoly:any[]|undefined;
@@ -138,13 +138,16 @@ function lighting(v:any) {
     if(isWebGLAvailable()){
         const light=state.flashlightOn!==false&&w.wet>.3,range=CONFIG.lightRange;
         const poly=light?getLightPolygon(player.x,player.y,player.angle,range,CONFIG.fov):[];surfacePoly=poly;
-        uploadPolyData(poly,range);const count=uploadVPLData(poly,range)||0;
+        uploadPolyData(poly,range);
         const terrain=getKarstTerrain(state.mazeRescue),sculpted=!!terrain&&terrain.generation!=='volume'&&CONFIG.karst.surfaceMode!=='baseline';
+        const count=terrain?.generation==='volume'?0:uploadVPLData(poly,range)||0;
         uploadKarstBounceData(light&&terrain&&sculpted?getKarstBounce(terrain,poly,player.x,player.y,player.angle,range):null);
         const base={playerX:player.x,playerY:player.y,cameraX:c.x+c.swayX,cameraY:c.y+c.swayY,zoom:c.zoom,shakeX:0,shakeY:0,angle:player.angle,maxDist:range,
             flashlightActive:light,karstMode:!!terrain,karstEnhanced:sculpted,npcX:state.npc.x,npcY:state.npc.y,npcAngle:state.npc.angle,npcDist:range*.5,npcActive:false,polyCount:poly.length,vplCount:count};
         renderVolumetricLight(base);const size=getGLCanvasPixelSize();
-        ctx.globalCompositeOperation='screen';ctx.drawImage(getVolGLCanvas() as any,0,0,size.w,size.h,0,0,logicW,logicH);ctx.globalCompositeOperation='source-over';
+        // 浅水仍能看见光柱，进入三维洞室后只留很淡的水中散射。
+        ctx.globalAlpha=1-.85*volumeMix;
+        ctx.globalCompositeOperation='screen';ctx.drawImage(getVolGLCanvas() as any,0,0,size.w,size.h,0,0,logicW,logicH);ctx.globalCompositeOperation='source-over';ctx.globalAlpha=1;
         renderLightMask({...base,maskAlpha,worldSurfaceY:w.surfaceY} as any);ctx.drawImage(getGLCanvas() as any,0,0,size.w,size.h,0,0,logicW,logicH);
     }else{const g=ctx.createLinearGradient(0,waterScreen,0,waterScreen+1100*c.zoom);g.addColorStop(0,'rgba(1,15,21,.03)');g.addColorStop(.4,'rgba(1,15,21,.45)');g.addColorStop(1,'rgba(1,15,21,.995)');ctx.fillStyle=g;ctx.fillRect(0,0,logicW,logicH);}
     ctx.restore();return surfacePoly;
@@ -191,8 +194,9 @@ export function drawContinuousFrame(){
     else drawDiver(ctx,player.x,player.y,player.angle,null,motion);
     drawInteractionWorkWorld(ctx);ctx.save();ctx.beginPath();ctx.rect(v.l,w.surfaceY,v.r-v.l,Math.max(0,v.b-w.surfaceY));ctx.clip();drawBreathBubblesWorld(ctx,v.l,v.r,v.t,v.b);ctx.restore();
     for(const p of particles){if(p.x<v.l||p.x>v.r||p.y<v.t||p.y>v.b)continue;ctx.fillStyle=p.type==='silt'?`rgba(91,124,97,${p.life*.17})`:`rgba(193,220,180,${p.life*.3})`;ctx.beginPath();ctx.arc(p.x,p.y,Math.max(.5,p.size),0,Math.PI*2);ctx.fill();}
-    ctx.restore();const surfacePoly=lighting(v);
-    if(volumeDrawn&&isWebGLAvailable()){const size=getGLCanvasPixelSize();restoreKarstVolumeLight(ctx,getGLCanvas(),size.w,size.h,Math.max(0,logicH/2+(w.surfaceY-c.y-c.swayY)*zoom));}
+    const volumeMix=volumeDrawn?smooth(terrain!.y,terrain!.y+170,player.y):0;
+    ctx.restore();const surfacePoly=lighting(volumeMix);
+    if(volumeDrawn&&isWebGLAvailable()){const size=getGLCanvasPixelSize();restoreKarstVolumeLight(ctx,getGLCanvas(),size.w,size.h,Math.max(0,logicH/2+(w.surfaceY-c.y-c.swayY)*zoom),volumeMix);}
     ctx.save();transform();if(!volumeDrawn)drawKarstSurface(ctx,zoom,surfacePoly);drawRescueTarget(ctx,visual);drawSurface(v);drawRopeApproachWorld(ctx,zoom,{left:v.l,right:v.r,top:v.t,bottom:v.b});drawRopeAimWorld(ctx);drawActionPreviewWorld(ctx);drawInteractionOverlayWorld(ctx);ctx.restore();
     if((w as any).overview){
         ctx.save();ctx.fillStyle='rgba(226,231,199,.89)';ctx.fillRect(logicW-260,13,245,30);ctx.fillStyle='#52664a';ctx.font='11px PingFang SC';ctx.textAlign='left';ctx.fillText('营地与泉井 · 同一张地图的验收总览',logicW-250,32);
