@@ -6,6 +6,9 @@ import { world, circleCollision } from '../src/world/continuous/Geometry';
 import { snapCameraToPlayer } from '../src/logic/CameraLogic';
 import { resetDriveInput } from '../src/logic/DriveMode';
 import { resetBCDSystem } from '../src/logic/BCDSystem';
+import { releaseKarstVolume } from '../src/render/RenderKarstVolume';
+import type { KarstVolumeData } from '../src/world/KarstVolume';
+import type { SpeleothemStudy } from '../src/world/KarstSpeleothems';
 
 export interface KarstReviewSite {
     player: { x: number; y: number }; aim: { x: number; y: number }; length: number;
@@ -112,5 +115,22 @@ export function inspectVolumeMaterial() {
     const near = karstNearest(t, player.x, player.y, 700);
     if (near.wall) player.angle = player.targetAngle = input.targetAngle = Math.atan2(near.y - player.y, near.x - player.x);
     return true;
+}
+let speleothemBackup: { volume: KarstVolumeData; study: SpeleothemStudy } | null = null;
+export function inspectSpeleothems() {
+    const v = getKarstTerrain(state.mazeRescue)?.volume, w = world();
+    const s = v?.speleothemStudy || (speleothemBackup?.volume === v ? speleothemBackup.study : null);
+    if (!v || !w || !s) return false;
+    resetDriveInput(); Object.assign(player, { x: s.x, y: s.y, vx: 0, vy: 0 });
+    player.angle = player.targetAngle = input.targetAngle = -.70;
+    Object.assign(w, { wet: 1, headWet: true, grounded: false, landBlend: 0, stationId: null, resting: false, panel: null, notice: '', noticeUntil: 0 });
+    CONFIG.infiniteO2 = true; resetBCDSystem(); snapCameraToPlayer(); return true;
+}
+export function toggleSpeleothems() {
+    const v = getKarstTerrain(state.mazeRescue)?.volume; if (!v) return false;
+    if (v.speleothemStudy) { speleothemBackup = { volume: v, study: v.speleothemStudy }; v.speleothemStudy = null; }
+    else if (speleothemBackup?.volume === v) v.speleothemStudy = speleothemBackup.study;
+    else return false;
+    releaseKarstVolume(); return !!v.speleothemStudy;
 }
 export function freezeKarstReview() { const w = world(); if (w) w.hidden = !w.hidden; }

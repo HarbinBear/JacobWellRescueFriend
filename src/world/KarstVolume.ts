@@ -4,6 +4,7 @@
 import type { KarstTerrain } from './KarstTerrain';
 import { continuousKarstProtection, planKarstChambers, type KarstChambers } from './KarstChambers';
 import type { VolumeProbeField } from '../render/KarstVolumeProbes';
+import { planSpeleothems, speleothemCeiling, speleothemWeight, type SpeleothemStudy } from './KarstSpeleothems';
 
 export const VOLUME_CHUNK = 48;
 const LAYERS = 30, CEILING = 300, FLOOR = 170, MARGIN_TOP = 32, MARGIN_BOTTOM = 20, RING = 2, SEG = 11, CARVE = 30, BODY = 21, SOLID = 32;
@@ -18,7 +19,7 @@ export interface KarstVolumeData {
     seed: number; seam: number; segs: Float32Array; tileSegs: number[][]; tileCols: number; tileRows: number; tileSize: number;
     lanes: (x: number, y: number) => number; bank: ((x: number, y: number) => number) | null;
     carves: number[]; carveBuckets: Map<number, number[]>; drips: ((x: number, z: number, floor: boolean) => number)[];
-    rearRegions: KarstChambers; deepSegs: Float32Array; shapes: Float32Array;
+    rearRegions: KarstChambers; deepSegs: Float32Array; shapes: Float32Array; speleothemStudy: SpeleothemStudy | null;
     stats: { segments: number; backBranches: number; carves: number; filledPockets: number; sliceMs: number; rearProfiles: Record<string, number> };
 }
 export interface KarstVolumeMesh { positions: Float32Array; normals: Float32Array; indices: Uint16Array; ms: number; dropped: number; probe: VolumeProbeField }
@@ -157,6 +158,7 @@ function createVolume(t: KarstTerrain, maze: any): KarstVolumeData {
     }
     return { seed, seam, segs: new Float32Array(segs), tileSegs, tileCols: cols, tileRows: rows, tileSize: ts, lanes: continuousKarstProtection(maze), bank: bankField(maze), rearRegions, deepSegs, shapes,
         carves: [], carveBuckets: new Map(), drips: [dripField(150, seed + 61), dripField(62, seed + 62), dripField(46, seed + 63)],
+        speleothemStudy: planSpeleothems(rearRegions.rooms, maze.exitX, seam),
         stats: { segments: segs.length / SEG, backBranches: branches, carves: 0, filledPockets: 0, sliceMs: 0, rearProfiles } };
 }
 function carveValue(v: KarstVolumeData, x: number, y: number) {
@@ -244,6 +246,8 @@ function evaluateLayer(t: KarstTerrain, v: KarstVolumeData, i0: number, j0: numb
     // 三、钟乳石体系：每一处洞顶往下挂、每一处洞底往上长。开阔处长得大，靠近必须留出的身位处收小。
     for (let ii = 0; ii < ni; ii++) {
         const ceiling = LC[ii], ground = LF[ii]; let edge = 0, has = false, broken = false, last = 0, rock = false;
+        const study = z > 64 && z < 420 ? v.speleothemStudy : null, studyX = t.x + (i0 + ii) * S;
+        const grown = study ? speleothemCeiling(study, studyX, z) : 0;
         for (let jj = 0; jj < nj; jj++) {
             const col = ii + ni * jj, o = off + col, f = F[o], y = t.y + (j0 + jj) * S; strength[jj] = 0;
             if (f <= 0) { rock = true; last = f; has = true; broken = false; continue; }
@@ -257,7 +261,9 @@ function evaluateLayer(t: KarstTerrain, v: KarstVolumeData, i0: number, j0: numb
             strength[jj] = st;
             // 地面沉积也用这个局部强度，即便本块上方的洞顶在扫描范围外。
             if (!has) continue;
-            let val = y - edge - ceiling * st;
+            const studyWeight = study ? speleothemWeight(study, studyX, y, z) : 0;
+            const growth = Math.min(CEILING, ceiling + (grown + ceiling * .18 - ceiling) * studyWeight);
+            let val = y - edge - growth * st;
             if (broken) val = Math.max(val, S * .5); else if (val >= 0) broken = true;
             if (val < f) F[o] = val;
         }
