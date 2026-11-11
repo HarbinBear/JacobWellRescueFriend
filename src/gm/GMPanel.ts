@@ -13,6 +13,7 @@ import {
 } from './GMConfig';
 import { state, player } from '../core/state';
 import { createFishEnemy, createFishSchool, findMazeFishSpawnPosition, findSafeSpawnPosition, findVisibleFishSpawnPosition } from '../logic/FishEnemy';
+import { registerContinuousFish } from '../world/continuous/FishIdentity';
 import { setPreset, onItemEdited as qualityOnItemEdited, setAuto as qualitySetAuto } from '../render/QualityManager';
 import { playSFX } from '../audio/AudioManager';
 // GM 调试：扣氧时同步触发氧气环红色损失动画
@@ -440,7 +441,7 @@ function _executeAction(actionId: string): void {
             } else if (kind === 'piranha' && (state.screen === 'fishArena' || state.screen === 'play')) {
                 pos = findSafeSpawnPosition(player.x, player.y);
             }
-            if (pos) state.fishEnemies.push(...(kind === 'shoal' ? createFishSchool(pos.x, pos.y) :
+            if (pos) state.fishEnemies.push(...registerContinuousFish(kind === 'shoal' ? createFishSchool(pos.x, pos.y) :
                 [createFishEnemy(pos.x, pos.y, undefined, undefined, undefined, kind)]));
             else console.log('[GM] 进入潜水区域并靠近开阔水域后再生成鱼');
             break;

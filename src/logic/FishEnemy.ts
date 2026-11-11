@@ -112,6 +112,8 @@ export type FishEnemyState =
 // 凶猛鱼实体数据结构
 // =============================================
 export interface FishEnemy {
+    /** Stable identity within a continuous chapter, used by saved rope references. */
+    worldId?: number;
     kind: FishKind;
     stunFrames: number;
     stunUntil: number;

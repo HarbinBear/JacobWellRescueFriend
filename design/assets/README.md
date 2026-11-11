@@ -6,7 +6,7 @@
 
 仓库根目录继续是本地开发项目，保留原图片用于制作和离线预览。它仍超过当前主包限制，不能直接上传为正式包。`scripts/assetSources.json` 的模式是 `local`；原菜单BGM等已在云端的MP3仍按原云音频配置播放。
 
-运行 `npm run release:build`：核对类型、生成资源清单与上传文件、构建独立代码目录、检查主包大小。`node_modules/.cache/wechat-release/` 中只有JS和小游戏配置，模式强制为 `cloud`，不会请求已经排除的本地图片。首次实测候选为约 **2.03MiB**；以再次构建输出为准。这个数字不包含微信官方编译开销，最终以开发者工具为准。
+运行 `npm run release:build`：核对类型、生成资源清单与上传文件、构建独立代码目录、检查主包大小。`node_modules/.cache/wechat-release/` 中只有JS和小游戏配置，模式强制为 `cloud`，不会请求已经排除的本地图片。包含洞壁与捕鱼续档修复的当前候选约 **2.04MiB**（2,136,214字节）；以再次构建输出为准。这个数字不包含微信官方编译开销，最终以开发者工具为准。
 
 微信当前官方[分包规则](https://developers.weixin.qq.com/minigame/dev/guide/base-ability/subPackage/useSubPackage.html)为主包不超过4M、主包加全部分包不超过30M。当前项目没有分包。旧文档的8MiB门槛作废；脚本现在按4MiB且预留128KiB检查候选。不要用旧静态估算代替微信工具报告。
 

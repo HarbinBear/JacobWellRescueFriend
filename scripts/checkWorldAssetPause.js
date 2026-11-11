@@ -4,7 +4,7 @@ const assert = require('assert/strict'), fs = require('fs'), path = require('pat
 const ROOT = path.resolve(__dirname, '..');
 const compiled = new Map();
 const realModules = new Set(['src/world/continuous/Runtime', 'src/world/continuous/WorldSave',
-    'src/world/continuous/WorldHUD', 'src/core/SaveStorage']);
+    'src/world/continuous/WorldHUD', 'src/world/continuous/FishIdentity', 'src/core/SaveStorage']);
 const noop = () => {};
 
 function host() {
@@ -31,6 +31,7 @@ function host() {
         'src/logic/DriveMode': { resetDriveInput: () => { h.resets++; } },
         'src/logic/CameraLogic': { snapCameraToPlayer: noop },
         'src/logic/Interaction': { resetInteractions: noop, cancelInteractionInput: noop },
+        'src/logic/Rope': { captureFishNetState: () => ({version: 1, contacts: []}), validateFishNetState: () => true },
         'src/logic/BreathSystem': { resetBreathSystem: noop },
         'src/logic/BCDSystem': { releaseBCDControls: noop, resetBCDSystem: noop, getBCDRuntime: () => ({}) },
         'src/logic/DecompressionSystem': { getDecoRuntime: () => ({}) },

@@ -1,4 +1,5 @@
 import { updateWorldAssets, worldAssetsBlocked } from './WorldAssets';
+import { ensureFishIdentities } from './FishIdentity';
 import { CONFIG } from '../../core/config';
 import { fishKnotPoint } from '../../logic/FishGeometry';
 import { closestWorldSurface } from './Routes';
@@ -54,11 +55,11 @@ export function enterContinuousWorld(originalBootstrap: () => void, seed?: numbe
         const w = attachWorldTerrain(m);
         w.airTanks = getActiveAirTanks(); m.phase='play';m.briefingShown=true;m.startTime=Date.now();
         m.caseNumber='林泉营地 · 连续章节';m.npcSecuredAt=0;
-        state.fishEnemies.forEach((f:any) => f.worldId=w.nextFishId++);
         for (const [dx,dy,kind] of [[-224,92,'curious'],[22,176,'curious'],[200,155,'shoal'],[246,227,'shoal']] as const) {
             const f: any = createFishEnemy(w.originX+dx,w.surfaceY+dy,w.originX+dx,w.surfaceY+dy,110,kind);
-            f.worldId=w.nextFishId++;f.vx=f.vy=0;state.fishEnemies.push(f);
+            f.vx=f.vy=0;state.fishEnemies.push(f);
         }
+        ensureFishIdentities(state.fishEnemies, w);
         for(const f of state.fishEnemies)settleInitialPoint(f,CONFIG.fishEnemy.size*(f.kind==='shoal'?.18:f.kind==='rammer'?.48:f.kind==='provoked'?.64:.38));
         for(const t of m.oxygenTanks||[])settleInitialPoint(t,16);for(const relic of m.relics||[])settleInitialPoint(relic,8);
         state.fishBump=createFishBumpState();resetInteractions();resetDriveInput();releaseBCDControls();resetBreathSystem();

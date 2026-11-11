@@ -9,11 +9,11 @@ import { closestRockPoint, circleHitsRock } from '../world/RockGeometry';
 import { getKarstTerrain, karstNearest } from '../world/KarstTerrain';
 import { isLineOfSight } from '../world/Visibility';
 import { getRopeNet, pointOnStrand, projectOntoStrand, sweepRopeNet } from './RopeNet';
-import { applyNetBodyImpulse, deformNetPoint, moveThroughNet, netResponseAlong, resetNetMotion, stepNetMotion, viewNetContact, releaseNetBody, remapNetMotion, steadyNetBody } from './RopeDynamics';
+import { applyNetBodyImpulse, deformNetPoint, moveThroughNet, netResponseAlong, resetNetMotion, stepNetMotion, viewNetContact, releaseNetBody, remapNetMotion, steadyNetBody, captureFishNetContacts, restoreFishNetContacts, validateFishNetContacts } from './RopeDynamics';
 import { fishKnotPoint } from './FishGeometry';
 import type { FishEnemy } from './FishEnemy';
 import type { RopeBody } from './RopeDynamics';
-import type { RopePoint } from './RopeNet';
+import type { RopePoint, NetRope } from './RopeNet';
 import type { RopeEndpoint, RopeCut, TetherLine } from './InteractionTypes';
 
 function getActiveWalls() {
@@ -191,6 +191,23 @@ export function updateRopeMotion() {
 
 export function resetRopeMotion() {
     if (state.rope.ropes.length) resetNetMotion(getRopeNet(state.rope.ropes));
+}
+
+export function captureFishNetState() {
+    return captureFishNetContacts(getRopeNet(state.rope.ropes), state.fishEnemies);
+}
+
+/** Call after restoring fish/rope objects and resetting transient rope motion. */
+export function restoreFishNetState(data: unknown) {
+    return restoreFishNetContacts(getRopeNet(state.rope.ropes), state.fishEnemies, data);
+}
+
+export function validateFishNetState(data: unknown, fish: FishEnemy[], ropes: NetRope[]): boolean {
+    if (data === undefined) return true;
+    if (!Array.isArray(fish) || !Array.isArray(ropes) || ropes.some(r => !r || !Array.isArray(r.path) || r.path.length < 2 ||
+        r.threadId !== undefined && (!Number.isSafeInteger(r.threadId) || r.threadId < 0) ||
+        r.path.some(p => !p || !Number.isFinite(p.x) || !Number.isFinite(p.y)))) return false;
+    return validateFishNetContacts(getRopeNet(ropes), fish, data);
 }
 
 export function updateRopeSystem() {

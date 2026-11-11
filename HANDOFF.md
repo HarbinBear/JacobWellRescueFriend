@@ -29,7 +29,7 @@ INSIDE公开原文、阅读深度、未读视频与适配判断仍见[学习基�
 
 `npm run shaders && npm run karst:preview`；本地服务器60972若仍在，打开 `/node_modules/.cache/karst-review/live/game.html?speleothems` 查看当前洞室和原人物。评审入口仍使用实际game.ts与浏览器外置fixture。
 
-**包体口径已纠正**：微信官方当前主包上限4M，不再使用此前8MiB预算。根目录仍为含图片的本地开发项目，不能直接上传；`npm run release:build` 生成 `.cache/wechat-release/` 独立纯代码候选（约2.03MiB，预留128KiB），发布模式强制cloud。云文件尚未上传/验证，候选目前不能正式发布。详见[资源发布说明](design/assets/README.md)。
+**包体口径已纠正**：微信官方当前主包上限4M，不再使用此前8MiB预算。根目录仍为含图片的本地开发项目，不能直接上传；`npm run release:build` 生成 `.cache/wechat-release/` 独立纯代码候选（约2.04MiB，预留128KiB），发布模式强制cloud。云文件尚未上传/验证，候选目前不能正式发布。详见[资源发布说明](design/assets/README.md)。
 
 绳索入口仍是 `?rope-volume`，相关测试：`rope:volume`、`rope:check`；接入记录见[绳接入说明](design/cave-room/rope-volume-integration.md)。此前1/2/3根、真实7根网入网/挣扎、形变一致性、缓存、拆网和上下文恢复已通过；本轮保留接口后的鱼/绳浏览器回归再次通过。
 
@@ -43,7 +43,9 @@ INSIDE公开原文、阅读深度、未读视频与适配判断仍见[学习基�
 
 旧近景接缝已单独修复：7391种子(7356,5532,z32)的共享节点从水/岩相反恢复一致，仅改z>0可见沉积，不改z=0游戏轮廓。实际正常受光/灰模、静止缓存、转灯、游动、续档与图形恢复通过；详见[修复证据](design/cave-volume/seam-fix.md)。`npm run karst:seams` 与 `karst:seams:browser` 可复跑，图片在忽略缓存 `.cache/karst-seam/after/`。
 
-捕鱼循环已完成代码现状审计与两个明确候选：[交易升级 / 观察放生](design/fishing-loop/README.md)。没有接正式鱼价或收入。已发现未绑鱼网捕状态没有随存档恢复，以及GM生成鱼没有稳定worldId；下一课题先修确定的持有/续档问题。旧商店不能直接接：脚蹼/潜水衣效果等下次下潜，连续世界不会因上下岸重启；绳包、电池目前没有实际消耗用途。
+捕鱼循环已完成代码现状审计与两个明确候选：[交易升级 / 观察放生](design/fishing-loop/README.md)。没有接正式鱼价或收入。旧商店不能直接接：脚蹼/潜水衣效果等下次下潜，连续世界不会因上下岸重启；绳包、电池目前没有实际消耗用途。
+
+随后单独修复未绑鱼网捕续档丢失与GM生鱼稳定ID。`fishNet`保存真实线程、挣脱/冷却和受力；恢复接回新网组，不重置挣脱、不复活已拆网。坏鱼/网引用在读档前拒绝并尝试备份，旧无字段档兼容，写失败不覆盖旧档。五鱼种2100帧及真实菜单保存/继续→挣扎→动作盘拆网→再存续已验证。`npm run fish:save`、`fish:save:browser`可复跑；[实现与边界](design/fishing-loop/save-state.md)。未实现鱼交付、所有权或正式收益。
 
 ## 下一步建议
 

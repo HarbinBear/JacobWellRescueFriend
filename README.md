@@ -3,7 +3,7 @@
 
 ## 资源与发布
 
-`npm run release:build` 生成独立纯代码小游戏候选（约2.03MiB），位置是 `node_modules/.cache/wechat-release/`。根目录仍保留制作素材，不直接用于正式上传。20项资源上传文件已备好，但云控制台需要登录，尚未完成真实上传与下载验证；步骤与边界见[资源发布说明](design/assets/README.md)。主包预算已按官方4M纠正。
+`npm run release:build` 生成独立纯代码小游戏候选（约2.04MiB），位置是 `node_modules/.cache/wechat-release/`。根目录仍保留制作素材，不直接用于正式上传。20项资源上传文件已备好，但云控制台需要登录，尚未完成真实上传与下载验证；步骤与边界见[资源发布说明](design/assets/README.md)。主包预算已按官方4M纠正。
 
 ## 连续章节操作
 

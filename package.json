@@ -62,7 +62,9 @@
     "release:check": "npm run package:check && node scripts/checkNativeBoot.js --release",
     "assets:verify-script": "node scripts/buildCloudAssetVerification.js",
     "karst:seams": "node scripts/checkKarstVolumeSeams.js",
-    "karst:seams:browser": "node scripts/checkKarstVolumeSeamBrowser.js"
+    "karst:seams:browser": "node scripts/checkKarstVolumeSeamBrowser.js",
+    "fish:save": "node scripts/checkFishIdentity.js && node scripts/checkFishNetSave.js && node scripts/checkWorldFishSave.js",
+    "fish:save:browser": "node scripts/checkFishNetSaveBrowser.js"
   },
   "devDependencies": {
     "typescript": "^5.3.3"

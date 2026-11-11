@@ -2,9 +2,11 @@ import { state, player, createRopeState, createInteractionState } from '../../co
 import { saveJSON, loadJSON, removeKey } from '../../core/SaveStorage';
 import { getBCDRuntime } from '../../logic/BCDSystem';
 import { getDecoRuntime } from '../../logic/DecompressionSystem';
-import { resetRopeMotion } from '../../logic/Rope';
+import { resetRopeMotion, captureFishNetState, restoreFishNetState, validateFishNetState } from '../../logic/Rope';
+import type { FishNetSnapshot } from '../../logic/RopeDynamics';
 import { CONFIG } from '../../core/config';
 import { world, layout, ShoreWorld } from './Geometry';
+import { ensureFishIdentities, isFishWorldId } from './FishIdentity';
 
 export const WORLD_SAVE_KEY = 'continuous_gameplay_mobile_v1';
 export const WORLD_BACKUP_KEY = WORLD_SAVE_KEY + '_backup';
@@ -21,6 +23,7 @@ export interface WorldSnapshot {
     player: any; npc: any; fish: any[]; ropes: any[]; links: any[]; current: any; ropeActive: boolean; markers: any[];
     maze: any; world: Partial<ShoreWorld>; explored: number[]; extraction: any; story: any; bcd: any; deco: any;
     stamina?: { remaining: number; exhausted: boolean };
+    fishNet?: FishNetSnapshot;
     config: { lightRange: number; moveSpeed: number; breathPeak: number; karstGeneration?: string; karstSurface?: string; karstStyle?: string };
 }
 export function packExplored(matrix: boolean[][]): number[] {
@@ -30,13 +33,22 @@ export function packExplored(matrix: boolean[][]): number[] {
     }
     if (count) out.push(last ? count : -count); return out;
 }
+function validExploredRuns(runs: number[], rows: number, cols: number): boolean {
+    const size = rows * cols; let count = 0;
+    if (!Number.isSafeInteger(size) || size <= 0) return false;
+    for (const run of runs) {
+        if (!Number.isSafeInteger(run) || run === 0) return false;
+        count += Math.abs(run); if (count > size) return false;
+    }
+    return count === size;
+}
 export function unpackExplored(runs: number[], rows: number, cols: number): boolean[][] {
+    if (!validExploredRuns(runs, rows, cols)) throw new Error('探索位图损坏或尺寸不完整');
     const matrix = Array.from({length: rows}, () => new Array(cols).fill(false)); let i = 0;
     for (const run of runs) {
-        if (!Number.isInteger(run) || run === 0 || i + Math.abs(run) > rows * cols) throw new Error('探索位图损坏');
         for (let n = 0; n < Math.abs(run); n++, i++) matrix[Math.floor(i / cols)][i % cols] = run > 0;
     }
-    if (i !== rows * cols) throw new Error('探索位图尺寸不完整'); return matrix;
+    return matrix;
 }
 function endpoint(e: any): PackedEndpoint | null {
     if (!e) return null;
@@ -54,6 +66,7 @@ function unendpoint(e: PackedEndpoint | null, fish: Map<number, any>): any {
 }
 export function captureWorld(): WorldSnapshot {
     const m: any = state.mazeRescue, w = world(); if (!m || !w) throw new Error('没有连续章节');
+    ensureFishIdentities(state.fishEnemies, w);
     const maze: any = {}, savedWorld: any = {},clock=w.hidden?(w.hiddenAt||Date.now()):Date.now();
     for (const k of MAZE_FIELDS) if (m[k] !== undefined) maze[k] = copy(m[k]);
     for (const k of WORLD_FIELDS) if((w as any)[k]!==undefined) savedWorld[k] = copy((w as any)[k]);
@@ -64,17 +77,35 @@ export function captureWorld(): WorldSnapshot {
             startWall:m.mazeWalls.indexOf(r.startWall),endWall:m.mazeWalls.indexOf(r.endWall)})),
         links:state.rope.links.map(l => ({id:l.id,start:endpoint(l.start),end:endpoint(l.end),path:copy(l.path),route:Array.isArray((l as any).route)?copy((l as any).route):undefined,length:l.length,tension:l.tension,age:l.age})),
         current:{...copy({...state.rope.current,startWall:undefined,startAttachment:undefined}),startWall:m.mazeWalls.indexOf(state.rope.current.startWall),startAttachment:endpoint(state.rope.current.startAttachment)},
-        ropeActive:state.rope.active, markers:copy(state.markers), maze, world:savedWorld, explored:packExplored(m.mazeExplored),
+        ropeActive:state.rope.active, fishNet:captureFishNetState(), markers:copy(state.markers), maze, world:savedWorld, explored:packExplored(m.mazeExplored),
         extraction:copy((state as any).extraction), story:copy(state.story2), bcd:copy(getBCDRuntime()), deco:copy(getDecoRuntime()),
         stamina:{remaining:state.semiAutoDrive.remaining,exhausted:state.semiAutoDrive.exhausted},
         config:{lightRange:CONFIG.lightRange,moveSpeed:CONFIG.maze.moveSpeed,breathPeak:CONFIG.breath.o2PerBreathPeak,karstGeneration:m.karstGeneration||'legacy',karstSurface:CONFIG.karst.surfaceMode,karstStyle:CONFIG.karst.style}};
+}
+function validFishReferences(data: WorldSnapshot): boolean {
+    const ids = new Set<number>();
+    for (const fish of data.fish) {
+        if (!fish || !Number.isFinite(fish.x) || !Number.isFinite(fish.y)) return false;
+        // Legacy GM saves may contain free fish without identities. They receive IDs on restore.
+        if (!isFishWorldId(fish.worldId)) continue;
+        if (ids.has(fish.worldId)) return false;
+        ids.add(fish.worldId);
+    }
+    const validEnd = (end: any) => !end || end.kind !== 'fish' || isFishWorldId(end.fish) && ids.has(end.fish);
+    if (!data.links.every(link => link && validEnd(link.start) && validEnd(link.end)) || !validEnd(data.current?.startAttachment)) return false;
+    try {
+        // Check references before changing live objects, so a corrupt primary can fall back to its backup.
+        ensureFishIdentities(data.fish.map(fish => ({worldId: fish.worldId})), {nextFishId: data.world.nextFishId});
+        return validateFishNetState(data.fishNet, data.fish, data.ropes);
+    } catch (_) { return false; }
 }
 export function validSnapshot(data: any): data is WorldSnapshot {
     return !!data && data.version === 1 && data.layoutVersion === layout.version && Number.isInteger(data.seed) &&
         Number.isInteger(data.rows) && data.rows > 0 && Number.isInteger(data.cols) && data.cols > 0 &&
         Number.isFinite(data.player?.x) && Number.isFinite(data.player?.y) && Number.isFinite(data.player?.o2) &&
         Array.isArray(data.fish) && Array.isArray(data.ropes) && Array.isArray(data.links) && Array.isArray(data.explored) &&
-        typeof data.world?.elapsed === 'number' && !!data.extraction && !!data.story && !!data.bcd && !!data.deco && !!data.config;
+        typeof data.world?.elapsed === 'number' && !!data.extraction && !!data.story && !!data.bcd && !!data.deco && !!data.config &&
+        validExploredRuns(data.explored, data.rows, data.cols) && validFishReferences(data);
 }
 export function readWorldSnapshot(): WorldSnapshot | null {
     for (const key of [WORLD_SAVE_KEY,WORLD_BACKUP_KEY]) {
@@ -89,6 +120,7 @@ export function saveWorldProgress(): boolean {
     let ok = false;
     try {
         const snapshot = captureWorld(), previous = loadJSON<WorldSnapshot>(WORLD_SAVE_KEY);
+        if (!validSnapshot(snapshot)) throw new Error('当前鱼或绳网引用不完整');
         if (validSnapshot(previous) && !saveJSON(WORLD_BACKUP_KEY, previous)) throw new Error('备份写入失败');
         ok = saveJSON(WORLD_SAVE_KEY, snapshot);
         if (ok) w.savedAt = snapshot.timestamp;
@@ -100,6 +132,8 @@ export function restoreWorld(data: WorldSnapshot) {
     if (!validSnapshot(data) || !w || data.rows !== m.mazeRows || data.cols !== m.mazeCols || data.seed !== m.seed) throw new Error('章节存档与地图不匹配');
     Object.assign(player,copy(data.player)); Object.assign(state.npc,copy(data.npc));
     state.fishEnemies = data.fish.map((f:any) => {const v=copy(f);v.stunUntil=v.stunRemaining>0?Date.now()+v.stunRemaining*1000:0;delete v.stunRemaining;return v;});
+    const identityCounter = {nextFishId: data.world.nextFishId};
+    ensureFishIdentities(state.fishEnemies, identityCounter);
     const fish = new Map<number,any>(state.fishEnemies.map((f:any) => [f.worldId,f]));
     state.rope = createRopeState();
     state.rope.ropes = data.ropes.map((r:any) => ({...copy(r),startWall:r.startWall>=0?m.mazeWalls[r.startWall]:null,endWall:r.endWall>=0?m.mazeWalls[r.endWall]:null}));
@@ -110,6 +144,7 @@ export function restoreWorld(data: WorldSnapshot) {
     m.oxygenTanks.forEach((t:any)=>t.consumed=(m.consumedTankIds||[]).includes(t.id));
     if(data.stamina)Object.assign(state.semiAutoDrive,data.stamina,{lastUpdateAt:Date.now(),thrusting:false,effort:0});
     Object.assign(w,copy(data.world)); w.panel=null; w.pendingAction=null; w.actionTime=0; w.hidden=false;
+    w.nextFishId=identityCounter.nextFishId;
     w.savedAt=data.timestamp; w.saveOK=true; w.notice='已原位续接章节；离线期间世界没有偷偷推进';w.noticeUntil=w.elapsed+4;
     m.mazeExplored=unpackExplored(data.explored,m.mazeRows,m.mazeCols);state.markers=copy(data.markers);
     (state as any).extraction=copy(data.extraction);state.story2=copy(data.story);
@@ -119,6 +154,6 @@ export function restoreWorld(data: WorldSnapshot) {
     if(data.config.karstStyle)CONFIG.karst.style=data.config.karstStyle;
     CONFIG.lightRange=data.config.lightRange;CONFIG.maze.moveSpeed=data.config.moveSpeed;CONFIG.breath.o2PerBreathPeak=data.config.breathPeak;
     state.interaction=createInteractionState();state.interaction.nextLinkId=Math.max(0,...state.rope.links.map(l=>l.id))+1;
-    resetRopeMotion();m.phase='play';
+    resetRopeMotion();restoreFishNetState(data.fishNet);m.phase='play';
     restoredSnapshot=captureWorld();
 }

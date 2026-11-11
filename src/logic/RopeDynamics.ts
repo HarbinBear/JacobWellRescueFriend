@@ -23,6 +23,27 @@ export interface NetContactView extends NetApproach {
     caughtThreads: { rope: number; point: RopePoint }[];
 }
 
+interface SavedFishThread {
+    rope: number;
+    threadId: number | null;
+    ropeKey: string;
+    point: RopePoint;
+    lastSeen: number;
+    across: boolean;
+}
+interface SavedFishContact {
+    fishId: number;
+    kind: 'glide' | 'snag';
+    nx: number; ny: number; density: number; strength: number;
+    phase: number; escape: number; depth: number; speed: number; side: number; gap: number; cooldown: number;
+    surface: RopePoint;
+    pull: { point: RopePoint; amount: number; velocity: number; width: number; driven: boolean; age: number; active: boolean };
+    fish: { threads: SavedFishThread[]; entry: RopePoint | null; grip: number; emptyFrames: number };
+}
+/** Only live fish contacts are persisted, never WeakMaps, free spring tails or rope geometry. */
+export interface FishNetSnapshot { version: 1; contacts: SavedFishContact[] }
+interface SavedNetBody extends RopeBody { worldId?: number; dead?: boolean }
+
 interface NetPull {
     group: RopeGroup;
     point: RopePoint;
@@ -199,6 +220,128 @@ const fishProfiles = {
     rammer: { tail: 44, retain: 64, required: 4, gripFrames: 3 },
     shoal: { tail: 12, retain: 30, required: 3, gripFrames: 8 },
 };
+
+function fishById(fish: readonly SavedNetBody[]) {
+    const bodies = new Map<number, SavedNetBody>(), duplicates = new Set<number>();
+    for (const body of fish) {
+        const id = body.worldId;
+        if (!Number.isSafeInteger(id) || id! < 1 || body.dead || !Object.prototype.hasOwnProperty.call(fishProfiles, body.kind!)) continue;
+        if (bodies.has(id!)) duplicates.add(id!);
+        bodies.set(id!, body);
+    }
+    for (const id of duplicates) bodies.delete(id);
+    return bodies;
+}
+
+// Index alone can refer to a different rope after removal. Check its saved path as
+// well; threadId (when present) distinguishes multiple spans of the same thread.
+function savedRopeKey(net: RopeNet, index: number): string {
+    const rope = net.ropes[index];
+    const value = JSON.stringify([rope.path, !!rope.startOnRope, !!rope.endOnRope, !!rope.startLoose, !!rope.endLoose]);
+    let hash = 2166136261;
+    for (let i = 0; i < value.length; i++) hash = Math.imul(hash ^ value.charCodeAt(i), 16777619);
+    return `${value.length}:${hash >>> 0}`;
+}
+
+export function captureFishNetContacts(net: RopeNet, fish: readonly SavedNetBody[]): FishNetSnapshot {
+    const snapshot: FishNetSnapshot = { version: 1, contacts: [] }, motion = motionByNet.get(net);
+    if (!motion) return snapshot;
+    const keys = new Map<number, string>();
+    for (const [fishId, body] of fishById(fish)) {
+        const c = motion.contacts.get(body);
+        if (!c?.fish || c.kind !== 'glide' && c.kind !== 'snag') continue;
+        const threads: SavedFishThread[] = [];
+        for (const [rope, t] of c.fish.threads) {
+            if (!net.woven.has(rope) || net.groups.get(rope) !== c.pull.group) continue;
+            if (!keys.has(rope)) keys.set(rope, savedRopeKey(net, rope));
+            threads.push({ rope, threadId: net.ropes[rope].threadId ?? null, ropeKey: keys.get(rope)!,
+                point: { ...t.point }, lastSeen: t.lastSeen, across: t.across });
+        }
+        if (!threads.length) continue;
+        snapshot.contacts.push({ fishId, kind: c.kind, nx: c.nx, ny: c.ny, density: c.density, strength: c.strength,
+            phase: c.phase, escape: c.escape, depth: c.depth, speed: c.speed, side: c.side, gap: c.gap, cooldown: c.cooldown,
+            surface: { ...c.surface }, pull: { point: { ...c.pull.point }, amount: c.pull.amount, velocity: c.pull.velocity,
+                width: c.pull.width, driven: c.pull.driven, age: c.pull.age, active: motion.pulls.includes(c.pull) },
+            fish: { threads, entry: c.fish.entry && { ...c.fish.entry }, grip: c.fish.grip, emptyFrames: c.fish.emptyFrames } });
+    }
+    return snapshot;
+}
+
+/** Restore onto the existing fish and woven net. Invalid records are ignored;
+ * missing legacy data is a no-op. This never creates or reattaches a rope. */
+function readFishNetContacts(net: RopeNet, fish: readonly SavedNetBody[], data: unknown, commit: boolean) {
+    const result = { restored: 0, rejected: 0 }, snapshot = data as FishNetSnapshot | undefined;
+    if (snapshot === undefined) return result;
+    if (!snapshot || snapshot.version !== 1 || !Array.isArray(snapshot.contacts)) { result.rejected = 1; return result; }
+    const bodies = fishById(fish), keys = new Map<number, string>(), counts = new Map<number, number>();
+    for (const c of snapshot.contacts) if (c) counts.set(c.fishId, (counts.get(c.fishId) || 0) + 1);
+    const number = (v: unknown, low: number, high: number) => typeof v === 'number' && Number.isFinite(v) && v >= low && v <= high;
+    const integer = (v: unknown, low: number, high: number) => number(v, low, high) && Number.isInteger(v);
+    const point = (v: any) => !!v && number(v.x, -1e7, 1e7) && number(v.y, -1e7, 1e7);
+    for (const c of snapshot.contacts) {
+        const body = c && bodies.get(c.fishId), p = c?.pull, f = c?.fish;
+        if (!body || counts.get(c.fishId) !== 1 || !point(body) || c.kind !== 'glide' && c.kind !== 'snag' ||
+            !number(c.nx, -1, 1) || !number(c.ny, -1, 1) || Math.abs(Math.hypot(c.nx, c.ny) - 1) > 1e-5 ||
+            !number(c.density, 0, 1) || !number(c.strength, 0, 1) || !integer(c.phase, 0, 1e9) ||
+            !number(c.escape, 0, 1) || !integer(c.cooldown, 0, 12) || !number(c.depth, -1e3, 1e3) ||
+            !number(c.speed, -1e3, 1e3) || !number(c.side, -1e3, 1e3) || !number(c.gap, -1e3, 1e3) ||
+            !point(c.surface) || !p || !point(p.point) || !number(p.amount, -1e3, 1e3) || !number(p.velocity, -1e3, 1e3) ||
+            !number(p.width, 1, 1e3) || !integer(p.age, 0, 1e9) || typeof p.driven !== 'boolean' || typeof p.active !== 'boolean' ||
+            Math.hypot(body.x - c.surface.x, body.y - c.surface.y) > 1e3 ||
+            Math.hypot(body.x - p.point.x, body.y - p.point.y) > 1e3 ||
+            !f || !Array.isArray(f.threads) || !f.threads.length || f.threads.length > net.ropes.length ||
+            f.entry !== null && !point(f.entry) || !number(f.grip, 0, 1e3) || !integer(f.emptyFrames, 0, 12)) {
+            result.rejected++; continue;
+        }
+        let group: RopeGroup | undefined, valid = true;
+        const threads: NonNullable<Contact['fish']>['threads'] = new Map();
+        for (const t of f.threads) {
+            if (!t || !integer(t.rope, 0, net.ropes.length - 1) || !net.woven.has(t.rope) || threads.has(t.rope) ||
+                !point(t.point) || !integer(t.lastSeen, 0, 1e9) || typeof t.across !== 'boolean') { valid = false; break; }
+            const candidate = net.groups.get(t.rope);
+            if (!keys.has(t.rope)) keys.set(t.rope, savedRopeKey(net, t.rope));
+            if (!candidate || group && candidate !== group || t.threadId !== (net.ropes[t.rope].threadId ?? null) ||
+                t.ropeKey !== keys.get(t.rope) || !candidate.strands.some(s => s.rope === t.rope && pointOnStrand(t.point, s.a, s.b))) {
+                valid = false; break;
+            }
+            group = candidate;
+            threads.set(t.rope, { point: { ...t.point }, lastSeen: t.lastSeen, across: t.across });
+        }
+        const crossings = uniqueThreads(net, Array.from(threads).filter(([,t]) => t.across).map(([i]) => i));
+        if (!valid || !group || c.kind === 'snag' &&
+            (uniqueThreads(net, threads.keys()) < fishProfiles[body.kind!].required || crossings < 2)) {
+            result.rejected++; continue;
+        }
+        if (!commit) { result.restored++; continue; }
+        const motion = motionFor(net), previous = motion.contacts.get(body);
+        if (previous) motion.pulls = motion.pulls.filter(pull => pull !== previous.pull);
+        const pull: NetPull = { point: { ...p.point }, amount: p.amount, velocity: p.velocity, width: p.width,
+            driven: p.driven, age: p.age, nx: c.nx, ny: c.ny, group };
+        const contact: Contact = { kind: c.kind, ...c.surface, surface: { ...c.surface }, nx: c.nx, ny: c.ny,
+            density: c.density, strength: c.strength, phase: c.phase, escape: c.escape, depth: c.depth, speed: c.speed,
+            side: c.side, gap: c.gap, cooldown: c.cooldown, pull,
+            fish: { threads, entry: f.entry && { ...f.entry }, grip: f.grip, emptyFrames: f.emptyFrames } };
+        motion.contacts.set(body, contact); motion.bodies.add(body);
+        if (p.active) motion.pulls.push(pull);
+        result.restored++;
+    }
+    return result;
+}
+
+export function restoreFishNetContacts(net: RopeNet, fish: readonly SavedNetBody[], data: unknown) {
+    return readFishNetContacts(net, fish, data, true);
+}
+
+/** Preflight a saved object graph before choosing it over a backup. No runtime contacts are changed. */
+export function validateFishNetContacts(net: RopeNet, fish: readonly SavedNetBody[], data: unknown): boolean {
+    if (data === undefined) return true;
+    const ids = new Set<number>();
+    for (const body of fish) {
+        if (!body || !Number.isSafeInteger(body.worldId) || body.worldId! < 1 || ids.has(body.worldId!)) return false;
+        ids.add(body.worldId!);
+    }
+    return readFishNetContacts(net, fish, data, false).rejected === 0;
+}
 
 function segmentDistance(a: RopePoint, b: RopePoint, c: RopePoint, d: RopePoint): number {
     const ax = b.x - a.x, ay = b.y - a.y, bx = d.x - c.x, by = d.y - c.y;
