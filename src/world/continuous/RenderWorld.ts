@@ -3,7 +3,7 @@ import { drawMazeWallShape } from '../../render/RenderMazeScene';
 import { drawKarstSurface, karstSurfaceStats, karstAssetsReady } from '../../render/RenderKarst';
 import { getKarstTerrain, karstStats } from '../KarstTerrain';
 import { getKarstBounce } from '../../render/KarstBounce';
-import { drawKarstVolume, restoreKarstVolumeLight, isVolumeFishDrawn, karstVolumeStats, getKarstVolumeBounceLights, getKarstVolumeBounceNormals } from '../../render/RenderKarstVolume';
+import { drawKarstVolume, restoreKarstVolumeLight, isVolumeFishDrawn, isVolumeRopeDrawn, karstVolumeStats, getKarstVolumeBounceLights, getKarstVolumeBounceNormals } from '../../render/RenderKarstVolume';
 import { CONFIG } from '../../core/config';
 import { state, player, particles } from '../../core/state';
 import { canvas,ctx,dpr,logicW,logicH,withCanvasContext } from '../../render/Canvas';
@@ -185,7 +185,7 @@ export function drawContinuousFrame(){
     const c=state.camera,zoom=c.zoom;
     const v={l:c.x-logicW/(2*zoom)-80,r:c.x+logicW/(2*zoom)+80,t:c.y-logicH/(2*zoom)-80,b:c.y+logicH/(2*zoom)+80};
     ctx.setTransform(dpr,0,0,dpr,0,0);ctx.fillStyle='#08272e';ctx.fillRect(0,0,logicW,logicH);
-    // 三维洞腔与实体鱼共用深度；旧的平面岩壁仍画在光照遮罩之后。
+    // 三维洞腔、实体鱼与固定引导绳共用深度；旧的平面岩壁仍画在光照遮罩之后。
     const terrain=getKarstTerrain(state.mazeRescue),volume=!!terrain&&terrain.generation==='volume';
     ctx.save();transform();drawBackdrop(v);drawDeepCave(v);
     const volumeDrawn=volume&&drawKarstVolume(ctx,terrain!,zoom,state.flashlightOn!==false&&w.wet>.3);drawBanks(v);drawNaturalBoundaries(ctx,v);drawCamp(v);
@@ -195,7 +195,7 @@ export function drawContinuousFrame(){
     const separate=layered&&!!foregroundCtx;
     const visual=w.headWet?getRescueTapeVisual():undefined;
     const drawActors=()=>{
-    drawRopesWorld(v.l,v.r,v.t,v.b);drawRopeTethersWorld(ctx,v.l,v.r,v.t,v.b);drawRemovedRopesWorld(ctx);drawRescueRopeWorld(ctx);
+    drawRopesWorld(v.l,v.r,v.t,v.b,volumeDrawn?isVolumeRopeDrawn:undefined);drawRopeTethersWorld(ctx,v.l,v.r,v.t,v.b);drawRemovedRopesWorld(ctx);drawRescueRopeWorld(ctx);
     drawAllFishEnemies(ctx,v.l,v.r,v.t,v.b,volumeDrawn?isVolumeFishDrawn:undefined);drawOxygenTanksWorld(ctx,v.l,v.r,v.t,v.b);drawOxygenFeedbackWorld(ctx);drawRelicsWorld(ctx,v.l,v.r,v.t,v.b);drawDroppedItemsWorld(v.l,v.r,v.t,v.b);
     const motion:any={id:'player',hasTank:true,tankCount:Math.max(1,w.airTanks.length),animTime:player.animTime,vx:player.vx,vy:player.vy,autoSwim:CONFIG.driveMode!=='manual',
         leftKickProgress:state.manualDrive.leftKickProgress,rightKickProgress:state.manualDrive.rightKickProgress,leftKickStrength:state.manualDrive.leftKickStrength,rightKickStrength:state.manualDrive.rightKickStrength,

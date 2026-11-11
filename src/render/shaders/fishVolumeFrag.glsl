@@ -14,6 +14,7 @@ uniform float shadowOn;
 uniform float fov;
 uniform float range;
 uniform float energy;
+uniform float matte;
 uniform float surfaceY;
 uniform sampler2D shadowMap;
 uniform sampler2D sliceTex;
@@ -50,7 +51,8 @@ void main() {
         vec3 beamColor = mix(vec3(0.30,0.50,0.57),vec3(0.12,0.35,0.61),smoothstep(200.0,720.0,d)) * exp(-extinction * d * 0.38);
         // 体色保留银灰；窄而柔的水下高光随转身移动，不把整条鱼画成发亮的剪影。
         float diffuse = max(dot(n,l),0.0);
-        float specular = pow(max(dot(n,normalize(l + view)),0.0),44.0) * 0.24;
+        // 绳纤维复用同一束光和回光，但用宽而弱的高光，避免变成金属线。
+        float specular = pow(max(dot(n,normalize(l + view)),0.0),mix(44.0,18.0,matte)) * mix(0.24,0.045,matte);
         col += (C * (diffuse * 0.78 + 0.035) + vec3(specular)) * beamColor * beam;
         for (int i=0; i<10; i++) {
             vec3 toB = bounce[i].xyz - P;

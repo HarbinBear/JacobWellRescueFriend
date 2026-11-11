@@ -176,7 +176,7 @@ function drawNetKnot(x: number, y: number, connections: number, selected = false
     ctx.restore();
 }
 
-export function drawRopesWorld(left: number, right: number, top: number, bottom: number) {
+export function drawRopesWorld(left: number, right: number, top: number, bottom: number, volumeDrawn?: (rope: any) => boolean) {
     if (!state.rope) return;
     const view = { left, right, top, bottom };
     const time = Date.now() / 1000;
@@ -184,7 +184,7 @@ export function drawRopesWorld(left: number, right: number, top: number, bottom:
     for (const [i, rope] of state.rope.ropes.entries()) {
         if (!rope.path || rope.path.length < 2) continue;
         if (net?.woven.has(i)) strokeWovenPath(getWovenPath(net, i, rope.path), i, view);
-        else if (rope.path.some((p, index) => index > 0 && visibleSegment(rope.path[index - 1], p, view, 24))) {
+        else if (!volumeDrawn?.(rope) && rope.path.some((p, index) => index > 0 && visibleSegment(rope.path[index - 1], p, view, 24))) {
             strokeRopeLine(rope.path, CONFIG.ropeTightColor, CONFIG.ropeTightWidth, true);
         }
         for (const [point, wall] of [[rope.start, rope.startWall], [rope.end, rope.endWall]]) {

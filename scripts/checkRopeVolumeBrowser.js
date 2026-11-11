@@ -1,0 +1,165 @@
+// 真实固定引导绳的显示/灯光/缓存回归；单绳没有woven网的拦鱼能力。
+const fs = require('fs'), path = require('path'), assert = require('assert/strict');
+const { openReviewBrowser } = require('../design/cave-room/browser.cjs');
+const URL = process.env.JWR_PREVIEW_URL || 'http://127.0.0.1:60972/node_modules/.cache/karst-review/live/game.html?rope-volume';
+const OUT = path.resolve(__dirname, '../node_modules/.cache/continuous-gameplay/rope-volume');
+const PREVIEW = process.argv.includes('--preview'), SWIM_ONLY = process.argv.includes('--swim-only');
+const DEPTH_ONLY = process.argv.includes('--depth-only');
+const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+(async () => {
+    fs.mkdirSync(OUT, { recursive: true });
+    const b = await openReviewBrowser(URL, 1440, 900), report = { scope: '真实洞室/实锚路径，隔离Chrome；非微信真机；单绳不拦鱼' };
+    const ev = source => b.evaluate(source);
+    async function shot(name) {
+        const data = await ev('document.getElementById("game").toDataURL("image/png")');
+        fs.writeFileSync(path.join(OUT, name + '.png'), Buffer.from(data.split(',')[1], 'base64'));
+    }
+    async function settle() {
+        await wait(100);
+        const start = Date.now();
+        while (await ev('DeepTapeGame.cave.volume.karstVolumeStats().pending')) {
+            assert(Date.now() - start < 18000, '当前洞室分块未完成'); await wait(100);
+        }
+        await wait(100);
+    }
+    const stats = () => ev('DeepTapeGame.cave.volume.karstVolumeStats()');
+    const drawn = () => ev('DeepTapeGame.cave.volume.isVolumeRopeDrawn(DeepTapeGame.state.rope.ropes[0])');
+    const ropePath = () => ev('JSON.stringify(DeepTapeGame.state.rope.ropes.map(r=>r.path))');
+    // 固定世界点周围取样，只用于确认随手电变化，不把明暗阈值当美术评分。
+    async function ropeLuma() {
+        return ev(`(()=>{const g=DeepTapeGame,c=g.state.camera,p=window.__ropeVolumeReview.center,can=document.getElementById('game'),cfg=g.cave.config;
+            const sx=(cfg.screenWidth/2+(p.x-c.x-c.swayX)*c.zoom)*can.width/cfg.screenWidth;
+            const sy=(cfg.screenHeight/2+(p.y-c.y-c.swayY)*c.zoom)*can.height/cfg.screenHeight;
+            const a=can.getContext('2d').getImageData(Math.round(sx)-3,Math.round(sy)-3,6,6).data;
+            let sum=0;for(let i=0;i<a.length;i+=4)sum+=.2126*a[i]+.7152*a[i+1]+.0722*a[i+2];return sum/36;})()`);
+    }
+    async function actualSwim() {
+        const fixedView = 'DeepTapeGame.review.inspectVolumeRopeView(1);Object.assign(DeepTapeGame.state.camera,{zoom:1.4,targetZoom:1.4})';
+        await ev('window.__ropeVolumeReview=DeepTapeGame.review.inspectVolumeRope();' + fixedView);
+        await settle(); const pathBefore = await ropePath();
+        const sample = () => ev(`(()=>{const g=DeepTapeGame,f=g.state.fishEnemies[0],p=g.state.rope.ropes[0].path,a=p[0],b=p[p.length-1];
+            const side=q=>((b.x-a.x)*(q.y-a.y)-(b.y-a.y)*(q.x-a.x))/Math.hypot(b.x-a.x,b.y-a.y);
+            return{x:f.x,y:f.y,animTime:f.animTime,side:side(f),playerSide:side(g.player),time:g.world.geometry.world().elapsed,
+                contact:g.interactions.rope.getRopeContact(f)?.kind||null};})()`);
+        const before = await sample(); assert(before.side * before.playerSide < 0, '初始鱼和潜水员应位于绳线两侧');
+        await shot('10-swim-before'); await ev('DeepTapeGame.world.geometry.world().hidden=false');
+        let nearLine = null, crossed = false;
+        for (let i = 0; i < 35; i++) {
+            await wait(80); const current = await sample(); crossed ||= current.side * before.side < 0;
+            if (!nearLine && Math.abs(current.side) < 8) {
+                await ev(fixedView);
+                await wait(50); nearLine = await sample(); await shot('11-fish-near-rope');
+                await ev('DeepTapeGame.world.geometry.world().hidden=false');
+            }
+        }
+        await ev(fixedView);
+        await wait(80); const after = await sample(); await shot('12-swim-after');
+        const distance = Math.hypot(after.x - before.x, after.y - before.y);
+        assert(distance > 10 && after.animTime > before.animTime, '真实AI必须推进游动和动画');
+        assert.equal(await ropePath(), pathBefore, '鱼游动不能修改固定引导绳路径');
+        assert.notEqual(after.contact, 'snag', '非woven单绳不能伪造捕获');
+        assert(await drawn()); assert(await ev('DeepTapeGame.cave.volume.isVolumeFishDrawn(DeepTapeGame.state.fishEnemies[0])'));
+        return { before, after, distance, simulationSeconds: after.time - before.time, crossed, nearLine,
+            rule: '真实AI游动；非woven单绳按现有规则不拦鱼，未修改路径或伪造接触' };
+    }
+    async function depthOcclusion() {
+        // 仅隔离渲染摆位：鱼与绳中心同在z=0，鱼的前半体积应遮住更细的管体。
+        const placement = await ev(`(()=>{const g=DeepTapeGame;window.__ropeVolumeReview=g.review.inspectVolumeRope();
+            g.review.inspectVolumeRopeView(1);g.cave.config.quality.scale=.3;
+            const rope=g.state.rope.ropes[0],a=rope.path[0],b=rope.path[rope.path.length-1],p=window.__ropeVolumeReview.center;
+            const length=Math.hypot(b.x-a.x,b.y-a.y),dx=(b.x-a.x)/length,dy=(b.y-a.y)/length,f=g.state.fishEnemies[0];
+            Object.assign(f,{x:p.x,y:p.y,angle:Math.atan2(dy,dx),targetAngle:Math.atan2(dy,dx),animTime:.37});
+            window.__depthRopes=g.state.rope.ropes;window.__depthPoints=[{x:p.x,y:p.y},{x:p.x+dx*60,y:p.y+dy*60}];
+            return{fish:{x:f.x,y:f.y},points:window.__depthPoints};})()`);
+        const originalPath = await ropePath(); await settle();
+        const withStats = await stats(); assert(withStats.ropeCount === 1 && withStats.fishCount === 1);
+        // stats.shadows表示阴影缓冲已分配；实际shadowOn由quality.scale>.3决定。
+        assert.equal(await ev('DeepTapeGame.cave.config.quality.scale'), .3);
+        const patches = () => ev(`(()=>{const g=DeepTapeGame,c=g.state.camera,can=document.getElementById('game'),cfg=g.cave.config;
+            return window.__depthPoints.map(p=>{const x=(cfg.screenWidth/2+(p.x-c.x-c.swayX)*c.zoom)*can.width/cfg.screenWidth;
+                const y=(cfg.screenHeight/2+(p.y-c.y-c.swayY)*c.zoom)*can.height/cfg.screenHeight;
+                return Array.from(can.getContext('2d').getImageData(Math.round(x)-3,Math.round(y)-3,6,6).data);});})()`);
+        const withRope = await patches();
+        await ev('DeepTapeGame.state.rope.ropes=[]'); await wait(120);
+        const withoutStats = await stats(); assert.equal(withoutStats.ropeCount, 0); assert.equal(withoutStats.fishCount, 1);
+        const withoutRope = await patches();
+        const difference = (a, b) => {
+            let sum = 0, maximum = 0, count = 0;
+            for (let i = 0; i < a.length; i++) if (i % 4 !== 3) { const d = Math.abs(a[i] - b[i]); sum += d; maximum = Math.max(maximum, d); count++; }
+            return { mean: sum / count, maximum };
+        };
+        const fishPatch = difference(withRope[0], withoutRope[0]), outsidePatch = difference(withRope[1], withoutRope[1]);
+        assert(fishPatch.mean < .2 && fishPatch.maximum <= 1, '鱼身中央不能叠上绳索亮线');
+        assert(outsidePatch.mean > 1, '鱼外绳段应仍可见，不能用整根漏画通过遮挡检查');
+        await ev('DeepTapeGame.state.rope.ropes=window.__depthRopes'); await wait(120);
+        assert(await drawn()); assert.equal(await ropePath(), originalPath); await shot('13-fish-rope-depth-study');
+        return { placement, shadowQualityScale: .3, fishPatch, outsidePatch,
+            scope: '仅渲染摆位与共享深度验收，不代表AI横穿、碰撞或单绳拦鱼' };
+    }
+    try {
+        report.fixture = await ev(`(()=>{const g=DeepTapeGame;g.cave.config.quality.auto=false;g.cave.config.quality.scale=.75;
+            const result=g.review.inspectVolumeRope();window.__ropeVolumeReview=result;return result;})()`);
+        assert(report.fixture && report.fixture.nonWoven && report.fixture.path.length >= 2);
+        assert(report.fixture.anchors.start >= 0 && report.fixture.anchors.end >= 0, '两端必须挂在当前地图的真实墙上');
+        assert(await ev('DeepTapeGame.cave.config.karst.volumeRopes'), '立体引导绳默认启用');
+        const initialPath = await ropePath();
+        if (DEPTH_ONLY) {
+            report.depth = await depthOcclusion(); report.errors = b.errors;
+            assert.equal(b.errors.length, 0, JSON.stringify(b.errors)); report.status = 'passed'; return;
+        }
+        if (SWIM_ONLY) {
+            report.swim = await actualSwim(); report.errors = b.errors;
+            assert.equal(b.errors.length, 0, JSON.stringify(b.errors)); report.status = 'passed'; return;
+        }
+        await settle(); report.enabled = await stats();
+        assert(report.enabled.ready && report.enabled.ropeCount === 1 && report.enabled.ropeTriangles > 0 && !report.enabled.ropeFailure);
+        assert(await drawn()); assert.equal(report.enabled.fishCount, 1); await shot('01-front-volume');
+        await ev('DeepTapeGame.cave.config.karst.volumeRopes=false'); await wait(150);
+        report.disabled = await stats(); assert.equal(report.disabled.ropeCount, 0); assert(!await drawn());
+        assert(report.disabled.ready && report.disabled.fishCount === 1, '退回二维绳不能关闭洞室或实体鱼');
+        assert.equal(await ropePath(), initialPath); await shot('02-front-original-2d');
+        await ev('DeepTapeGame.cave.config.karst.volumeRopes=true'); await wait(150); assert(await drawn());
+        if (PREVIEW) { report.status = 'preview'; return; }
+
+        const beforeCache = await stats(); await wait(650); const afterCache = await stats();
+        assert.equal(afterCache.ropeBuilds, beforeCache.ropeBuilds, '相同静态路径不能每帧重建网格');
+        report.stableCache = { builds: afterCache.ropeBuilds, triangles: afterCache.ropeTriangles };
+        await ev('DeepTapeGame.review.inspectVolumeRopeView(1)'); await settle(); await shot('03-close-volume');
+        report.frontLuma = await ropeLuma();
+        await ev('DeepTapeGame.review.rotateKarstLight(Math.PI)'); await wait(150); report.turnedLuma = await ropeLuma(); await shot('04-turned-light');
+        await ev('DeepTapeGame.state.flashlightOn=false'); await wait(150); report.offLuma = await ropeLuma(); await shot('05-light-off');
+        assert(report.frontLuma > report.offLuma + 1, '绳索可见受光不能在关灯后保持固定亮度');
+        assert(report.frontLuma > report.turnedLuma + .5, '绳索受光应跟随手电朝向');
+        await ev('DeepTapeGame.state.flashlightOn=true;DeepTapeGame.review.rotateKarstLight(-Math.PI);DeepTapeGame.review.inspectVolumeRopeView(2)');
+        await settle(); await shot('06-real-wall-anchor'); assert.equal(await ropePath(), initialPath, '镜头和灯光不能修改真实绳路');
+
+        // 没有鱼时也必须清掉tube：woven网暂交旧绘制，之后恢复同一个base对象。
+        await ev('DeepTapeGame.state.fishEnemies=[];DeepTapeGame.review.inspectVolumeRopeView(0)'); await settle();
+        report.crossing = await ev('DeepTapeGame.review.setVolumeRopeCrossing(true)'); assert.equal(report.crossing.woven, 2);
+        const wovenPath = await ropePath(); await wait(150);
+        const wovenStats = await stats(); assert.equal(wovenStats.ropeCount, 0); assert.equal(wovenStats.fishCount, 0);
+        assert(!await drawn()); await shot('07-crossing-returns-to-2d');
+        // 禁用开关前后应是同一张二维网，不得额外残留上一次的tube。
+        const wovenOnLuma = await ropeLuma(); await ev('DeepTapeGame.cave.config.karst.volumeRopes=false'); await wait(120);
+        report.crossing.lumaDifference = Math.abs(wovenOnLuma - await ropeLuma());
+        assert(report.crossing.lumaDifference < .6, 'woven资格退出后不得残留管体'); assert.equal(await ropePath(), wovenPath);
+        await ev('DeepTapeGame.cave.config.karst.volumeRopes=true;DeepTapeGame.review.setVolumeRopeCrossing(false)'); await wait(150);
+        report.singleRestored = await stats(); assert.equal(report.singleRestored.ropeCount, 1); assert(await drawn());
+        assert.equal(await ropePath(), initialPath); await shot('08-single-restored-no-fish');
+
+        assert(await ev('DeepTapeGame.cave.volume.loseKarstVolumeContext()')); await wait(450); await settle();
+        report.recovered = await stats(); assert(report.recovered.ready && report.recovered.ropeCount === 1 && !report.recovered.ropeFailure);
+        assert(await drawn()); assert.equal(await ropePath(), initialPath); await shot('09-context-restored');
+        const restoredBuilds = report.recovered.ropeBuilds; await wait(400);
+        assert.equal((await stats()).ropeBuilds, restoredBuilds, '上下文恢复后静态缓存应重新稳定');
+        await ev('DeepTapeGame.state.rope.ropes=[]'); await wait(150);
+        report.removed = await stats(); assert.equal(report.removed.ropeCount, 0, '删光绳和鱼后不得残留管体批次');
+        report.swim = await actualSwim();
+        report.depth = await depthOcclusion();
+        report.errors = b.errors; assert.equal(b.errors.length, 0, JSON.stringify(b.errors)); report.status = 'passed';
+    } catch (error) { report.status = 'failed'; report.failure = String(error.stack || error); report.errors = b.errors; process.exitCode = 1; }
+    finally {
+        fs.writeFileSync(path.join(OUT, PREVIEW ? 'preview-report.json' : DEPTH_ONLY ? 'depth-report.json' : SWIM_ONLY ? 'swim-report.json' : 'report.json'), JSON.stringify(report, null, 2));
+        console.log(JSON.stringify(report, null, 2)); await b.close();
+    }
+})();
