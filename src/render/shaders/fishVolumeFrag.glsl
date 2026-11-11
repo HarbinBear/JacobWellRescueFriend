@@ -48,7 +48,10 @@ void main() {
         float spill = exp(-pow(theta / max(0.01,fov * 0.36),4.0)) * (1.0 - smoothstep(fov * 0.43,fov * 0.5,theta));
         float cone = (spill * 0.63 + exp(-theta * theta / 0.031) * 0.25) / 0.88 * (1.0 - step(fov * 0.5,theta));
         float beam = cone * visibility() * energy * (1.0 - smoothstep(range * 0.85,range * 1.2,d)) / (1.0 + pow(d / 200.0,2.0));
-        vec3 beamColor = mix(vec3(0.30,0.50,0.57),vec3(0.12,0.35,0.61),smoothstep(200.0,720.0,d)) * exp(-extinction * d * 0.38);
+        vec3 beamColor = mix(vec3(0.30,0.50,0.57),vec3(0.12,0.35,0.61),smoothstep(200.0,720.0,d));
+        // 黄绳的近场直射保留白色手电下的固有色；远处仍受水体吸收，不增加自发光。
+        beamColor = mix(beamColor,mix(vec3(0.68,0.70,0.68),vec3(0.18,0.40,0.59),smoothstep(120.0,720.0,d)),matte);
+        beamColor *= exp(-extinction * d * 0.38);
         // 体色保留银灰；窄而柔的水下高光随转身移动，不把整条鱼画成发亮的剪影。
         float diffuse = max(dot(n,l),0.0);
         // 绳纤维复用同一束光和回光，但用宽而弱的高光，避免变成金属线。

@@ -5,6 +5,7 @@ import { FishVolumePass } from './FishVolumePass';
 import { RopeVolumePass } from './RopeVolumePass';
 import type { RopeVolumeSource } from './RopeVolumeMesh';
 import { FishEnemy } from '../logic/FishEnemy';
+import { getRopeDeformedPoint } from '../logic/Rope';
 import { FISH_VOLUME_VERT_SRC } from './shaders/fishVolumeVert.glsl';
 import { FISH_VOLUME_FRAG_SRC } from './shaders/fishVolumeFrag.glsl';
 import { CONFIG } from '../core/config';
@@ -223,7 +224,7 @@ export function drawKarstVolume(ctx: CanvasRenderingContext2D, t: KarstTerrain, 
     let w = Math.ceil(logicW * resolution), h = Math.ceil(logicH * resolution);
     const shrink = Math.min(1, Math.sqrt(quality.pixelBudget / Math.max(1, w * h))); w = Math.max(2, Math.round(w * shrink)); h = Math.max(2, Math.round(h * shrink));
     fishPass?.prepare(state.fishEnemies || [], (state.mazeRescue as any)?.continuous?.elapsed || 0, cx, cy, halfW, halfH, quality.volumeFish, { x: player.x, y: player.y, radius: shadowOn ? CONFIG.lightRange * 1.2 : 0 });
-    ropePass?.prepare(state.rope.ropes, (state.mazeRescue as any)?.continuous?.elapsed || 0, cx, cy, halfW, halfH, quality.volumeRopes, { x: player.x, y: player.y, radius: shadowOn ? CONFIG.lightRange * 1.2 : 0 }, (state.mazeRescue as any)?.continuous?.surfaceY || 0);
+    ropePass?.prepare(state.rope.ropes, (state.mazeRescue as any)?.continuous?.elapsed || 0, cx, cy, halfW, halfH, quality.volumeRopes, { x: player.x, y: player.y, radius: shadowOn ? CONFIG.lightRange * 1.2 : 0 }, (state.mazeRescue as any)?.continuous?.surfaceY || 0, getRopeDeformedPoint);
     const next = [fishPass?.count ? frame : 0, ropePass?.revision || 0, cx, cy, zoom, w, h, player.x, player.y, player.angle, lightOn, shadowOn, CONFIG.lightRange, CONFIG.fov, quality.lightEnergy, quality.bounceStrength, quality.volumeVisibility, quality.volumeMaterial, quality.extinction.join(), uploads, visible.length, inspection].join('/');
     if (next !== key) {
         if (surface.width !== w) surface.width = w; if (surface.height !== h) surface.height = h; width = w; height = h;

@@ -1,19 +1,21 @@
 import { getRopeNet } from '../logic/RopeNet';
+import type { RopeNet, RopePoint } from '../logic/RopeNet';
+import { getWovenPath } from './RopeVisualPath';
 import { buildRopeVolumeMesh, supportsRopeVolume, validRopeVolumePath, ROPE_VOLUME_RADIUS,
-    type RopeVolumeSource } from './RopeVolumeMesh';
+    ROPE_VOLUME_MAX_RINGS, type RopeVolumeSource } from './RopeVolumeMesh';
 
 interface Snapshot { rope: RopeVolumeSource; flags: string; values: unknown[]; }
 const flags = (r: RopeVolumeSource) => [!!r.startWall, !!r.endWall, !!r.startLoose, !!r.endLoose,
     !!r.startOnRope, !!r.endOnRope, r.mode || ''].join('/');
-function snapshot(rope: RopeVolumeSource): Snapshot {
-    return { rope, flags: flags(rope), values: Array.isArray(rope.path) ? rope.path.reduce<unknown[]>((a, p) => {
+function snapshot(rope: RopeVolumeSource, path: readonly RopePoint[] = rope.path): Snapshot {
+    return { rope, flags: flags(rope), values: Array.isArray(path) ? path.reduce<unknown[]>((a, p) => {
         a.push(p?.x, p?.y); return a;
     }, []) : [] };
 }
-function same(ropes: readonly RopeVolumeSource[], saved: Snapshot[]) {
+function same(ropes: readonly RopeVolumeSource[], saved: Snapshot[], paths?: ReadonlyMap<RopeVolumeSource, readonly RopePoint[]>) {
     if (ropes.length !== saved.length) return false;
     for (let i = 0; i < ropes.length; i++) {
-        const r = ropes[i], s = saved[i], path = Array.isArray(r.path) ? r.path : [];
+        const r = ropes[i], s = saved[i], source = paths?.get(r) || r.path, path = Array.isArray(source) ? source : [];
         if (s.rope !== r || s.flags !== flags(r) || s.values.length !== path.length * 2) return false;
         for (let j = 0; j < path.length; j++) {
             if (!Object.is(path[j]?.x, s.values[j * 2]) || !Object.is(path[j]?.y, s.values[j * 2 + 1])) return false;
@@ -31,9 +33,8 @@ function segmentInBox(ax: number, ay: number, bx: number, by: number, l: number,
     }
     return true;
 }
-function inRange(rope: RopeVolumeSource, cx: number, cy: number, halfW: number, halfH: number,
-    light: { x: number; y: number; radius: number }) {
-    const pad = 20, path = rope.path;
+function inRange(path: readonly RopePoint[], cx: number, cy: number, halfW: number, halfH: number,
+    light: { x: number; y: number; radius: number }, pad = 20) {
     for (let i = 1; i < path.length; i++) {
         const a = path[i - 1], b = path[i];
         if (segmentInBox(a.x, a.y, b.x, b.y, cx - halfW - pad, cx + halfW + pad, cy - halfH - pad, cy + halfH + pad)) return true;
@@ -45,12 +46,15 @@ function inRange(rope: RopeVolumeSource, cx: number, cy: number, halfW: number, 
     return false;
 }
 
-/** Four persistent static buffers; membership changes and actual point edits invalidate the mesh. */
+/** Four persistent buffers; only changed membership or actual visual positions trigger uploads. */
 export class RopeVolumePass {
     private buffers: WebGLBuffer[] = [];
     private topology: Snapshot[] = [];
     private selected: Snapshot[] = [];
-    private woven = new Set<RopeVolumeSource>();
+    private net: RopeNet | null = null;
+    private netIndices = new Map<RopeVolumeSource, number>();
+    private meshRejected = 0;
+    private meshFallbackReason = '';
     private included = new Set<RopeVolumeSource>();
     private disposed = false;
     private topologyTooLarge = false;
@@ -70,33 +74,57 @@ export class RopeVolumePass {
         }
     }
     prepare(ropes: readonly RopeVolumeSource[], _time: number, cx: number, cy: number, halfW: number, halfH: number,
-        enabled: boolean, light: { x: number; y: number; radius: number }, surfaceY: number) {
+        enabled: boolean, light: { x: number; y: number; radius: number }, surfaceY: number,
+        pose: (point: RopePoint, originalRopeIndex: number) => RopePoint = point => point) {
         if (this.disposed) return;
         if (!same(ropes, this.topology)) {
-            this.topology = ropes.map(snapshot);
+            this.topology = ropes.map(rope => snapshot(rope));
             const valid = ropes.filter(validRopeVolumePath);
             // Bound the quadratic junction scan too; never silently omit a crossing rope.
             this.topologyTooLarge = valid.reduce((n, rope) => n + rope.path.length - 1, 0) > 2048;
-            this.woven.clear();
+            this.net = null; this.netIndices.clear();
             if (!this.topologyTooLarge) {
                 // A fresh array bypasses RopeNet's length-only cache when coordinates were edited in place.
-                const net = getRopeNet(valid);
-                for (const index of net.woven) this.woven.add(valid[index]);
+                this.net = getRopeNet(valid);
+                valid.forEach((rope, index) => this.netIndices.set(rope, index));
             }
         }
-        this.fallbackReason = this.failure ? 'upload-failed' : this.topologyTooLarge ? 'topology-budget' : '';
-        const candidates = enabled && !this.failure && !this.topologyTooLarge && Number.isFinite(surfaceY) ? ropes.filter(rope =>
-            supportsRopeVolume(rope) && !this.woven.has(rope) &&
-            rope.path.every(p => p.y >= surfaceY + ROPE_VOLUME_RADIUS * 2) &&
-            inRange(rope, cx, cy, halfW, halfH, light)) : [];
-        if (same(candidates, this.selected)) return;
-        this.selected = candidates.map(snapshot);
+        const paths = new Map<RopeVolumeSource, readonly RopePoint[]>();
+        const candidates: RopeVolumeSource[] = [];
+        let samplingRejected = 0;
+        const fallbackReason = this.failure ? 'upload-failed' : this.topologyTooLarge ? 'topology-budget' : '';
+        this.fallbackReason = fallbackReason;
+        if (enabled && !this.failure && !this.topologyTooLarge && Number.isFinite(surfaceY)) {
+            ropes.forEach((rope, originalIndex) => {
+                if (!supportsRopeVolume(rope)) return;
+                const index = this.netIndices.get(rope);
+                const posed = index !== undefined && !!this.net && (this.net.woven.has(index) || rope.startOnRope || rope.endOnRope);
+                // Rest bounds include the dynamics' maximum 48-unit displacement before the exact visual test.
+                if (!inRange(rope.path, cx, cy, halfW, halfH, light, posed ? 68 : 20)) return;
+                const sampled = posed ? getWovenPath(this.net!, index!, rope.path, ROPE_VOLUME_MAX_RINGS) : rope.path;
+                if (!sampled) { samplingRejected++; return; }
+                const path = posed ? sampled.map(point => pose(point, originalIndex)) : sampled;
+                if (!path.every(point => point.y >= surfaceY + ROPE_VOLUME_RADIUS * 2) ||
+                    !inRange(path, cx, cy, halfW, halfH, light)) return;
+                candidates.push(rope); paths.set(rope, path);
+            });
+        }
+        this.fallbackReason ||= samplingRejected ? 'path-budget' : this.meshFallbackReason;
+        this.rejected = samplingRejected + this.meshRejected;
+        if (same(candidates, this.selected, paths)) return;
+        this.selected = candidates.map(rope => snapshot(rope, paths.get(rope)));
         this.revision++;
-        this.included.clear(); this.count = this.triangles = this.bytes = this.rejected = 0;
+        this.included.clear(); this.count = this.triangles = this.bytes = this.meshRejected = 0;
+        this.meshFallbackReason = '';
+        this.fallbackReason = fallbackReason || (samplingRejected ? 'path-budget' : '');
+        this.rejected = samplingRejected;
         if (!candidates.length) return;
-        const mesh = buildRopeVolumeMesh(candidates);
+        const mesh = buildRopeVolumeMesh(candidates, paths);
         this.builds++;
-        this.rejected = mesh.rejected.length;
+        this.meshRejected = mesh.rejected.length;
+        this.rejected += this.meshRejected;
+        this.meshFallbackReason = mesh.rejected.length ? mesh.rejected[0].reason : '';
+        this.fallbackReason = samplingRejected ? 'path-budget' : this.meshFallbackReason;
         if (!mesh.ropes.length) return;
         const gl = this.gl;
         try {
@@ -128,6 +156,7 @@ export class RopeVolumePass {
         if (this.disposed) return;
         this.buffers.forEach(buffer => this.gl.deleteBuffer(buffer)); this.buffers = [];
         this.included.clear(); this.topology = []; this.selected = [];
+        this.net = null; this.netIndices.clear(); this.meshRejected = this.rejected = 0;
         this.count = this.triangles = this.bytes = 0; this.revision++; this.disposed = true;
     }
 }

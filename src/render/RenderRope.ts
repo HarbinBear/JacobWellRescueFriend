@@ -2,6 +2,7 @@ import { CONFIG } from '../core/config';
 import { state, player } from '../core/state';
 import { ctx } from './Canvas';
 import { getRopeNet, pointOnStrand } from '../logic/RopeNet';
+import { getWovenPath } from './RopeVisualPath';
 import type { RopePoint } from '../logic/RopeNet';
 import { getRopeApproach, getRopeContact, getRopeDeformedPoint } from '../logic/Rope';
 import { pathLength, samplePolyline, polylineNormal } from '../logic/Pathfinding';
@@ -86,39 +87,8 @@ function drawReelIndicator(x: number, y: number, angle: number) {
     ctx.restore();
 }
 
-type RopeNet = ReturnType<typeof getRopeNet>;
 type RopeContact = NonNullable<ReturnType<typeof getRopeContact>>;
 type ViewBounds = { left: number; right: number; top: number; bottom: number };
-
-// Include each junction in the sampled lines. Every branch then has the same
-// position at the junction while the impact travels through the net.
-const cachedPaths = new WeakMap<RopeNet, Map<number, RopePoint[]>>();
-function getWovenPath(net: RopeNet, index: number, path: RopePoint[]) {
-    let cache = cachedPaths.get(net);
-    if (!cache) { cache = new Map(); cachedPaths.set(net, cache); }
-    const existing = cache.get(index);
-    if (existing) return existing;
-    const knots = net.knots.filter(knot => knot.ropes.has(index));
-    const sampled = [path[0]];
-    for (let i = 1; i < path.length; i++) {
-        const a = path[i - 1], b = path[i];
-        const inner = knots.filter(knot => pointOnStrand(knot, a, b));
-        inner.sort((p, q) => Math.hypot(p.x - a.x, p.y - a.y) - Math.hypot(q.x - a.x, q.y - a.y));
-        for (const end of [...inner, b]) {
-            const start = sampled[sampled.length - 1];
-            const distance = Math.hypot(end.x - start.x, end.y - start.y);
-            if (distance < .01) continue;
-            const pieces = Math.ceil(distance / 8);
-            for (let step = 1; step < pieces; step++) {
-                const t = step / pieces;
-                sampled.push({ x: start.x + (end.x - start.x) * t, y: start.y + (end.y - start.y) * t });
-            }
-            sampled.push(end);
-        }
-    }
-    cache.set(index, sampled);
-    return sampled;
-}
 
 function visiblePoint(point: RopePoint, view: ViewBounds, pad: number) {
     return point.x >= view.left - pad && point.x <= view.right + pad &&
@@ -183,9 +153,11 @@ export function drawRopesWorld(left: number, right: number, top: number, bottom:
     const net = state.screen === 'mazeRescue' ? getRopeNet(state.rope.ropes) : null;
     for (const [i, rope] of state.rope.ropes.entries()) {
         if (!rope.path || rope.path.length < 2) continue;
-        if (net?.woven.has(i)) strokeWovenPath(getWovenPath(net, i, rope.path), i, view);
-        else if (!volumeDrawn?.(rope) && rope.path.some((p, index) => index > 0 && visibleSegment(rope.path[index - 1], p, view, 24))) {
-            strokeRopeLine(rope.path, CONFIG.ropeTightColor, CONFIG.ropeTightWidth, true);
+        if (!volumeDrawn?.(rope)) {
+            if (net?.woven.has(i)) strokeWovenPath(getWovenPath(net, i, rope.path), i, view);
+            else if (rope.path.some((p, index) => index > 0 && visibleSegment(rope.path[index - 1], p, view, 24))) {
+                strokeRopeLine(rope.path, CONFIG.ropeTightColor, CONFIG.ropeTightWidth, true);
+            }
         }
         for (const [point, wall] of [[rope.start, rope.startWall], [rope.end, rope.endWall]]) {
             if (!point || !wall || !visiblePoint(point, view, 12)) continue;

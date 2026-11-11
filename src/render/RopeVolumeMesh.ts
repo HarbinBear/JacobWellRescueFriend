@@ -18,6 +18,8 @@ export interface RopeVolumeRange {
     indexStart: number;
     indexCount: number;
     ringCount: number;
+    /** Render-only centreline; never written back to the gameplay path. */
+    visualPath: readonly RopePoint[];
 }
 /** World coordinates, linear albedo. Rejected ropes must retain their complete 2D drawing. */
 export interface RopeVolumeMesh {
@@ -30,22 +32,25 @@ export interface RopeVolumeMesh {
     rejected: { rope: RopeVolumeSource; reason: RopeVolumeRejection }[];
 }
 
-export function validRopeVolumePath(rope: RopeVolumeSource): boolean {
-    return Array.isArray(rope?.path) && rope.path.length >= 2 && rope.path.every(p =>
+function validPath(path: readonly RopePoint[]): boolean {
+    return Array.isArray(path) && path.length >= 2 && path.every(p =>
         p && Number.isFinite(p.x) && Number.isFinite(p.y) && Math.abs(p.x) < 1e7 && Math.abs(p.y) < 1e7);
 }
+export function validRopeVolumePath(rope: RopeVolumeSource): boolean {
+    return validPath(rope?.path);
+}
 export function supportsRopeVolume(rope: RopeVolumeSource): boolean {
-    return !!rope?.startWall && !!rope.endWall && !rope.startLoose && !rope.endLoose &&
-        !rope.startOnRope && !rope.endOnRope && (!rope.mode || rope.mode === 'tight') && validRopeVolumePath(rope);
+    return (!!rope?.startWall || !!rope?.startOnRope) && (!!rope.endWall || !!rope.endOnRope) &&
+        !rope.startLoose && !rope.endLoose && (!rope.mode || rope.mode === 'tight') && validRopeVolumePath(rope);
 }
 interface Direction { x: number; y: number; length: number; }
 interface Ring extends RopePoint { nx: number; ny: number; miter: number; distance: number; }
 
-function pathRings(rope: RopeVolumeSource): Ring[] | RopeVolumeRejection {
-    if (!validRopeVolumePath(rope)) return 'invalid-path';
+function pathRings(rope: RopeVolumeSource, path: readonly RopePoint[]): Ring[] | RopeVolumeRejection {
+    if (!validPath(path)) return 'invalid-path';
     if (!supportsRopeVolume(rope)) return 'not-fixed';
     const points: RopePoint[] = [];
-    for (const p of rope.path) {
+    for (const p of path) {
         const last = points[points.length - 1];
         if (!last || last.x !== p.x || last.y !== p.y) points.push(p);
     }
@@ -89,12 +94,14 @@ function pathRings(rope: RopeVolumeSource): Ring[] | RopeVolumeRejection {
     return rings;
 }
 
-export function buildRopeVolumeMesh(ropes: readonly RopeVolumeSource[]): RopeVolumeMesh {
+export function buildRopeVolumeMesh(ropes: readonly RopeVolumeSource[],
+    visualPaths?: ReadonlyMap<RopeVolumeSource, readonly RopePoint[]>): RopeVolumeMesh {
     const positions: number[] = [], normals: number[] = [], colors: number[] = [], indices: number[] = [];
     const accepted: RopeVolumeSource[] = [], ranges: RopeVolumeRange[] = [], rejected: RopeVolumeMesh['rejected'] = [];
     const sides = ROPE_VOLUME_SIDES, radius = ROPE_VOLUME_RADIUS;
     for (const rope of ropes) {
-        const rings = pathRings(rope);
+        const visualPath = visualPaths?.get(rope) || rope.path;
+        const rings = pathRings(rope, visualPath);
         if (typeof rings === 'string') { rejected.push({ rope, reason: rings }); continue; }
         const vertexStart = positions.length / 3, vertexCount = rings.length * sides + 2 * (sides + 1);
         if (vertexStart + vertexCount > ROPE_VOLUME_MAX_VERTICES) { rejected.push({ rope, reason: 'budget' }); continue; }
@@ -108,7 +115,7 @@ export function buildRopeVolumeMesh(ropes: readonly RopeVolumeSource[]): RopeVol
                 normals.push(nx / length, ny / length, s / length);
                 // Subtle fibre variation in albedo only; lighting remains entirely in the shared shader.
                 const fibre = 1 + .035 * Math.sin(ring.distance * .26 + angle * 3) + .018 * Math.sin(ring.distance * .071);
-                colors.push(.40 * fibre, .385 * fibre, .31 * fibre);
+                colors.push(.82 * fibre, .62 * fibre, .045 * fibre);
                 if (i === 0) continue;
                 const a = vertexStart + (i - 1) * sides + j, b = vertexStart + (i - 1) * sides + (j + 1) % sides;
                 indices.push(a, b, b + sides, a, b + sides, a + sides);
@@ -117,11 +124,11 @@ export function buildRopeVolumeMesh(ropes: readonly RopeVolumeSource[]): RopeVol
         for (const end of [0, rings.length - 1]) {
             const ring = rings[end], sign = end === 0 ? -1 : 1;
             const nx = ring.ny * sign, ny = -ring.nx * sign, centre = positions.length / 3;
-            positions.push(ring.x, ring.y, 0); normals.push(nx, ny, 0); colors.push(.39, .375, .30);
+            positions.push(ring.x, ring.y, 0); normals.push(nx, ny, 0); colors.push(.80, .60, .044);
             for (let j = 0; j < sides; j++) {
                 const source = (vertexStart + end * sides + j) * 3;
                 positions.push(positions[source], positions[source + 1], positions[source + 2]);
-                normals.push(nx, ny, 0); colors.push(.39, .375, .30);
+                normals.push(nx, ny, 0); colors.push(.80, .60, .044);
             }
             for (let j = 0; j < sides; j++) {
                 const a = centre + 1 + j, b = centre + 1 + (j + 1) % sides;
@@ -129,7 +136,7 @@ export function buildRopeVolumeMesh(ropes: readonly RopeVolumeSource[]): RopeVol
             }
         }
         accepted.push(rope);
-        ranges.push({ rope, vertexStart, vertexCount, indexStart, indexCount: indices.length - indexStart, ringCount: rings.length });
+        ranges.push({ rope, vertexStart, vertexCount, indexStart, indexCount: indices.length - indexStart, ringCount: rings.length, visualPath });
     }
     return { positions: new Float32Array(positions), normals: new Float32Array(normals), colors: new Float32Array(colors),
         indices: new Uint16Array(indices), ropes: accepted, ranges, rejected };

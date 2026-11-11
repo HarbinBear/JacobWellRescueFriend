@@ -48,6 +48,10 @@
       },
       {
         "type": "file",
+        "value": "HANDOFF.md"
+      },
+      {
+        "type": "file",
         "value": "package-lock.json"
       },
       {

@@ -1,4 +1,4 @@
-// 真实固定引导绳的显示/灯光/缓存回归；单绳没有woven网的拦鱼能力。
+// 真实引导绳和编网的显示/灯光/动力学回归；单绳没有woven网的拦鱼能力。
 const fs = require('fs'), path = require('path'), assert = require('assert/strict');
 const { openReviewBrowser } = require('../design/cave-room/browser.cjs');
 const URL = process.env.JWR_PREVIEW_URL || 'http://127.0.0.1:60972/node_modules/.cache/karst-review/live/game.html?rope-volume';
@@ -24,6 +24,7 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
     }
     const stats = () => ev('DeepTapeGame.cave.volume.karstVolumeStats()');
     const drawn = () => ev('DeepTapeGame.cave.volume.isVolumeRopeDrawn(DeepTapeGame.state.rope.ropes[0])');
+    const allDrawn = () => ev('DeepTapeGame.state.rope.ropes.every(r=>DeepTapeGame.cave.volume.isVolumeRopeDrawn(r))');
     const ropePath = () => ev('JSON.stringify(DeepTapeGame.state.rope.ropes.map(r=>r.path))');
     // 固定世界点周围取样，只用于确认随手电变化，不把明暗阈值当美术评分。
     async function ropeLuma() {
@@ -96,6 +97,68 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
         return { placement, shadowQualityScale: .3, fishPatch, outsidePatch,
             scope: '仅渲染摆位与共享深度验收，不代表AI横穿、碰撞或单绳拦鱼' };
     }
+    async function wovenProgression() {
+        let previousPaths = await ev('DeepTapeGame.state.rope.ropes.map(r=>JSON.stringify(r.path))');
+        const camera = await ev('JSON.stringify(DeepTapeGame.state.camera)');
+        const views = [];
+        for (const count of [1, 2, 3]) {
+            if (count > 1) {
+                const crossing = await ev('DeepTapeGame.review.setVolumeRopeCrossing(true,' + count + ')');
+                assert(crossing && crossing.woven === count && crossing.ropes === count, '真实放绳应组成' + count + '根编网');
+            }
+            await wait(150); const current = await stats();
+            assert.equal(current.ropeCount, count, '新增交叉绳不能让已有绳退回二维'); assert(await allDrawn());
+            const currentPaths = await ev('DeepTapeGame.state.rope.ropes.map(r=>JSON.stringify(r.path))');
+            previousPaths.forEach((saved, i) => assert.equal(currentPaths[i], saved, '编网不能改写已有绳路'));
+            previousPaths = currentPaths;
+            assert.equal(await ev('JSON.stringify(DeepTapeGame.state.camera)'), camera, '进阶截图必须保持同一机位');
+            const savedPaths = await ropePath(); await wait(200);
+            assert.equal(await ropePath(), savedPaths); assert.equal((await stats()).ropeBuilds, current.ropeBuilds, '静止编网不能每帧上传');
+            const name = '14-' + count + '-ropes-same-view'; await shot(name);
+            views.push({ count, triangles: current.ropeTriangles, builds: current.ropeBuilds, screenshot: name + '.png' });
+        }
+        return views;
+    }
+    async function actualSnag() {
+        // 只在独立评审Chrome中记录实际上传且用于drawElements的顶点，不加产品调试接口。
+        await ev(`(()=>{const p=WebGLRenderingContext.prototype,uploads=new Map();window.__ropeGpu={uploads,bufferData:p.bufferData,drawElements:p.drawElements};
+            p.bufferData=function(target,data,usage){if(target===this.ARRAY_BUFFER&&data instanceof Float32Array)
+                uploads.set(this.getParameter(this.ARRAY_BUFFER_BINDING),{positions:Array.from(data),drawn:false,count:0});
+                return window.__ropeGpu.bufferData.call(this,target,data,usage);};
+            p.drawElements=function(mode,count,type,offset){const record=uploads.get(this.getVertexAttrib(0,this.VERTEX_ATTRIB_ARRAY_BUFFER_BINDING));
+                if(record){record.drawn=true;record.count=count;}return window.__ropeGpu.drawElements.call(this,mode,count,type,offset);};})()`);
+        const comparePose = () => ev(`(()=>{const g=DeepTapeGame,expected=g.review.inspectVolumeRopePose();let error=Infinity;
+            for(const upload of window.__ropeGpu.uploads.values())if(upload.drawn&&upload.count===expected.indexCount&&upload.positions.length===expected.positions.length){
+                let maximum=0;for(let i=0;i<expected.positions.length;i++)maximum=Math.max(maximum,Math.abs(upload.positions[i]-expected.positions[i]));error=Math.min(error,maximum);}
+            return{maxError:Number.isFinite(error)?error:null,displacement:expected.displacement,ropeCount:expected.ropeCount,rejected:expected.rejected,
+                contact:g.interactions.rope.getRopeContact(g.state.fishEnemies[0])?.kind||null,stats:g.cave.volume.karstVolumeStats()};})()`);
+        try {
+            const fixture = await ev(`(()=>{const g=DeepTapeGame,result=g.review.inspectVolumeFish('snag');g.world.geometry.world().hidden=true;g.input.move=0;return result;})()`);
+            assert(fixture.caught, '必须由真实移动碰撞取得入网接触'); await settle();
+            const originalPath = await ropePath(), before = await comparePose();
+            assert.equal(before.contact, 'snag'); assert(before.ropeCount >= 3); assert(await allDrawn());
+            assert.equal(before.stats.ropeCount, fixture.ropes);
+            assert(before.maxError !== null && before.maxError < .002, '实际GPU绳路必须跟随getRopeDeformedPoint');
+            assert(before.displacement > .1, '入网应产生真实绳网形变'); await shot('15-real-snag-deformed');
+            await wait(300); const frozen = await comparePose();
+            assert.equal(frozen.stats.ropeBuilds, before.stats.ropeBuilds, '定格接触形变不能重复上传');
+            await ev('DeepTapeGame.world.geometry.world().hidden=false'); await wait(700);
+            await ev('DeepTapeGame.world.geometry.world().hidden=true'); await wait(120);
+            const after = await comparePose();
+            assert(after.stats.ropeBuilds > before.stats.ropeBuilds, '真实接触变化必须更新管体');
+            assert(after.maxError !== null && after.maxError < .002, '动态更新后GPU绳路必须仍跟随真实形变');
+            assert.equal(await ropePath(), originalPath, '形变显示不得改写玩法基线路径'); assert(await allDrawn());
+            await shot('16-real-snag-updated');
+            const removed = await ev(`(()=>{const g=DeepTapeGame,r=g.interactions.rope,f=g.state.fishEnemies[0],cuts=r.fishPocketCuts(f);
+                return{cuts:cuts.length,removed:r.cutGuideRopes(cuts),remaining:g.state.rope.ropes.length,contact:r.getRopeContact(f)?.kind||null};})()`);
+            assert(removed.cuts > 0 && removed.removed); assert.equal(removed.remaining, 0, '真实剪网应拆除整张相连编网');
+            await wait(150); assert.equal((await stats()).ropeCount, 0, '整网移除后不能残留GPU管体');
+            return { fixture, before, frozenBuilds: frozen.stats.ropeBuilds, after, removed,
+                rule: '真实运动取得snag；实际绘制GPU顶点与getRopeDeformedPoint生成的管体逐点对照；真实剪网整张拆除' };
+        } finally {
+            await ev('WebGLRenderingContext.prototype.bufferData=window.__ropeGpu.bufferData;WebGLRenderingContext.prototype.drawElements=window.__ropeGpu.drawElements;delete window.__ropeGpu');
+        }
+    }
     try {
         report.fixture = await ev(`(()=>{const g=DeepTapeGame;g.cave.config.quality.auto=false;g.cave.config.quality.scale=.75;
             const result=g.review.inspectVolumeRope();window.__ropeVolumeReview=result;return result;})()`);
@@ -114,6 +177,9 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
         await settle(); report.enabled = await stats();
         assert(report.enabled.ready && report.enabled.ropeCount === 1 && report.enabled.ropeTriangles > 0 && !report.enabled.ropeFailure);
         assert(await drawn()); assert.equal(report.enabled.fishCount, 1); await shot('01-front-volume');
+        report.progression = await wovenProgression();
+        await ev('DeepTapeGame.review.setVolumeRopeCrossing(false)'); await wait(150);
+        assert.equal(await ropePath(), initialPath);
         await ev('DeepTapeGame.cave.config.karst.volumeRopes=false'); await wait(150);
         report.disabled = await stats(); assert.equal(report.disabled.ropeCount, 0); assert(!await drawn());
         assert(report.disabled.ready && report.disabled.fishCount === 1, '退回二维绳不能关闭洞室或实体鱼');
@@ -133,17 +199,21 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
         await ev('DeepTapeGame.state.flashlightOn=true;DeepTapeGame.review.rotateKarstLight(-Math.PI);DeepTapeGame.review.inspectVolumeRopeView(2)');
         await settle(); await shot('06-real-wall-anchor'); assert.equal(await ropePath(), initialPath, '镜头和灯光不能修改真实绳路');
 
-        // 没有鱼时也必须清掉tube：woven网暂交旧绘制，之后恢复同一个base对象。
+        // 无鱼时也保持整张编网立体，开关只改变显示；关闭交叉是场景恢复，不是游戏剪网。
         await ev('DeepTapeGame.state.fishEnemies=[];DeepTapeGame.review.inspectVolumeRopeView(0)'); await settle();
         report.crossing = await ev('DeepTapeGame.review.setVolumeRopeCrossing(true)'); assert.equal(report.crossing.woven, 2);
         const wovenPath = await ropePath(); await wait(150);
-        const wovenStats = await stats(); assert.equal(wovenStats.ropeCount, 0); assert.equal(wovenStats.fishCount, 0);
-        assert(!await drawn()); await shot('07-crossing-returns-to-2d');
-        // 禁用开关前后应是同一张二维网，不得额外残留上一次的tube。
-        const wovenOnLuma = await ropeLuma(); await ev('DeepTapeGame.cave.config.karst.volumeRopes=false'); await wait(120);
-        report.crossing.lumaDifference = Math.abs(wovenOnLuma - await ropeLuma());
-        assert(report.crossing.lumaDifference < .6, 'woven资格退出后不得残留管体'); assert.equal(await ropePath(), wovenPath);
-        await ev('DeepTapeGame.cave.config.karst.volumeRopes=true;DeepTapeGame.review.setVolumeRopeCrossing(false)'); await wait(150);
+        const wovenStats = await stats(); assert.equal(wovenStats.ropeCount, 2); assert.equal(wovenStats.fishCount, 0);
+        assert(await allDrawn()); await shot('07-crossing-stays-volume');
+        await ev('DeepTapeGame.cave.config.karst.volumeRopes=false'); await wait(120);
+        assert.equal((await stats()).ropeCount, 0); assert(!await drawn()); assert.equal(await ropePath(), wovenPath);
+        await ev('DeepTapeGame.cave.config.karst.volumeRopes=true'); await wait(150);
+        assert.equal((await stats()).ropeCount, 2); assert(await allDrawn()); assert.equal(await ropePath(), wovenPath);
+
+        assert(await ev('DeepTapeGame.cave.volume.loseKarstVolumeContext()')); await wait(450); await settle();
+        report.wovenRecovered = await stats(); assert(report.wovenRecovered.ready && report.wovenRecovered.ropeCount === 2);
+        assert(await allDrawn()); assert.equal(await ropePath(), wovenPath);
+        await ev('DeepTapeGame.review.setVolumeRopeCrossing(false)'); await wait(150);
         report.singleRestored = await stats(); assert.equal(report.singleRestored.ropeCount, 1); assert(await drawn());
         assert.equal(await ropePath(), initialPath); await shot('08-single-restored-no-fish');
 
@@ -154,6 +224,7 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
         assert.equal((await stats()).ropeBuilds, restoredBuilds, '上下文恢复后静态缓存应重新稳定');
         await ev('DeepTapeGame.state.rope.ropes=[]'); await wait(150);
         report.removed = await stats(); assert.equal(report.removed.ropeCount, 0, '删光绳和鱼后不得残留管体批次');
+        report.snag = await actualSnag();
         report.swim = await actualSwim();
         report.depth = await depthOcclusion();
         report.errors = b.errors; assert.equal(b.errors.length, 0, JSON.stringify(b.errors)); report.status = 'passed';

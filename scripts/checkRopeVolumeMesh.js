@@ -13,6 +13,8 @@ function load(id) {
 }
 const meshAPI = load('src/render/RopeVolumeMesh'), { RopeVolumePass } = load('src/render/RopeVolumePass');
 const { getRopeNet } = load('src/logic/RopeNet');
+const { getWovenPath } = load('src/render/RopeVisualPath');
+const dynamics = load('src/logic/RopeDynamics');
 const { buildRopeVolumeMesh, ROPE_VOLUME_RADIUS: radius, ROPE_VOLUME_SIDES: sides,
     ROPE_VOLUME_STEP: step, ROPE_VOLUME_MAX_RINGS: maxRings, ROPE_VOLUME_MAX_VERTICES: maxVertices } = meshAPI;
 const rope = points => ({ path: points.map(([x, y]) => ({ x, y })), startWall: {}, endWall: {}, mode: 'tight' });
@@ -43,7 +45,7 @@ function check(mesh) {
             for (let j = 0; j < sides; j++) for (let k = 0; k < 3; k++) centre[k] += p[(range.vertexStart + ring * sides + j) * 3 + k] / sides;
             close(centre[2], 0, 1e-6); centres.push(centre);
         }
-        const source = range.rope.path;
+        const source = range.visualPath;
         close(centres[0][0], source[0].x); close(centres[0][1], source[0].y);
         close(centres[centres.length - 1][0], source[source.length - 1].x);
         close(centres[centres.length - 1][1], source[source.length - 1].y);
@@ -65,7 +67,7 @@ for (const source of [straight, corner, duplicate]) {
 }
 check(buildRopeVolumeMesh([straight, corner]));
 const invalid = [rope([[0, 60], [0, 60]]), rope([[0, 60], [NaN, 60]]),
-    rope([[0, 60], [20, 60], [0, 60]]), { ...straight, startLoose: true }, { ...straight, endOnRope: true },
+    rope([[0, 60], [20, 60], [0, 60]]), { ...straight, startLoose: true }, { ...straight, endLoose: true },
     { ...straight, endWall: null }, rope([[0, 60], [step * maxRings, 60]])];
 for (const source of invalid) {
     const mesh = buildRopeVolumeMesh([source]); check(mesh);
@@ -126,7 +128,10 @@ const a = rope([[-40, 100], [40, 100]]), b = rope([[-30, 140], [30, 140]]);
 sources = [a, b]; prepare(); assert.equal(pass.count, 2);
 getRopeNet(sources); // 预热现有按数组长度缓存，再原地改点：Pass必须独立刷新交叉判断。
 b.path[0].x = 0; b.path[0].y = 70; b.path[1].x = 0; b.path[1].y = 130;
-prepare(); assert.equal(pass.count, 0); assert(!pass.contains(a) && !pass.contains(b), '变成woven后两根都应回到原网格绘制');
+prepare(); assert.equal(pass.count, 2); assert(pass.contains(a) && pass.contains(b), '新增交叉后两根必须同时保留三维');
+const crossedBuilds = pass.builds;
+prepare(true, 0, 100, { x: 0, y: 100, radius: 0 }, 0, 1000);
+assert.equal(pass.builds, crossedBuilds, '静止交叉网不能随时间重建');
 b.path[0].x = -30; b.path[0].y = 140; b.path[1].x = 30; b.path[1].y = 140;
 prepare(); assert.equal(pass.count, 2, '解除交叉后整根可重新进入静态管体');
 b.startLoose = true; prepare(); assert.equal(pass.count, 1); assert(!pass.contains(b));
@@ -135,10 +140,81 @@ b.path[0].y = 500; b.path[1].y = 500; prepare();
 assert.equal(records.uploads.length, uploads, '未纳入三维的绳发生变化，不应重传未变的可见绳');
 sources = [rope(Array.from({ length: 2050 }, (_, i) => [i * 2, 100]))]; prepare();
 assert.equal(pass.count, 0); assert.equal(pass.fallbackReason, 'topology-budget', '交叉扫描超预算也要有可观察的完整回退原因');
+// Shared sampling inserts the exact crossing in every strand and keeps the gameplay arrays untouched.
+const crossA = rope([[-140, 150], [140, 150]]), crossB = rope([[3.33, 50], [3.33, 250]]);
+const tied = { ...rope([[3.33, 150], [130, 240]]), startWall: null, startOnRope: true };
+const bothTied = { ...rope([[3.33, 150], [130, 150]]), startWall: null, endWall: null,
+    startOnRope: true, endOnRope: true };
+const crossSources = [crossA, crossB, tied, bothTied], crossNet = getRopeNet(crossSources);
+assert.equal(crossNet.woven.size, 4);
+const beforeNet = JSON.stringify(crossSources);
+const visualPaths = new Map(crossSources.map((r, i) => [r, getWovenPath(crossNet, i, r.path)]));
+for (const [r, sampled] of visualPaths) {
+    assert(sampled.some(p => Math.hypot(p.x - 3.33, p.y - 150) < 1e-8), '分支共享精确结点');
+    assert.equal(getWovenPath(crossNet, crossSources.indexOf(r), r.path), sampled, '静态采样按网与绳索缓存');
+    assert.equal(getWovenPath(crossNet, crossSources.indexOf(r), r.path, 2), null, '超采样预算不能分配完整长绳');
+}
+const wovenMesh = buildRopeVolumeMesh(crossSources, visualPaths); check(wovenMesh);
+assert.equal(wovenMesh.ropes.length, 4); assert.equal(wovenMesh.rejected.length, 0);
+assert.equal(JSON.stringify(crossSources), beforeNet);
+assert(wovenMesh.colors[0] > .75 && wovenMesh.colors[1] > .5 && wovenMesh.colors[2] < .06,
+    '指南绳使用高可见黄色线性反照率，亮度仍由共用照明决定');
+sources = crossSources; prepare(true, 0, 150);
+assert.equal(pass.count, 4); assert.equal(pass.fallbackReason, '');
+const restUploads = records.uploads.length;
+const restRevision = pass.revision;
+for (let i = 0; i < 8; i++) prepare(true, 0, 150, { x: 0, y: 150, radius: 0 }, 0, i / 60);
+assert.equal(records.uploads.length, restUploads); assert.equal(pass.revision, restRevision);
+
+// Real RopeDynamics contact supplies the rendering pose, including fixed wall pins and attached tips.
+const mover = { x: 3.33, y: 154, vx: 0, vy: 24 };
+const hit = dynamics.moveThroughNet(crossNet, mover, { x: 3.33, y: 130 }, 7, 8,
+    { x: 0, y: 8 }, () => true);
+assert(hit, '实际越网运动必须发生接触');
+const pose = (point, index) => dynamics.deformNetPoint(crossNet, point, index);
+const posedPaths = new Map(crossSources.map((r, i) => [r, visualPaths.get(r).map(point => pose(point, i))]));
+assert([...posedPaths].some(([r, points]) => points.some((point, i) =>
+    Math.hypot(point.x - visualPaths.get(r)[i].x, point.y - visualPaths.get(r)[i].y) > .01)), '真实受力需形成可见位移');
+const posedMesh = buildRopeVolumeMesh(crossSources, posedPaths); check(posedMesh);
+assert.equal(posedMesh.ropes.length, 4, '真实变形的完整交叉网仍保持三维');
+const preparePose = () => pass.prepare(sources, 0, 0, 150, 200, 200, true, { x: 0, y: 150, radius: 0 }, 0, pose);
+preparePose(); assert.equal(pass.count, 4);
+const posedUpload = records.uploads[records.uploads.length - 4].data;
+assert.deepEqual(posedUpload, posedMesh.positions, 'GPU上传的中心必须严格来自真实动力学采样');
+const posedBuilds = pass.builds; preparePose();
+assert.equal(pass.builds, posedBuilds, '接触存在但实际姿态未改变时不能重建');
+dynamics.stepNetMotion(crossNet); dynamics.stepNetMotion(crossNet); preparePose();
+assert.equal(pass.builds, posedBuilds + 1, '实际弹性回弹后必须刷新管体');
+assert.equal(JSON.stringify(crossSources), beforeNet, '受力采样不能写回存档/碰撞路径');
+dynamics.releaseNetBody(crossNet, mover);
+for (let i = 0; i < 300; i++) dynamics.stepNetMotion(crossNet);
+preparePose(); const settledBuilds = pass.builds;
+for (let i = 0; i < 8; i++) { dynamics.stepNetMotion(crossNet); preparePose(); }
+assert.equal(pass.builds, settledBuilds, '接触消散且绳网静止后必须回到缓存');
+
+// Invalid members must not renumber the original indices passed to the real deformation provider.
+const bad = rope([[0, 100], [NaN, 200]]);
+sources = [bad, ...crossSources];
+const seenIndices = new Set();
+pass.prepare(sources, 0, 0, 150, 200, 200, true, { x: 0, y: 150, radius: 0 }, 0,
+    (point, index) => { seenIndices.add(index); return pose(point, index - 1); });
+assert.deepEqual([...seenIndices], [1, 2, 3, 4]); assert.equal(pass.count, 4);
+sources = [crossA]; prepare(true, 0, 150);
+assert.equal(pass.count, 1); assert(pass.contains(crossA));
+for (const removed of [crossB, tied, bothTied]) assert(!pass.contains(removed), '删绳后不得残留membership');
+const hugeCrossing = rope([[-10000, 150], [10000, 150]]);
+sources = [hugeCrossing, crossB]; prepare(true, 0, 150);
+assert.equal(pass.count, 1); assert(pass.contains(crossB)); assert(!pass.contains(hugeCrossing));
+assert.equal(pass.fallbackReason, 'path-budget'); assert.equal(pass.rejected, 1,
+    '单根采样超预算只回退该绳，正常交叉伙伴仍绘制三维');
+const limitedBuilds = pass.builds; prepare(true, 0, 150); assert.equal(pass.builds, limitedBuilds);
+sources = []; prepare(); assert.equal(pass.count, 0); assert.equal(pass.bytes, 0); assert.equal(pass.fallbackReason, '');
+const beforeEmptyDraw = records.draws.length; pass.draw();
+assert.equal(records.draws.length, beforeEmptyDraw, '删除最后一根后不能画旧GPU buffer');
 pass.dispose(); pass.dispose(); assert.equal(records.deleted.length, 4);
 assert.equal(pass.count, 0); assert.equal(pass.bytes, 0); assert(!pass.contains(a));
 const draws = records.draws.length; pass.draw(); assert.equal(records.draws.length, draws);
 const typical = buildRopeVolumeMesh([straight]);
-console.log('通过：完整路径/转折与z=0中心、朝外单位法线、整根预算回退、静态缓存、屏外灯光与织网资格刷新。');
+console.log('通过：z=0完整管体、黄色反照率、交叉/绳端附着四绳网、真实动力学GPU坐标、静止缓存、预算回退与删除无残影。');
 console.log(JSON.stringify({ sampleLength: 602.62, vertices: typical.positions.length / 3,
     triangles: typical.indices.length / 3, radius, sides, passBuilds: pass.builds }, null, 2));
