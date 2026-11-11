@@ -2,7 +2,7 @@
 // 场的约定与 KarstTerrain 相同：正值是水，负值是岩石。z 朝屏幕里面。
 // 整张地图只计算 z=0 一层；带纵深的网格按镜头附近分块生成，并且拆成很多小步分摊到多帧里，两者走同一段求值代码。
 import type { KarstTerrain } from './KarstTerrain';
-import { continuousKarstProtection } from './KarstChambers';
+import { continuousKarstProtection, planKarstChambers, type KarstChamber, type KarstChambers } from './KarstChambers';
 
 export const VOLUME_CHUNK = 48;
 const LAYERS = 21, GROW = 1.12, CEILING = 300, FLOOR = 170, MARGIN_TOP = 27, MARGIN_BOTTOM = 16, RING = 2, SEG = 11, CARVE = 30, BODY = 21, SOLID = 32;
@@ -15,7 +15,8 @@ export interface KarstVolumeData {
     seed: number; seam: number; segs: Float32Array; tileSegs: number[][]; tileCols: number; tileRows: number; tileSize: number;
     lanes: (x: number, y: number) => number; bank: ((x: number, y: number) => number) | null;
     carves: number[]; carveBuckets: Map<number, number[]>; drips: ((x: number, z: number, floor: boolean) => number)[];
-    stats: { segments: number; backBranches: number; carves: number; filledPockets: number; sliceMs: number };
+    rearRegions: KarstChambers;
+    stats: { segments: number; backBranches: number; carves: number; filledPockets: number; sliceMs: number; rearProfiles: Record<string, number> };
 }
 export interface KarstVolumeMesh { positions: Float32Array; normals: Float32Array; indices: Uint16Array; ms: number; dropped: number }
 export interface KarstVolumeJob {
@@ -23,7 +24,7 @@ export interface KarstVolumeJob {
     P: number[]; I: number[]; positions: Float32Array | null; normals: Float32Array | null; ms: number; longestStep: number; dropped: number;
 }
 interface Scratch { F: Float32Array; X: Float32Array; Y: Float32Array; Z: Float32Array; RB: Float32Array; done: Uint8Array; P2: Float32Array; B2: Float32Array; flag: Uint8Array;
-    LC: Float32Array; LF: Float32Array; RIB: Float32Array; strength: Float32Array }
+    LC: Float32Array; LF: Float32Array; RIB: Float32Array; strength: Float32Array; rear: Float32Array | null }
 
 const clamp = (v: number, a = 0, b = 1) => v < a ? a : v > b ? b : v;
 function smooth(a: number, b: number, v: number) { let t = (v - a) / (b - a); t = t < 0 ? 0 : t > 1 ? 1 : t; return t * t * (3 - 2 * t); }
@@ -123,9 +124,40 @@ function createVolume(t: KarstTerrain, maze: any): KarstVolumeData {
             segs.push((c + .5) * ts, (r + .5) * ts, (c + .5) * ts + Math.cos(ang) * reach, (r + .5) * ts + Math.sin(ang) * reach * .6, ra, 52 + 40 * hash3(c, r, 10, seed), za, za + 320 + 340 * h, 1, 0, 0);
         }
     }
-    return { seed, seam, segs: new Float32Array(segs), tileSegs, tileCols: cols, tileRows: rows, tileSize: ts, lanes: continuousKarstProtection(maze), bank: bankField(maze),
+    const rearRegions = planKarstChambers(maze), rearProfiles = { flow: 0, terraces: 0, fracture: 0 };
+    for (const room of rearRegions.rooms) rearProfiles[room.grammar === 'flow' ? 'flow' : room.grammar === 'fracture' ? 'fracture' : 'terraces']++;
+    return { seed, seam, segs: new Float32Array(segs), tileSegs, tileCols: cols, tileRows: rows, tileSize: ts, lanes: continuousKarstProtection(maze), bank: bankField(maze), rearRegions,
         carves: [], carveBuckets: new Map(), drips: [dripField(150, seed + 61), dripField(62, seed + 62), dripField(46, seed + 63)],
-        stats: { segments: segs.length / SEG, backBranches: branches, carves: 0, filledPockets: 0, sliceMs: 0 } };
+        stats: { segments: segs.length / SEG, backBranches: branches, carves: 0, filledPockets: 0, sliceMs: 0, rearProfiles } };
+}
+// 每个连通区域有自己的后壁规律。深槽与浅壁交替，供灯光带出纵深层次。
+function rearProfile(room: KarstChamber, x: number, y: number) {
+    const angle = room.inclination, dx = x - room.x, dy = y - room.y;
+    const u = dx * Math.cos(angle) + dy * Math.sin(angle), v = -dx * Math.sin(angle) + dy * Math.cos(angle);
+    const phase = hash3(room.id, 3, 1, room.seed) * Math.PI * 2;
+    if (room.grammar === 'flow') {
+        const fold = u / 82 + .55 * Math.sin(v / 190 + phase);
+        return 325 + 58 * Math.sin(fold) + 24 * Math.sin(v / 155 + phase) + 12 * noise3(x, y, 0, 65, room.seed);
+    }
+    if (room.grammar === 'fracture') {
+        const fault = u - v * .32 - 42 * Math.sin(v / 220 + phase);
+        const slot = Math.exp(-Math.pow(fault / 105, 2));
+        return 555 + 290 * slot + 38 * Math.sin(v / 130 + phase) + 18 * noise3(x, y, 0, 95, room.seed);
+    }
+    const beds = 2 + 1.8 * Math.sin((v + 24 * Math.sin(u / 175)) / 170 + phase);
+    const level = Math.floor(beds), terrace = level + smooth(.60, .96, beds - level);
+    return 355 + terrace * 54 + 28 * Math.sin(u / 150 + phase) + 12 * noise3(x, y, 0, 72, room.seed);
+}
+export function sampleVolumeRearDepth(v: KarstVolumeData, x: number, y: number) {
+    const regions = v.rearRegions, ts = regions.tileSize, gx = x / ts - .5, gy = y / ts - .5;
+    const c = Math.floor(gx), r = Math.floor(gy), ax = (c + .5) * ts, ay = (r + .5) * ts;
+    const a = regions.at(ax, ay), b = regions.at(ax + ts, ay), d = regions.at(ax, ay + ts), e = regions.at(ax + ts, ay + ts);
+    const p = rearProfile(a, x, y), q = a === b ? p : rearProfile(b, x, y);
+    const s = a === d ? p : rearProfile(d, x, y), t = b === e ? q : d === e ? s : rearProfile(e, x, y);
+    const tx = smooth(0, 1, gx - c), ty = smooth(0, 1, gy - r);
+    const top = p + (q - p) * tx, bottom = s + (t - s) * tx;
+    const depth = top + (bottom - top) * ty, far = VOLUME_DEPTH - 14;
+    return far + (Math.min(far, depth) - far) * smooth(v.seam + 96, v.seam + 360, y);
 }
 function carveValue(v: KarstVolumeData, x: number, y: number) {
     const list = v.carveBuckets.get(Math.floor(y / 128) * 4096 + Math.floor(x / 128)); if (!list) return -999;
@@ -139,7 +171,7 @@ function carveValue(v: KarstVolumeData, x: number, y: number) {
 function makeScratch(cells: number, columns: number, width: number, height: number): Scratch {
     return { F: new Float32Array(cells), X: new Float32Array(cells), Y: new Float32Array(cells), Z: new Float32Array(cells), RB: new Float32Array(cells), done: new Uint8Array(cells),
         P2: new Float32Array(columns), B2: new Float32Array(columns), flag: new Uint8Array(columns),
-        LC: new Float32Array(width), LF: new Float32Array(width), RIB: new Float32Array(width), strength: new Float32Array(height) };
+        LC: new Float32Array(width), LF: new Float32Array(width), RIB: new Float32Array(width), strength: new Float32Array(height), rear: null };
 }
 // 求一块区域里某一层的场。i0、j0 是地形格点下标，kk 是层号（0 是 z=0），off 是这一层在数组里的起始偏移。各层互不依赖。
 function evaluateLayer(t: KarstTerrain, v: KarstVolumeData, i0: number, j0: number, ni: number, nj: number, kk: number, s: Scratch, list: number[] | Int32Array, off: number) {
@@ -186,6 +218,12 @@ function evaluateLayer(t: KarstTerrain, v: KarstVolumeData, i0: number, j0: numb
             const b = Math.min(B2[col], 190 + 30 * noise3(x, y, 0, 170, seed + 41) - z); val = b + (val - b) * smooth(seam - 48, seam + 96, y);
         }
         if (i === 0 || i === t.cols - 1 || j === t.rows - 1) val = -192;
+        // 只塑形游戏平面后方，旧档碰撞场以及贴近潜水员的网格保持相同。
+        if (z > 100) {
+            if (!s.rear) s.rear = new Float32Array(s.flag.length);
+            if (!(flag[col] & 4)) { s.rear[col] = sampleVolumeRearDepth(v, x, y); flag[col] |= 4; }
+            val = Math.min(val, s.rear[col] - z);
+        }
         F[o] = Math.min(val, back);
     }
     // 三、钟乳石体系：每一处洞顶往下挂、每一处洞底往上长。开阔处长得大，靠近必须留出的身位处收小。

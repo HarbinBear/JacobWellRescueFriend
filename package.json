@@ -31,7 +31,7 @@
     "karst:preview": "node scripts/buildContinuousGameplayPreview.js --karst",
     "karst:check": "tsc --noEmit && node scripts/checkKarstTerrain.js && node scripts/checkPackageBudget.js",
     "karst:browser": "node scripts/checkKarstBrowser.js",
-    "karst:volume": "node scripts/checkKarstVolumeBrowser.js",
+    "karst:volume": "node scripts/checkKarstVolumeStreaming.js && node scripts/checkKarstVolumeBrowser.js",
     "karst:art": "python3 scripts/bakeKarstMaterials.py",
     "world:check": "tsc --noEmit && node scripts/buildContinuousGameplayPreview.js",
     "world:browser": "node scripts/checkContinuousGameplayBrowser.js",

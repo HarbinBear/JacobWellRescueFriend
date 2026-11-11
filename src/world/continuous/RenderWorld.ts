@@ -145,10 +145,12 @@ function lighting(volumeMix:number) {
         const base={playerX:player.x,playerY:player.y,cameraX:c.x+c.swayX,cameraY:c.y+c.swayY,zoom:c.zoom,shakeX:0,shakeY:0,angle:player.angle,maxDist:range,
             flashlightActive:light,karstMode:!!terrain,karstEnhanced:sculpted,npcX:state.npc.x,npcY:state.npc.y,npcAngle:state.npc.angle,npcDist:range*.5,npcActive:false,polyCount:poly.length,vplCount:count};
         renderVolumetricLight(base);const size=getGLCanvasPixelSize();
-        // 浅水仍能看见光柱，进入三维洞室后只留很淡的水中散射。
-        ctx.globalAlpha=1-.85*volumeMix;
+        // 岸边沿用原来的合成。洞室里的水中光柱在遮罩之后画，空旷时也能看清照射方向。
+        ctx.globalAlpha=1-volumeMix;
         ctx.globalCompositeOperation='screen';ctx.drawImage(getVolGLCanvas() as any,0,0,size.w,size.h,0,0,logicW,logicH);ctx.globalCompositeOperation='source-over';ctx.globalAlpha=1;
         renderLightMask({...base,maskAlpha,worldSurfaceY:w.surfaceY} as any);ctx.drawImage(getGLCanvas() as any,0,0,size.w,size.h,0,0,logicW,logicH);
+        ctx.globalAlpha=.72*volumeMix;ctx.globalCompositeOperation='screen';
+        ctx.drawImage(getVolGLCanvas() as any,0,0,size.w,size.h,0,0,logicW,logicH);
     }else{const g=ctx.createLinearGradient(0,waterScreen,0,waterScreen+1100*c.zoom);g.addColorStop(0,'rgba(1,15,21,.03)');g.addColorStop(.4,'rgba(1,15,21,.45)');g.addColorStop(1,'rgba(1,15,21,.995)');ctx.fillStyle=g;ctx.fillRect(0,0,logicW,logicH);}
     ctx.restore();return surfacePoly;
 }

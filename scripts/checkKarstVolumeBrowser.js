@@ -36,6 +36,7 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
         await ev('DeepTapeGame.state.flashlightOn=true;DeepTapeGame.review.rotateKarstLight(-Math.PI/2)');
         await wait(250); const turned = await hallLight(); await shot('hall2-turned');
         report.lighting = { on, direct, off, turned };
+        assert(direct.front.luma > off.front.luma + 4, '关闭岩面回光后，空旷通道里的手电光柱仍应可见');
         assert(on.front.luma > direct.front.luma + 4 && on.front.luma > off.front.luma + 4, '大厅前方应随回光和灯开关改变');
         assert(on.front.blue > 5 && on.rear.luma < on.front.luma * .65, '回光应为蓝色，并给身后留下暗区');
         assert(turned.rear.luma > on.rear.luma + 4, '转灯应带动远离光轴的回光');

@@ -83,7 +83,16 @@ export function volumeReviewSites() {
     if (!cells.length) return [];
     const pick = (score: (c: typeof cells[number]) => number, avoid: { x: number; y: number }[] = []) => cells.filter(c => avoid.every(a => Math.hypot(a.x - c.x, a.y - c.y) > 500)).sort((a, b) => score(b) - score(a))[0] || cells[0];
     const hall = pick(c => c.clear * 5 - c.far * .08), narrow = pick(c => -Math.abs(c.clear - 46) * 4 - c.far * .05, [hall]), second = pick(c => c.clear * 5 - c.far * .05, [hall, narrow]);
-    return [hall, narrow, { x: w.originX, y: w.seamY + ts * .5, clear: 44, far: 0 }, second].map(p => {
+    const sites = [hall, narrow, { x: w.originX, y: w.seamY + ts * .5, clear: 44, far: 0 }, second];
+    // 4–6 是三类后壁。取真实洞室中心，方便同一入口持续比较区域规律。
+    const rooms = (t.volume?.rearRegions.rooms || []).filter(r => !circleCollision(r.x, r.y, 26))
+        .sort((a, b) => Math.hypot(a.x - w.originX, a.y - w.seamY) - Math.hypot(b.x - w.originX, b.y - w.seamY));
+    for (const grammar of ['flow', 'tufa', 'fracture']) {
+        const room = rooms.find(r => r.grammar === grammar);
+        sites.push(room ? { x: room.x, y: room.y, clear: Math.min(260, karstNearest(t, room.x, room.y, 260).dist), far: 0 } : null);
+    }
+    return sites.map(p => {
+        if (!p) return null;
         let best = 0, angle = 0;
         for (let i = 0; i < 24; i++) { const a = i / 24 * Math.PI * 2, d = karstRay(t, p.x, p.y, Math.cos(a), Math.sin(a), 620).distance; if (d > best) { best = d; angle = a; } }
         return { x: p.x, y: p.y, angle, clear: p.clear };
