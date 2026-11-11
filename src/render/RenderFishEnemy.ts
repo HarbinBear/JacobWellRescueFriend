@@ -571,13 +571,13 @@ function drawCuriousFish(ctx: CanvasRenderingContext2D, size: number, time: numb
 // 绘制所有凶猛鱼（在世界坐标系内调用）
 // =============================================
 export function drawAllFishEnemies(ctx: CanvasRenderingContext2D,
-    left = -Infinity, right = Infinity, top = -Infinity, bottom = Infinity) {
+    left = -Infinity, right = Infinity, top = -Infinity, bottom = Infinity, bodyRendered?: (fish: FishEnemy) => boolean) {
     if (!state.fishEnemies || state.fishEnemies.length === 0) return;
     for (const fish of state.fishEnemies) {
         if (fish.x < left || fish.x > right || fish.y < top || fish.y > bottom) continue;
         if (!fish.dead) {
             const contact = getRopeContact(fish);
-            drawFishEnemy(ctx, fish, contact);
+            if (!bodyRendered?.(fish)) drawFishEnemy(ctx, fish, contact);
             drawFishHandlingWorld(ctx, fish);
             drawRopeContactWorld(ctx, fish, contact, CONFIG.fishEnemy.size * (fish.kind === 'shoal' ? .18 : fish.kind === 'provoked' ? .64 : .43));
             // 绘制状态变化提示图标（问号/感叹号）

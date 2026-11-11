@@ -1,6 +1,10 @@
-// 三维洞腔的绘制：玩法仍是二维，这里只把岩石这一层换成带透视的三维网格。
+// 三维洞腔与实体鱼：玩法仍是二维，鱼体围绕同一游戏平面获得厚度。
 // 相机的消失点在屏幕正中，游戏平面（z=0）与二维镜头逐像素对齐，所以潜水员、鱼和绳索不用改。
 // 网格按镜头附近分块生成，每帧最多新生成一块；离开很远的块会被释放。
+import { FishVolumePass } from './FishVolumePass';
+import { FishEnemy } from '../logic/FishEnemy';
+import { FISH_VOLUME_VERT_SRC } from './shaders/fishVolumeVert.glsl';
+import { FISH_VOLUME_FRAG_SRC } from './shaders/fishVolumeFrag.glsl';
 import { CONFIG } from '../core/config';
 import { state, player } from '../core/state';
 import { logicW, logicH } from './Canvas';
@@ -25,6 +29,7 @@ let job: KarstVolumeJob | null = null, pending = 0, longestStep = 0, shownFrame 
 let surface: any = null, gl: WebGLRenderingContext | null = null, main: any = null, depth: any = null, terrain: KarstTerrain | null = null;
 let shadowFB: WebGLFramebuffer | null = null, shadowTex: WebGLTexture | null = null, sliceTex: WebGLTexture | null = null;
 let chunks = new Map<number, Chunk>(), empty = new Set<number>(), frame = 0, key = '', uploads = 0, retryAt = 0, failure = '', inspection = 0;
+let fishPass: FishVolumePass | null = null, fishProgram: any = null, fishFailure = '';
 let width = 0, height = 0, bounceCount = 0, returnedLight = 0, bounceProbeMs = 0;
 let visiblePending = 0, shadowPending = 0, preloadPending = 0, visibleChunks = 0, shadowChunks = 0, offscreenShadowChunks = 0;
 let draws = 0, cacheHits = 0, lostCount = 0, lastBuildMs = 0, maxBuildMs = 0, builds = 0, triangles = 0, cpuMs = 0, dropped = 0;
@@ -34,11 +39,11 @@ function program(vs: string, fs: string) {
     const p = gl!.createProgram()!;
     for (const [type, source] of [[gl!.VERTEX_SHADER, vs], [gl!.FRAGMENT_SHADER, fs]] as [number, string][]) {
         const s = gl!.createShader(type)!; gl!.shaderSource(s, source); gl!.compileShader(s);
-        if (!gl!.getShaderParameter(s, gl!.COMPILE_STATUS)) { const error = gl!.getShaderInfoLog(s) || '三维洞腔着色器编译失败'; gl!.deleteShader(s); throw Error(error); }
+        if (!gl!.getShaderParameter(s, gl!.COMPILE_STATUS)) { const error = gl!.getShaderInfoLog(s) || '三维洞腔着色器编译失败'; gl!.deleteShader(s); gl!.deleteProgram(p); throw Error(error); }
         gl!.attachShader(p, s); gl!.deleteShader(s);
     }
-    gl!.bindAttribLocation(p, 0, 'position'); gl!.bindAttribLocation(p, 1, 'normal'); gl!.linkProgram(p);
-    if (!gl!.getProgramParameter(p, gl!.LINK_STATUS)) throw Error(gl!.getProgramInfoLog(p) || '三维洞腔着色器链接失败');
+    gl!.bindAttribLocation(p, 0, 'position'); gl!.bindAttribLocation(p, 1, 'normal'); gl!.bindAttribLocation(p, 2, 'color'); gl!.linkProgram(p);
+    if (!gl!.getProgramParameter(p, gl!.LINK_STATUS)) { const error = gl!.getProgramInfoLog(p) || '三维洞腔着色器链接失败'; gl!.deleteProgram(p); throw Error(error); }
     const u: Record<string, WebGLUniformLocation | null> = {};
     for (let i = 0, n = gl!.getProgramParameter(p, gl!.ACTIVE_UNIFORMS); i < n; i++) { const name = gl!.getActiveUniform(p, i)!.name; u[name] = gl!.getUniformLocation(p, name); }
     return { p, u };
@@ -51,12 +56,13 @@ function texture(format: number, type: number, w: number, h: number, data: Array
     gl!.texParameteri(gl!.TEXTURE_2D, gl!.TEXTURE_WRAP_S, gl!.CLAMP_TO_EDGE); gl!.texParameteri(gl!.TEXTURE_2D, gl!.TEXTURE_WRAP_T, gl!.CLAMP_TO_EDGE);
     return t;
 }
-function forget() { job = null; gl = null; main = null; depth = null; shadowFB = null; shadowTex = null; sliceTex = null; chunks = new Map(); empty = new Set(); terrain = null; key = ''; triangles = 0;
+function forget() { fishPass = null; fishProgram = null; job = null; gl = null; main = null; depth = null; shadowFB = null; shadowTex = null; sliceTex = null; chunks = new Map(); empty = new Set(); terrain = null; key = ''; triangles = 0;
     pending = visiblePending = shadowPending = preloadPending = visibleChunks = shadowChunks = offscreenShadowChunks = 0; clearBounce(); }
 function dispose() {
     if (gl && !gl.isContextLost()) {
         for (const c of chunks.values()) { gl.deleteBuffer(c.vb); gl.deleteBuffer(c.nb); gl.deleteBuffer(c.ib); }
         if (sliceTex) gl.deleteTexture(sliceTex); if (shadowTex) gl.deleteTexture(shadowTex); if (shadowFB) gl.deleteFramebuffer(shadowFB);
+        fishPass?.dispose(); if (fishProgram) gl.deleteProgram(fishProgram.p);
         if (main) gl.deleteProgram(main.p); if (depth) gl.deleteProgram(depth.p);
     }
     forget();
@@ -73,9 +79,17 @@ function initialize(t: KarstTerrain) {
     gl = surface.getContext('webgl', { alpha: true, depth: true, antialias: false, premultipliedAlpha: false, preserveDrawingBuffer: true });
     if (!gl || gl.isContextLost()) { gl = null; return false; }
     main = program(KARST_VOLUME_VERT_SRC, KARST_VOLUME_FRAG_SRC); depth = program(DEPTH_VERT, DEPTH_FRAG);
+    fishFailure = '';
+    try { fishProgram = program(FISH_VOLUME_VERT_SRC, FISH_VOLUME_FRAG_SRC); fishPass = new FishVolumePass(gl); }
+    catch (error) { fishFailure = String(error); fishProgram = null; fishPass = null; console.warn('[实体鱼] 回退二维绘制', error); }
     // 剖面贴边受光用：每格岩石离洞壁有多深。
-    const bytes = new Uint8Array(t.cols * t.rows); for (let i = 0; i < bytes.length; i++) bytes[i] = Math.max(0, Math.min(255, -t.field[i] / 72 * 255));
-    sliceTex = texture(gl.LUMINANCE, gl.UNSIGNED_BYTE, t.cols, t.rows, bytes, gl.LINEAR);
+    const bytes = new Uint8Array(t.cols * t.rows * 2);
+    for (let i = 0; i < t.field.length; i++) {
+        bytes[i * 2] = Math.max(0, Math.min(255, -t.field[i] / 72 * 255));
+        // 红通道原样供岩面读取；alpha保存有符号场，避免鱼贴墙时把整格水域一起裁掉。
+        bytes[i * 2 + 1] = Math.round(Math.max(0, Math.min(255, 128 + t.field[i] / 72 * 127)));
+    }
+    sliceTex = texture(gl.LUMINANCE_ALPHA, gl.UNSIGNED_BYTE, t.cols, t.rows, bytes, gl.LINEAR);
     if (gl.getExtension('WEBGL_depth_texture')) {
         const color = texture(gl.RGBA, gl.UNSIGNED_BYTE, SHADOW, SHADOW, null, gl.NEAREST); shadowTex = texture(gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, SHADOW, SHADOW, null, gl.NEAREST);
         shadowFB = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, shadowFB);
@@ -199,7 +213,8 @@ export function drawKarstVolume(ctx: CanvasRenderingContext2D, t: KarstTerrain, 
     const quality = CONFIG.karst, resolution = Math.max(.65, Math.min(1.6, CONFIG.quality.scale * 2));
     let w = Math.ceil(logicW * resolution), h = Math.ceil(logicH * resolution);
     const shrink = Math.min(1, Math.sqrt(quality.pixelBudget / Math.max(1, w * h))); w = Math.max(2, Math.round(w * shrink)); h = Math.max(2, Math.round(h * shrink));
-    const next = [cx, cy, zoom, w, h, player.x, player.y, player.angle, lightOn, shadowOn, CONFIG.lightRange, CONFIG.fov, quality.lightEnergy, quality.bounceStrength, quality.volumeVisibility, quality.volumeMaterial, quality.extinction.join(), uploads, visible.length, inspection].join('/');
+    fishPass?.prepare(state.fishEnemies || [], (state.mazeRescue as any)?.continuous?.elapsed || 0, cx, cy, halfW, halfH, quality.volumeFish, { x: player.x, y: player.y, radius: shadowOn ? CONFIG.lightRange * 1.2 : 0 });
+    const next = [fishPass?.count ? frame : 0, cx, cy, zoom, w, h, player.x, player.y, player.angle, lightOn, shadowOn, CONFIG.lightRange, CONFIG.fov, quality.lightEnergy, quality.bounceStrength, quality.volumeVisibility, quality.volumeMaterial, quality.extinction.join(), uploads, visible.length, inspection].join('/');
     if (next !== key) {
         if (surface.width !== w) surface.width = w; if (surface.height !== h) surface.height = h; width = w; height = h;
         const viewProj = multiply(perspective(2 * Math.atan(halfH / D), halfW / halfH, D * .3, D + VOLUME_DEPTH + 200), lookAt([cx, cy, -D], [cx, cy, 0], [0, -1, 0]));
@@ -209,7 +224,7 @@ export function drawKarstVolume(ctx: CanvasRenderingContext2D, t: KarstTerrain, 
         if (shadowOn) {
             gl.bindFramebuffer(gl.FRAMEBUFFER, shadowFB); gl.viewport(0, 0, SHADOW, SHADOW); gl.clearColor(0, 0, 0, 1); gl.clear(gl.DEPTH_BUFFER_BIT | gl.COLOR_BUFFER_BIT);
             gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, null); gl.disableVertexAttribArray(1);
-            gl.useProgram(depth.p); gl.uniformMatrix4fv(depth.u.lightVP, false, lightVP); drawChunks(shadowCasters); gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+            gl.useProgram(depth.p); gl.uniformMatrix4fv(depth.u.lightVP, false, lightVP); drawChunks(shadowCasters); fishPass?.draw(true); gl.bindFramebuffer(gl.FRAMEBUFFER, null);
         }
         gl.enableVertexAttribArray(1); gl.viewport(0, 0, w, h); gl.clearColor(0, 0, 0, 0); gl.clear(gl.DEPTH_BUFFER_BIT | gl.COLOR_BUFFER_BIT); gl.useProgram(main.p);
         updateBounce(t, lightOn && !inspection, range, quality.bounceStrength * quality.lightEnergy / 3.4);
@@ -225,13 +240,25 @@ export function drawKarstVolume(ctx: CanvasRenderingContext2D, t: KarstTerrain, 
         gl.uniform2f(main.u.gridOrigin, t.x, t.y); gl.uniform2f(main.u.gridSize, t.cols, t.rows); gl.uniform1f(main.u.cellSize, t.step);
         gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, sliceTex); gl.uniform1i(main.u.sliceTex, 1);
         gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, shadowOn ? shadowTex : null); gl.uniform1i(main.u.shadowMap, 0);
-        drawChunks(visible); gl.flush(); draws++; key = next;
+        drawChunks(visible);
+        if (fishPass?.count) {
+            const f = fishProgram; gl.useProgram(f.p);
+            gl.uniformMatrix4fv(f.u.viewProj, false, viewProj); gl.uniformMatrix4fv(f.u.lightVP, false, lightVP);
+            gl.uniform3fv(f.u.lightPos, lightPos); gl.uniform3fv(f.u.lightDir, dir); gl.uniform3f(f.u.cameraPos, cx, cy, -D);
+            gl.uniform3fv(f.u.extinction, quality.extinction); gl.uniform4fv(f.u['bounce[0]'], bounceLights); gl.uniform4fv(f.u['bounceNormal[0]'], bounceNormals);
+            gl.uniform1f(f.u.fov, CONFIG.fov * Math.PI / 180); gl.uniform1f(f.u.range, range); gl.uniform1f(f.u.energy, quality.lightEnergy);
+            gl.uniform1f(f.u.enabled, lightOn ? 1 : 0); gl.uniform1f(f.u.shadowOn, shadowOn ? 1 : 0); gl.uniform1i(f.u.shadowMap, 0);
+            gl.uniform1f(f.u.surfaceY, (state.mazeRescue as any)?.continuous?.surfaceY || 0);
+            gl.uniform2f(f.u.gridOrigin, t.x, t.y); gl.uniform2f(f.u.gridSize, t.cols, t.rows); gl.uniform1f(f.u.cellSize, t.step); gl.uniform1i(f.u.sliceTex, 1);
+            fishPass.draw();
+        }
+        gl.flush(); draws++; key = next;
     } else cacheHits++;
     ctx.save(); ctx.imageSmoothingEnabled = true; ctx.drawImage(surface, cx - halfW, cy - halfH, halfW * 2, halfH * 2); ctx.restore(); cpuMs = Math.max(0, now() - start);
     shownFrame = frame; return true;
 }
 // 游戏的黑暗遮罩是为二维画面做的，盖在洞壁上会把洞壁再压暗一次，反照会被盖掉。
-// 这里把遮罩压掉的那部分洞壁亮度原样加回去：洞壁最终只按自己的三维光照显示，人物、鱼和绳索仍然被遮罩压暗。
+// 这里把遮罩压掉的那部分洞壁亮度原样加回去：洞壁最终只按自己的三维光照显示，二维前景另行受同一遮罩照明，再合成到场景前面。
 // 要在遮罩画完之后、屏幕坐标下调用。mask 是遮罩画布，clipTop 是水面在屏幕上的位置。
 export function restoreKarstVolumeLight(ctx: CanvasRenderingContext2D, mask: any, maskW: number, maskH: number, clipTop: number, volumeMix: number) {
     if (!gl || !main || shownFrame !== frame || !width || !height || !mask) return;
@@ -244,6 +271,7 @@ export function restoreKarstVolumeLight(ctx: CanvasRenderingContext2D, mask: any
     ctx.globalCompositeOperation = 'lighter'; ctx.drawImage(overlay, 0, 0, width, height, 0, 0, logicW, logicH);
     ctx.restore();
 }
+export function isVolumeFishDrawn(fish: FishEnemy) { return shownFrame === frame && !!gl && !gl.isContextLost() && !!fishPass?.contains(fish); }
 export function getKarstVolumeBounceLights() { return bounceLights; }
 export function getKarstVolumeBounceNormals() { return bounceNormals; }
 export function inspectKarstVolume(mode = 0) { inspection = mode; key = ''; }
@@ -255,6 +283,7 @@ export function karstVolumeStats() {
     let bytes = 0, cpuProbeBytes = 0; for (const c of chunks.values()) { bytes += c.bytes; cpuProbeBytes += c.probe.values.byteLength; }
     return { ready: !!gl && !!main, failure, chunks: chunks.size, emptyChunks: empty.size, pending, triangles, builds, lastBuildMs, maxBuildMs, longestStepMs: longestStep, droppedQuads: dropped, shadows: !!shadowFB, draws, cacheHits, lostCount,
         visiblePending, shadowPending, preloadPending, visibleChunks, shadowChunks, offscreenShadowChunks, bounceCount, returnedLight, bounceProbeMs, cpuProbeBytes,
-        surfacePixels: width * height, cpuMs, gpuBytes: bytes + (terrain ? terrain.cols * terrain.rows : 0) + (shadowFB ? SHADOW * SHADOW * 8 : 0) + width * height * 8 };
+        fishFailure, fishCount: shownFrame === frame ? fishPass?.count || 0 : 0, fishTriangles: fishPass?.triangles || 0, fishBytes: fishPass?.bytes || 0,
+        surfacePixels: width * height, cpuMs, gpuBytes: (fishPass?.bytes || 0) + bytes + (terrain ? terrain.cols * terrain.rows * 2 : 0) + (shadowFB ? SHADOW * SHADOW * 8 : 0) + width * height * 8 };
 }
 export function releaseKarstVolume() { dispose(); retryAt = 0; failure = ''; width = height = 0; shownFrame = -1; if (surface) surface.width = surface.height = 1; if (overlay) overlay.width = overlay.height = 1; }

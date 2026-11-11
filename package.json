@@ -48,7 +48,8 @@
     "cave:sculpt:browser": "node scripts/checkCaveRockBrowser.js --sculpt",
     "world:entry": "node scripts/checkContinuousGameplayEntry.js",
     "rope:check": "node scripts/checkRopePlacementRegression.js",
-    "world:regression": "node scripts/checkShoreRegressionBrowser.js"
+    "world:regression": "node scripts/checkShoreRegressionBrowser.js",
+    "fish:volume": "node scripts/checkFishVolumeMesh.js && node scripts/checkFishVolumeBrowser.js"
   },
   "devDependencies": {
     "typescript": "^5.3.3"

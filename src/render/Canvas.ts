@@ -3,7 +3,13 @@ import { getWindowMetrics, WindowMetrics } from '../core/WindowMetrics';
 
 // Create canvas
 export const canvas = wx.createCanvas();
-export const ctx = canvas.getContext('2d');
+export let ctx = canvas.getContext('2d');
+
+// 同步绘制一层前景；所有旧绘制函数仍使用同一个实时绑定，异常时也归还主画布。
+export function withCanvasContext(target: CanvasRenderingContext2D, draw: () => void) {
+    const previous = ctx; ctx = target;
+    try { draw(); } finally { ctx = previous; }
+}
 
 // 高清适配：使用设备像素比，解决文字和图形模糊问题
 export let dpr = getWindowMetrics().pixelRatio;

@@ -9,6 +9,7 @@ export const renderingConfig = {
         normalStrength: 1.30,
         occlusionStrength: 0.86,
         lightEnergy: 3.4,
+        volumeFish: true,                 // 食人鱼与好奇鱼共用洞室的三维灯光和深度
         volumeVisibility: 1.0,             // 仅手电锥内、受阴影约束的弱水中回散
         volumeMaterial: 1.0,               // 三维岩面的稀疏低对比暖色沉积
         scatterStrength: 1.0,

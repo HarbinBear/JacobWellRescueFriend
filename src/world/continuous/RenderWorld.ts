@@ -3,10 +3,10 @@ import { drawMazeWallShape } from '../../render/RenderMazeScene';
 import { drawKarstSurface, karstSurfaceStats, karstAssetsReady } from '../../render/RenderKarst';
 import { getKarstTerrain, karstStats } from '../KarstTerrain';
 import { getKarstBounce } from '../../render/KarstBounce';
-import { drawKarstVolume, restoreKarstVolumeLight, karstVolumeStats, getKarstVolumeBounceLights, getKarstVolumeBounceNormals } from '../../render/RenderKarstVolume';
+import { drawKarstVolume, restoreKarstVolumeLight, isVolumeFishDrawn, karstVolumeStats, getKarstVolumeBounceLights, getKarstVolumeBounceNormals } from '../../render/RenderKarstVolume';
 import { CONFIG } from '../../core/config';
 import { state, player, particles } from '../../core/state';
-import { canvas,ctx,dpr,logicW,logicH } from '../../render/Canvas';
+import { canvas,ctx,dpr,logicW,logicH,withCanvasContext } from '../../render/Canvas';
 import { registerImage,getImage,isImageReady,releaseImages } from '../../render/ImageAssets';
 import { drawDiver } from '../../render/RenderDiver';
 import { drawAllFishEnemies, drawFishBiteEffect, drawFishThreatDirection } from '../../render/RenderFishEnemy';
@@ -35,15 +35,16 @@ import { drawCampLeisure, drawNaturalBoundaries } from './Camp';
 
 const assetRoot='images/shore/';
 const ASSETS=['woodland-native.jpg','woodland-sky-strip.png','bank-left.jpg','bank-right.jpg','shop.png','tent.png','board.png','air.png','fish.png'];
+let foreground:any=null, foregroundCtx:CanvasRenderingContext2D|null=null;
 let registered=false;
 let backdropProjection:any=null;
 export function backdropProjectionStats(){return backdropProjection;}
 export function updateWorldAssets(){
     if(activeWorld()&&!registered){registered=true;ASSETS.forEach(f=>registerImage('shore/'+f,assetRoot+f));}
-    else if(!activeWorld()&&registered){releaseImages(ASSETS.map(f=>'shore/'+f));registered=false;}
+    else if(!activeWorld()&&registered){releaseImages(ASSETS.map(f=>'shore/'+f));registered=false;if(foreground)foreground.width=foreground.height=1;}
 }
 export function assetsReady(){return ASSETS.every(f=>isImageReady('shore/'+f));}
-export function worldGraphicsStats(){const imageBytes=ASSETS.reduce((n,f)=>{const im=getImage('shore/'+f);return n+(im?im.width*im.height*4:0);},0);return {webgl:isWebGLAvailable(),pixelSize:getGLCanvasPixelSize(),sceneDecodedRGBABytes:imageBytes,character:"original",rocks:getKarstTerrain(state.mazeRescue)?"continuous-karst":"original-circles",karst:karstStats(state.mazeRescue),surface:karstSurfaceStats(),volume:karstVolumeStats(),crossfade:true};}
+export function worldGraphicsStats(){const imageBytes=ASSETS.reduce((n,f)=>{const im=getImage('shore/'+f);return n+(im?im.width*im.height*4:0);},0);return {webgl:isWebGLAvailable(),pixelSize:getGLCanvasPixelSize(),sceneDecodedRGBABytes:imageBytes,foregroundRGBABytes:foreground?foreground.width*foreground.height*4:0,character:"original",rocks:getKarstTerrain(state.mazeRescue)?"continuous-karst":"original-circles",karst:karstStats(state.mazeRescue),surface:karstSurfaceStats(),volume:karstVolumeStats(),crossfade:true};}
 function transform(){const c=state.camera;ctx.translate(logicW/2,logicH/2);ctx.scale(c.zoom,c.zoom);ctx.translate(-c.x-c.swayX,-c.y-c.swayY);}
 function gradient(y1:number,y2:number,stops:[number,string][]) {const g=ctx.createLinearGradient(0,y1,0,y2);for(const [t,c]of stops)g.addColorStop(t,c);return g;}
 function visible(x:number,y:number,w:number,h:number,v:any){return x+w>v.l&&x<v.r&&y+h>v.t&&y<v.b;}
@@ -183,13 +184,18 @@ export function drawContinuousFrame(){
     const c=state.camera,zoom=c.zoom;
     const v={l:c.x-logicW/(2*zoom)-80,r:c.x+logicW/(2*zoom)+80,t:c.y-logicH/(2*zoom)-80,b:c.y+logicH/(2*zoom)+80};
     ctx.setTransform(dpr,0,0,dpr,0,0);ctx.fillStyle='#08272e';ctx.fillRect(0,0,logicW,logicH);
-    // 三维洞腔画在潜水员、鱼和绳索的后面；旧的平面岩壁仍然画在光照遮罩之后。
+    // 三维洞腔与实体鱼共用深度；旧的平面岩壁仍画在光照遮罩之后。
     const terrain=getKarstTerrain(state.mazeRescue),volume=!!terrain&&terrain.generation==='volume';
     ctx.save();transform();drawBackdrop(v);drawDeepCave(v);
     const volumeDrawn=volume&&drawKarstVolume(ctx,terrain!,zoom,state.flashlightOn!==false&&w.wet>.3);drawBanks(v);drawNaturalBoundaries(ctx,v);drawCamp(v);
-    drawRopesWorld(v.l,v.r,v.t,v.b);drawRopeTethersWorld(ctx,v.l,v.r,v.t,v.b);drawRemovedRopesWorld(ctx);drawRescueRopeWorld(ctx);
-    drawAllFishEnemies(ctx,v.l,v.r,v.t,v.b);drawOxygenTanksWorld(ctx,v.l,v.r,v.t,v.b);drawOxygenFeedbackWorld(ctx);drawRelicsWorld(ctx,v.l,v.r,v.t,v.b);drawDroppedItemsWorld(v.l,v.r,v.t,v.b);
+    // 洞室补光只还给三维场景；二维角色和绳结另行受同一遮罩照明，避免叠穿。
+    const layered=volumeDrawn&&isWebGLAvailable();
+    if(layered&&!foreground){foreground=wx.createCanvas();foregroundCtx=foreground.getContext('2d');}
+    const separate=layered&&!!foregroundCtx;
     const visual=w.headWet?getRescueTapeVisual():undefined;
+    const drawActors=()=>{
+    drawRopesWorld(v.l,v.r,v.t,v.b);drawRopeTethersWorld(ctx,v.l,v.r,v.t,v.b);drawRemovedRopesWorld(ctx);drawRescueRopeWorld(ctx);
+    drawAllFishEnemies(ctx,v.l,v.r,v.t,v.b,volumeDrawn?isVolumeFishDrawn:undefined);drawOxygenTanksWorld(ctx,v.l,v.r,v.t,v.b);drawOxygenFeedbackWorld(ctx);drawRelicsWorld(ctx,v.l,v.r,v.t,v.b);drawDroppedItemsWorld(v.l,v.r,v.t,v.b);
     const motion:any={id:'player',hasTank:true,tankCount:Math.max(1,w.airTanks.length),animTime:player.animTime,vx:player.vx,vy:player.vy,autoSwim:CONFIG.driveMode!=='manual',
         leftKickProgress:state.manualDrive.leftKickProgress,rightKickProgress:state.manualDrive.rightKickProgress,leftKickStrength:state.manualDrive.leftKickStrength,rightKickStrength:state.manualDrive.rightKickStrength,
         swimEffort:CONFIG.driveMode==='semiAuto'?state.semiAutoDrive.effort:undefined,workPose:getInteractionWorkPose(),bcdInflation:getBCDInflationRatio(),bcdVenting:isBCDVenting(),tapeVisual:visual,
@@ -198,9 +204,19 @@ export function drawContinuousFrame(){
     else drawDiver(ctx,player.x,player.y,player.angle,null,motion);
     drawInteractionWorkWorld(ctx);ctx.save();ctx.beginPath();ctx.rect(v.l,w.surfaceY,v.r-v.l,Math.max(0,v.b-w.surfaceY));ctx.clip();drawBreathBubblesWorld(ctx,v.l,v.r,v.t,v.b);ctx.restore();
     for(const p of particles){if(p.x<v.l||p.x>v.r||p.y<v.t||p.y>v.b)continue;ctx.fillStyle=p.type==='silt'?`rgba(91,124,97,${p.life*.17})`:`rgba(193,220,180,${p.life*.3})`;ctx.beginPath();ctx.arc(p.x,p.y,Math.max(.5,p.size),0,Math.PI*2);ctx.fill();}
+    };
+    if(separate){
+        if(foreground.width!==canvas.width)foreground.width=canvas.width;if(foreground.height!==canvas.height)foreground.height=canvas.height;
+        withCanvasContext(foregroundCtx!,()=>{ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,foreground.width,foreground.height);ctx.setTransform(dpr,0,0,dpr,0,0);ctx.save();transform();drawActors();ctx.restore();});
+    }else drawActors();
     const volumeMix=volumeDrawn?smooth(terrain!.y,terrain!.y+170,player.y):0;
     ctx.restore();const surfacePoly=lighting(volumeMix);
     if(volumeDrawn&&isWebGLAvailable()){const size=getGLCanvasPixelSize();restoreKarstVolumeLight(ctx,getGLCanvas(),size.w,size.h,Math.max(0,logicH/2+(w.surfaceY-c.y-c.swayY)*zoom),volumeMix);}
+    if(separate){
+        const size=getGLCanvasPixelSize(),top=Math.max(0,logicH/2+(w.surfaceY-c.y-c.swayY)*zoom),fc=foregroundCtx!;
+        fc.save();fc.beginPath();fc.rect(0,top,logicW,Math.max(0,logicH-top));fc.clip();fc.globalCompositeOperation='source-atop';fc.drawImage(getGLCanvas() as any,0,0,size.w,size.h,0,0,logicW,logicH);fc.restore();
+        ctx.drawImage(foreground,0,0,foreground.width,foreground.height,0,0,logicW,logicH);
+    }
     ctx.save();transform();if(!volumeDrawn)drawKarstSurface(ctx,zoom,surfacePoly);drawRescueTarget(ctx,visual);drawSurface(v);drawRopeApproachWorld(ctx,zoom,{left:v.l,right:v.r,top:v.t,bottom:v.b});drawRopeAimWorld(ctx);drawActionPreviewWorld(ctx);drawInteractionOverlayWorld(ctx);ctx.restore();
     if((w as any).overview){
         ctx.save();ctx.fillStyle='rgba(226,231,199,.89)';ctx.fillRect(logicW-260,13,245,30);ctx.fillStyle='#52664a';ctx.font='11px PingFang SC';ctx.textAlign='left';ctx.fillText('营地与泉井 · 同一张地图的验收总览',logicW-250,32);
