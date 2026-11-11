@@ -51,15 +51,25 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
   report.tow={fishIDs,tethers:3,allBodiesAboveWater:true,fishStayBound:true};
 
   function canonical(s){return {seed:s.seed,player:{x:s.player.x,y:s.player.y,vx:s.player.vx,vy:s.player.vy,angle:s.player.angle,o2:s.player.o2,o2Max:s.player.o2Max},npc:s.npc,fish:s.fish.map(f=>({...f,stunUntil:0,stunRemaining:0})),ropes:s.ropes,links:s.links,current:s.current,ropeActive:s.ropeActive,markers:s.markers,maze:s.maze,explored:s.explored,extraction:s.extraction,story:s.story,gas:s.bcd.gasNL,nitrogen:s.deco.nitrogenLoad,stamina:s.stamina,world:{elapsed:s.world.elapsed,chapterStatus:s.world.chapterStatus,nextFishId:s.world.nextFishId,airTanks:s.world.airTanks}};}
+  async function waitForReload(){
+    const start=Date.now();
+    while(Date.now()-start<15000){
+      try{if(await ev('!window.__WorldReloadPending && !!window.DeepTapeGame'))return;}
+      catch(error){if(!/Inspected target navigated or closed|Execution context was destroyed|Cannot find context/.test(String(error)))throw error;}
+      await wait(100);
+    }
+    throw Error('刷新后新页面未能初始化');
+  }
   async function enterAfterReload(){
     if(process.env.JWR_MOBILE_WORLD!=='1')return;
-    await until('!!window.DeepTapeGame');const p=await ev('(()=>{const c=DeepTapeGame.cave.config,b=DeepTapeGame.ui.menu().find(b=>b.id==="continue"),r=document.getElementById("game").getBoundingClientRect();return{x:r.x+(b.x+b.w/2)/c.screenWidth*r.width,y:r.y+(b.y+b.h/2)/c.screenHeight*r.height,id:1}})()');
+    await until('!window.__WorldReloadPending && !!window.DeepTapeGame');const p=await ev('(()=>{const c=DeepTapeGame.cave.config,b=DeepTapeGame.ui.menu().find(b=>b.id==="continue"),r=document.getElementById("game").getBoundingClientRect();return{x:r.x+(b.x+b.w/2)/c.screenWidth*r.width,y:r.y+(b.y+b.h/2)/c.screenHeight*r.height,id:1}})()');
     await browser.command('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[p]});await browser.command('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
   }
   async function reloadAt(name){
    await ev('window.__ShoreLifecycle.hide()');const before=await ev('DeepTapeGame.world.save.captureWorld()');await wait(850);
    const paused=await ev('DeepTapeGame.world.save.captureWorld()');assert.deepEqual(canonical(paused),canonical(before),'后台期间不能推进世界');assert.deepEqual(paused.fish.map(f=>f.stunRemaining),before.fish.map(f=>f.stunRemaining),'后台等待不能减少眩晕');assert(await ev('DeepTapeGame.world.save.saveWorldProgress()'));
-   await browser.command('Page.reload',{});await enterAfterReload();await until('!!window.DeepTapeGame?.world.geometry.world()',15000);await until('!!DeepTapeGame.world.save.getLastRestoreSnapshot()',12000);
+   // CDP reload 返回时旧页面可能仍在；等待新页面自己的入口，不能误用上一页的全局对象。
+   await ev('window.__WorldReloadPending=true');await browser.command('Page.reload',{});await waitForReload();await enterAfterReload();await until('!!window.DeepTapeGame?.world.geometry.world()',15000);await until('!!DeepTapeGame.world.save.getLastRestoreSnapshot()',12000);
    const restored=await ev('DeepTapeGame.world.save.getLastRestoreSnapshot()');assert.deepEqual(canonical(restored),canonical(before),'读档必须恢复实际对象图，而不仅是存了一个坐标');
    restored.fish.forEach((f,i)=>assert(Math.abs(f.stunRemaining-before.fish[i].stunRemaining)<.03,'离线眩晕必须按剩余时间重锚定'));
    assert(await ev('DeepTapeGame.state.rope.links.every(l=>[l.start,l.end].every(e=>e.kind!=="fish"||DeepTapeGame.state.fishEnemies.includes(e.fish)))'),'绳端引用必须重新挂到恢复的鱼实体');

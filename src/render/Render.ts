@@ -1,6 +1,7 @@
 import { updateKarstResources } from './RenderKarst';
 import { updateWorldAssets, drawContinuousFrame } from '../world/continuous/RenderWorld';
 import { activeWorld } from '../world/continuous/Geometry';
+import { isWorldNavigationOpen } from '../world/continuous/Runtime';
 import { CONFIG } from '../core/config';
 import { drawScreenOrientationButton } from './RenderOrientation';
 import { updateCaveRockResources,drawCaveRock,drawCaveRockBase } from './RenderCaveRock';
@@ -867,7 +868,7 @@ export function draw() {
     drawFrame();
     ctx.save();
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    drawScreenOrientationButton(ctx);
+    if (!isWorldNavigationOpen()) drawScreenOrientationButton(ctx);
     ctx.restore();
 }
 

@@ -66,6 +66,7 @@ import { state, player } from '../core/state';
 import { addNitrogenLoad, getCurrentDepthMeters } from './DecompressionSystem';
 import { spawnBCDVentBubbles } from './BreathSystem';
 import { playSFX } from '../audio/AudioManager';
+import { world, bodyWet } from '../world/continuous/Geometry';
 
 // =============================================
 // 运行时数据
@@ -104,7 +105,7 @@ export interface BCDRuntime {
     /** 失控下沉告警强度 0~1 */
     descentWarn: number;
 
-    /** 系统是否激活（水下可操作） */
+    /** 系统是否可操作（岸上、水面和水下均可充排气） */
     active: boolean;
     /** 上一次嘶气音效时间戳（节流） */
     lastHissAt: number;
@@ -178,6 +179,10 @@ function netAccelFor(volumeL: number, pressure: number): number {
     return (c.baseSinkAccel || 0.02) - (volumeL + suitLiftAt(pressure)) * lift;
 }
 
+// 连续章节可在岸上准备背心，但只有浸水部分产生浮力。
+// 旧迷宫没有岸水边界，仍按全身在水中计算。
+function immersion(): number { return world() ? bodyWet(player.y) : 1; }
+
 // =============================================
 // 激活条件
 // =============================================
@@ -188,6 +193,7 @@ function shouldBeActive(): boolean {
     if (state.screen !== 'mazeRescue') return false;
     const maze: any = state.mazeRescue;
     if (!maze || maze.phase !== 'play') return false;
+    if (world()?.panel) return false;
     // 被鱼咬住 / 死亡过场期间不响应操作（与呼吸系统一致）
     if (state.fishBite && state.fishBite.active) return false;
     return true;
@@ -234,7 +240,7 @@ export function resetBCDSystem(): void {
     runtime.pressureAtm = p;
     runtime.volumeL = vol;
     runtime.gasNL = vol * p;
-    runtime.netAccel = netAccelFor(vol, p);
+    runtime.netAccel = netAccelFor(vol, p) * immersion();
 }
 
 // =============================================
@@ -295,11 +301,13 @@ export function updateBCDSystem(dt: number): void {
     const active = shouldBeActive();
 
     if (!active) {
-        if (runtime.active) releaseBCDControls();
+        releaseBCDControls();
         runtime.active = false;
         runtime.inflating = false;
         runtime.deflating = false;
         runtime.overflow = false;
+        runtime.netAccel = 0;
+        runtime.ventBubbleAccum = 0;
         // ascentWarn / descentWarn 平滑归零，避免转场时告警硬切
         const fall = c.warnFallPerSec || 2.5;
         runtime.ascentWarn = Math.max(0, runtime.ascentWarn - fall * dt);
@@ -338,8 +346,12 @@ export function updateBCDSystem(dt: number): void {
     } else if (wantInflate) {
         // 气瓶空了充不进气（真实：第一级没压力，inflator 完全无效）。
         // 这个判断必须在扣账之前，否则会出现"氧气已空还在记欠账"
-        if (player.o2 > 0 || CONFIG.infiniteO2) {
-            const dVol = (c.inflateRateLPerSec || 0.5) * dt;
+        const costPerNL = c.o2PerNL || 0.3;
+        const availableO2 = Math.max(0, player.o2 - runtime.o2Debt);
+        if (availableO2 > 0 || CONFIG.infiniteO2) {
+            // 同帧未结算的气也已被气囊取走，不能再次使用；低余量只充入付得起的部分。
+            const affordableVol = CONFIG.infiniteO2 ? Infinity : availableO2 / (p * costPerNL);
+            const dVol = Math.min((c.inflateRateLPerSec || 0.5) * dt, affordableVol);
             const target = runtime.volumeL + dVol;
             if (target > capacity) runtime.overflow = true;
             const clamped = Math.min(capacity, target);
@@ -349,7 +361,7 @@ export function updateBCDSystem(dt: number): void {
                 const addedNL = addedVol * p;
                 runtime.volumeL = clamped;
                 runtime.gasNL = runtime.volumeL * p;
-                const cost = addedNL * (c.o2PerNL || 0.3);
+                const cost = addedNL * costPerNL;
                 runtime.o2Debt += cost;
                 runtime.o2SpentTotal += cost;
                 runtime.inflating = true;
@@ -368,7 +380,7 @@ export function updateBCDSystem(dt: number): void {
     }
 
     // === 3. 净浮力 ===
-    runtime.netAccel = netAccelFor(runtime.volumeL, p);
+    runtime.netAccel = netAccelFor(runtime.volumeL, p) * immersion();
 
     // === 3b. 表现层：排气气泡束 + 嘶气音效 ===
     updateBCDEffects(dt);
@@ -423,14 +435,16 @@ export function getBCDVentPos(): { x: number; y: number } {
 
 function updateBCDEffects(dt: number): void {
     const c = cfg();
+    const vent = getBCDVentPos(), shore = world();
+    // 气泡有最多2.5像素的生成抖动，阀口完全入水后才生成，岸上只保留嘶气声。
+    const ventSubmerged = !shore || vent.y > shore.surfaceY + 3;
 
     // --- 排气气泡：从肩阀连续涌出一大串 ---
-    if (runtime.deflating) {
+    if (runtime.deflating && ventSubmerged) {
         runtime.ventBubbleAccum += (c.ventBubbleRate || 26) * dt;
         if (runtime.ventBubbleAccum >= 1) {
             const n = Math.floor(runtime.ventBubbleAccum);
             runtime.ventBubbleAccum -= n;
-            const vent = getBCDVentPos();
             spawnBCDVentBubbles(vent.x, vent.y, n, c.ventBubbleSizeMul || 0.85);
         }
     } else {
@@ -461,7 +475,7 @@ function updateBCDEffects(dt: number): void {
 // 对外读取
 // =============================================
 
-/** 返回本帧要叠加到 player.vy 的加速度（未激活时为 0） */
+/** 返回本帧加速度，已乘浸水比例；岸上或未激活时为 0。 */
 export function computeBCDBuoyancyAccel(): number {
     if (!cfg().enabled) return 0;
     if (!runtime.active) return 0;

@@ -230,7 +230,8 @@ function spawnBubble(intensity: number) {
 // =============================================
 // 每帧更新气泡位置 / 透明度 / 半径
 // =============================================
-function updateBubbles() {
+/** 头在空气里时仍推进已排入水中的气泡，不启动呼吸周期或气瓶耗气。 */
+export function advanceBreathBubbles() {
     for (let i = runtime.bubbles.length - 1; i >= 0; i--) {
         const b = runtime.bubbles[i];
         b.wobblePhase += b.wobbleFreq;
@@ -359,7 +360,7 @@ export function updateBreathSystem() {
         runtime.phaseTimer = 0;
         runtime.bubbleAccum = 0;
         // lungVolume 不重置，保持连续
-        updateBubbles();
+        advanceBreathBubbles();
         return;
     }
 
@@ -390,7 +391,7 @@ export function updateBreathSystem() {
     }
     setSFXLoopParams('breathLoop', { targetVolume: targetVol, playbackRate: targetRate });
 
-    updateBubbles();
+    advanceBreathBubbles();
 }
 
 // =============================================

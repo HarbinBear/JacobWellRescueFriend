@@ -1,6 +1,6 @@
 import { activeWorld } from '../world/continuous/Geometry';
-import { exitContinuousWorld } from '../world/continuous/Runtime';
-import { worldTouchStart, worldTouchMove, worldTouchEnd } from '../world/continuous/WorldHUD';
+import { exitContinuousWorld, isWorldNavigationOpen, openWorldNavigation, closeWorldPanel } from '../world/continuous/Runtime';
+import { worldTouchStart, worldTouchMove, worldTouchEnd, cancelWorldTouches } from '../world/continuous/WorldHUD';
 import { updateSemiAutoJoystick, releaseSemiAutoDrive } from '../logic/SemiAutoDrive';
 import { resetDriveInput } from '../logic/DriveMode';
 import { CONFIG } from './config';
@@ -233,7 +233,8 @@ function bcdReleaseAll(): void {
 }
 
 /** 窗口变化/系统中断释放输入，不补体力、不改玩家位置和案件数据。 */
-export function cancelAllInput(): void {
+export function cancelAllInput(preserveWorldTouches = false): void {
+    if (!preserveWorldTouches) cancelWorldTouches();
     cancelInteractionInput();
     resetDriveInput();
     bcdReleaseAll();
@@ -299,6 +300,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
         resetKeyboard = () => { keys.w = keys.a = keys.s = keys.d = keys.shift = false; };
         
         const updateKeyInput = () => {
+            if (isWorldNavigationOpen()) { resetKeyboard(); resetDriveInput(); return; }
             // 如果有触摸操作，优先触摸
             if (touches.joystickId !== null) return;
 
@@ -357,6 +359,12 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
 
         window.addEventListener('keydown', (e) => {
             unlockAdaptiveMusic();
+            if (activeWorld() && e.key === 'Escape') {
+                if (e.repeat) { e.preventDefault(); return; }
+                cancelAllInput(); if (isWorldNavigationOpen()) closeWorldPanel(); else openWorldNavigation();
+                e.preventDefault(); return;
+            }
+            if (isWorldNavigationOpen()) { resetKeyboard(); resetDriveInput(); return; }
             if(state.screen === 'menu') {
                 if(e.code === 'Space' && !(state as any)._menuConfirmNewGame) {
                     handleMenuButton('dive', onMaze, onMazeDive);
@@ -393,7 +401,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
     }
 
     wx.onTouchStart((res) => {
-        if (worldTouchStart(res)) return;
+        if ((isWorldNavigationOpen() || !isBagFullPageOpen() && !isDetailCardOpen() && !isGMOpen()) && worldTouchStart(res)) { cancelAllInput(true); return; }
         unlockAdaptiveMusic();
         const orientation = getScreenOrientationButton();
         const orientationTouch = orientation && res.changedTouches.find(t => Math.hypot(t.clientX - orientation.x, t.clientY - orientation.y) <= orientation.hitRadius);
@@ -699,7 +707,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
     });
 
     wx.onTouchMove((res) => {
-        if (worldTouchMove(res)) return;
+        if (worldTouchMove(res) || isWorldNavigationOpen()) return;
         // === 家场景：镜头拖拽 ===
         if (state.screen === 'home_evening') {
             const t = res.changedTouches[0] || res.touches[res.touches.length - 1];
@@ -848,6 +856,7 @@ export function initInput(onReset, onArena?, onMaze?, onMazeReplay?, onMazeDive?
 
     wx.onTouchEnd((res) => {
         if (worldTouchEnd(res)) return;
+        if (isWorldNavigationOpen()) { cancelAllInput(); return; }
         if (consumeOrientationEnds(res)) return;
         const remaining = res.changedTouches.filter(t => !finishDiveActionTouch(t.identifier, t.clientX, t.clientY, false));
         if (remaining.length !== res.changedTouches.length) {

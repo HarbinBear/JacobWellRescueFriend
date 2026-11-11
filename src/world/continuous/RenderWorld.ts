@@ -31,6 +31,7 @@ import { drawGMPanel } from '../../gm/GMPanel';
 import { drawPerfHUD } from '../../debug/PerfHUD';
 import { activeWorld,world,layout,groundAt,stationPosition,clamp,smooth } from './Geometry';
 import { drawWorldHUD } from './WorldHUD';
+import { isWorldNavigationOpen } from './Runtime';
 import { drawCampLeisure, drawNaturalBoundaries } from './Camp';
 
 const assetRoot='images/shore/';
@@ -224,6 +225,8 @@ export function drawContinuousFrame(){
         for(const station of layout.stations){const p=stationPosition(station),asset=(assetManifest.props as any)[station.kind],height=station.width*1.14*asset.height/asset.width,sx=logicW/2+(p.x-c.x-c.swayX)*zoom,sy=logicH/2+(p.y-height-c.y-c.swayY)*zoom;ctx.fillStyle='#dce6c2';ctx.strokeStyle='#486a48';ctx.lineWidth=2;ctx.strokeText(station.label,sx,sy-6);ctx.fillText(station.label,sx,sy-6);}
         ctx.restore();return;
     }
-    drawWorldHUD(ctx);if(!w.panel){drawWheelButton();drawWheel();drawActionControls(ctx);drawInteractionHUD(ctx);}drawFishThreatDirection(ctx,logicW,logicH,c.x,c.y,c.zoom);drawFishBiteEffect(ctx,logicW,logicH);drawBagFullPage();drawItemDetailCard();drawGMPanel(ctx);drawPerfHUD(ctx);
+    const navigationOpen=isWorldNavigationOpen();
+    if(!navigationOpen)drawWorldHUD(ctx);if(!w.panel){drawWheelButton();drawWheel();drawActionControls(ctx);drawInteractionHUD(ctx);}drawFishThreatDirection(ctx,logicW,logicH,c.x,c.y,c.zoom);drawFishBiteEffect(ctx,logicW,logicH);drawBagFullPage();drawItemDetailCard();drawGMPanel(ctx);drawPerfHUD(ctx);
     if(!assetsReady()||!volume&&!karstAssetsReady()){ctx.fillStyle='rgba(231,231,204,.9)';ctx.fillRect(logicW/2-88,logicH/2-18,176,36);ctx.fillStyle='#65755a';ctx.textAlign='center';ctx.font='11px PingFang SC';ctx.fillText('正在铺设林泉营地素材',logicW/2,logicH/2+4);ctx.textAlign='left';}
+    if(navigationOpen)drawWorldHUD(ctx);
 }

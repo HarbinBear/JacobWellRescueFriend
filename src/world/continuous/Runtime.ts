@@ -19,8 +19,8 @@ import { updateRescueTow } from '../../logic/RescueTow';
 import { isRescueTargetVisible } from '../../logic/NPCPerception';
 import { updateWheelButtonVisibility } from '../../logic/Marker';
 import { updateParticles, updateSplashes } from '../../logic/Particle';
-import { resetBreathSystem, updateBreathSystem, consumeBreathO2, computeBuoyancyOffset } from '../../logic/BreathSystem';
-import { updateBCDSystem, computeBCDBuoyancyAccel, consumeBCDO2, releaseBCDControls, getBCDRuntime, resetBCDSystem } from '../../logic/BCDSystem';
+import { resetBreathSystem, updateBreathSystem, advanceBreathBubbles, consumeBreathO2, computeBuoyancyOffset } from '../../logic/BreathSystem';
+import { updateBCDSystem, computeBCDBuoyancyAccel, consumeBCDO2, releaseBCDControls, resetBCDSystem } from '../../logic/BCDSystem';
 import { updateDecompressionSystem, resetDecompressionSystem } from '../../logic/DecompressionSystem';
 import { updateRegulatorAnim } from '../../logic/CollisionImpact';
 import { updateCarryItemAnim } from '../../extraction';
@@ -32,9 +32,10 @@ import { activeWorld, attachWorldTerrain, world, bodyWet, groundAt, bankSupport,
 
 let booting = false, pending: WorldSnapshot | null = null, bootstrap: (() => void) | null = null;
 let lastFrame = 0, accumulated = 0, nextSave = 0, lifecycleBound = false;
+let freshSeed: number | null = null, navigationPausedAt = 0;
 export function shouldEnterWorld(rockTrial = false) { return CONFIG.continuousWorld && !rockTrial && !booting; }
 export function isBootingWorld() { return booting; }
-export function previewSeed() { return pending?.seed ?? 26110941; }
+export function previewSeed() { return pending?.seed ?? freshSeed ?? 26110941; }
 function settleInitialPoint(body:any,radius:number){
     if(!circleCollision(body.x,body.y,radius))return;const m:any=state.mazeRescue,ts=m.mazeTileSize,r=Math.floor(body.y/ts),c=Math.floor(body.x/ts);let best:any=null;
     const consider=(rr:number,cc:number)=>{const x=(cc+.5)*ts,y=(rr+.5)*ts;if(rr<0||cc<0||rr>=m.mazeRows||cc>=m.mazeCols||m.mazeMap[rr]?.[cc]!==0||y<(world()?.surfaceY||0)+radius||circleCollision(x,y,radius))return;const d=Math.hypot(x-body.x,y-body.y);if(!best||d<best.d)best={x,y,d};};
@@ -42,8 +43,9 @@ function settleInitialPoint(body:any,radius:number){
     if(!best)for(let rr=0;rr<m.mazeRows;rr++)for(let cc=0;cc<m.mazeCols;cc++)consider(rr,cc);
     if(best){body.x=best.x;body.y=best.y;if('vx' in body)body.vx=body.vy=0;}
 }
-export function enterContinuousWorld(originalBootstrap: () => void) {
-    pending = readWorldSnapshot(); bootstrap = originalBootstrap; booting = true;
+export function enterContinuousWorld(originalBootstrap: () => void, seed?: number) {
+    freshSeed = seed === undefined ? null : seed >>> 0;
+    pending = freshSeed === null ? readWorldSnapshot() : null; bootstrap = originalBootstrap; booting = true; navigationPausedAt = 0;
     try {
         originalBootstrap();
         const m: any = state.mazeRescue;
@@ -66,35 +68,67 @@ export function enterContinuousWorld(originalBootstrap: () => void) {
         if (!pending) saveWorldProgress();
         if (!lifecycleBound) {
             lifecycleBound=true;
-            if((wx as any).onHide)(wx as any).onHide(()=>{if(!activeWorld())return;const w=world()!;if(!w.hidden)w.hiddenAt=Date.now();w.hidden=true;saveWorldProgress();resetDriveInput();releaseBCDControls();});
-            if((wx as any).onShow)(wx as any).onShow(()=>{if(!activeWorld())return;const w=world()!,now=Date.now(),paused=w.hidden?now-(w.hiddenAt||now):0;for(const f of state.fishEnemies)if(f.stunUntil>0)f.stunUntil+=paused;w.hidden=false;w.hiddenAt=0;state.semiAutoDrive.lastUpdateAt=now;lastFrame=0;accumulated=0;});
-            if(typeof window!=='undefined') {window.addEventListener('pagehide',()=>{if(activeWorld())saveWorldProgress();});window.addEventListener('beforeunload',()=>{if(activeWorld())saveWorldProgress();});}
+            if((wx as any).onHide)(wx as any).onHide(()=>{if(!activeWorld())return;advanceNavigationPause();const w=world()!;if(!w.hidden)w.hiddenAt=Date.now();w.hidden=true;saveWorldProgress();resetDriveInput();releaseBCDControls();});
+            if((wx as any).onShow)(wx as any).onShow(()=>{if(!activeWorld())return;const w=world()!,now=Date.now(),paused=w.hidden?now-(w.hiddenAt||now):0;if(!navigationPausedAt)for(const f of state.fishEnemies)if(f.stunUntil>0)f.stunUntil+=paused;w.hidden=false;w.hiddenAt=0;state.semiAutoDrive.lastUpdateAt=now;lastFrame=0;accumulated=0;});
+            if(typeof window!=='undefined'&&typeof window.addEventListener==='function') {window.addEventListener('pagehide',()=>{if(activeWorld())saveWorldProgress();});window.addEventListener('beforeunload',()=>{if(activeWorld())saveWorldProgress();});}
         }
-    } finally { booting=false; pending=null; }
+    } finally { booting=false; pending=null; freshSeed=null; }
 }
 export function continueWithoutDiveReset() { if(activeWorld()&&!booting){notice('沿浅滩直接入水；本章节不会按次重置');return true;}return false; }
 export function notice(text:string,seconds=4) {const w=world();if(w){w.notice=text;w.noticeUntil=w.elapsed+seconds;}}
-export function exitContinuousWorld() {if(activeWorld())saveWorldProgress();resetDriveInput();releaseBCDControls();resetAdaptiveMusic();state.screen='menu';}
+export function exitContinuousWorld() {
+    const wasNavigation=isWorldNavigationOpen();if(wasNavigation)closeWorldPanel();
+    if(activeWorld()&&!saveWorldProgress()) {if(wasNavigation)openWorldNavigation();notice('保存未成功，请稍后重试；当前探索仍保留在游戏中',7);return false;}
+    resetDriveInput();releaseBCDControls();cancelInteractionInput();resetAdaptiveMusic();state.screen='menu';return true;
+}
 export function resumeContinuousWorld() {if(bootstrap)enterContinuousWorld(bootstrap);}
 export function restartTestChapter(){clearWorldSnapshot();resetDriveInput();releaseBCDControls();if(bootstrap)enterContinuousWorld(bootstrap);}
 export function toggleOverview() {const w:any=world();if(w)w.overview=!w.overview;}
-export function closeWorldPanel() {const w=world();if(w)w.panel=null;resetDriveInput();}
+export function isWorldNavigationOpen() {const panel=world()?.panel;return activeWorld()&&(panel==='navigation'||panel==='confirm-next-world');}
+export function openWorldNavigation() {
+    const w=world();if(!activeWorld()||!w)return;
+    if(!navigationPausedAt)navigationPausedAt=Date.now();w.panel='navigation';
+    cancelInteractionInput();resetDriveInput();releaseBCDControls();state.wheel.open=false;
+}
+export function requestNextWorld() {if(!isWorldNavigationOpen())return;world()!.panel='confirm-next-world';}
+function advanceNavigationPause() {
+    if(!navigationPausedAt)return;const now=Date.now(),paused=Math.max(0,now-navigationPausedAt);
+    for(const f of state.fishEnemies)if(f.stunUntil>0)f.stunUntil+=paused;navigationPausedAt=now;
+}
+export function closeWorldPanel() {
+    const w=world();if(w)w.panel=null;
+    advanceNavigationPause();navigationPausedAt=0;
+    resetDriveInput();lastFrame=0;accumulated=0;
+}
+export function startNextContinuousWorld() {
+    if(world()?.panel!=='confirm-next-world'||!bootstrap)return false;
+    const nextSeed=((state.mazeRescue as any).seed+0x9e3779b9)>>>0;
+    closeWorldPanel();
+    if(!saveWorldProgress()){openWorldNavigation();notice('当前进度保存失败，暂未换地图。请稍后重试。',7);return false;}
+    // 先保留旧档；新地图建成后沿用原保存流程写入，并将上一张留作备份。
+    try {enterContinuousWorld(bootstrap,nextSeed);notice('已抵达新的泉井；从营地开始这张地图',6);return true;}
+    catch(error){console.error('[连续世界] 新地图生成失败，恢复上一张',error);enterContinuousWorld(bootstrap);notice('新地图未能生成，已恢复上一张地图',7);return false;}
+}
 
-export function returnToShoreAfterDeath() {
+export function returnToShoreAfterDeath() {returnToShore('death');}
+export function quickReturnToShore() {returnToShore('quick');}
+function returnToShore(reason:'death'|'quick') {
     const w=world(),m=state.mazeRescue;if(!w||!m)return;
+    closeWorldPanel();
     cancelInteractionInput();cancelRopePlacement();releaseRopeContact(player);
     for(const {link} of getPlayerRopeEnds())removeTether(link);
     // Disconnect only the lost diver: neither the fish nor the casualty teleport.
     if(state.npc.active){m.npcRescued=false;m.npcSecuredAt=0;}
     m.npcRescueHolding=false;m.npcRescueHoldStart=0;m.npcRescueTouchId=null;
-    resetDriveInput(true);releaseBCDControls();resetBCDSystem();resetBreathSystem();resetDecompressionSystem();resetCollisionImpact();
+    resetDriveInput(true);releaseBCDControls();resetBreathSystem();resetDecompressionSystem();resetCollisionImpact();
     state.fishBump=createFishBumpState();state.fishBite=null;
     player.x=w.originX+layout.spawn[0];player.y=groundAt(player.x)-layout.footReach;
     player.vx=player.vy=0;player.angle=player.targetAngle=-Math.PI/2;player.o2=player.o2Max;
     Object.assign(w,{grounded:true,landBlend:1,wet:0,headWet:false,resting:false,panel:null,pendingAction:null,actionTime:0,stationId:null});
+    resetBCDSystem();
     state.fx.shake=0;state.fx.redOverlay=0;
-    w.journal.push({time:w.elapsed,text:'水下遇险，返回岸上休息区；已探索的洞穴与固定绳网保留'});
-    notice('已回到岸上休息区。洞穴进度与固定绳网保留；可以再下水寻找未带回的鱼和被救者。',7);
+    w.journal.push({time:w.elapsed,text:reason==='death'?'水下遇险，返回岸上休息区；已探索的洞穴与固定绳网保留':'快速回到岸上休息区；已探索的洞穴与固定绳网保留'});
+    notice('已回到岸上休息区。洞穴进度与固定绳网保留；鱼和被救者留在原处，腰扣牵引已解除。',7);
     snapCameraToPlayer();state.camera.zoom=state.camera.targetZoom=1;saveWorldProgress();nextSave=w.elapsed+4;
 }
 export function toggleRest() {
@@ -146,8 +180,8 @@ function movePlayer() {
             player.vx=vx*.985*(1-wet)+player.vx*wet;
             player.vy=vy*.985*(1-wet)+player.vy*wet;
         }
-        if(wet>.7){updateBCDSystem(1/60);player.vy+=(computeBCDBuoyancyAccel()+computeBuoyancyOffset())*wet;}
-        else {releaseBCDControls();(getBCDRuntime() as any).active=false;player.vy+=.37*(1-wet);player.vx*=.97;}
+        player.vy+=computeBCDBuoyancyAccel()+computeBuoyancyOffset()*wet;
+        if(wet<=.7){player.vy+=.37*(1-wet);player.vx*=.97;}
         const cap=9,speed=Math.hypot(player.vx,player.vy);if(speed>cap){player.vx*=cap/speed;player.vy*=cap/speed;}
         // Contact with the low-angle ramp converts lateral movement into stepping,
         // not a scripted climb or a teleport. Each correction stays below 6px.
@@ -218,7 +252,7 @@ export function tickWorld() {
     const m:any=state.mazeRescue,w=world()!;w.elapsed+=1/60;
     const wasHeadWet=w.headWet,oldWet=w.wet;
     state.fx.shake*=.84;state.fx.redOverlay*=.96;
-    updateRopeMotion();movePlayer();w.wet=bodyWet(player.y);
+    updateBCDSystem(1/60);updateRopeMotion();movePlayer();w.wet=bodyWet(player.y);
     const headY=player.y+Math.sin(player.angle)*24;
     if(!w.headWet&&headY>w.surfaceY+5)w.headWet=true;
     if(w.headWet&&headY<w.surfaceY-5)w.headWet=false;
@@ -232,11 +266,14 @@ export function tickWorld() {
         if(isRescueTargetVisible()){if(!m.npcFound){m.npcFound=true;nextSave=w.elapsed+.1;}if(!m.npcEncounterNoteAt)m.npcEncounterNoteAt=Date.now();}
     }
     updateRescueLink();
+    // 充背心在岸上也使用气瓶；深度已通过气压计入BCD耗气，额外深潜倍率只作用呼吸。
+    let o2=consumeBCDO2();
     if(w.headWet) {
-        updateBreathSystem();let o2=consumeBreathO2()+consumeBCDO2();
-        if(depthMeters(player.y)>m.maxDepthAllowed)o2*=1.5;
-        if(!CONFIG.infiniteO2&&o2>0){const old=player.o2;player.o2=Math.max(0,old-o2);if(o2>.1)triggerO2LossFlash(old,player.o2);}
-    }
+        updateBreathSystem();let breathO2=consumeBreathO2();
+        if(depthMeters(player.y)>m.maxDepthAllowed)breathO2*=1.5;
+        o2+=breathO2;
+    } else advanceBreathBubbles();
+    if(!CONFIG.infiniteO2&&o2>0){const old=player.o2;player.o2=Math.max(0,old-o2);if(o2>.1)triggerO2LossFlash(old,player.o2);}
     if(CONFIG.infiniteO2)player.o2=player.o2Max;
     updateDecompressionSystem(1/60);updateRegulatorAnim();updateCarryItemAnim();updateAllFishEnemies(1);
     // There is no success radius at the old exit, no debrief and no inventory
@@ -262,6 +299,7 @@ export function tickWorld() {
 }
 export function updateContinuousWorld() {
     const w=world();if(!w||w.hidden)return;
+    if(isWorldNavigationOpen()){advanceNavigationPause();return;}
     const now=typeof performance!=='undefined'?performance.now():Date.now();
     if(!lastFrame){lastFrame=now;return;}accumulated+=Math.min(.10,(now-lastFrame)/1000);lastFrame=now;
     let steps=0;while(accumulated>=1/60&&steps++<6){tickWorld();accumulated-=1/60;}

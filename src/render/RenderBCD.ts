@@ -12,7 +12,7 @@ export interface BCDLayout {
 }
 function cfg(): any { return CONFIG.bcd || {}; }
 export function isBCDUIVisible(): boolean {
-    return !!(cfg().enabled && cfg().uiVisible && state.screen === 'mazeRescue' && state.mazeRescue?.phase === 'play' && (!world() || world()!.headWet) &&
+    return !!(cfg().enabled && cfg().uiVisible && state.screen === 'mazeRescue' && state.mazeRescue?.phase === 'play' && !world()?.panel &&
         !state.wheel.open && !state.interaction.gesture);
 }
 export function getBCDLayout(): BCDLayout {

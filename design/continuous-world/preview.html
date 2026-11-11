@@ -63,7 +63,7 @@ document.getElementById('menu').onclick=g.menu;
 document.getElementById('tow').onclick=()=>r.setupTowReview(3);
 document.getElementById('medical').onclick=r.setupRescueReview;
 document.getElementById('save').onclick=()=>{if(g.world.save.saveWorldProgress())r.resumeContinuousWorld()};
-window.addEventListener('keydown',e=>{if(e.key.toLowerCase()==='e'){e.preventDefault();r.useNearestStation()}if(e.key==='Escape')r.closeWorldPanel();if(e.code==='Space')e.preventDefault()});
+window.addEventListener('keydown',e=>{if(e.key.toLowerCase()==='e'&&!r.isWorldNavigationOpen()){e.preventDefault();r.useNearestStation()}if(e.code==='Space')e.preventDefault()});
 setInterval(()=>{const w=g.world.geometry.world();document.getElementById('phase').textContent=g.state.screen==='menu'?'主界面 · 点击继续连续章节':w?`${w.headWet?'水下':w.landBlend>.7?'岸上 / 涉水':'水面'} · 本洞 ${w.chapterStatus==='rescued'?'救援已完成':'搜寻中'}\n氧气 ${g.player.o2.toFixed(1)} / ${g.player.o2Max} · 腰绳 ${g.state.rope.links.length}\n${w.saveOK?'自动保存已写入':'存档待写入'} · 离线不推进世界`:'正在加载';},200);
 </script>
 </body>
