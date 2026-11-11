@@ -15,6 +15,8 @@ interface Chunk { key: number; ci: number; cj: number; vb: WebGLBuffer; nb: WebG
 const DEPTH_VERT = 'attribute vec3 position;uniform mat4 lightVP;void main(){gl_Position=lightVP*vec4(position,1.0);}';
 const DEPTH_FRAG = 'precision mediump float;void main(){gl_FragColor=vec4(1.0);}';
 const SHADOW = 1024, KEEP = 40, FRAME_BUDGET = 6, FIRST_BUDGET = 28;
+// 光轴略朝洞内，XY 投影仍沿角色朝向；让同一束窄角手电能扫到纵深岩面。
+const TORCH_PITCH = Math.PI / 10;
 // 在同一个手电锥内向侧壁和纵深取样。后壁不是单独的一盏灯：中间的岩石也会挡住射线。
 const bounceRays = [[0, 0, .24], [-.70, 0, .16], [.70, 0, .16], [-.34, .32, .20], [.34, .32, .20],
     [0, .62, .24], [-.60, .48, .18], [.60, .48, .18], [-.20, .84, .20], [.20, .84, .20]];
@@ -119,9 +121,9 @@ function updateBounce(t: KarstTerrain, lightOn: boolean, range: number, strength
     };
     const fade = (a: number, b: number, x: number) => { const v = Math.max(0, Math.min(1, (x - a) / (b - a))); return v * v * (3 - 2 * v); };
     for (let i = 0; i < bounceRays.length; i++) {
-        const [horizontal, vertical, weight] = bounceRays[i], offset = horizontal * halfFov, pitch = vertical * halfFov, angle = player.angle + offset;
+        const [horizontal, vertical, weight] = bounceRays[i], offset = horizontal * halfFov, pitch = TORCH_PITCH + vertical * halfFov, angle = player.angle + offset;
         const dx = Math.cos(angle) * Math.cos(pitch), dy = Math.sin(angle) * Math.cos(pitch), dz = Math.sin(pitch);
-        const theta = Math.acos(Math.max(-1, Math.min(1, Math.cos(offset) * Math.cos(pitch))));
+        const theta = Math.acos(Math.max(-1, Math.min(1, Math.cos(offset) * Math.cos(pitch) * Math.cos(TORCH_PITCH) + Math.sin(pitch) * Math.sin(TORCH_PITCH))));
         const spill = Math.exp(-Math.pow(theta / (halfFov * .72), 4)) * (1 - fade(halfFov * .86, halfFov, theta));
         const hot = Math.exp(-theta * theta / .031), cone = (spill * .63 + hot * .25) / .88;
         if (cone < .001) continue;
@@ -201,8 +203,8 @@ export function drawKarstVolume(ctx: CanvasRenderingContext2D, t: KarstTerrain, 
     if (next !== key) {
         if (surface.width !== w) surface.width = w; if (surface.height !== h) surface.height = h; width = w; height = h;
         const viewProj = multiply(perspective(2 * Math.atan(halfH / D), halfW / halfH, D * .3, D + VOLUME_DEPTH + 200), lookAt([cx, cy, -D], [cx, cy, 0], [0, -1, 0]));
-        const lightPos = [player.x, player.y, 0], dir = [Math.cos(player.angle), Math.sin(player.angle), 0], range = CONFIG.lightRange;
-        const lightVP = multiply(perspective(CONFIG.fov * Math.PI / 180, 1, 8, Math.max(1100, range * 1.3)), lookAt(lightPos, [lightPos[0] + dir[0], lightPos[1] + dir[1], lightPos[2]], [0, 0, -1]));
+        const lightPos = [player.x, player.y, 0], dir = [Math.cos(player.angle) * Math.cos(TORCH_PITCH), Math.sin(player.angle) * Math.cos(TORCH_PITCH), Math.sin(TORCH_PITCH)], range = CONFIG.lightRange;
+        const lightVP = multiply(perspective(CONFIG.fov * Math.PI / 180, 1, 8, Math.max(1100, range * 1.3)), lookAt(lightPos, [lightPos[0] + dir[0], lightPos[1] + dir[1], lightPos[2] + dir[2]], [0, 0, -1]));
         gl.enable(gl.DEPTH_TEST); gl.disable(gl.BLEND); gl.disable(gl.CULL_FACE); gl.enableVertexAttribArray(0);
         if (shadowOn) {
             gl.bindFramebuffer(gl.FRAMEBUFFER, shadowFB); gl.viewport(0, 0, SHADOW, SHADOW); gl.clearColor(0, 0, 0, 1); gl.clear(gl.DEPTH_BUFFER_BIT | gl.COLOR_BUFFER_BIT);

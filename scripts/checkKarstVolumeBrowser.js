@@ -28,19 +28,26 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
             await ev(`DeepTapeGame.review.inspectVolumeSite(${index});DeepTapeGame.world.geometry.world().hidden=true`); await settle(); await shot(name);
             if (index === 0 || index === 1) { await ev('DeepTapeGame.cave.volume.inspectKarstVolume(1)'); await wait(250); await shot(name + '-clay'); await ev('DeepTapeGame.cave.volume.inspectKarstVolume(0)'); }
         }
-        // 无回光的空旷洞室也必须读得出岩壁；关灯时仍保留角色的小范围可见度。
+        // 弱回散不得无条件照亮锥外；关灯仍保留角色的小范围可见度。
         const visibility = await ev('DeepTapeGame.cave.config.karst.volumeVisibility');
         const bounce = await ev('DeepTapeGame.cave.config.karst.bounceStrength');
         await ev('DeepTapeGame.review.inspectVolumeSite(4);DeepTapeGame.world.geometry.world().hidden=true;DeepTapeGame.cave.config.karst.bounceStrength=0;DeepTapeGame.cave.config.karst.volumeVisibility=0'); await settle();
         const emptyWithoutFill = await hallLight();
         await ev(`DeepTapeGame.cave.config.karst.volumeVisibility=${visibility}`); await wait(250); const emptyWithFill = await hallLight(); await shot('open-water-visible');
-        assert(emptyWithFill.rear.luma > emptyWithoutFill.rear.luma + 3, '无岩面回光时，光柱外仍应能辨认洞室');
+        assert(Math.abs(emptyWithFill.rear.luma - emptyWithoutFill.rear.luma) < .5, '锥外不能被弱回散无条件提亮');
         await ev('DeepTapeGame.cave.config.karst.volumeVisibility=0;DeepTapeGame.state.flashlightOn=false'); await wait(250);
+        const offWithoutScatter = await hallLight();
+        await ev(`DeepTapeGame.cave.config.karst.volumeVisibility=${visibility}`); await wait(250);
+        const offWithScatter = await hallLight();
+        for (const side of ['rear', 'front']) assert(Math.abs(offWithScatter[side].luma - offWithoutScatter[side].luma) < .5, '关灯不能留下弱回散');
+        const offSources = await ev('({stats:DeepTapeGame.cave.volume.karstVolumeStats(), lights:Array.from(DeepTapeGame.cave.volume.getKarstVolumeBounceLights())})');
+        assert.equal(offSources.stats.bounceCount, 0); assert.equal(offSources.stats.returnedLight, 0);
+        assert(offSources.lights.every((v,i) => i % 4 !== 3 || v === 0), '关灯必须清除回光功率');
         const character = await ev(`(()=>{const c=document.getElementById('game'),p=c.getContext('2d').getImageData(c.width*.455,c.height*.455,c.width*.07,c.height*.10).data;let sum=0;for(let i=0;i<p.length;i+=4)sum+=.2126*p[i]+.7152*p[i+1]+.0722*p[i+2];return sum*4/p.length})()`);
-        assert(character > 8, '没有手电和环境补光时，角色身体仍须可读');
-        report.readability = { emptyWithoutFill, emptyWithFill, characterLightsOff: character };
+        assert(character > 8, '没有手电照明时，角色身体仍须可读');
+        report.readability = { emptyWithoutFill, emptyWithFill, offWithoutScatter, offWithScatter, characterLightsOff: character };
         await ev(`DeepTapeGame.cave.config.karst.volumeVisibility=${visibility};DeepTapeGame.cave.config.karst.bounceStrength=${bounce};DeepTapeGame.state.flashlightOn=true`);
-        // 单独关闭暗部补光，在有真实落点的裂隙机位核对光柱和回光各自的贡献。
+        // 单独关闭锥内弱回散，在有真实落点的裂隙机位核对光柱和回光各自的贡献。
         await ev('DeepTapeGame.review.inspectVolumeSite(6);DeepTapeGame.world.geometry.world().hidden=true;DeepTapeGame.cave.config.karst.volumeVisibility=0'); await settle();
         const on = await hallLight(), onSources = await ev('({stats:DeepTapeGame.cave.volume.karstVolumeStats(),lights:Array.from(DeepTapeGame.cave.volume.getKarstVolumeBounceLights())})');
         await ev('DeepTapeGame.cave.config.karst.bounceStrength=0'); await wait(250); const direct = await hallLight(); await shot('fracture-direct');
@@ -50,7 +57,7 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
         assert.equal(await ev('DeepTapeGame.cave.volume.karstVolumeStats().bounceCount'), 0, '关灯后不能留下上一帧回光');
         await ev('DeepTapeGame.state.flashlightOn=true;DeepTapeGame.review.rotateKarstLight(-Math.PI)');
         await wait(250); const turned = await hallLight(); await shot('fracture-turned');
-        report.lighting = { visibilityFillDisabled: true, on, direct, off, turned, onSources };
+        report.lighting = { waterScatterDisabled: true, on, direct, off, turned, onSources };
         assert(direct.front.luma > off.front.luma + 4, '关闭岩面回光后，空旷通道里的手电光柱仍应可见');
         assert(onSources.stats.bounceCount > 0 && onSources.stats.returnedLight > 0, '真实岩面命中必须提供回光');
         assert(on.front.luma > direct.front.luma + 1 && on.front.luma > off.front.luma + 4, '命中岩壁的机位应有可见回光');

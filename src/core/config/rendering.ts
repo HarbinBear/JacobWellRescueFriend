@@ -9,8 +9,8 @@ export const renderingConfig = {
         normalStrength: 1.30,
         occlusionStrength: 0.86,
         lightEnergy: 3.4,
-        volumeVisibility: 1.0,             // 水下弱环境显形，空旷处也能读出洞形；不改主动光锥
-        volumeMaterial: 1.0,               // 三维岩面的冷灰基岩、流石与少量铁染
+        volumeVisibility: 1.0,             // 仅手电锥内、受阴影约束的弱水中回散
+        volumeMaterial: 1.0,               // 三维岩面的稀疏低对比暖色沉积
         scatterStrength: 1.0,
         extinction: [0.0028, 0.00086, 0.00048],
         pixelBudget: 750000,
