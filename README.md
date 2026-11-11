@@ -1,6 +1,10 @@
 # JacobWellRescueFriend
 雅各布井营救好友
 
+## 资源与发布
+
+`npm run release:build` 生成独立纯代码小游戏候选（约2.03MiB），位置是 `node_modules/.cache/wechat-release/`。根目录仍保留制作素材，不直接用于正式上传。20项资源上传文件已备好，但云控制台需要登录，尚未完成真实上传与下载验证；步骤与边界见[资源发布说明](design/assets/README.md)。主包预算已按官方4M纠正。
+
 ## 连续章节操作
 
 - BCD 在岸上、水面和水下均可充排气。充满时先按住向下箭头排气，再下潜；排气不耗气瓶，充气按实际用量扣气。
@@ -25,6 +29,8 @@
 - `npm run world:navigation`：真实触摸回岸、暂停、保存续档、换图确认及小屏布局。
 - `npm run native:check`：无 DOM 的小游戏接口模拟，检查首画布、WebGL 失败回退、菜单首帧与进入章节；不替代微信真机测试。
 - `npm run world:regression`、`npm run world:browser`：岸水边界、休息、遇险回岸、主流程与存档。
-- `npm run package:check`：编译前静态包体估算，官方大小以微信工具编译结果为准。
+- `npm run package:check`：构建纯代码候选并检查4MiB主包预算，官方大小以微信工具编译结果为准。
+- `npm run assets:check`、`npm run assets:browser`：资源缓存/失败恢复/暂停保存与真实游戏图像回归。
+- `npm run release:check`：纯代码候选与无DOM启动验证。
 
 浏览器回归使用隔离用户目录，不操作日常预览页面或微信存档；报告和截图写入已忽略的 `node_modules/.cache/continuous-gameplay/`。

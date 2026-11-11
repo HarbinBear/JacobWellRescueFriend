@@ -18,8 +18,9 @@ global.wx={
 const overrides={
  'core/config':{CONFIG},'core/state':{state,player},'render/Canvas':{logicW:375,logicH:667},
  'render/RenderLight':{getLightPolygon:(x,y,a,range)=>[{dist:range*.55},{dist:range*.6},{dist:range*.7}]},
+ 'assets/AssetCatalog':{ASSET_STORAGE:{mode:'local',envId:'',cacheDirectory:'jwr-assets-test'},ASSET_CATALOG:{}},
 };
-const phone=vm.createContext({wx:global.wx,console});
+const phone=vm.createContext({wx:global.wx,console,setTimeout,clearTimeout});
 assert.equal(vm.runInContext('typeof performance',phone),'undefined');
 function load(file){
  if(file in overrides)return overrides[file];if(cache.has(file))return cache.get(file);
@@ -29,6 +30,11 @@ function load(file){
  vm.runInContext('(function(exports,require){'+code+'})',phone)(out,n=>load(path.posix.normalize(path.posix.join(path.posix.dirname(file),n))));return out;
 }
 const budget=load('render/CaveSurfaceBudget'),renderer=load('render/RenderCaveRock'),assets=load('render/ImageAssets');
+(async()=>{
+async function imagesReady(){
+ for(let i=0;i<32&&assets.getImageLoadStatus().loading;i++)await Promise.resolve();
+ const status=assets.getImageLoadStatus();assert.equal(status.loading,0);assert.equal(status.failed,0);
+}
 for(const zoom of [.7,1,1.3])for(const res of [1,1.5,2]){
  const l=82.25,r=590.8,t=650.25,b=1329.7,w=Math.ceil((r-l)*zoom*res),h=Math.ceil((b-t)*zoom*res);
  const cut=budget.cropCaveSurface(l,r,t,b,zoom,res,200,700,170,310);assert(cut);assert(cut.width<=w&&cut.height<=h);
@@ -41,7 +47,9 @@ assert.equal(budget.cropCaveSurface(0,100,0,100,1,1,200,200,30,30),null);
 renderer.updateCaveRockResources();assert.equal(requests.length,0,'Menu should not decode cave textures');
 state.screen='mazeRescue';state.mazeRescue={seed:1,caveRockRoom:{x:200,y:6000,width:720,height:1120,player:[358,772],shapes:[]}};
 if(process.argv.includes('--sculpt'))state.mazeRescue.caveRockRoom={...JSON.parse(fs.readFileSync(path.join(root,'../design/cave-room/sculpt/assets/scene.json'),'utf8')),x:200,y:6000};
-renderer.updateCaveRockResources();renderer.updateCaveRockResources();assert.equal(requests.length,4);
+renderer.updateCaveRockResources();renderer.updateCaveRockResources();
+assert.equal(assets.getImageLoadStatus().loading,4,'Image resolution is asynchronous');assert.equal(requests.length,0);
+await imagesReady();assert.equal(requests.length,4,'Repeated registration must not duplicate async loads');
 const ctx=new Proxy({},{get:(_,key)=>key==='createRadialGradient'?()=>({addColorStop(){}}):()=>0});
 function draw(){renderer.drawCaveRock(ctx,0,1000,5900,7400,1);}
 draw();assert.equal(renderer.getCaveRockStats().mode,'normal-map');assert.equal(renderer.getCaveRockStats().textureBytes,864*1344*4*3);
@@ -52,9 +60,10 @@ player.angle+=.1;draw();assert.equal(calls.drawArrays,afterTimerChecks+1);
 state.flashlightOn=false;draw();assert.equal(calls.drawArrays,afterTimerChecks+2);state.flashlightOn=true;
 contextLost=true;handlers.webglcontextlost({preventDefault(){}});draw();assert.equal(renderer.getCaveRockStats().mode,'fallback');
 contextLost=false;handlers.webglcontextrestored();draw();assert.equal(renderer.getCaveRockStats().mode,'normal-map');
-assets.registerImage('home-keep','images/home/living_room_night.png');const keep=assets.getImage('home-keep');
+assets.registerImage('home-keep','images/home/living_room_night.jpg');await imagesReady();const keep=assets.getImage('home-keep');assert(keep);
 state.screen='menu';renderer.updateCaveRockResources();assert.equal(renderer.getCaveRockStats().loaded,false);assert.equal(renderer.getCaveRockStats().textureBytes,0);assert.equal(renderer.getCaveRockStats().decodedImageBytes,0);assert.equal(renderer.getCaveRockStats().surfacePixels,0);
 for(const name of ['albedo','normal','detail','back'])assert.equal(assets.getImage('cave-rock-'+name),null);
 assert.equal(assets.getImage('home-keep'),keep,'Do not unload unrelated home artwork');assert(calls.deleteTexture>=4&&calls.deleteProgram>0&&calls.deleteBuffer>0);
-state.screen='mazeRescue';renderer.updateCaveRockResources();draw();assert.equal(renderer.getCaveRockStats().mode,'normal-map');assert.equal(requests.filter(s=>s.includes('cave-rock')).length,8,'Re-entry should reload once, not reuse dangling images');
-console.log('Cave resource budget passed: no browser performance, incomplete/throwing timers, same sample grid, lazy images, cached lighting, release/re-entry, context restoration and unchanged home cache.');
+state.screen='mazeRescue';renderer.updateCaveRockResources();await imagesReady();draw();assert.equal(renderer.getCaveRockStats().mode,'normal-map');assert.equal(requests.filter(s=>s.includes('cave-rock')).length,8,'Re-entry should reload once, not reuse dangling images');
+console.log('Cave resource budget passed: asynchronous local asset resolver, no browser performance, incomplete/throwing timers, same sample grid, lazy images, cached lighting, release/re-entry, context restoration and unchanged home cache.');
+})().catch(error=>{console.error(error);process.exitCode=1;});

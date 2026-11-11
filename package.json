@@ -54,7 +54,13 @@
     "rope:check": "node scripts/checkRopePlacementRegression.js",
     "rope:volume": "node scripts/checkRopeVolumeMesh.js && node scripts/checkRopeVolumeBrowser.js",
     "world:regression": "node scripts/checkShoreRegressionBrowser.js",
-    "fish:volume": "node scripts/checkFishVolumeMesh.js && node scripts/checkFishVolumeBrowser.js"
+    "fish:volume": "node scripts/checkFishVolumeMesh.js && node scripts/checkFishVolumeBrowser.js",
+    "assets:build": "node scripts/buildAssetCatalog.js",
+    "assets:check": "node scripts/buildAssetCatalog.js --check && node scripts/checkAssetStorage.js && node scripts/checkImageAssets.js && node scripts/checkAudioRemoteAssets.js && node scripts/checkWorldAssetPause.js",
+    "assets:browser": "node scripts/checkImageAssetsBrowser.js",
+    "release:build": "npm run shaders && npm run typecheck && node scripts/buildAssetCatalog.js && node scripts/checkPackageBudget.js",
+    "release:check": "npm run package:check && node scripts/checkNativeBoot.js --release",
+    "assets:verify-script": "node scripts/buildCloudAssetVerification.js"
   },
   "devDependencies": {
     "typescript": "^5.3.3"

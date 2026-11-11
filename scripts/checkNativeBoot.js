@@ -4,7 +4,9 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const ts = require('typescript');
-const ROOT = path.resolve(__dirname, '..');
+const RELEASE = process.argv.includes('--release');
+const ROOT = RELEASE ? require('./buildWechatRelease').build() : path.resolve(__dirname, '..');
+const EXT = RELEASE ? '.js' : '.ts';
 const compiled = new Map();
 
 function boot(hasBareWindow) {
@@ -82,18 +84,18 @@ function boot(hasBareWindow) {
     const context = vm.createContext(globals);
     function load(request, from = 'game') {
         let id = request.startsWith('.') ? path.posix.join(path.posix.dirname(from), request) : request;
-        if (!fs.existsSync(path.join(ROOT, id + '.ts'))) id += '/index';
+        if (!fs.existsSync(path.join(ROOT, id + EXT))) id += '/index';
         if (modules.has(id)) return modules.get(id).exports;
         const module = { exports: {} };
         modules.set(id, module);
         if (!compiled.has(id)) {
-            const source = fs.readFileSync(path.join(ROOT, id + '.ts'), 'utf8');
-            compiled.set(id, ts.transpileModule(source, {
+            const source = fs.readFileSync(path.join(ROOT, id + EXT), 'utf8');
+            compiled.set(id, RELEASE ? source : ts.transpileModule(source, {
                 compilerOptions: { target: ts.ScriptTarget.ES2016, module: ts.ModuleKind.CommonJS },
             }).outputText);
         }
         const execute = vm.runInContext('(function(module,exports,require){' + compiled.get(id) + '\n})', context,
-            { filename: id + '.ts' });
+            { filename: id + EXT });
         moduleStack.push(id);
         try { execute(module, module.exports, next => load(next, id)); }
         finally { moduleStack.pop(); }
@@ -132,7 +134,7 @@ function boot(hasBareWindow) {
     assert(listeners.Hide.length > 0 && listeners.Show.length > 0, '原生前后台生命周期必须保留');
     assert(storage.size > 0, '存档仅写入本用例的内存，不访问用户存档');
     return { environment: hasBareWindow ? 'window={}，无DOM事件接口' : '无window',
-        firstCanvas: main.owner, menuFrames: 2, chapterEntered: true, webglFallback: true };
+        codeOnlyRelease: RELEASE, firstCanvas: main.owner, menuFrames: 2, chapterEntered: true, webglFallback: true };
 }
 
 const report = [boot(false), boot(true)];

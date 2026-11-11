@@ -2,8 +2,7 @@
 // 图片资源管理器
 //
 // 用于加载家场景背景、角色立绘、道具特写等大尺寸位图。
-// 与音频系统一样支持云端 FileID（CloudBase）+ 本地路径双通道，
-// 但本期先只走本地路径，等图片定稿后再上传云端。
+// path 是资源清单 key，由统一资源层解析为远端下载缓存或开发用本地路径。
 //
 // 用法：
 //   import { registerImage, getImage, isImageReady } from '../render/ImageAssets';
@@ -16,6 +15,7 @@
 //   const cut = getProcessedImage('home_girl_stand', 'chromaKeyDarkGray');
 //   if (cut) ctx.drawImage(cut, ...);
 // ===========================================================
+import { resolveAssetPath, invalidateAsset } from '../assets/AssetStorage';
 
 type ImageEntry = {
     key: string;
@@ -23,11 +23,16 @@ type ImageEntry = {
     img: any | null;     // wx.Image / HTMLImageElement
     ready: boolean;
     failed: boolean;
+    loading: boolean;
+    generation: number;
+    cancelDecode: (() => void) | null;
     // 预处理缓存：key=processorName → 离屏 canvas
     processed: { [name: string]: any };
 };
 
 const _entries: Record<string, ImageEntry> = {};
+const DECODE_TIMEOUT_MS = 15000;
+export interface ImageLoadStatus { ready: number; loading: number; failed: number; total: number; }
 
 // 微信小游戏 wx.createImage / 浏览器 new Image 兼容
 function createImg(): any {
@@ -57,34 +62,79 @@ function createOffscreenCanvas(w: number, h: number): any {
     return null;
 }
 
-export function registerImage(key: string, path: string): void {
-    if (_entries[key]) return;
-    const entry: ImageEntry = {
-        key,
-        path,
-        img: null,
-        ready: false,
-        failed: false,
-        processed: {},
-    };
-    _entries[key] = entry;
-    const img = createImg();
-    if (!img) {
-        entry.failed = true;
-        return;
-    }
-    entry.img = img;
-    img.onload = () => { entry.ready = true; };
-    img.onerror = (e: any) => {
-        entry.failed = true;
-        console.warn('[ImageAssets] 加载失败', key, path, e);
-    };
+function decodeImage(entry: ImageEntry, source: string): Promise<any> {
+    return new Promise((resolve, reject) => {
+        let img: any;
+        try { img = createImg(); } catch (error) { reject({ retryable: false, error }); return; }
+        if (!img) { reject({ retryable: false, error: Error('当前环境无法创建图片') }); return; }
+        let done = false;
+        let timer: ReturnType<typeof setTimeout>;
+        const finish = (ok: boolean, error?: any) => {
+            if (done) return;
+            done = true; clearTimeout(timer); img.onload = null; img.onerror = null;
+            if (entry.cancelDecode === cancel) entry.cancelDecode = null;
+            if (ok) resolve(img); else reject(error || Error('图片解码失败'));
+        };
+        const cancel = () => finish(false, Error('图片加载已取消'));
+        entry.cancelDecode = cancel;
+        img.onload = () => finish(Number.isFinite(img.width) && img.width > 0 && Number.isFinite(img.height) && img.height > 0, Error('图片解码后尺寸无效'));
+        img.onerror = (error: any) => finish(false, error);
+        timer = setTimeout(() => finish(false, Error('图片解码超时')), DECODE_TIMEOUT_MS);
+        try {
+            // Browser previews may provide HTML images through a wx shim. Native wx needs no DOM.
+            if (typeof HTMLImageElement !== 'undefined' && img instanceof HTMLImageElement && /^(https?:)?\/\//i.test(source)) img.crossOrigin = 'anonymous';
+            img.src = source;
+        } catch (error) { finish(false, error); }
+    });
+}
+async function loadImage(entry: ImageEntry): Promise<void> {
+    const generation = ++entry.generation;
+    const current = () => _entries[entry.key] === entry && entry.generation === generation;
+    entry.ready = entry.failed = false; entry.loading = true; entry.img = null; entry.processed = {};
     try {
-        img.src = path;
-    } catch (e) {
-        entry.failed = true;
-        console.warn('[ImageAssets] 设置 src 异常', key, path, e);
+        for (let attempt = 0; attempt < 2; attempt++) {
+            const source = await resolveAssetPath(entry.path);
+            if (!current()) return;
+            try {
+                const img = await decodeImage(entry, source);
+                if (!current()) return;
+                entry.img = img; entry.ready = true; return;
+            } catch (error) {
+                if (!current()) return;
+                if (attempt || (error as any)?.retryable === false) throw error;
+                // One fresh fetch handles a corrupt cached file; a second failure stays visible to retry UI.
+                await invalidateAsset(entry.path);
+                if (!current()) return;
+            }
+        }
+    } catch (error) {
+        if (current()) { entry.failed = true; console.warn('[ImageAssets] 加载失败', entry.key, entry.path, error); }
+    } finally {
+        if (current()) entry.loading = false;
     }
+}
+export function registerImage(key: string, path: string): void {
+    if (_entries[key]?.path === path) return;
+    if (_entries[key]) releaseImages([key]);
+    const entry: ImageEntry = { key, path, img: null, ready: false, failed: false, loading: true,
+        generation: 0, cancelDecode: null, processed: {} };
+    _entries[key] = entry;
+    void loadImage(entry);
+}
+function selectedEntries(keys?: string[]): ImageEntry[] {
+    return Array.from(new Set(keys || Object.keys(_entries))).map(key => _entries[key]).filter(Boolean);
+}
+/** Counts registered entries only; duplicate or unknown keys do not inflate totals. */
+export function getImageLoadStatus(keys?: string[]): ImageLoadStatus {
+    const result = { ready: 0, loading: 0, failed: 0, total: 0 };
+    for (const entry of selectedEntries(keys)) {
+        result.total++; if (entry.ready) result.ready++; else if (entry.loading) result.loading++; else if (entry.failed) result.failed++;
+    }
+    return result;
+}
+/** Retry only completed failures; ready and in-flight entries retain their current work. */
+export async function retryImages(keys?: string[]): Promise<void> {
+    await Promise.all(selectedEntries(keys).filter(entry => entry.failed && !entry.loading).map(loadImage));
 }
 
 export function getImage(key: string): any | null {
@@ -112,6 +162,7 @@ export function registerImages(entries: { key: string; path: string }[]): void {
 export function releaseImages(keys:string[]):void {
     for(const key of keys){
         const e=_entries[key];if(!e)continue;
+        e.generation++;e.cancelDecode?.();
         if(e.img){e.img.onload=null;e.img.onerror=null;}
         e.img=null;e.processed={};delete _entries[key];
     }

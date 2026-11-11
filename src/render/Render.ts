@@ -1,3 +1,4 @@
+import { worldAssetsBlocked } from '../world/continuous/WorldAssets';
 import { updateKarstResources } from './RenderKarst';
 import { beginKarstVolumeFrame } from './RenderKarstVolume';
 import { updateWorldAssets, drawContinuousFrame } from '../world/continuous/RenderWorld';
@@ -870,7 +871,7 @@ export function draw() {
     drawFrame();
     ctx.save();
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    if (!isWorldNavigationOpen()) drawScreenOrientationButton(ctx);
+    if (!isWorldNavigationOpen() && !worldAssetsBlocked()) drawScreenOrientationButton(ctx);
     ctx.restore();
 }
 

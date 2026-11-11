@@ -29,9 +29,17 @@ INSIDE公开原文、阅读深度、未读视频与适配判断仍见[学习基�
 
 `npm run shaders && npm run karst:preview`；本地服务器60972若仍在，打开 `/node_modules/.cache/karst-review/live/game.html?speleothems` 查看当前洞室和原人物。评审入口仍使用实际game.ts与浏览器外置fixture。
 
-此前 `typecheck`、`native:check`、`package:check` 已通过。浏览器不代表微信真机。包体静态估算为8,228,868字节，8MiB上限且保留128KiB安全余量，新增资产/依赖空间仅28,668字节；先外置评审，不直接塞入大型运行时。
+**包体口径已纠正**：微信官方当前主包上限4M，不再使用此前8MiB预算。根目录仍为含图片的本地开发项目，不能直接上传；`npm run release:build` 生成 `.cache/wechat-release/` 独立纯代码候选（约2.03MiB，预留128KiB），发布模式强制cloud。云文件尚未上传/验证，候选目前不能正式发布。详见[资源发布说明](design/assets/README.md)。
 
 绳索入口仍是 `?rope-volume`，相关测试：`rope:volume`、`rope:check`；接入记录见[绳接入说明](design/cave-room/rope-volume-integration.md)。此前1/2/3根、真实7根网入网/挣扎、形变一致性、缓存、拆网和上下文恢复已通过；本轮保留接口后的鱼/绳浏览器回归再次通过。
+
+## 睡前授权后的确定工作
+
+用户允许持续推进确定事项，暂停不确定的人物美术。当前已先完成资源外置技术课题：20项显式清单、CloudBase下载/持久缓存/完整性校验/有限重试、图片异步释放保护、营地下载等待与失败出口、代码发布候选。图片源文件保留，既有云菜单BGM仍保留；VII音乐不改。
+
+`npm run assets:build` 生成 `.cache/asset-release/assets/v1/` 的20个哈希命名文件，共5,849,205字节；所有临时输出均在 `node_modules` 的忽略缓存中。默认开发模式local，独立发布目录cloud。云环境还是 `cloud1-d8gh6fpnh6d0928e8`，腾讯云控制台目前需要用户扫码登录，不能声称资源已在服务器上。登录后上传准确20项，再执行 `npm run assets:verify-script` 生成的微信控制台脚本核验全部MD5/大小，然后验收独立发布项目及真机。未改云权限、没上传代码、没正式发布。
+
+已通过真实游戏本地图像加载/阻断/恢复、等待时键盘触摸与耗氧暂停、离场释放/重入和旧矿物WebGL；存储下载采用原生API mock验证，不能当作云服务或手机实测。命令、边界与未完成步骤在资源发布说明。
 
 ## 下一步建议
 

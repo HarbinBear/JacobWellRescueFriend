@@ -1,13 +1,13 @@
 import assetManifest from './Assets';
 import { drawMazeWallShape } from '../../render/RenderMazeScene';
-import { drawKarstSurface, karstSurfaceStats, karstAssetsReady } from '../../render/RenderKarst';
+import { drawKarstSurface, karstSurfaceStats } from '../../render/RenderKarst';
 import { getKarstTerrain, karstStats } from '../KarstTerrain';
 import { getKarstBounce } from '../../render/KarstBounce';
 import { drawKarstVolume, restoreKarstVolumeLight, isVolumeFishDrawn, isVolumeRopeDrawn, isVolumePlayerDrawn, karstVolumeStats, getKarstVolumeBounceLights, getKarstVolumeBounceNormals } from '../../render/RenderKarstVolume';
 import { CONFIG } from '../../core/config';
 import { state, player, particles } from '../../core/state';
 import { canvas,ctx,dpr,logicW,logicH,withCanvasContext } from '../../render/Canvas';
-import { registerImage,getImage,isImageReady,releaseImages } from '../../render/ImageAssets';
+import { getImage } from '../../render/ImageAssets';
 import { drawDiver } from '../../render/RenderDiver';
 import { drawAllFishEnemies, drawFishBiteEffect, drawFishThreatDirection } from '../../render/RenderFishEnemy';
 import { drawBagFullPage } from '../../extraction/render/BagFullPage';
@@ -30,21 +30,16 @@ import { isWebGLAvailable,uploadPolyData,uploadVPLData,uploadKarstBounceData,ren
 import { drawGMPanel } from '../../gm/GMPanel';
 import { drawPerfHUD } from '../../debug/PerfHUD';
 import { activeWorld,world,layout,groundAt,stationPosition,clamp,smooth } from './Geometry';
-import { drawWorldHUD } from './WorldHUD';
+import { drawWorldHUD, drawWorldAssetLoading } from './WorldHUD';
+import { WORLD_IMAGE_FILES as ASSETS, updateWorldAssets as updateSharedWorldAssets, worldAssetsBlocked } from './WorldAssets';
+export { assetsReady } from './WorldAssets';
 import { isWorldNavigationOpen } from './Runtime';
 import { drawCampLeisure, drawNaturalBoundaries } from './Camp';
 
-const assetRoot='images/shore/';
-const ASSETS=['woodland-native.jpg','woodland-sky-strip.png','bank-left.jpg','bank-right.jpg','shop.png','tent.png','board.png','air.png','fish.png'];
 let foreground:any=null, foregroundCtx:CanvasRenderingContext2D|null=null;
-let registered=false;
 let backdropProjection:any=null;
 export function backdropProjectionStats(){return backdropProjection;}
-export function updateWorldAssets(){
-    if(activeWorld()&&!registered){registered=true;ASSETS.forEach(f=>registerImage('shore/'+f,assetRoot+f));}
-    else if(!activeWorld()&&registered){releaseImages(ASSETS.map(f=>'shore/'+f));registered=false;if(foreground)foreground.width=foreground.height=1;}
-}
-export function assetsReady(){return ASSETS.every(f=>isImageReady('shore/'+f));}
+export function updateWorldAssets(){updateSharedWorldAssets();if(!activeWorld()&&foreground)foreground.width=foreground.height=1;}
 export function worldGraphicsStats(){const imageBytes=ASSETS.reduce((n,f)=>{const im=getImage('shore/'+f);return n+(im?im.width*im.height*4:0);},0);return {webgl:isWebGLAvailable(),pixelSize:getGLCanvasPixelSize(),sceneDecodedRGBABytes:imageBytes,foregroundRGBABytes:foreground?foreground.width*foreground.height*4:0,character:"original",rocks:getKarstTerrain(state.mazeRescue)?"continuous-karst":"original-circles",karst:karstStats(state.mazeRescue),surface:karstSurfaceStats(),volume:karstVolumeStats(),crossfade:true};}
 function transform(){const c=state.camera;ctx.translate(logicW/2,logicH/2);ctx.scale(c.zoom,c.zoom);ctx.translate(-c.x-c.swayX,-c.y-c.swayY);}
 function gradient(y1:number,y2:number,stops:[number,string][]) {const g=ctx.createLinearGradient(0,y1,0,y2);for(const [t,c]of stops)g.addColorStop(t,c);return g;}
@@ -162,7 +157,6 @@ function drawSurface(v:any){
     const w=world()!,t=w.elapsed;
     if(v.t>w.surfaceY+140||v.b<w.surfaceY-50)return;
     let left=w.originX-405,right=w.originX+712;
-    const near=getImage('shore/woodland.jpg');
     ctx.save();ctx.beginPath();ctx.rect(v.l,w.surfaceY, v.r-v.l,Math.max(0,v.b-w.surfaceY));ctx.clip();
     ctx.fillStyle=gradient(w.surfaceY,w.surfaceY+155,[[0,'rgba(146,196,164,.08)'],[.4,'rgba(82,160,144,.06)'],[1,'rgba(82,160,144,0)']]);ctx.fillRect(left,w.surfaceY,right-left,155);
     ctx.restore();
@@ -182,6 +176,7 @@ function drawSurface(v:any){
 }
 export function drawContinuousFrame(){
     updateWorldAssets();const w=world();if(!w)return;
+    if(worldAssetsBlocked()){ctx.setTransform(dpr,0,0,dpr,0,0);drawWorldAssetLoading(ctx);return;}
     const c=state.camera,zoom=c.zoom;
     const v={l:c.x-logicW/(2*zoom)-80,r:c.x+logicW/(2*zoom)+80,t:c.y-logicH/(2*zoom)-80,b:c.y+logicH/(2*zoom)+80};
     ctx.setTransform(dpr,0,0,dpr,0,0);ctx.fillStyle='#08272e';ctx.fillRect(0,0,logicW,logicH);
@@ -227,6 +222,5 @@ export function drawContinuousFrame(){
     }
     const navigationOpen=isWorldNavigationOpen();
     if(!navigationOpen)drawWorldHUD(ctx);if(!w.panel){drawWheelButton();drawWheel();drawActionControls(ctx);drawInteractionHUD(ctx);}drawFishThreatDirection(ctx,logicW,logicH,c.x,c.y,c.zoom);drawFishBiteEffect(ctx,logicW,logicH);drawBagFullPage();drawItemDetailCard();drawGMPanel(ctx);drawPerfHUD(ctx);
-    if(!assetsReady()||!volume&&!karstAssetsReady()){ctx.fillStyle='rgba(231,231,204,.9)';ctx.fillRect(logicW/2-88,logicH/2-18,176,36);ctx.fillStyle='#65755a';ctx.textAlign='center';ctx.font='11px PingFang SC';ctx.fillText('正在铺设林泉营地素材',logicW/2,logicH/2+4);ctx.textAlign='left';}
     if(navigationOpen)drawWorldHUD(ctx);
 }

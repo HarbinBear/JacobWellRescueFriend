@@ -43,7 +43,7 @@ getWindowInfo:()=>({...metrics}),onWindowResize:fn=>windowListeners.push(fn),onD
 setDeviceOrientation({value,success}){const landscape=value==='landscape';metrics.windowWidth=landscape?667:375;metrics.windowHeight=landscape?375:667;document.querySelector('.phone').classList.toggle('landscape',landscape);pointers.clear();windowListeners.forEach(fn=>fn({...metrics}));orientationListeners.forEach(fn=>fn({value}));success?.({errMsg:'setDeviceOrientation:ok'})},
 showToast:({title})=>{document.getElementById('phase').textContent=title},
 createWebAudioContext:()=>new(window.AudioContext||window.webkitAudioContext)(),createInnerAudioContext:audioStub,
-createImage:()=>{const img=new Image(),desc=Object.getOwnPropertyDescriptor(HTMLImageElement.prototype,'src');Object.defineProperty(img,'src',{get(){return desc.get.call(img)},set(value){desc.set.call(img,'__ROOT_PREFIX__'+value)}});return img},
+createImage:()=>{const img=new Image(),desc=Object.getOwnPropertyDescriptor(HTMLImageElement.prototype,'src');Object.defineProperty(img,'src',{get(){return desc.get.call(img)},set(value){desc.set.call(img,/^(?:[a-z][a-z0-9+.-]*:|\/)/i.test(value)?value:'__ROOT_PREFIX__'+value)}});return img},
 getStorageSync:key=>{try{return JSON.parse(localStorage.getItem('shore-world-review/'+key)||'null')||''}catch{return ''}},
 setStorageSync:(key,value)=>localStorage.setItem('shore-world-review/'+key,JSON.stringify(value)),removeStorageSync:key=>localStorage.removeItem('shore-world-review/'+key),
 onTouchStart:fn=>handlers.start=fn,onTouchMove:fn=>handlers.move=fn,onTouchEnd:fn=>handlers.end=fn,onTouchCancel:fn=>handlers.cancel=fn,

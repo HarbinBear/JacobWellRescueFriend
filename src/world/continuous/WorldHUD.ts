@@ -1,3 +1,4 @@
+import { worldAssetsBlocked, worldAssetStatus, retryWorldAssets } from './WorldAssets';
 import { state, player } from '../../core/state';
 import { CONFIG } from '../../core/config';
 import { logicW, logicH } from '../../render/Canvas';
@@ -20,6 +21,10 @@ export function cancelWorldTouches(){held.clear();}
 export function worldButtons():Button[] {
     if(!activeWorld())return [];
     const w=world()!,cw=logicW,ch=logicH;
+    if(worldAssetsBlocked())return [
+        ...(worldAssetStatus().failed?[{id:'asset-retry',x:cw/2-114,y:ch/2+34,w:108,h:44,label:'重新下载'}]:[]),
+        {id:'asset-exit',x:cw/2+6,y:ch/2+34,w:108,h:44,label:'回主界面'},
+    ];
     const top:Button[]=[];
     if(isWorldNavigationOpen()){
         const p=navigationLayout(),x=p.x+16,bw=p.w-32,s=p.scale;
@@ -49,7 +54,7 @@ export function worldTouchStart(res:any):boolean {
     if(!activeWorld())return false;
     let consumed=false;for(const t of res.changedTouches||[]){
         const b=hit(t.clientX,t.clientY);
-        if(b||world()!.panel){held.set(t.identifier,{id:b?.id||'panel',x:t.clientX,y:t.clientY});consumed=true;}
+        if(b||world()!.panel||worldAssetsBlocked()){held.set(t.identifier,{id:b?.id||'panel',x:t.clientX,y:t.clientY});consumed=true;}
     }return consumed;
 }
 export function worldTouchMove(res:any):boolean{return !!res.changedTouches?.length&&res.changedTouches.every((t:any)=>held.has(t.identifier));}
@@ -57,6 +62,7 @@ export function worldTouchEnd(res:any,cancel=false):boolean {
     if(!res.changedTouches?.length)return false;let consumed=false;
     for(const t of res.changedTouches){const h=held.get(t.identifier);if(!h)continue;held.delete(t.identifier);consumed=true;
         if(cancel||Math.hypot(t.clientX-h.x,t.clientY-h.y)>10||hit(t.clientX,t.clientY)?.id!==h.id)continue;
+        if(h.id==='asset-retry')void retryWorldAssets();if(h.id==='asset-exit')exitContinuousWorld();
         if(h.id==='overview')toggleOverview();if(h.id==='close')closeWorldPanel();if(h.id==='station')useNearestStation();
         if(h.id==='navigation'||h.id==='next-cancel')openWorldNavigation();
         if(h.id==='continue')closeWorldPanel();if(h.id==='quick-shore')quickReturnToShore();
@@ -142,6 +148,21 @@ export function drawWorldHUD(c:CanvasRenderingContext2D) {
             if(w.panel==='medical')text(c,`累计调查 ${(w.elapsed/60).toFixed(1)} 分钟`,px+17,py+ph-20,10,'#8a9878');
         }
         const close=worldButtons().find(b=>b.id==='close')!;c.textAlign='center';text(c,'×',close.x+12,close.y+18,18,'#617158');c.textAlign='left';
+    }
+    c.restore();
+}
+
+// 只依赖代码绘制：断网时也有明确出口，下载重试不会重新生成地图。
+export function drawWorldAssetLoading(c:CanvasRenderingContext2D) {
+    const status=worldAssetStatus(),cx=logicW/2,cy=logicH/2;
+    c.save();c.fillStyle='#10282b';c.fillRect(0,0,logicW,logicH);c.textAlign='center';
+    c.strokeStyle='#8aa99a';c.lineWidth=2;c.beginPath();c.arc(cx,cy-54,17,0,Math.PI*2);c.stroke();
+    text(c,status.failed?'营地资源未能下载':'正在准备营地',cx,cy-12,17,'#d7dfcd');
+    text(c,status.failed?'请检查网络后重试，或返回主界面':`${status.ready} / ${status.total || 9} · 首次下载后可复用缓存`,cx,cy+12,11,'#95b0a5');
+    const w=world();if(w?.notice&&w.elapsed<w.noticeUntil)text(c,w.notice,cx,cy+104,10,'#e0c79d');
+    for(const b of worldButtons()){
+        c.strokeStyle='#698b7d';c.lineWidth=1;panelPath(c,b.x,b.y,b.w,b.h,22);c.stroke();
+        text(c,b.label,b.x+b.w/2,b.y+27,12,'#d7dfcd');
     }
     c.restore();
 }

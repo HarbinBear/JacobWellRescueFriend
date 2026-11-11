@@ -1,3 +1,4 @@
+import { updateWorldAssets, worldAssetsBlocked } from './WorldAssets';
 import { CONFIG } from '../../core/config';
 import { fishKnotPoint } from '../../logic/FishGeometry';
 import { closestWorldSurface } from './Routes';
@@ -32,7 +33,7 @@ import { activeWorld, attachWorldTerrain, world, bodyWet, groundAt, bankSupport,
 
 let booting = false, pending: WorldSnapshot | null = null, bootstrap: (() => void) | null = null;
 let lastFrame = 0, accumulated = 0, nextSave = 0, lifecycleBound = false;
-let freshSeed: number | null = null, navigationPausedAt = 0;
+let freshSeed: number | null = null, navigationPausedAt = 0, assetPausedAt = 0;
 export function shouldEnterWorld(rockTrial = false) { return CONFIG.continuousWorld && !rockTrial && !booting; }
 export function isBootingWorld() { return booting; }
 export function previewSeed() { return pending?.seed ?? freshSeed ?? 26110941; }
@@ -45,7 +46,7 @@ function settleInitialPoint(body:any,radius:number){
 }
 export function enterContinuousWorld(originalBootstrap: () => void, seed?: number) {
     freshSeed = seed === undefined ? null : seed >>> 0;
-    pending = freshSeed === null ? readWorldSnapshot() : null; bootstrap = originalBootstrap; booting = true; navigationPausedAt = 0;
+    pending = freshSeed === null ? readWorldSnapshot() : null; bootstrap = originalBootstrap; booting = true; navigationPausedAt = 0; assetPausedAt = 0;
     try {
         originalBootstrap();
         const m: any = state.mazeRescue;
@@ -68,15 +69,16 @@ export function enterContinuousWorld(originalBootstrap: () => void, seed?: numbe
         if (!pending) saveWorldProgress();
         if (!lifecycleBound) {
             lifecycleBound=true;
-            if((wx as any).onHide)(wx as any).onHide(()=>{if(!activeWorld())return;advanceNavigationPause();const w=world()!;if(!w.hidden)w.hiddenAt=Date.now();w.hidden=true;saveWorldProgress();resetDriveInput();releaseBCDControls();});
-            if((wx as any).onShow)(wx as any).onShow(()=>{if(!activeWorld())return;const w=world()!,now=Date.now(),paused=w.hidden?now-(w.hiddenAt||now):0;if(!navigationPausedAt)for(const f of state.fishEnemies)if(f.stunUntil>0)f.stunUntil+=paused;w.hidden=false;w.hiddenAt=0;state.semiAutoDrive.lastUpdateAt=now;lastFrame=0;accumulated=0;});
-            if(typeof window!=='undefined'&&typeof window.addEventListener==='function') {window.addEventListener('pagehide',()=>{if(activeWorld())saveWorldProgress();});window.addEventListener('beforeunload',()=>{if(activeWorld())saveWorldProgress();});}
+            if((wx as any).onHide)(wx as any).onHide(()=>{if(!activeWorld())return;advanceAssetPause();advanceNavigationPause();const w=world()!;if(!w.hidden)w.hiddenAt=Date.now();w.hidden=true;saveWorldProgress();resetDriveInput();releaseBCDControls();});
+            if((wx as any).onShow)(wx as any).onShow(()=>{if(!activeWorld())return;const w=world()!,now=Date.now(),paused=w.hidden?now-(w.hiddenAt||now):0;if(!navigationPausedAt&&!assetPausedAt)for(const f of state.fishEnemies)if(f.stunUntil>0)f.stunUntil+=paused;w.hidden=false;w.hiddenAt=0;state.semiAutoDrive.lastUpdateAt=now;lastFrame=0;accumulated=0;});
+            if(typeof window!=='undefined'&&typeof window.addEventListener==='function') {window.addEventListener('pagehide',()=>{if(activeWorld()){advanceAssetPause();advanceNavigationPause();saveWorldProgress();}});window.addEventListener('beforeunload',()=>{if(activeWorld()){advanceAssetPause();advanceNavigationPause();saveWorldProgress();}});}
         }
     } finally { booting=false; pending=null; freshSeed=null; }
 }
 export function continueWithoutDiveReset() { if(activeWorld()&&!booting){notice('沿浅滩直接入水；本章节不会按次重置');return true;}return false; }
 export function notice(text:string,seconds=4) {const w=world();if(w){w.notice=text;w.noticeUntil=w.elapsed+seconds;}}
 export function exitContinuousWorld() {
+    advanceAssetPause();
     const wasNavigation=isWorldNavigationOpen();if(wasNavigation)closeWorldPanel();
     if(activeWorld()&&!saveWorldProgress()) {if(wasNavigation)openWorldNavigation();notice('保存未成功，请稍后重试；当前探索仍保留在游戏中',7);return false;}
     resetDriveInput();releaseBCDControls();cancelInteractionInput();resetAdaptiveMusic();state.screen='menu';return true;
@@ -91,6 +93,12 @@ export function openWorldNavigation() {
     cancelInteractionInput();resetDriveInput();releaseBCDControls();state.wheel.open=false;
 }
 export function requestNextWorld() {if(!isWorldNavigationOpen())return;world()!.panel='confirm-next-world';}
+function advanceAssetPause() {
+    if(!assetPausedAt)return;
+    const now=Date.now(),paused=Math.max(0,now-assetPausedAt);
+    if(!navigationPausedAt)for(const f of state.fishEnemies)if(f.stunUntil>0)f.stunUntil+=paused;
+    assetPausedAt=now;
+}
 function advanceNavigationPause() {
     if(!navigationPausedAt)return;const now=Date.now(),paused=Math.max(0,now-navigationPausedAt);
     for(const f of state.fishEnemies)if(f.stunUntil>0)f.stunUntil+=paused;navigationPausedAt=now;
@@ -299,6 +307,12 @@ export function tickWorld() {
 }
 export function updateContinuousWorld() {
     const w=world();if(!w||w.hidden)return;
+    updateWorldAssets();
+    if(worldAssetsBlocked()){
+        if(!assetPausedAt)assetPausedAt=Date.now();
+        lastFrame=0;accumulated=0;resetDriveInput();releaseBCDControls();return;
+    }
+    if(assetPausedAt){advanceAssetPause();assetPausedAt=0;}
     if(isWorldNavigationOpen()){advanceNavigationPause();return;}
     const now=typeof performance!=='undefined'?performance.now():Date.now();
     if(!lastFrame){lastFrame=now;return;}accumulated+=Math.min(.10,(now-lastFrame)/1000);lastFrame=now;

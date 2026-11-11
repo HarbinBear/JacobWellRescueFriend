@@ -6,8 +6,8 @@
 // 4. 淡入淡出都通过逐帧推进 currentVolume -> targetVolume 实现
 // 5. 云存储：音频放在微信小游戏云开发的云存储里，不占主包体；
 //    运行时先 wx.cloud.init() 初始化，再 getTempFileURL 把 cloud:// FileID 换成临时 HTTPS URL；
-//    URL 有效期 2 小时，播放报 10002 过期错误时自动重新获取；
-//    云开发不可用或请求失败时，降级到本地 path（仅在开发者工具里还能听）。
+//    播放报网络/系统错误时重取 URL，30秒内最多一次自动刷新；
+//    云端失败时保持静音，不能回退到包内不存在的 MP3。
 // 6. SFX（一次性音效，如入水气泡）走独立 SFX 通道：
 //    - 启动时同样预创建上下文并预拉取临时 URL，触发时尽量做到低延迟
 //    - 不参与 BGM 的 _currentBGM / 淡入淡出逻辑
@@ -16,6 +16,7 @@
 
 import { CONFIG } from '../core/config';
 import { state } from '../core/state';
+import { ensureAssetCloud, resolveAssetPath, invalidateAsset } from '../assets/AssetStorage';
 
 type AudioKey = 'menuBGM';
 type SFXKey = 'diveSplash' | 'collisionRock' | 'collisionBreath' | 'quickReturn' | 'uiPrimary' | 'uiSecondary' | 'oxygenRefill' | 'fishBiteDie' | 'rescueBonk';
@@ -25,7 +26,7 @@ type SFXLoopKey = 'breathLoop';
 type AmbienceKey = 'campAmbience';
 
 interface AudioEntry {
-    path: string;              // 本地降级路径（云存储不可用时兜底）
+    path: string;              // 浏览器/显式本地开发路径，不是云失败回退
     loop: boolean;
     ctx: any | null;           // wx.InnerAudioContext 或 HTMLAudioElement
     loaded: boolean;
@@ -203,6 +204,24 @@ const AMBIENCE_ENTRIES: Record<AmbienceKey, AmbienceEntry> = {
 let _currentBGM: AudioKey | null = null;
 let _initialized = false;
 let _cloudInited = false;   // wx.cloud.init 是否已调用（仅在小游戏且启用云存储时为 true）
+let _bonkLoadVersion = 0, _bonkRetryAfter = 0, _bonkInvalidating = false, _bonkSourceAssigned = false;
+let _bonkDecodeTimer: ReturnType<typeof setTimeout> | null = null;
+const _cloudRetryAfter = new WeakMap<object, number>();
+
+function _claimCloudRefresh(entry: object): boolean {
+    if (Date.now() < (_cloudRetryAfter.get(entry) || 0)) return false;
+    _cloudRetryAfter.set(entry, Date.now() + 30000);
+    return true;
+}
+function _canResolveCloud(entry: { urlResolving: boolean }, refresh: boolean): boolean {
+    return !entry.urlResolving && (refresh || Date.now() >= (_cloudRetryAfter.get(entry) || 0));
+}
+function _cloudUnavailable(entry: any): void {
+    entry.srcReady = false; entry.pendingPlay = false;
+    if ('playing' in entry) entry.playing = false;
+    _cloudRetryAfter.set(entry, Date.now() + 30000);
+}
+function _localAudioEnabled(): boolean { return !CONFIG.audio.cloud || !CONFIG.audio.cloud.enabled; }
 
 // ===== 初始化 =====
 
@@ -226,7 +245,9 @@ export function initAudio(): void {
     // 创建所有 SFX 上下文并预拉取云 URL
     for (const key of Object.keys(SFX_ENTRIES) as SFXKey[]) {
         _createSFXContext(key);
-        if (_cloudInited) {
+        if (key === 'rescueBonk') {
+            _resolveCatalogBonk();
+        } else if (_cloudInited) {
             _resolveAndApplySFXCloudURL(key);
         }
     }
@@ -248,21 +269,10 @@ export function initAudio(): void {
     }
 }
 
-// 尝试初始化微信云开发；不可用或关闭时静默跳过，走本地路径兜底
+// 显式关闭云音频时才使用开发用本地路径。
 function _tryInitCloud(): void {
     if (!CONFIG.audio.cloud || !CONFIG.audio.cloud.enabled) return;
-    const wxAny = (typeof wx !== 'undefined') ? (wx as any) : null;
-    if (!wxAny || !wxAny.cloud || typeof wxAny.cloud.init !== 'function') return;
-    try {
-        wxAny.cloud.init({
-            env: CONFIG.audio.cloud.envId,
-            traceUser: false,
-        });
-        _cloudInited = true;
-    } catch (e) {
-        console.warn('[Audio] wx.cloud.init 失败，降级到本地路径:', e);
-        _cloudInited = false;
-    }
+    _cloudInited = ensureAssetCloud();
 }
 
 function _createContext(key: AudioKey): void {
@@ -277,8 +287,8 @@ function _createContext(key: AudioKey): void {
             ctx.autoplay = false;
 
             // 云存储启用时 src 会在 _resolveAndApplyCloudURL 里异步赋值；
-            // 否则立即用本地路径兜底
-            if (!_cloudInited) {
+            // 只有显式关闭云音频的本地开发模式才使用包内路径
+            if (!_cloudInited && _localAudioEnabled()) {
                 ctx.src = entry.path;
                 entry.srcReady = true;
             }
@@ -287,18 +297,16 @@ function _createContext(key: AudioKey): void {
                 entry.loaded = true;
             });
             ctx.onError((err: any) => {
-                // 10002 = 系统错误 / 链接过期；临时 URL 失效时会落到这里
-                // 常见 errCode 还有 -1 网络错误等；统一尝试重拉 URL 一次
+                // 系统/网络错误可能由过期 URL 引起，但不能无限刷新。
                 const code = err && (err.errCode || err.code);
                 console.warn('[Audio] ' + key + ' 播放错误:', err);
                 if (_cloudInited && (code === 10002 || code === -1 || code === undefined)) {
                     entry.srcReady = false;
                     entry.loaded = false;
+                    entry.playing = false;
                     // 记住需要重新播
-                    if (entry.playing || _currentBGM === key) {
-                        entry.pendingPlay = true;
-                    }
-                    _resolveAndApplyCloudURL(key);
+                    entry.pendingPlay = _currentBGM === key;
+                    if (_claimCloudRefresh(entry)) _resolveAndApplyCloudURL(key, true);
                 }
             });
             entry.ctx = ctx;
@@ -317,22 +325,21 @@ function _createContext(key: AudioKey): void {
 }
 
 // 把 cloud:// FileID 换成临时 HTTPS URL，并写回 ctx.src
-function _resolveAndApplyCloudURL(key: AudioKey): void {
+function _resolveAndApplyCloudURL(key: AudioKey, refresh = false): void {
     const entry = ENTRIES[key];
     if (!entry || !entry.ctx) return;
     if (!_cloudInited) return;
-    if (entry.urlResolving) return;
+    if (!_canResolveCloud(entry, refresh)) return;
 
     const fileID = CONFIG.audio.cloud.fileIDs[key];
     if (!fileID) {
-        // 没配 FileID，降级到本地
-        try { entry.ctx.src = entry.path; entry.srcReady = true; } catch (e) { /* 忽略 */ }
+        _cloudUnavailable(entry);
         return;
     }
 
     const wxAny = (typeof wx !== 'undefined') ? (wx as any) : null;
     if (!wxAny || !wxAny.cloud || typeof wxAny.cloud.getTempFileURL !== 'function') {
-        try { entry.ctx.src = entry.path; entry.srcReady = true; } catch (e) { /* 忽略 */ }
+        _cloudUnavailable(entry);
         return;
     }
 
@@ -358,22 +365,71 @@ function _resolveAndApplyCloudURL(key: AudioKey): void {
                         }
                     }
                 } catch (e) {
+                    _cloudUnavailable(entry);
                     console.warn('[Audio] 写入临时 URL 失败:', e);
                 }
             } else {
-                console.warn('[Audio] getTempFileURL 返回异常，降级到本地:', item);
-                try { entry.ctx.src = entry.path; entry.srcReady = true; } catch (e) { /* 忽略 */ }
+                console.warn('[Audio] 云音频暂不可用');
+                _cloudUnavailable(entry);
             }
         },
         fail: (err: any) => {
             entry.urlResolving = false;
-            console.warn('[Audio] getTempFileURL 请求失败，降级到本地:', err);
-            try { entry.ctx.src = entry.path; entry.srcReady = true; } catch (e) { /* 忽略 */ }
+            console.warn('[Audio] 云音频请求失败');
+            _cloudUnavailable(entry);
         },
     });
 }
 
 // ===== SFX 上下文创建与云 URL 解析 =====
+
+// This one release-managed SFX uses the common verified file cache. Loading a
+// one-shot never queues playback: a delayed bonk no longer matches its impact.
+function _clearBonkDecodeTimer(): void {
+    if (_bonkDecodeTimer !== null) clearTimeout(_bonkDecodeTimer);
+    _bonkDecodeTimer = null;
+}
+function _catalogBonkCanPlay(): void {
+    if (!_bonkSourceAssigned) return;
+    _clearBonkDecodeTimer();
+    SFX_ENTRIES.rescueBonk.srcReady = true;
+}
+function _resolveCatalogBonk(): void {
+    const entry = SFX_ENTRIES.rescueBonk;
+    if (!entry.ctx || entry.urlResolving || _bonkSourceAssigned || Date.now() < _bonkRetryAfter) return;
+    const version = ++_bonkLoadVersion, ctx = entry.ctx;
+    entry.srcReady = false; entry.pendingPlay = false; entry.urlResolving = true;
+    resolveAssetPath(entry.path).then(path => {
+        if (version !== _bonkLoadVersion || entry.ctx !== ctx) return;
+        _bonkSourceAssigned = true;
+        _clearBonkDecodeTimer();
+        _bonkDecodeTimer = setTimeout(_invalidateCatalogBonk, 15000);
+        ctx.src = path;
+        // onCanplay marks it ready; do not queue a collision behind decoding.
+    }).catch(() => {
+        if (version !== _bonkLoadVersion) return;
+        _clearBonkDecodeTimer();
+        entry.srcReady = false; _bonkSourceAssigned = false; _bonkRetryAfter = Date.now() + 2000;
+        console.warn('[Audio] rescueBonk 尚未就绪；后续碰撞可重试');
+    }).then(() => { if (version === _bonkLoadVersion) entry.urlResolving = false; });
+}
+
+function _invalidateCatalogBonk(): void {
+    const entry = SFX_ENTRIES.rescueBonk;
+    _clearBonkDecodeTimer();
+    entry.srcReady = false; entry.pendingPlay = false; _bonkSourceAssigned = false;
+    if (_bonkInvalidating) return;
+    _bonkInvalidating = true;
+    const version = ++_bonkLoadVersion;
+    entry.urlResolving = true; _bonkRetryAfter = Date.now() + 2000;
+    try { entry.ctx.stop(); } catch (_) { /* already stopped */ }
+    invalidateAsset(entry.path).catch(() => {
+        console.warn('[Audio] rescueBonk 缓存失效处理失败');
+    }).then(() => {
+        if (version === _bonkLoadVersion) entry.urlResolving = false;
+        _bonkInvalidating = false;
+    });
+}
 
 function _createSFXContext(key: SFXKey): void {
     const entry = SFX_ENTRIES[key];
@@ -383,28 +439,34 @@ function _createSFXContext(key: SFXKey): void {
             const ctx = wxAny.createInnerAudioContext();
             ctx.loop = false;
             ctx.autoplay = false;
+            if (key === 'rescueBonk') ctx.onCanplay(_catalogBonkCanPlay);
             // 云存储启用时 src 会在 _resolveAndApplySFXCloudURL 里异步赋值；
-            // 否则立即用本地路径兜底
-            if (!_cloudInited) {
+            // 只有显式关闭云音频的本地开发模式才使用包内路径
+            if (!_cloudInited && _localAudioEnabled() && key !== 'rescueBonk') {
                 ctx.src = entry.path;
                 entry.srcReady = true;
             }
             ctx.onError((err: any) => {
+                if (key === 'rescueBonk') { _invalidateCatalogBonk(); return; }
                 const code = err && (err.errCode || err.code);
                 console.warn('[Audio] SFX ' + key + ' 播放错误:', err);
-                // 10002 = 临时 URL 过期；SFX 不像 BGM 那样常驻播放，只把 srcReady 置回 false 等下次触发时再重拉
                 if (_cloudInited && (code === 10002 || code === -1 || code === undefined)) {
                     entry.srcReady = false;
-                    _resolveAndApplySFXCloudURL(key);
+                    entry.pendingPlay = false;
+                    if (_claimCloudRefresh(entry)) _resolveAndApplySFXCloudURL(key, true);
                 }
             });
             entry.ctx = ctx;
         } else if (typeof (globalThis as any).Audio !== 'undefined') {
             // 浏览器兜底（不走云存储，直接本地路径）
-            const ctx = new (globalThis as any).Audio(entry.path);
+            const ctx = new (globalThis as any).Audio();
             ctx.loop = false;
             entry.ctx = ctx;
-            entry.srcReady = true;
+            if (key === 'rescueBonk') {
+                ctx.addEventListener('error', _invalidateCatalogBonk);
+                ctx.addEventListener('canplay', _catalogBonkCanPlay);
+            }
+            else { ctx.src = entry.path; entry.srcReady = true; }
         }
     } catch (e) {
         console.warn('[Audio] 创建 SFX 上下文失败:', e);
@@ -412,21 +474,21 @@ function _createSFXContext(key: SFXKey): void {
 }
 
 // 把 SFX 的 cloud:// FileID 换成临时 HTTPS URL，并写回 ctx.src
-function _resolveAndApplySFXCloudURL(key: SFXKey): void {
+function _resolveAndApplySFXCloudURL(key: SFXKey, refresh = false): void {
     const entry = SFX_ENTRIES[key];
     if (!entry || !entry.ctx) return;
     if (!_cloudInited) return;
-    if (entry.urlResolving) return;
+    if (!_canResolveCloud(entry, refresh)) return;
 
     const fileID = CONFIG.audio.cloud.fileIDs[key];
     if (!fileID) {
-        try { entry.ctx.src = entry.path; entry.srcReady = true; } catch (e) { /* 忽略 */ }
+        _cloudUnavailable(entry);
         return;
     }
 
     const wxAny = (typeof wx !== 'undefined') ? (wx as any) : null;
     if (!wxAny || !wxAny.cloud || typeof wxAny.cloud.getTempFileURL !== 'function') {
-        try { entry.ctx.src = entry.path; entry.srcReady = true; } catch (e) { /* 忽略 */ }
+        _cloudUnavailable(entry);
         return;
     }
 
@@ -446,17 +508,18 @@ function _resolveAndApplySFXCloudURL(key: SFXKey): void {
                         _actuallyPlaySFX(key);
                     }
                 } catch (e) {
+                    _cloudUnavailable(entry);
                     console.warn('[Audio] SFX 写入临时 URL 失败:', e);
                 }
             } else {
-                console.warn('[Audio] SFX getTempFileURL 返回异常，降级到本地:', item);
-                try { entry.ctx.src = entry.path; entry.srcReady = true; } catch (e) { /* 忽略 */ }
+                console.warn('[Audio] 云音效暂不可用');
+                _cloudUnavailable(entry);
             }
         },
         fail: (err: any) => {
             entry.urlResolving = false;
-            console.warn('[Audio] SFX getTempFileURL 请求失败，降级到本地:', err);
-            try { entry.ctx.src = entry.path; entry.srcReady = true; } catch (e) { /* 忽略 */ }
+            console.warn('[Audio] 云音效请求失败');
+            _cloudUnavailable(entry);
         },
     });
 }
@@ -536,6 +599,7 @@ export function playSFX(key: SFXKey, options?: { volume?: number; playbackRate?:
     const entry = SFX_ENTRIES[key];
     if (!entry || !entry.ctx) return;
     if (!entry.srcReady) {
+        if (key === 'rescueBonk') { _resolveCatalogBonk(); return; }
         // URL 还没回来：挂一个 pendingPlay，URL 回来时立刻播（不带动态参数）
         entry.pendingPlay = true;
         if (_cloudInited && !entry.urlResolving) {
@@ -571,6 +635,11 @@ export function updateAudio(): void {
         } else {
             stopBGM();
         }
+    } else if (desired && _cloudInited) {
+        const entry = ENTRIES[desired];
+        // Recover in place after a network outage; the shared cooldown and
+        // in-flight guard prevent a per-frame URL request loop.
+        if (entry.ctx && !entry.playing && _canResolveCloud(entry, false)) playBGM(desired);
     }
 
     // 逐条音频推进音量
@@ -698,7 +767,7 @@ function _createSFXLoopContext(key: SFXLoopKey): void {
             ctx.loop = true;
             ctx.autoplay = false;
             ctx.volume = 0;
-            if (!_cloudInited) {
+            if (!_cloudInited && _localAudioEnabled()) {
                 ctx.src = entry.path;
                 entry.srcReady = true;
             }
@@ -707,8 +776,9 @@ function _createSFXLoopContext(key: SFXLoopKey): void {
                 console.warn('[Audio] SFX-Loop ' + key + ' 播放错误:', err);
                 if (_cloudInited && (code === 10002 || code === -1 || code === undefined)) {
                     entry.srcReady = false;
+                    entry.playing = false;
                     if (entry.desiredPlay) entry.pendingPlay = true;
-                    _resolveAndApplySFXLoopCloudURL(key);
+                    if (_claimCloudRefresh(entry)) _resolveAndApplySFXLoopCloudURL(key, true);
                 }
             });
             entry.ctx = ctx;
@@ -724,21 +794,21 @@ function _createSFXLoopContext(key: SFXLoopKey): void {
     }
 }
 
-function _resolveAndApplySFXLoopCloudURL(key: SFXLoopKey): void {
+function _resolveAndApplySFXLoopCloudURL(key: SFXLoopKey, refresh = false): void {
     const entry = SFX_LOOP_ENTRIES[key];
     if (!entry || !entry.ctx) return;
     if (!_cloudInited) return;
-    if (entry.urlResolving) return;
+    if (!_canResolveCloud(entry, refresh)) return;
 
     const fileID = (CONFIG.audio.cloud.fileIDs as Record<string, string>)[key];
     if (!fileID) {
-        try { entry.ctx.src = entry.path; entry.srcReady = true; } catch (e) { /* 忽略 */ }
+        _cloudUnavailable(entry);
         return;
     }
 
     const wxAny = (typeof wx !== 'undefined') ? (wx as any) : null;
     if (!wxAny || !wxAny.cloud || typeof wxAny.cloud.getTempFileURL !== 'function') {
-        try { entry.ctx.src = entry.path; entry.srcReady = true; } catch (e) { /* 忽略 */ }
+        _cloudUnavailable(entry);
         return;
     }
 
@@ -757,17 +827,18 @@ function _resolveAndApplySFXLoopCloudURL(key: SFXLoopKey): void {
                         _actuallyPlaySFXLoop(key);
                     }
                 } catch (e) {
+                    _cloudUnavailable(entry);
                     console.warn('[Audio] SFX-Loop 写入临时 URL 失败:', e);
                 }
             } else {
-                console.warn('[Audio] SFX-Loop getTempFileURL 返回异常，降级到本地:', item);
-                try { entry.ctx.src = entry.path; entry.srcReady = true; } catch (e) { /* 忽略 */ }
+                console.warn('[Audio] 云循环音效暂不可用');
+                _cloudUnavailable(entry);
             }
         },
         fail: (err: any) => {
             entry.urlResolving = false;
-            console.warn('[Audio] SFX-Loop getTempFileURL 请求失败，降级到本地:', err);
-            try { entry.ctx.src = entry.path; entry.srcReady = true; } catch (e) { /* 忽略 */ }
+            console.warn('[Audio] 云循环音效请求失败');
+            _cloudUnavailable(entry);
         },
     });
 }
@@ -889,7 +960,7 @@ function _createAmbienceContext(key: AmbienceKey): void {
             ctx.loop = true;
             ctx.autoplay = false;
             ctx.volume = 0;
-            if (!_cloudInited) {
+            if (!_cloudInited && _localAudioEnabled()) {
                 ctx.src = entry.path;
                 entry.srcReady = true;
             }
@@ -898,8 +969,9 @@ function _createAmbienceContext(key: AmbienceKey): void {
                 console.warn('[Audio] Ambience ' + key + ' 播放错误:', err);
                 if (_cloudInited && (code === 10002 || code === -1 || code === undefined)) {
                     entry.srcReady = false;
+                    entry.playing = false;
                     if (entry.desiredPlay) entry.pendingPlay = true;
-                    _resolveAndApplyAmbienceCloudURL(key);
+                    if (_claimCloudRefresh(entry)) _resolveAndApplyAmbienceCloudURL(key, true);
                 }
             });
             entry.ctx = ctx;
@@ -915,21 +987,21 @@ function _createAmbienceContext(key: AmbienceKey): void {
     }
 }
 
-function _resolveAndApplyAmbienceCloudURL(key: AmbienceKey): void {
+function _resolveAndApplyAmbienceCloudURL(key: AmbienceKey, refresh = false): void {
     const entry = AMBIENCE_ENTRIES[key];
     if (!entry || !entry.ctx) return;
     if (!_cloudInited) return;
-    if (entry.urlResolving) return;
+    if (!_canResolveCloud(entry, refresh)) return;
 
     const fileID = (CONFIG.audio.cloud.fileIDs as Record<string, string>)[key];
     if (!fileID) {
-        try { entry.ctx.src = entry.path; entry.srcReady = true; } catch (e) { /* 忽略 */ }
+        _cloudUnavailable(entry);
         return;
     }
 
     const wxAny = (typeof wx !== 'undefined') ? (wx as any) : null;
     if (!wxAny || !wxAny.cloud || typeof wxAny.cloud.getTempFileURL !== 'function') {
-        try { entry.ctx.src = entry.path; entry.srcReady = true; } catch (e) { /* 忽略 */ }
+        _cloudUnavailable(entry);
         return;
     }
 
@@ -948,17 +1020,18 @@ function _resolveAndApplyAmbienceCloudURL(key: AmbienceKey): void {
                         _actuallyPlayAmbience(key);
                     }
                 } catch (e) {
+                    _cloudUnavailable(entry);
                     console.warn('[Audio] Ambience 写入临时 URL 失败:', e);
                 }
             } else {
-                console.warn('[Audio] Ambience getTempFileURL 返回异常，降级到本地:', item);
-                try { entry.ctx.src = entry.path; entry.srcReady = true; } catch (e) { /* 忽略 */ }
+                console.warn('[Audio] 云环境音暂不可用');
+                _cloudUnavailable(entry);
             }
         },
         fail: (err: any) => {
             entry.urlResolving = false;
-            console.warn('[Audio] Ambience getTempFileURL 请求失败，降级到本地:', err);
-            try { entry.ctx.src = entry.path; entry.srcReady = true; } catch (e) { /* 忽略 */ }
+            console.warn('[Audio] 云环境音请求失败');
+            _cloudUnavailable(entry);
         },
     });
 }

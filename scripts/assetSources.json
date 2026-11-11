@@ -1,0 +1,30 @@
+{
+  "storage": {
+    "mode": "local",
+    "envId": "cloud1-d8gh6fpnh6d0928e8",
+    "cacheDirectory": "jwr-assets-v1"
+  },
+  "cloudRoot": "cloud://cloud1-d8gh6fpnh6d0928e8.636c-cloud1-d8gh6fpnh6d0928e8-1424920608/",
+  "assets": [
+    { "path": "audio/rescue-bonk.wav", "kind": "audio" },
+    { "path": "images/cave-rock/room-albedo.png", "kind": "image" },
+    { "path": "images/cave-rock/room-back.png", "kind": "image" },
+    { "path": "images/cave-rock/room-detail.png", "kind": "image" },
+    { "path": "images/cave-rock/room-normal.png", "kind": "image" },
+    { "path": "images/home/characters/girl_playful.jpg", "kind": "image" },
+    { "path": "images/home/characters/girl_stand.jpg", "kind": "image" },
+    { "path": "images/home/characters/girl_talk.jpg", "kind": "image" },
+    { "path": "images/home/living_room_night.jpg", "kind": "image" },
+    { "path": "images/karst/mineral-albedo.jpg", "kind": "image" },
+    { "path": "images/karst/mineral-relief.png", "kind": "image" },
+    { "path": "images/shore/air.png", "kind": "image" },
+    { "path": "images/shore/bank-left.jpg", "kind": "image" },
+    { "path": "images/shore/bank-right.jpg", "kind": "image" },
+    { "path": "images/shore/board.png", "kind": "image" },
+    { "path": "images/shore/fish.png", "kind": "image" },
+    { "path": "images/shore/shop.png", "kind": "image" },
+    { "path": "images/shore/tent.png", "kind": "image" },
+    { "path": "images/shore/woodland-native.jpg", "kind": "image" },
+    { "path": "images/shore/woodland-sky-strip.png", "kind": "image" }
+  ]
+}
