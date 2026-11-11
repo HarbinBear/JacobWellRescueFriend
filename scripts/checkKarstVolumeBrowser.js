@@ -11,7 +11,7 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
     try {
         const ev = text => b.evaluate(text);
         async function shot(name) { const image = await ev('document.getElementById("game").toDataURL("image/jpeg",.9)'); fs.writeFileSync(path.join(OUT, name + '.jpg'), Buffer.from(image.split(',')[1], 'base64')); }
-        async function settle() { await wait(200); for (let i = 0; i < 300 && await ev('DeepTapeGame.cave.volume.karstVolumeStats().pending') > 0; i++) await wait(100); await wait(250); }
+        async function settle() { await wait(200); for (let i = 0; i < 300 && await ev('DeepTapeGame.cave.volume.karstVolumeStats().pending') > 0; i++) await wait(100); await wait(250); assert.equal(await ev('DeepTapeGame.cave.volume.karstVolumeStats().pending'),0,'分块等待超时，不能带缺块通过'); }
         async function hallLight() {
             return ev(`(()=>{const c=document.getElementById("game"),ctx=c.getContext("2d"),w=c.width,h=c.height;
                 function sample(x){const p=ctx.getImageData(Math.floor(w*x),Math.floor(h*.22),Math.floor(w*.21),Math.floor(h*.56)).data;

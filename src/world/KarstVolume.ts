@@ -179,7 +179,10 @@ function makeScratch(cells: number, columns: number, width: number, height: numb
 function evaluateLayer(t: KarstTerrain, v: KarstVolumeData, i0: number, j0: number, ni: number, nj: number, kk: number, s: Scratch, list: number[] | Int32Array, off: number) {
     const S = t.step, plane = ni * nj, seed = v.seed, seam = v.seam, segs = v.segs, z = VOLUME_Z[kk + 1], { F, X, Y, Z, RB, done, P2, B2, flag, LC, LF, RIB, strength } = s, end = off + plane;
     const deep = smooth(32, 120, z), arc = clamp(z / 600), bow = 4 * arc * (1 - arc) * deep;
-    if (deep > 0 && !s.base) { s.base = new Float32Array(s.flag.length); s.deposition = new Float32Array(s.flag.length); }
+    // 所有非零深度的可见层都独立采样原洞壳；近景不能因没有进入深腔变形而退回块内扫描依赖。
+    // z=0 保留既有切面生成，避免改变存档的碰撞、绳索与导航轮廓。
+    if (z > 0 && !s.base) s.base = new Float32Array(s.flag.length);
+    if (deep > 0 && !s.deposition) s.deposition = new Float32Array(s.flag.length);
     F.fill(-192, off, end); RB.fill(0, off, end); done.fill(0, off, end);
     // 一、溶蚀洞腔：沿通路的一串粗细不均的胶囊体，在纵深方向各有进深和歪斜。坐标先做低频扭曲。
     for (let li = 0; li < list.length; li++) {
@@ -242,7 +245,7 @@ function evaluateLayer(t: KarstTerrain, v: KarstVolumeData, i0: number, j0: numb
         F[o] = Math.min(val, back);
     }
     // 顶滴、地面沉积都应依附原来的洞壳；不能把刚生成的钟乳石再当成一层洞底。
-    if (deep > 0) s.base.set(F.subarray(off, end));
+    if (z > 0) s.base.set(F.subarray(off, end));
     // 三、钟乳石体系：每一处洞顶往下挂、每一处洞底往上长。开阔处长得大，靠近必须留出的身位处收小。
     for (let ii = 0; ii < ni; ii++) {
         const ceiling = LC[ii], ground = LF[ii]; let edge = 0, has = false, broken = false, last = 0, rock = false;
@@ -252,7 +255,7 @@ function evaluateLayer(t: KarstTerrain, v: KarstVolumeData, i0: number, j0: numb
             const col = ii + ni * jj, o = off + col, f = F[o], y = t.y + (j0 + jj) * S; strength[jj] = 0;
             if (f <= 0) { rock = true; last = f; has = true; broken = false; continue; }
             if (rock) { edge = y - S + S * last / (last - f); rock = false; }
-            if ((!has && deep === 0) || !(flag[col] & 1)) continue;
+            if ((!has && z === 0) || !(flag[col] & 1)) continue;
             let st = clamp((RB[o] - 58) / 45) * smooth(26, 64, 34 - P2[col]) * smooth(seam + 60, seam + 220, y);
             if (deep > 0) {
                 const planar = 34 - P2[col], distance = Math.hypot(Math.max(0, planar), z);
@@ -269,7 +272,7 @@ function evaluateLayer(t: KarstTerrain, v: KarstVolumeData, i0: number, j0: numb
         }
         has = false; rock = false; broken = false;
         for (let jj = nj - 1; jj >= 0; jj--) {
-            const o = off + ii + ni * jj, f = deep > 0 ? s.base[ii + ni * jj] : F[o], y = t.y + (j0 + jj) * S;
+            const o = off + ii + ni * jj, f = z > 0 ? s.base[ii + ni * jj] : F[o], y = t.y + (j0 + jj) * S;
             if (f <= 0) { rock = true; last = f; has = true; broken = false; continue; }
             if (rock) { edge = y + S - S * last / (last - f); rock = false; }
             if (!has) continue;
