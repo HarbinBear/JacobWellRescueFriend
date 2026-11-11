@@ -2,29 +2,32 @@
 // 场的约定与 KarstTerrain 相同：正值是水，负值是岩石。z 朝屏幕里面。
 // 整张地图只计算 z=0 一层；带纵深的网格按镜头附近分块生成，并且拆成很多小步分摊到多帧里，两者走同一段求值代码。
 import type { KarstTerrain } from './KarstTerrain';
-import { continuousKarstProtection, planKarstChambers, type KarstChamber, type KarstChambers } from './KarstChambers';
+import { continuousKarstProtection, planKarstChambers, type KarstChambers } from './KarstChambers';
+import type { VolumeProbeField } from '../render/KarstVolumeProbes';
 
 export const VOLUME_CHUNK = 48;
-const LAYERS = 21, GROW = 1.12, CEILING = 300, FLOOR = 170, MARGIN_TOP = 27, MARGIN_BOTTOM = 16, RING = 2, SEG = 11, CARVE = 30, BODY = 21, SOLID = 32;
-// 各层的深度：近处每层 12，越往里越稀。VOLUME_Z[0] 是游戏平面前面的剖面盖层。
+const LAYERS = 30, CEILING = 300, FLOOR = 170, MARGIN_TOP = 32, MARGIN_BOTTOM = 20, RING = 2, SEG = 11, CARVE = 30, BODY = 21, SOLID = 32;
+// 可见洞壳的前 400 深度保持 16 间距，避免细石幔跨过稀疏层时退化成锯齿排；最远处再降采样。
+// VOLUME_Z[0] 是游戏平面前面的剖面盖层，z=0 切面保持原样。
 export const VOLUME_Z = new Float32Array(LAYERS + 1);
-VOLUME_Z[0] = -6; for (let k = 1; k <= LAYERS; k++) VOLUME_Z[k] = 12 * (Math.pow(GROW, k - 1) - 1) / (GROW - 1);
+VOLUME_Z[0] = -6; for (let k = 1; k <= 26; k++) VOLUME_Z[k] = (k - 1) * 16;
+VOLUME_Z.set([480, 580, 710, 12 * (Math.pow(1.12, 20) - 1) / .12], 27);
 export const VOLUME_DEPTH = VOLUME_Z[LAYERS];
 
 export interface KarstVolumeData {
     seed: number; seam: number; segs: Float32Array; tileSegs: number[][]; tileCols: number; tileRows: number; tileSize: number;
     lanes: (x: number, y: number) => number; bank: ((x: number, y: number) => number) | null;
     carves: number[]; carveBuckets: Map<number, number[]>; drips: ((x: number, z: number, floor: boolean) => number)[];
-    rearRegions: KarstChambers;
+    rearRegions: KarstChambers; deepSegs: Float32Array; shapes: Float32Array;
     stats: { segments: number; backBranches: number; carves: number; filledPockets: number; sliceMs: number; rearProfiles: Record<string, number> };
 }
-export interface KarstVolumeMesh { positions: Float32Array; normals: Float32Array; indices: Uint16Array; ms: number; dropped: number }
+export interface KarstVolumeMesh { positions: Float32Array; normals: Float32Array; indices: Uint16Array; ms: number; dropped: number; probe: VolumeProbeField }
 export interface KarstVolumeJob {
     ci: number; cj: number; i0: number; j0: number; ni: number; nj: number; list: number[]; phase: number; k: number;
     P: number[]; I: number[]; positions: Float32Array | null; normals: Float32Array | null; ms: number; longestStep: number; dropped: number;
 }
 interface Scratch { F: Float32Array; X: Float32Array; Y: Float32Array; Z: Float32Array; RB: Float32Array; done: Uint8Array; P2: Float32Array; B2: Float32Array; flag: Uint8Array;
-    LC: Float32Array; LF: Float32Array; RIB: Float32Array; strength: Float32Array; rear: Float32Array | null }
+    LC: Float32Array; LF: Float32Array; RIB: Float32Array; strength: Float32Array; deposition: Float32Array | null; base: Float32Array | null }
 
 const clamp = (v: number, a = 0, b = 1) => v < a ? a : v > b ? b : v;
 function smooth(a: number, b: number, v: number) { let t = (v - a) / (b - a); t = t < 0 ? 0 : t > 1 ? 1 : t; return t * t * (3 - 2 * t); }
@@ -124,40 +127,37 @@ function createVolume(t: KarstTerrain, maze: any): KarstVolumeData {
             segs.push((c + .5) * ts, (r + .5) * ts, (c + .5) * ts + Math.cos(ang) * reach, (r + .5) * ts + Math.sin(ang) * reach * .6, ra, 52 + 40 * hash3(c, r, 10, seed), za, za + 320 + 340 * h, 1, 0, 0);
         }
     }
-    const rearRegions = planKarstChambers(maze), rearProfiles = { flow: 0, terraces: 0, fracture: 0 };
-    for (const room of rearRegions.rooms) rearProfiles[room.grammar === 'flow' ? 'flow' : room.grammar === 'fracture' ? 'fracture' : 'terraces']++;
-    return { seed, seam, segs: new Float32Array(segs), tileSegs, tileCols: cols, tileRows: rows, tileSize: ts, lanes: continuousKarstProtection(maze), bank: bankField(maze), rearRegions,
+    const rearRegions = planKarstChambers(maze), rearProfiles = { flow: 0, tufa: 0, vault: 0, fracture: 0 };
+    for (const room of rearRegions.rooms) rearProfiles[room.grammar]++;
+    // 保留原来的近处胶囊，以免改变存档的碰撞切面。深处则由完整体积自然闭合，不再用背板截断。
+    const deepSegs = new Float32Array(segs), shapes = new Float32Array(segs.length / SEG * 6);
+    for (let q = 0; q < segs.length; q += SEG) {
+        const room = rearRegions.at(segs[q], segs[q + 1]), g = room.grammar, branch = segs[q + 8] === 1, n = q / SEG * 6;
+        const h = hash3(Math.floor(segs[q] / ts), Math.floor(segs[q + 1] / ts), 81, seed), side = hash3(room.id, 82, 0, seed) < .5 ? -1 : 1;
+        const k = (g === 'fracture' ? .33 : g === 'vault' ? .42 : g === 'flow' ? .54 : .62) + (h - .5) * .12;
+        deepSegs[q + 6] = Math.min(145, segs[q + 4] * (.35 + .35 * h) / k);
+        deepSegs[q + 7] = Math.min(145, segs[q + 5] * (.35 + .35 * h) / k);
+        deepSegs[q + 8] = k;
+        deepSegs[q + 9] = segs[q + 9] * .45 + room.inclination * .28;
+        deepSegs[q + 10] = segs[q + 10] * .45 + (g === 'vault' ? -.10 : .025 * side);
+        if (branch) {
+            // 支洞接在主洞自然收束之前，沿同一组裂隙斜入后方，避免被原先过深的起点隔断。
+            const reach = Math.hypot(segs[q + 2] - segs[q], segs[q + 3] - segs[q + 1]);
+            const angle = room.inclination + side * (g === 'fracture' ? .75 : .28);
+            deepSegs[q + 2] = segs[q] + Math.cos(angle) * reach * side;
+            deepSegs[q + 3] = segs[q + 1] + Math.sin(angle) * reach * .65;
+            deepSegs[q + 6] = 135 + h * 45; deepSegs[q + 7] = (g === 'fracture' ? 475 : 315) + h * 110;
+            deepSegs[q + 8] = 1; deepSegs[q + 9] = deepSegs[q + 10] = 0;
+        }
+        // 水蚀管道是一段弯曲的轴线；节理洞较直，拱厅较扁。弯曲只走一次弧线，不生成周期条纹。
+        const bend = g === 'fracture' ? 7 : g === 'flow' ? 55 : g === 'vault' ? 32 : 24;
+        shapes[n] = side * bend; shapes[n + 1] = -bend * (.2 + h * .3);
+        shapes[n + 2] = g === 'fracture' ? 1.28 : 1; shapes[n + 3] = g === 'vault' ? 1.32 : g === 'fracture' ? .82 : 1;
+        shapes[n + 4] = Math.cos(room.inclination); shapes[n + 5] = Math.sin(room.inclination);
+    }
+    return { seed, seam, segs: new Float32Array(segs), tileSegs, tileCols: cols, tileRows: rows, tileSize: ts, lanes: continuousKarstProtection(maze), bank: bankField(maze), rearRegions, deepSegs, shapes,
         carves: [], carveBuckets: new Map(), drips: [dripField(150, seed + 61), dripField(62, seed + 62), dripField(46, seed + 63)],
         stats: { segments: segs.length / SEG, backBranches: branches, carves: 0, filledPockets: 0, sliceMs: 0, rearProfiles } };
-}
-// 每个连通区域有自己的后壁规律。深槽与浅壁交替，供灯光带出纵深层次。
-function rearProfile(room: KarstChamber, x: number, y: number) {
-    const angle = room.inclination, dx = x - room.x, dy = y - room.y;
-    const u = dx * Math.cos(angle) + dy * Math.sin(angle), v = -dx * Math.sin(angle) + dy * Math.cos(angle);
-    const phase = hash3(room.id, 3, 1, room.seed) * Math.PI * 2;
-    if (room.grammar === 'flow') {
-        const fold = u / 82 + .55 * Math.sin(v / 190 + phase);
-        return 325 + 58 * Math.sin(fold) + 24 * Math.sin(v / 155 + phase) + 12 * noise3(x, y, 0, 65, room.seed);
-    }
-    if (room.grammar === 'fracture') {
-        const fault = u - v * .32 - 42 * Math.sin(v / 220 + phase);
-        const slot = Math.exp(-Math.pow(fault / 105, 2));
-        return 555 + 290 * slot + 38 * Math.sin(v / 130 + phase) + 18 * noise3(x, y, 0, 95, room.seed);
-    }
-    const beds = 2 + 1.8 * Math.sin((v + 24 * Math.sin(u / 175)) / 170 + phase);
-    const level = Math.floor(beds), terrace = level + smooth(.60, .96, beds - level);
-    return 355 + terrace * 54 + 28 * Math.sin(u / 150 + phase) + 12 * noise3(x, y, 0, 72, room.seed);
-}
-export function sampleVolumeRearDepth(v: KarstVolumeData, x: number, y: number) {
-    const regions = v.rearRegions, ts = regions.tileSize, gx = x / ts - .5, gy = y / ts - .5;
-    const c = Math.floor(gx), r = Math.floor(gy), ax = (c + .5) * ts, ay = (r + .5) * ts;
-    const a = regions.at(ax, ay), b = regions.at(ax + ts, ay), d = regions.at(ax, ay + ts), e = regions.at(ax + ts, ay + ts);
-    const p = rearProfile(a, x, y), q = a === b ? p : rearProfile(b, x, y);
-    const s = a === d ? p : rearProfile(d, x, y), t = b === e ? q : d === e ? s : rearProfile(e, x, y);
-    const tx = smooth(0, 1, gx - c), ty = smooth(0, 1, gy - r);
-    const top = p + (q - p) * tx, bottom = s + (t - s) * tx;
-    const depth = top + (bottom - top) * ty, far = VOLUME_DEPTH - 14;
-    return far + (Math.min(far, depth) - far) * smooth(v.seam + 96, v.seam + 360, y);
 }
 function carveValue(v: KarstVolumeData, x: number, y: number) {
     const list = v.carveBuckets.get(Math.floor(y / 128) * 4096 + Math.floor(x / 128)); if (!list) return -999;
@@ -171,18 +171,29 @@ function carveValue(v: KarstVolumeData, x: number, y: number) {
 function makeScratch(cells: number, columns: number, width: number, height: number): Scratch {
     return { F: new Float32Array(cells), X: new Float32Array(cells), Y: new Float32Array(cells), Z: new Float32Array(cells), RB: new Float32Array(cells), done: new Uint8Array(cells),
         P2: new Float32Array(columns), B2: new Float32Array(columns), flag: new Uint8Array(columns),
-        LC: new Float32Array(width), LF: new Float32Array(width), RIB: new Float32Array(width), strength: new Float32Array(height), rear: null };
+        LC: new Float32Array(width), LF: new Float32Array(width), RIB: new Float32Array(width), strength: new Float32Array(height), deposition: null, base: null };
 }
 // 求一块区域里某一层的场。i0、j0 是地形格点下标，kk 是层号（0 是 z=0），off 是这一层在数组里的起始偏移。各层互不依赖。
 function evaluateLayer(t: KarstTerrain, v: KarstVolumeData, i0: number, j0: number, ni: number, nj: number, kk: number, s: Scratch, list: number[] | Int32Array, off: number) {
     const S = t.step, plane = ni * nj, seed = v.seed, seam = v.seam, segs = v.segs, z = VOLUME_Z[kk + 1], { F, X, Y, Z, RB, done, P2, B2, flag, LC, LF, RIB, strength } = s, end = off + plane;
+    const deep = smooth(32, 120, z), arc = clamp(z / 600), bow = 4 * arc * (1 - arc) * deep;
+    if (deep > 0 && !s.base) { s.base = new Float32Array(s.flag.length); s.deposition = new Float32Array(s.flag.length); }
     F.fill(-192, off, end); RB.fill(0, off, end); done.fill(0, off, end);
     // 一、溶蚀洞腔：沿通路的一串粗细不均的胶囊体，在纵深方向各有进深和歪斜。坐标先做低频扭曲。
     for (let li = 0; li < list.length; li++) {
-        const q = list[li] * SEG, ax = segs[q], ay = segs[q + 1], bx = segs[q + 2], by = segs[q + 3], ra = segs[q + 4], rb = segs[q + 5], za = segs[q + 6], zb = segs[q + 7], k = segs[q + 8], lx = segs[q + 9], ly = segs[q + 10];
-        const zlo = Math.min(za, zb), zhi = Math.max(za, zb), gap = (z < zlo ? zlo - z : z > zhi ? z - zhi : 0) - 18, far = gap > 0 ? gap * k : 0, rmax = Math.max(ra, rb) + SOLID;
+        const q = list[li] * SEG, n = list[li] * 6, ax = segs[q], ay = segs[q + 1], ra = segs[q + 4], rb = segs[q + 5];
+        let bx = segs[q + 2], by = segs[q + 3], za = segs[q + 6], zb = segs[q + 7], k = segs[q + 8], lx = segs[q + 9], ly = segs[q + 10];
+        if (deep > 0) {
+            const d = v.deepSegs;
+            bx += (d[q + 2] - bx) * deep; by += (d[q + 3] - by) * deep;
+            za += (d[q + 6] - za) * deep; zb += (d[q + 7] - zb) * deep; k += (d[q + 8] - k) * deep;
+            lx += (d[q + 9] - lx) * deep; ly += (d[q + 10] - ly) * deep;
+        }
+        const shiftX = v.shapes[n] * bow, shiftY = v.shapes[n + 1] * bow, scaleX = 1 + (v.shapes[n + 2] - 1) * deep, scaleY = 1 + (v.shapes[n + 3] - 1) * deep;
+        const co = v.shapes[n + 4], si = v.shapes[n + 5];
+        const zlo = Math.min(za, zb), zhi = Math.max(za, zb), gap = (z < zlo ? zlo - z : z > zhi ? z - zhi : 0) - 18, far = gap > 0 ? gap * k : 0, rmax = (Math.max(ra, rb) + SOLID) / Math.min(1, scaleX, scaleY);
         if (far >= rmax) continue;
-        const M = Math.sqrt(rmax * rmax - far * far) + 32, sx = lx * z, sy = ly * z;
+        const M = Math.sqrt(rmax * rmax - far * far) + 32, sx = lx * z + shiftX, sy = ly * z + shiftY;
         const a0 = Math.max(i0, Math.floor((Math.min(ax, bx) + sx - M - t.x) / S)), a1 = Math.min(i0 + ni - 1, Math.ceil((Math.max(ax, bx) + sx + M - t.x) / S));
         const b0 = Math.max(j0, Math.floor((Math.min(ay, by) + sy - M - t.y) / S)), b1 = Math.min(j0 + nj - 1, Math.ceil((Math.max(ay, by) + sy + M - t.y) / S));
         const ex = bx - ax, ey = by - ay, ez = (zb - za) * k, l2 = ex * ex + ey * ey + ez * ez || 1;
@@ -192,9 +203,11 @@ function evaluateLayer(t: KarstTerrain, v: KarstVolumeData, i0: number, j0: numb
                 const x = t.x + i * S, y = t.y + j * S, m = 7 * noise3(x, y, z, 85, seed + 4); done[o] = 1;
                 X[o] = x + 18 * noise3(x, y, z, 240, seed + 1) + m; Y[o] = y + 16 * noise3(x, y, z, 240, seed + 2) - m; Z[o] = z + 18 * noise3(x, y, z, 240, seed + 3);
             }
-            const zz = Z[o], px = X[o] - lx * zz - ax, py = Y[o] - ly * zz - ay, pz = (zz - za) * k;
+            const zz = Z[o], px = X[o] - lx * zz - ax - shiftX, py = Y[o] - ly * zz - ay - shiftY, pz = (zz - za) * k;
             let u = (px * ex + py * ey + pz * ez) / l2; u = u < 0 ? 0 : u > 1 ? 1 : u;
-            const dx = px - ex * u, dy = py - ey * u, dz = pz - ez * u, r = ra + (rb - ra) * u, val = r - Math.sqrt(dx * dx + dy * dy + dz * dz);
+            const dx = px - ex * u, dy = py - ey * u, dz = pz - ez * u, r = ra + (rb - ra) * u;
+            let val = r - Math.sqrt(dx * dx + dy * dy + dz * dz);
+            if (deep > 0) { const tx = (dx * co + dy * si) * scaleX, ty = (-dx * si + dy * co) * scaleY; val = r - Math.sqrt(tx * tx + ty * ty + dz * dz); }
             if (val > F[o]) { F[o] = val; RB[o] = r; }
         }
     }
@@ -210,6 +223,12 @@ function evaluateLayer(t: KarstTerrain, v: KarstVolumeData, i0: number, j0: numb
         const col = ii + ni * jj, o = off + col, i = i0 + ii, j = j0 + jj, x = t.x + i * S, y = t.y + j * S; let val = F[o];
         if (done[o]) {
             if (!(flag[col] & 1)) { P2[col] = Math.max(v.lanes(x, y), carveValue(v, x, y)); flag[col] |= 1; }
+            if (deep > 0 && !(flag[col] & 4)) {
+                const regions = v.rearRegions, ts = regions.tileSize, gx = x / ts - .5, gy = y / ts - .5, ax = (Math.floor(gx) + .5) * ts, ay = (Math.floor(gy) + .5) * ts;
+                const dep = (px: number, py: number) => { const g = regions.at(px, py).grammar; return g === 'fracture' ? .64 : g === 'tufa' ? 1.14 : g === 'vault' ? .82 : 1; };
+                const a = dep(ax, ay), b = dep(ax + ts, ay), c = dep(ax, ay + ts), d = dep(ax + ts, ay + ts), u = smooth(0, 1, gx - Math.floor(gx)), w = smooth(0, 1, gy - Math.floor(gy));
+                s.deposition[col] = (a + (b - a) * u) * (1 - w) + (c + (d - c) * u) * w; flag[col] |= 4;
+            }
             val += (11 * noise3(X[o], Y[o], Z[o], 120, seed + 11) + 4 * noise3(X[o], Y[o], Z[o], 44, seed + 12)) * clamp((RB[o] - 18) / 50, .2, 1);
             if (val > -30 && RB[o] > 40) val -= RIB[ii] * clamp((RB[o] - 40) / 30) * smooth(seam + 60, seam + 220, y);
         }
@@ -218,14 +237,10 @@ function evaluateLayer(t: KarstTerrain, v: KarstVolumeData, i0: number, j0: numb
             const b = Math.min(B2[col], 190 + 30 * noise3(x, y, 0, 170, seed + 41) - z); val = b + (val - b) * smooth(seam - 48, seam + 96, y);
         }
         if (i === 0 || i === t.cols - 1 || j === t.rows - 1) val = -192;
-        // 只塑形游戏平面后方，旧档碰撞场以及贴近潜水员的网格保持相同。
-        if (z > 100) {
-            if (!s.rear) s.rear = new Float32Array(s.flag.length);
-            if (!(flag[col] & 4)) { s.rear[col] = sampleVolumeRearDepth(v, x, y); flag[col] |= 4; }
-            val = Math.min(val, s.rear[col] - z);
-        }
         F[o] = Math.min(val, back);
     }
+    // 顶滴、地面沉积都应依附原来的洞壳；不能把刚生成的钟乳石再当成一层洞底。
+    if (deep > 0) s.base.set(F.subarray(off, end));
     // 三、钟乳石体系：每一处洞顶往下挂、每一处洞底往上长。开阔处长得大，靠近必须留出的身位处收小。
     for (let ii = 0; ii < ni; ii++) {
         const ceiling = LC[ii], ground = LF[ii]; let edge = 0, has = false, broken = false, last = 0, rock = false;
@@ -233,21 +248,28 @@ function evaluateLayer(t: KarstTerrain, v: KarstVolumeData, i0: number, j0: numb
             const col = ii + ni * jj, o = off + col, f = F[o], y = t.y + (j0 + jj) * S; strength[jj] = 0;
             if (f <= 0) { rock = true; last = f; has = true; broken = false; continue; }
             if (rock) { edge = y - S + S * last / (last - f); rock = false; }
-            if (!has || !(flag[col] & 1)) continue;
-            const st = clamp((RB[o] - 58) / 45) * smooth(26, 64, 34 - P2[col]) * smooth(seam + 60, seam + 220, y); strength[jj] = st;
+            if ((!has && deep === 0) || !(flag[col] & 1)) continue;
+            let st = clamp((RB[o] - 58) / 45) * smooth(26, 64, 34 - P2[col]) * smooth(seam + 60, seam + 220, y);
+            if (deep > 0) {
+                const planar = 34 - P2[col], distance = Math.hypot(Math.max(0, planar), z);
+                st = clamp((RB[o] - 58 + 30 * deep) / (45 + 15 * deep)) * smooth(26, 64, planar + (distance - planar) * deep) * smooth(seam + 60, seam + 220, y) * (1 + (s.deposition[col] - 1) * deep);
+            }
+            strength[jj] = st;
+            // 地面沉积也用这个局部强度，即便本块上方的洞顶在扫描范围外。
+            if (!has) continue;
             let val = y - edge - ceiling * st;
             if (broken) val = Math.max(val, S * .5); else if (val >= 0) broken = true;
             if (val < f) F[o] = val;
         }
         has = false; rock = false; broken = false;
         for (let jj = nj - 1; jj >= 0; jj--) {
-            const o = off + ii + ni * jj, f = F[o], y = t.y + (j0 + jj) * S;
+            const o = off + ii + ni * jj, f = deep > 0 ? s.base[ii + ni * jj] : F[o], y = t.y + (j0 + jj) * S;
             if (f <= 0) { rock = true; last = f; has = true; broken = false; continue; }
             if (rock) { edge = y + S - S * last / (last - f); rock = false; }
             if (!has) continue;
             let val = edge - y - ground * strength[jj];
             if (broken) val = Math.max(val, S * .5); else if (val >= 0) broken = true;
-            if (val < f) F[o] = val;
+            if (val < f && val < F[o]) F[o] = val;
         }
     }
     // 四、保底：通路在游戏平面上留出身体净空，往里收成半个管。
@@ -397,7 +419,16 @@ export function stepVolumeChunk(t: KarstTerrain, job: KarstVolumeJob, deadline: 
                 normals[n * 3] = gx / l; normals[n * 3 + 1] = gy / l; normals[n * 3 + 2] = gz / l;
             }
             job.k = stop;
-            if (stop >= count) { const took = Date.now() - began; job.ms += took; job.longestStep = Math.max(job.longestStep, took); return { positions, normals, indices: new Uint16Array(job.I), ms: job.ms, dropped: job.dropped }; }
+            if (stop >= count) {
+                // 与网格共用已经求好的体积场。保留核心边界外一格，供光线跨块查询、插值法线。
+                const pi0 = Math.max(0, oi0 - 1), pj0 = Math.max(0, oj0 - 1), pi1 = Math.min(ni - 1, oi1 + 1), pj1 = Math.min(nj - 1, oj1 + 1);
+                const cols = pi1 - pi0 + 1, rows = pj1 - pj0 + 1, values = new Int8Array(cols * rows * NK);
+                for (let k = 0; k < NK; k++) for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++)
+                    values[(k * rows + j) * cols + i] = Math.round(clamp(F[k * plane + (j + pj0) * ni + i + pi0], -127, 127));
+                const probe: VolumeProbeField = { x: t.x + (i0 + pi0) * S, y: t.y + (j0 + pj0) * S, step: S, cols, rows, z: VOLUME_Z, values };
+                const took = Date.now() - began; job.ms += took; job.longestStep = Math.max(job.longestStep, took);
+                return { positions, normals, indices: new Uint16Array(job.I), ms: job.ms, dropped: job.dropped, probe };
+            }
         }
         const now = Date.now(), took = now - began; job.ms += took; job.longestStep = Math.max(job.longestStep, took);
         if (now >= deadline) return null;

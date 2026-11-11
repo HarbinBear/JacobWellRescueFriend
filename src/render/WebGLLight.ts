@@ -232,6 +232,7 @@ function initOneCtx(ctx: GLCtx, fragSrc: string, label: string): boolean {
         // 后处理
         'u_exposure', 'u_enableToneMapping', 'u_toneMappingMode', 'u_reinhardWhitePoint',
         'u_karstMode', 'u_extinction', 'u_karstScatter',
+        'u_volumeMode', 'u_volumeBounce[0]', 'u_volumeBounceNormals[0]',
         'u_karstBounceTex', 'u_karstBounceCount', 'u_karstBouncePositions[0]', 'u_karstBounceDirections[0]', 'u_karstBounceColors[0]'
     ];
     ctx.uniforms = getUniforms(gl, ctx.program, uniformNames);
@@ -545,7 +546,8 @@ function setCommonUniforms(ctx: GLCtx, params: {
     angle: number, maxDist: number,
     flashlightActive: boolean,
     npcX: number, npcY: number, npcAngle: number, npcDist: number, npcActive: boolean,
-    polyCount: number, vplCount: number
+    polyCount: number, vplCount: number,
+    volumeMode?: boolean, volumeBounce?: Float32Array, volumeBounceNormals?: Float32Array
 }) {
     const gl = ctx.gl;
     if (!gl) return;
@@ -565,6 +567,11 @@ function setCommonUniforms(ctx: GLCtx, params: {
     gl.uniform1f(u['u_flashlightActive']!, params.flashlightActive ? 1.0 : 0.0);
     gl.uniform1f(u['u_centerFov']!, centerFovRad);
     gl.uniform1f(u['u_karstMode']!, (params as any).karstMode ? ((params as any).karstEnhanced ? 2 : 1) : 0);
+    gl.uniform1f(u['u_volumeMode']!, params.volumeMode ? 1 : 0);
+    if (params.volumeMode && params.volumeBounce && params.volumeBounceNormals) {
+        gl.uniform4fv(u['u_volumeBounce[0]']!, params.volumeBounce);
+        gl.uniform4fv(u['u_volumeBounceNormals[0]']!, params.volumeBounceNormals);
+    }
     const absorption=CONFIG.karst.extinction;
     gl.uniform3f(u['u_extinction']!,absorption[0],absorption[1],absorption[2]);
     gl.uniform1f(u['u_karstScatter']!,CONFIG.karst.scatterStrength);

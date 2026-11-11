@@ -6,7 +6,8 @@ varying vec4 LP;
 uniform vec3 lightPos;
 uniform vec3 lightDir;
 uniform vec4 bounce[10];
-uniform float roomLight;
+uniform vec4 bounceNormal[10];
+uniform float fov;
 uniform vec3 extinction;
 uniform float range;
 uniform float farDepth;
@@ -69,7 +70,7 @@ void main() {
     float face = 1.0 - smoothstep(-2.6, -0.4, P.z);
     float alpha = smoothstep(fadeTop, fadeTop + 170.0, P.y);
     if (inspect > 0.5) {
-        float diff = 0.18 + 0.82 * max(dot(n, normalize(vec3(-0.35, -0.55, -0.76))), 0.0);
+        float diff = 0.18 + 0.82 * max(dot(normalize(N), normalize(vec3(-0.35, -0.55, -0.76))), 0.0);
         vec3 clay = pow(vec3(0.62, 0.66, 0.68) * diff * exp(-max(P.z, 0.0) / 420.0), vec3(1.0 / 2.2));
         gl_FragColor = vec4(mix(clay, vec3(0.03, 0.035, 0.04), face), alpha);
         return;
@@ -85,31 +86,34 @@ void main() {
         vec3 toL = lightPos - P;
         float d = length(toL);
         vec3 l = toL / max(d, 0.01);
-        // S03 小样的三维光锥：中心高光，外围宽柔光，近身留一点散射。
+        // 与水中光柱同一支手电：65°锥边、中心高光及柔和外沿。
         float c = dot(-l, lightDir), diff = mix(max(dot(n, l), 0.0), 0.6, face);
-        float cone = 0.22 * smoothstep(0.26, 0.85, c) + 0.78 * smoothstep(0.80, 0.96, c);
+        float theta = acos(clamp(c, -1.0, 1.0));
+        float spill = exp(-pow(theta / max(0.01, fov * 0.36), 4.0));
+        spill *= 1.0 - smoothstep(fov * 0.43, fov * 0.5, theta);
+        float hot = exp(-theta * theta / 0.031);
+        float cone = (spill * 0.63 + hot * 0.25) / 0.88;
+        cone *= 1.0 - step(fov * 0.5, theta);
         float fall = 1.0 - smoothstep(range * 0.85, max(1.0, range * 1.2), d);
         float direct = cone * diff * shadow() * energy * fall / (1.0 + pow(d / 200.0, 2.0));
-        float nearGlow = (0.25 + 0.75 * diff) * 0.10 / (1.0 + pow(d / 90.0, 2.0)) * (1.0 - smoothstep(120.0, 330.0, d));
         float reflected = 0.0;
         for (int i = 0; i < 10; i++) {
             if (bounce[i].w <= 0.0) continue;
             vec3 toB = bounce[i].xyz - P;
             float db2 = dot(toB, toB);
-            if (db2 >= 160000.0) continue;
+            if (db2 >= 422500.0) continue;
             float db = sqrt(db2);
-            float diffuse = mix(max(dot(n, toB / max(db, 0.01)), 0.0), 0.5, face);
-            reflected += bounce[i].w * (0.3 + 0.7 * diffuse) / (1.0 + db2 / 16900.0) * (1.0 - smoothstep(150.0, 400.0, db));
+            vec3 towardSource = toB / max(db, 0.01);
+            float diffuse = mix(max(dot(n, towardSource), 0.0), 0.5, face);
+            float emission = max(dot(bounceNormal[i].xyz, -towardSource), 0.0);
+            // 光只能从命中的岩面向水域反射；落点到接收面之间暂以半球近似二次可见性。
+            reflected += bounce[i].w * emission * diffuse / (1.0 + db2 / 65000.0) * (1.0 - smoothstep(220.0, 650.0, db));
         }
-        // 回光铺开到洞顶和两侧，灯背后只留很弱的一层。
-        float planar = dot(-toL.xy, lightDir.xy) / max(length(toL.xy), 70.0);
-        float forward = smoothstep(-0.74, 0.18, planar);
-        float room = roomLight * (0.06 + 0.94 * forward) * (0.58 + 0.42 * diff) / (1.0 + pow(d / 620.0, 2.0));
-        lit = direct * 0.55 + nearGlow + reflected * 0.65 + room * 0.15;
+        lit = direct * 0.55 + reflected * 0.65;
         vec3 beamColor = vec3(0.12, 0.35, 0.61);
         vec3 returnColor = vec3(0.028, 0.21, 0.50);
-        vec3 light = beamColor * (direct * 0.63 + nearGlow * 0.45) + returnColor * (reflected + room);
-        col += rock * light * exp(-extinction * d * 0.38) * exp(-max(P.z, 0.0) / 580.0);
+        vec3 light = beamColor * direct * 0.63 * exp(-extinction * d * 0.38) + returnColor * reflected;
+        col += rock * light * exp(-max(P.z, 0.0) / 580.0);
     }
     // 往里越深越暗，最深处完全沉进黑暗里：大厅看不到底，只有浅的洞才看得到后壁。
     col *= 1.0 - smoothstep(farDepth * 0.80, farDepth * 0.99, P.z);

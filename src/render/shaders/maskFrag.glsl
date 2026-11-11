@@ -18,6 +18,9 @@ uniform float u_flashlightActive;
 uniform float u_karstMode;
 uniform vec3 u_extinction;
 uniform float u_karstScatter;
+uniform float u_volumeMode;
+uniform vec4 u_volumeBounce[10];
+uniform vec4 u_volumeBounceNormals[10];
 uniform sampler2D u_karstBounceTex;
 uniform float u_karstBounceCount;
 uniform vec4 u_karstBouncePositions[6];
@@ -175,6 +178,23 @@ vec3 karstReflectedWater(vec2 p) {
     return reflected*u_flashlightActive;
 }
 
+// 前景沿用二维绘制，但受同一组三维岩面落点的回光影响。
+// 没有岩面命中就没有回光；尚未在这一层做三维二次遮挡。
+float volumeReflectedLight(vec2 p) {
+    float light = 0.0;
+    for (int i = 0; i < 10; i++) {
+        vec4 source = u_volumeBounce[i], normal = u_volumeBounceNormals[i];
+        if (source.w <= 0.0) continue;
+        vec3 delta = vec3(p, 0.0) - source.xyz;
+        float d = length(delta);
+        float hemi = max(0.0, dot(normal.xyz, delta / max(d, 0.01)));
+        light += source.w * hemi / (1.0 + d*d / 65000.0) * (1.0 - smoothstep(220.0, normal.w, d));
+    }
+    // 洞壁按线性能量着色后转到显示亮度；前景暗罩也使用同样的响应，避免身体只剩黑影。
+    float irradiance = light * 0.23;
+    return pow(irradiance / (1.0 + irradiance), 1.0 / 2.2) * u_flashlightActive;
+}
+
 void main() {
     vec2 worldPos = screenToWorld(v_uv);
     
@@ -196,6 +216,7 @@ void main() {
         float incident = (spill * 0.65 + hot * 0.55) * visible * fall * luminance * u_flashlightActive;
         float self = (1.0 - smoothstep(12.0, 90.0, dist)) * 0.42;
         float indirect = exp(-dist / 170.0) * 0.065 * u_flashlightActive * u_karstScatter;
+        if (u_volumeMode > 0.5) { self = 0.0; indirect = volumeReflectedLight(worldPos); }
         vec3 bounce=u_karstMode>1.5?karstReflectedWater(worldPos):vec3(0.0);
         float light = clamp(incident * 1.45 + self + indirect + dot(bounce,vec3(0.2126,0.7152,0.0722))*1.9, 0.0, 0.92);
         vec3 dark = vec3(0.001, 0.003, 0.005);

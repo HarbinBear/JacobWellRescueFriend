@@ -3,7 +3,7 @@ import { drawMazeWallShape } from '../../render/RenderMazeScene';
 import { drawKarstSurface, karstSurfaceStats, karstAssetsReady } from '../../render/RenderKarst';
 import { getKarstTerrain, karstStats } from '../KarstTerrain';
 import { getKarstBounce } from '../../render/KarstBounce';
-import { drawKarstVolume, restoreKarstVolumeLight, karstVolumeStats } from '../../render/RenderKarstVolume';
+import { drawKarstVolume, restoreKarstVolumeLight, karstVolumeStats, getKarstVolumeBounceLights, getKarstVolumeBounceNormals } from '../../render/RenderKarstVolume';
 import { CONFIG } from '../../core/config';
 import { state, player, particles } from '../../core/state';
 import { canvas,ctx,dpr,logicW,logicH } from '../../render/Canvas';
@@ -143,7 +143,9 @@ function lighting(volumeMix:number) {
         const count=terrain?.generation==='volume'?0:uploadVPLData(poly,range)||0;
         uploadKarstBounceData(light&&terrain&&sculpted?getKarstBounce(terrain,poly,player.x,player.y,player.angle,range):null);
         const base={playerX:player.x,playerY:player.y,cameraX:c.x+c.swayX,cameraY:c.y+c.swayY,zoom:c.zoom,shakeX:0,shakeY:0,angle:player.angle,maxDist:range,
-            flashlightActive:light,karstMode:!!terrain,karstEnhanced:sculpted,npcX:state.npc.x,npcY:state.npc.y,npcAngle:state.npc.angle,npcDist:range*.5,npcActive:false,polyCount:poly.length,vplCount:count};
+            flashlightActive:light,karstMode:!!terrain,karstEnhanced:sculpted,volumeMode:terrain?.generation==='volume',
+            volumeBounce:getKarstVolumeBounceLights(),volumeBounceNormals:getKarstVolumeBounceNormals(),
+            npcX:state.npc.x,npcY:state.npc.y,npcAngle:state.npc.angle,npcDist:range*.5,npcActive:false,polyCount:poly.length,vplCount:count};
         renderVolumetricLight(base);const size=getGLCanvasPixelSize();
         // 岸边沿用原来的合成。洞室里的水中光柱在遮罩之后画，空旷时也能看清照射方向。
         ctx.globalAlpha=1-volumeMix;

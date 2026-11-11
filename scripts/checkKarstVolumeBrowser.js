@@ -28,18 +28,23 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
             await ev(`DeepTapeGame.review.inspectVolumeSite(${index});DeepTapeGame.world.geometry.world().hidden=true`); await settle(); await shot(name);
             if (index === 0 || index === 1) { await ev('DeepTapeGame.cave.volume.inspectKarstVolume(1)'); await wait(250); await shot(name + '-clay'); await ev('DeepTapeGame.cave.volume.inspectKarstVolume(0)'); }
         }
-        const on = await hallLight();
+        // 有真实侧壁落点的裂隙机位用于回光检查；空大厅不再必须被虚构的全室光照亮。
+        await ev('DeepTapeGame.review.inspectVolumeSite(6);DeepTapeGame.world.geometry.world().hidden=true'); await settle();
+        const on = await hallLight(), onSources = await ev('({stats:DeepTapeGame.cave.volume.karstVolumeStats(),lights:Array.from(DeepTapeGame.cave.volume.getKarstVolumeBounceLights())})');
         const bounce = await ev('DeepTapeGame.cave.config.karst.bounceStrength');
-        await ev('DeepTapeGame.cave.config.karst.bounceStrength=0'); await wait(250); const direct = await hallLight(); await shot('hall2-direct');
+        await ev('DeepTapeGame.cave.config.karst.bounceStrength=0'); await wait(250); const direct = await hallLight(); await shot('fracture-direct');
+        assert.equal(await ev('DeepTapeGame.cave.volume.karstVolumeStats().bounceCount'), 0, '禁用回光时必须清除全部落点');
         await ev(`DeepTapeGame.cave.config.karst.bounceStrength=${bounce};DeepTapeGame.state.flashlightOn=false`);
-        await wait(250); const off = await hallLight(); await shot('hall2-light-off');
-        await ev('DeepTapeGame.state.flashlightOn=true;DeepTapeGame.review.rotateKarstLight(-Math.PI/2)');
-        await wait(250); const turned = await hallLight(); await shot('hall2-turned');
-        report.lighting = { on, direct, off, turned };
+        await wait(250); const off = await hallLight(); await shot('fracture-light-off');
+        assert.equal(await ev('DeepTapeGame.cave.volume.karstVolumeStats().bounceCount'), 0, '关灯后不能留下上一帧回光');
+        await ev('DeepTapeGame.state.flashlightOn=true;DeepTapeGame.review.rotateKarstLight(-Math.PI)');
+        await wait(250); const turned = await hallLight(); await shot('fracture-turned');
+        report.lighting = { on, direct, off, turned, onSources };
         assert(direct.front.luma > off.front.luma + 4, '关闭岩面回光后，空旷通道里的手电光柱仍应可见');
-        assert(on.front.luma > direct.front.luma + 4 && on.front.luma > off.front.luma + 4, '大厅前方应随回光和灯开关改变');
+        assert(onSources.stats.bounceCount > 0 && onSources.stats.returnedLight > 0, '真实岩面命中必须提供回光');
+        assert(on.front.luma > direct.front.luma + 1 && on.front.luma > off.front.luma + 4, '命中岩壁的机位应有可见回光');
         assert(on.front.blue > 5 && on.rear.luma < on.front.luma * .65, '回光应为蓝色，并给身后留下暗区');
-        assert(turned.rear.luma > on.rear.luma + 4, '转灯应带动远离光轴的回光');
+        assert(turned.rear.luma > on.rear.luma + 4, '转灯后光柱与岩面落点应改变，不能固定在角色周围');
         await ev('DeepTapeGame.review.inspectVolumeSite(0);DeepTapeGame.state.flashlightOn=false'); await wait(300); await shot('hall-light-off'); await ev('DeepTapeGame.state.flashlightOn=true');
         report.volume = await ev('DeepTapeGame.cave.volume.karstVolumeStats()'); report.graphics = await ev('DeepTapeGame.world.render.worldGraphicsStats().rocks');
         assert(report.volume.ready && report.volume.chunks > 0 && report.volume.triangles > 1000, '三维洞腔必须已生成并绘制'); assert.equal(report.volume.droppedQuads, 0);
