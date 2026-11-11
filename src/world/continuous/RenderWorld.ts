@@ -3,7 +3,7 @@ import { drawMazeWallShape } from '../../render/RenderMazeScene';
 import { drawKarstSurface, karstSurfaceStats, karstAssetsReady } from '../../render/RenderKarst';
 import { getKarstTerrain, karstStats } from '../KarstTerrain';
 import { getKarstBounce } from '../../render/KarstBounce';
-import { drawKarstVolume, restoreKarstVolumeLight, isVolumeFishDrawn, isVolumeRopeDrawn, karstVolumeStats, getKarstVolumeBounceLights, getKarstVolumeBounceNormals } from '../../render/RenderKarstVolume';
+import { drawKarstVolume, restoreKarstVolumeLight, isVolumeFishDrawn, isVolumeRopeDrawn, isVolumePlayerDrawn, karstVolumeStats, getKarstVolumeBounceLights, getKarstVolumeBounceNormals } from '../../render/RenderKarstVolume';
 import { CONFIG } from '../../core/config';
 import { state, player, particles } from '../../core/state';
 import { canvas,ctx,dpr,logicW,logicH,withCanvasContext } from '../../render/Canvas';
@@ -202,7 +202,7 @@ export function drawContinuousFrame(){
         swimEffort:CONFIG.driveMode==='semiAuto'?state.semiAutoDrive.effort:undefined,workPose:getInteractionWorkPose(),bcdInflation:getBCDInflationRatio(),bcdVenting:isBCDVenting(),tapeVisual:visual,
         landPose:{blend:w.landBlend,phase:w.walkPhase,effort:clamp(Math.abs(player.vx)/3.3),facing:w.facing},regulatorAnim:player.regulatorAnim,carryItemAnim:player.carryItemAnim};
     if(w.resting)drawDiver(ctx,w.originX+layout.rest.x-20,groundAt(w.originX+layout.rest.x)-43,Math.PI+.28,null,{...motion,hasTank:false,tankCount:0,autoSwim:false,swimEffort:0});
-    else drawDiver(ctx,player.x,player.y,player.angle,null,motion);
+    else if(!volumeDrawn||!isVolumePlayerDrawn())drawDiver(ctx,player.x,player.y,player.angle,null,motion);
     drawInteractionWorkWorld(ctx);ctx.save();ctx.beginPath();ctx.rect(v.l,w.surfaceY,v.r-v.l,Math.max(0,v.b-w.surfaceY));ctx.clip();drawBreathBubblesWorld(ctx,v.l,v.r,v.t,v.b);ctx.restore();
     for(const p of particles){if(p.x<v.l||p.x>v.r||p.y<v.t||p.y>v.b)continue;ctx.fillStyle=p.type==='silt'?`rgba(91,124,97,${p.life*.17})`:`rgba(193,220,180,${p.life*.3})`;ctx.beginPath();ctx.arc(p.x,p.y,Math.max(.5,p.size),0,Math.PI*2);ctx.fill();}
     };

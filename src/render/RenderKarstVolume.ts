@@ -3,6 +3,7 @@
 // 网格按镜头附近分块生成，每帧最多新生成一块；离开很远的块会被释放。
 import { FishVolumePass } from './FishVolumePass';
 import { RopeVolumePass } from './RopeVolumePass';
+import type { VolumeActorPass, VolumeActorPassFactory } from './VolumeActorPass';
 import type { RopeVolumeSource } from './RopeVolumeMesh';
 import { FishEnemy } from '../logic/FishEnemy';
 import { getRopeDeformedPoint } from '../logic/Rope';
@@ -34,6 +35,7 @@ let shadowFB: WebGLFramebuffer | null = null, shadowTex: WebGLTexture | null = n
 let chunks = new Map<number, Chunk>(), empty = new Set<number>(), frame = 0, key = '', uploads = 0, retryAt = 0, failure = '', inspection = 0;
 let fishPass: FishVolumePass | null = null, fishProgram: any = null, fishFailure = '';
 let ropePass: RopeVolumePass | null = null, ropeFailure = '';
+let actorFactory: VolumeActorPassFactory | null = null, actorPass: VolumeActorPass | null = null, actorFailure = '', actorPainted = false;
 let width = 0, height = 0, antialiasSamples = 0, bounceCount = 0, returnedLight = 0, bounceProbeMs = 0;
 let visiblePending = 0, shadowPending = 0, preloadPending = 0, visibleChunks = 0, shadowChunks = 0, offscreenShadowChunks = 0;
 let draws = 0, cacheHits = 0, lostCount = 0, lastBuildMs = 0, maxBuildMs = 0, builds = 0, triangles = 0, cpuMs = 0, dropped = 0;
@@ -60,10 +62,11 @@ function texture(format: number, type: number, w: number, h: number, data: Array
     gl!.texParameteri(gl!.TEXTURE_2D, gl!.TEXTURE_WRAP_S, gl!.CLAMP_TO_EDGE); gl!.texParameteri(gl!.TEXTURE_2D, gl!.TEXTURE_WRAP_T, gl!.CLAMP_TO_EDGE);
     return t;
 }
-function forget() { ropePass = null; fishPass = null; fishProgram = null; job = null; gl = null; main = null; depth = null; shadowFB = null; shadowTex = null; sliceTex = null; chunks = new Map(); empty = new Set(); terrain = null; key = ''; triangles = 0;
+function forget() { disposeActor(); ropePass = null; fishPass = null; fishProgram = null; job = null; gl = null; main = null; depth = null; shadowFB = null; shadowTex = null; sliceTex = null; chunks = new Map(); empty = new Set(); terrain = null; key = ''; triangles = 0;
     antialiasSamples = 0;
     pending = visiblePending = shadowPending = preloadPending = visibleChunks = shadowChunks = offscreenShadowChunks = 0; clearBounce(); }
 function dispose() {
+    disposeActor();
     if (gl && !gl.isContextLost()) {
         for (const c of chunks.values()) { gl.deleteBuffer(c.vb); gl.deleteBuffer(c.nb); gl.deleteBuffer(c.ib); }
         if (sliceTex) gl.deleteTexture(sliceTex); if (shadowTex) gl.deleteTexture(shadowTex); if (shadowFB) gl.deleteFramebuffer(shadowFB);
@@ -72,6 +75,32 @@ function dispose() {
     }
     forget();
 }
+function disposeActor() {
+    const old = actorPass; actorPass = null; actorPainted = false;
+    try { old?.dispose(); } catch (error) { actorFailure = String(error); }
+}
+function failActor(error: unknown) {
+    disposeActor(); actorFailure = String(error); key = '';
+    console.warn('[外置三维角色] 回退二维绘制', error);
+}
+function createActor() {
+    if (!actorFactory || !gl || !fishProgram || actorPass || actorFailure) return;
+    try { actorPass = actorFactory(gl); } catch (error) { failActor(error); }
+}
+function drawActor(shadow: boolean) {
+    if (!actorPass?.count) return false;
+    try {
+        const drawn = actorPass.draw(shadow);
+        const error = gl!.getError();
+        if (error !== gl!.NO_ERROR) throw Error('WebGL actor draw: ' + error);
+        return drawn === true;
+    } catch (error) { failActor(error); return false; }
+}
+export function setVolumeActorPassFactory(factory: VolumeActorPassFactory | null) {
+    disposeActor(); actorFactory = factory; actorFailure = ''; key = '';
+}
+/** Also called when the frame chooses a different scene or a non-volume cave. */
+export function beginKarstVolumeFrame() { shownFrame = -1; }
 function initialize(t: KarstTerrain) {
     dispose();
     if (!surface) {
@@ -92,6 +121,7 @@ function initialize(t: KarstTerrain) {
     ropeFailure = fishProgram ? '' : fishFailure;
     if (fishProgram) try { ropePass = new RopeVolumePass(gl); }
     catch (error) { ropeFailure = String(error); ropePass = null; console.warn('[立体引导绳] 回退二维绘制', error); }
+    actorFailure = ''; createActor();
     // 剖面贴边受光用：每格岩石离洞壁有多深。
     const bytes = new Uint8Array(t.cols * t.rows * 2);
     for (let i = 0; i < t.field.length; i++) {
@@ -225,8 +255,14 @@ export function drawKarstVolume(ctx: CanvasRenderingContext2D, t: KarstTerrain, 
     const shrink = Math.min(1, Math.sqrt(quality.pixelBudget / Math.max(1, w * h))); w = Math.max(2, Math.round(w * shrink)); h = Math.max(2, Math.round(h * shrink));
     fishPass?.prepare(state.fishEnemies || [], (state.mazeRescue as any)?.continuous?.elapsed || 0, cx, cy, halfW, halfH, quality.volumeFish, { x: player.x, y: player.y, radius: shadowOn ? CONFIG.lightRange * 1.2 : 0 });
     ropePass?.prepare(state.rope.ropes, (state.mazeRescue as any)?.continuous?.elapsed || 0, cx, cy, halfW, halfH, quality.volumeRopes, { x: player.x, y: player.y, radius: shadowOn ? CONFIG.lightRange * 1.2 : 0 }, (state.mazeRescue as any)?.continuous?.surfaceY || 0, getRopeDeformedPoint);
-    const next = [fishPass?.count ? frame : 0, ropePass?.revision || 0, cx, cy, zoom, w, h, player.x, player.y, player.angle, lightOn, shadowOn, CONFIG.lightRange, CONFIG.fov, quality.lightEnergy, quality.bounceStrength, quality.volumeVisibility, quality.volumeMaterial, quality.extinction.join(), uploads, visible.length, inspection].join('/');
+    createActor();
+    const world = (state.mazeRescue as any)?.continuous;
+    try { actorPass?.prepare({ x: player.x, y: player.y, angle: player.angle, elapsed: world?.elapsed || 0,
+        cx, cy, halfW, halfH, surfaceY: world?.surfaceY || 0, enabled: !!world && !world.resting }); }
+    catch (error) { failActor(error); }
+    const next = [fishPass?.count ? frame : 0, ropePass?.revision || 0, actorPass?.revision || 0, actorPass?.count || 0, actorPass?.matte ?? 1, cx, cy, zoom, w, h, player.x, player.y, player.angle, lightOn, shadowOn, CONFIG.lightRange, CONFIG.fov, quality.lightEnergy, quality.bounceStrength, quality.volumeVisibility, quality.volumeMaterial, quality.extinction.join(), uploads, visible.length, inspection].join('/');
     if (next !== key) {
+        actorPainted = false;
         if (surface.width !== w) surface.width = w; if (surface.height !== h) surface.height = h; width = w; height = h;
         const viewProj = multiply(perspective(2 * Math.atan(halfH / D), halfW / halfH, D * .3, D + VOLUME_DEPTH + 200), lookAt([cx, cy, -D], [cx, cy, 0], [0, -1, 0]));
         const lightPos = [player.x, player.y, 0], dir = [Math.cos(player.angle) * Math.cos(TORCH_PITCH), Math.sin(player.angle) * Math.cos(TORCH_PITCH), Math.sin(TORCH_PITCH)], range = CONFIG.lightRange;
@@ -235,7 +271,7 @@ export function drawKarstVolume(ctx: CanvasRenderingContext2D, t: KarstTerrain, 
         if (shadowOn) {
             gl.bindFramebuffer(gl.FRAMEBUFFER, shadowFB); gl.viewport(0, 0, SHADOW, SHADOW); gl.clearColor(0, 0, 0, 1); gl.clear(gl.DEPTH_BUFFER_BIT | gl.COLOR_BUFFER_BIT);
             gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, null); gl.disableVertexAttribArray(1);
-            gl.useProgram(depth.p); gl.uniformMatrix4fv(depth.u.lightVP, false, lightVP); drawChunks(shadowCasters); fishPass?.draw(true); ropePass?.draw(true); gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+            gl.useProgram(depth.p); gl.uniformMatrix4fv(depth.u.lightVP, false, lightVP); drawChunks(shadowCasters); fishPass?.draw(true); ropePass?.draw(true); drawActor(true); gl.bindFramebuffer(gl.FRAMEBUFFER, null);
         }
         gl.enableVertexAttribArray(1); gl.viewport(0, 0, w, h); gl.clearColor(0, 0, 0, 0); gl.clear(gl.DEPTH_BUFFER_BIT | gl.COLOR_BUFFER_BIT); gl.useProgram(main.p);
         updateBounce(t, lightOn && !inspection, range, quality.bounceStrength * quality.lightEnergy / 3.4);
@@ -252,7 +288,7 @@ export function drawKarstVolume(ctx: CanvasRenderingContext2D, t: KarstTerrain, 
         gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, sliceTex); gl.uniform1i(main.u.sliceTex, 1);
         gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, shadowOn ? shadowTex : null); gl.uniform1i(main.u.shadowMap, 0);
         drawChunks(visible);
-        if (fishPass?.count || ropePass?.count) {
+        if (fishPass?.count || ropePass?.count || actorPass?.count) {
             const f = fishProgram; gl.useProgram(f.p);
             gl.uniformMatrix4fv(f.u.viewProj, false, viewProj); gl.uniformMatrix4fv(f.u.lightVP, false, lightVP);
             gl.uniform3fv(f.u.lightPos, lightPos); gl.uniform3fv(f.u.lightDir, dir); gl.uniform3f(f.u.cameraPos, cx, cy, -D);
@@ -263,6 +299,7 @@ export function drawKarstVolume(ctx: CanvasRenderingContext2D, t: KarstTerrain, 
             gl.uniform2f(f.u.gridOrigin, t.x, t.y); gl.uniform2f(f.u.gridSize, t.cols, t.rows); gl.uniform1f(f.u.cellSize, t.step); gl.uniform1i(f.u.sliceTex, 1);
             gl.uniform1f(f.u.matte, 0); fishPass?.draw();
             gl.uniform1f(f.u.matte, 1); ropePass?.draw();
+            gl.uniform1f(f.u.matte, Math.max(0, Math.min(1, actorPass?.matte ?? 1))); actorPainted = drawActor(false);
         }
         gl.flush(); draws++; key = next;
     } else cacheHits++;
@@ -285,6 +322,7 @@ export function restoreKarstVolumeLight(ctx: CanvasRenderingContext2D, mask: any
 }
 export function isVolumeFishDrawn(fish: FishEnemy) { return shownFrame === frame && !!gl && !gl.isContextLost() && !!fishPass?.contains(fish); }
 export function isVolumeRopeDrawn(rope: RopeVolumeSource) { return shownFrame === frame && !!gl && !gl.isContextLost() && !!ropePass?.contains(rope); }
+export function isVolumePlayerDrawn() { return shownFrame === frame && !!gl && !gl.isContextLost() && actorPainted; }
 export function getKarstVolumeBounceLights() { return bounceLights; }
 export function getKarstVolumeBounceNormals() { return bounceNormals; }
 export function inspectKarstVolume(mode = 0) { inspection = mode; key = ''; }
@@ -298,6 +336,7 @@ export function karstVolumeStats() {
         visiblePending, shadowPending, preloadPending, visibleChunks, shadowChunks, offscreenShadowChunks, bounceCount, returnedLight, bounceProbeMs, cpuProbeBytes,
         fishFailure, fishCount: shownFrame === frame ? fishPass?.count || 0 : 0, fishTriangles: fishPass?.triangles || 0, fishBytes: fishPass?.bytes || 0,
         ropeFailure: ropeFailure || ropePass?.failure || '', ropeCount: shownFrame === frame ? ropePass?.count || 0 : 0, ropeTriangles: ropePass?.triangles || 0, ropeBytes: ropePass?.bytes || 0, ropeBuilds: ropePass?.builds || 0,
-        antialiasSamples, surfacePixels: width * height, cpuMs, gpuBytes: (ropePass?.bytes || 0) + (fishPass?.bytes || 0) + bytes + (terrain ? terrain.cols * terrain.rows * 2 : 0) + (shadowFB ? SHADOW * SHADOW * 8 : 0) + width * height * 8 * (1 + antialiasSamples) };
+        actorFailure, actorCount: isVolumePlayerDrawn() ? actorPass?.count || 0 : 0, actorRevision: actorPass?.revision || 0, actorTriangles: actorPass?.triangles || 0, actorBytes: actorPass?.bytes || 0,
+        antialiasSamples, surfacePixels: width * height, cpuMs, gpuBytes: (actorPass?.bytes || 0) + (ropePass?.bytes || 0) + (fishPass?.bytes || 0) + bytes + (terrain ? terrain.cols * terrain.rows * 2 : 0) + (shadowFB ? SHADOW * SHADOW * 8 : 0) + width * height * 8 * (1 + antialiasSamples) };
 }
 export function releaseKarstVolume() { dispose(); retryAt = 0; failure = ''; width = height = 0; shownFrame = -1; if (surface) surface.width = surface.height = 1; if (overlay) overlay.width = overlay.height = 1; }

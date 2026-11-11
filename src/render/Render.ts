@@ -1,4 +1,5 @@
 import { updateKarstResources } from './RenderKarst';
+import { beginKarstVolumeFrame } from './RenderKarstVolume';
 import { updateWorldAssets, drawContinuousFrame } from '../world/continuous/RenderWorld';
 import { activeWorld } from '../world/continuous/Geometry';
 import { isWorldNavigationOpen } from '../world/continuous/Runtime';
@@ -82,6 +83,7 @@ function drawSplashes() {
 
 // --- 主渲染函数 ---
 function drawFrame() {
+    beginKarstVolumeFrame();
     updateKarstResources();
     updateWorldAssets();
     if (activeWorld()) { updateCaveRockResources(); drawContinuousFrame(); return; }
