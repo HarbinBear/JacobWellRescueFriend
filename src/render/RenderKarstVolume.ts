@@ -197,7 +197,7 @@ export function drawKarstVolume(ctx: CanvasRenderingContext2D, t: KarstTerrain, 
     const quality = CONFIG.karst, resolution = Math.max(.65, Math.min(1.6, CONFIG.quality.scale * 2));
     let w = Math.ceil(logicW * resolution), h = Math.ceil(logicH * resolution);
     const shrink = Math.min(1, Math.sqrt(quality.pixelBudget / Math.max(1, w * h))); w = Math.max(2, Math.round(w * shrink)); h = Math.max(2, Math.round(h * shrink));
-    const next = [cx, cy, zoom, w, h, player.x, player.y, player.angle, lightOn, shadowOn, CONFIG.lightRange, CONFIG.fov, quality.lightEnergy, quality.bounceStrength, quality.extinction.join(), uploads, visible.length, inspection].join('/');
+    const next = [cx, cy, zoom, w, h, player.x, player.y, player.angle, lightOn, shadowOn, CONFIG.lightRange, CONFIG.fov, quality.lightEnergy, quality.bounceStrength, quality.volumeVisibility, quality.volumeMaterial, quality.extinction.join(), uploads, visible.length, inspection].join('/');
     if (next !== key) {
         if (surface.width !== w) surface.width = w; if (surface.height !== h) surface.height = h; width = w; height = h;
         const viewProj = multiply(perspective(2 * Math.atan(halfH / D), halfW / halfH, D * .3, D + VOLUME_DEPTH + 200), lookAt([cx, cy, -D], [cx, cy, 0], [0, -1, 0]));
@@ -218,6 +218,7 @@ export function drawKarstVolume(ctx: CanvasRenderingContext2D, t: KarstTerrain, 
         gl.uniform3f(main.u.extinction, quality.extinction[0], quality.extinction[1], quality.extinction[2]);
         gl.uniform1f(main.u.range, range); gl.uniform1f(main.u.farDepth, VOLUME_DEPTH); gl.uniform1f(main.u.enabled, lightOn ? 1 : 0);
         gl.uniform1f(main.u.shadowOn, shadowOn ? 1 : 0); gl.uniform1f(main.u.energy, quality.lightEnergy); gl.uniform1f(main.u.inspect, inspection);
+        gl.uniform1f(main.u.visibilityFill, quality.volumeVisibility); gl.uniform1f(main.u.materialMix, quality.volumeMaterial);
         gl.uniform1f(main.u.surfaceY, (state.mazeRescue as any)?.continuous?.surfaceY || 0); gl.uniform1f(main.u.fadeTop, t.y);
         gl.uniform2f(main.u.gridOrigin, t.x, t.y); gl.uniform2f(main.u.gridSize, t.cols, t.rows); gl.uniform1f(main.u.cellSize, t.step);
         gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, sliceTex); gl.uniform1i(main.u.sliceTex, 1);

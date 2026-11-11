@@ -106,4 +106,11 @@ export function inspectVolumeSite(index = 0) {
     CONFIG.infiniteO2 = true; resetBCDSystem(); snapCameraToPlayer(); return true;
 }
 export function rotateKarstLight(delta = .13) { player.angle += delta; player.targetAngle = input.targetAngle = player.angle; }
+export function inspectVolumeMaterial() {
+    if (!inspectVolumeSite(1)) return false;
+    const t = getKarstTerrain(state.mazeRescue); if (!t) return false;
+    const near = karstNearest(t, player.x, player.y, 700);
+    if (near.wall) player.angle = player.targetAngle = input.targetAngle = Math.atan2(near.y - player.y, near.x - player.x);
+    return true;
+}
 export function freezeKarstReview() { const w = world(); if (w) w.hidden = !w.hidden; }

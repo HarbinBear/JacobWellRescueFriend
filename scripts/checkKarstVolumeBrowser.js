@@ -28,10 +28,21 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
             await ev(`DeepTapeGame.review.inspectVolumeSite(${index});DeepTapeGame.world.geometry.world().hidden=true`); await settle(); await shot(name);
             if (index === 0 || index === 1) { await ev('DeepTapeGame.cave.volume.inspectKarstVolume(1)'); await wait(250); await shot(name + '-clay'); await ev('DeepTapeGame.cave.volume.inspectKarstVolume(0)'); }
         }
-        // 有真实侧壁落点的裂隙机位用于回光检查；空大厅不再必须被虚构的全室光照亮。
-        await ev('DeepTapeGame.review.inspectVolumeSite(6);DeepTapeGame.world.geometry.world().hidden=true'); await settle();
-        const on = await hallLight(), onSources = await ev('({stats:DeepTapeGame.cave.volume.karstVolumeStats(),lights:Array.from(DeepTapeGame.cave.volume.getKarstVolumeBounceLights())})');
+        // 无回光的空旷洞室也必须读得出岩壁；关灯时仍保留角色的小范围可见度。
+        const visibility = await ev('DeepTapeGame.cave.config.karst.volumeVisibility');
         const bounce = await ev('DeepTapeGame.cave.config.karst.bounceStrength');
+        await ev('DeepTapeGame.review.inspectVolumeSite(4);DeepTapeGame.world.geometry.world().hidden=true;DeepTapeGame.cave.config.karst.bounceStrength=0;DeepTapeGame.cave.config.karst.volumeVisibility=0'); await settle();
+        const emptyWithoutFill = await hallLight();
+        await ev(`DeepTapeGame.cave.config.karst.volumeVisibility=${visibility}`); await wait(250); const emptyWithFill = await hallLight(); await shot('open-water-visible');
+        assert(emptyWithFill.rear.luma > emptyWithoutFill.rear.luma + 3, '无岩面回光时，光柱外仍应能辨认洞室');
+        await ev('DeepTapeGame.cave.config.karst.volumeVisibility=0;DeepTapeGame.state.flashlightOn=false'); await wait(250);
+        const character = await ev(`(()=>{const c=document.getElementById('game'),p=c.getContext('2d').getImageData(c.width*.455,c.height*.455,c.width*.07,c.height*.10).data;let sum=0;for(let i=0;i<p.length;i+=4)sum+=.2126*p[i]+.7152*p[i+1]+.0722*p[i+2];return sum*4/p.length})()`);
+        assert(character > 8, '没有手电和环境补光时，角色身体仍须可读');
+        report.readability = { emptyWithoutFill, emptyWithFill, characterLightsOff: character };
+        await ev(`DeepTapeGame.cave.config.karst.volumeVisibility=${visibility};DeepTapeGame.cave.config.karst.bounceStrength=${bounce};DeepTapeGame.state.flashlightOn=true`);
+        // 单独关闭暗部补光，在有真实落点的裂隙机位核对光柱和回光各自的贡献。
+        await ev('DeepTapeGame.review.inspectVolumeSite(6);DeepTapeGame.world.geometry.world().hidden=true;DeepTapeGame.cave.config.karst.volumeVisibility=0'); await settle();
+        const on = await hallLight(), onSources = await ev('({stats:DeepTapeGame.cave.volume.karstVolumeStats(),lights:Array.from(DeepTapeGame.cave.volume.getKarstVolumeBounceLights())})');
         await ev('DeepTapeGame.cave.config.karst.bounceStrength=0'); await wait(250); const direct = await hallLight(); await shot('fracture-direct');
         assert.equal(await ev('DeepTapeGame.cave.volume.karstVolumeStats().bounceCount'), 0, '禁用回光时必须清除全部落点');
         await ev(`DeepTapeGame.cave.config.karst.bounceStrength=${bounce};DeepTapeGame.state.flashlightOn=false`);
@@ -39,13 +50,13 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
         assert.equal(await ev('DeepTapeGame.cave.volume.karstVolumeStats().bounceCount'), 0, '关灯后不能留下上一帧回光');
         await ev('DeepTapeGame.state.flashlightOn=true;DeepTapeGame.review.rotateKarstLight(-Math.PI)');
         await wait(250); const turned = await hallLight(); await shot('fracture-turned');
-        report.lighting = { on, direct, off, turned, onSources };
+        report.lighting = { visibilityFillDisabled: true, on, direct, off, turned, onSources };
         assert(direct.front.luma > off.front.luma + 4, '关闭岩面回光后，空旷通道里的手电光柱仍应可见');
         assert(onSources.stats.bounceCount > 0 && onSources.stats.returnedLight > 0, '真实岩面命中必须提供回光');
         assert(on.front.luma > direct.front.luma + 1 && on.front.luma > off.front.luma + 4, '命中岩壁的机位应有可见回光');
-        assert(on.front.blue > 5 && on.rear.luma < on.front.luma * .65, '回光应为蓝色，并给身后留下暗区');
+        assert(on.front.blue > 5 && on.rear.luma < on.front.luma * .65, '水下保留冷色基调，角色后方弱于正面受光');
         assert(turned.rear.luma > on.rear.luma + 4, '转灯后光柱与岩面落点应改变，不能固定在角色周围');
-        await ev('DeepTapeGame.review.inspectVolumeSite(0);DeepTapeGame.state.flashlightOn=false'); await wait(300); await shot('hall-light-off'); await ev('DeepTapeGame.state.flashlightOn=true');
+        await ev(`DeepTapeGame.cave.config.karst.volumeVisibility=${visibility};DeepTapeGame.review.inspectVolumeSite(0);DeepTapeGame.state.flashlightOn=false`); await wait(300); await shot('hall-light-off'); await ev('DeepTapeGame.state.flashlightOn=true');
         report.volume = await ev('DeepTapeGame.cave.volume.karstVolumeStats()'); report.graphics = await ev('DeepTapeGame.world.render.worldGraphicsStats().rocks');
         assert(report.volume.ready && report.volume.chunks > 0 && report.volume.triangles > 1000, '三维洞腔必须已生成并绘制'); assert.equal(report.volume.droppedQuads, 0);
         // 游动一小段：人物不能穿进岩石，镜头经过的地方要能持续生成新分块。

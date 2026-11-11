@@ -220,7 +220,11 @@ void main() {
         float incident = (spill * 0.65 + hot * 0.55) * visible * fall * luminance * u_flashlightActive;
         float self = (1.0 - smoothstep(12.0, 90.0, dist)) * 0.42;
         float indirect = exp(-dist / 170.0) * 0.065 * u_flashlightActive * u_karstScatter;
-        if (u_volumeMode > 0.5) { self = 0.0; indirect = volumeReflectedLight(worldPos); }
+        if (u_volumeMode > 0.5) {
+            // 角色近身保留全向可读性，关灯也能辨认身体；90单位外归零，不铺成全室光晕。
+            self = (1.0 - smoothstep(30.0, 90.0, dist)) * 0.60;
+            indirect = volumeReflectedLight(worldPos);
+        }
         vec3 bounce=u_karstMode>1.5?karstReflectedWater(worldPos):vec3(0.0);
         float light = clamp(incident * 1.45 + self + indirect + dot(bounce,vec3(0.2126,0.7152,0.0722))*1.9, 0.0, 0.92);
         vec3 dark = vec3(0.001, 0.003, 0.005);
