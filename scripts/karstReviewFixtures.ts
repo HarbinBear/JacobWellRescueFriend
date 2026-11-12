@@ -133,4 +133,22 @@ export function toggleSpeleothems() {
     else return false;
     releaseKarstVolume(); return !!v.speleothemStudy;
 }
+export function chooseSpeleothemProfile(folds = true) {
+    const v = getKarstTerrain(state.mazeRescue)?.volume;
+    const s = v?.speleothemStudy || (speleothemBackup?.volume === v ? speleothemBackup.study : null);
+    if (!v || !s) return false;
+    s.profile = folds ? 'folds' : undefined; v.speleothemStudy = s;
+    releaseKarstVolume(); return true;
+}
+export function inspectDraperyStudy() {
+    if (!inspectSpeleothems() || !chooseSpeleothemProfile(true)) return false;
+    const s = getKarstTerrain(state.mazeRescue)!.volume!.speleothemStudy!;
+    // 从侧面照入褶皱，仍用原手电和合法玩法位置，不以额外补光做评审。
+    if (!circleCollision(s.x + 120, s.y, 26)) player.x = s.x + 120;
+    player.angle = player.targetAngle = input.targetAngle = Math.atan2(-140, s.x - 70 - player.x);
+    state.camera.x = s.x + 35; state.camera.y = s.y - 65;
+    state.camera.zoom = state.camera.targetZoom = 1.1;
+    world()!.hidden = true;
+    return true;
+}
 export function freezeKarstReview() { const w = world(); if (w) w.hidden = !w.hidden; }

@@ -1,7 +1,7 @@
 import type { KarstChamber } from './KarstChambers';
 
 // 小范围沉积形体样例：依附求场时实际找到的洞顶，不重塑洞室、不切平岩壁。
-export interface SpeleothemStudy { x: number; y: number; radius: number; minY: number }
+export interface SpeleothemStudy { x: number; y: number; radius: number; minY: number; profile?: 'folds' }
 const smooth = (a: number, b: number, x: number) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 export function planSpeleothems(rooms: KarstChamber[], entranceX: number, seam: number): SpeleothemStudy | null {
     const room = [...rooms].sort((a, b) => Math.hypot(a.x - entranceX, a.y - seam) - Math.hypot(b.x - entranceX, b.y - seam))[0];
@@ -26,7 +26,27 @@ export function speleothemCeiling(s: SpeleothemStudy, x: number, z: number) {
     const phase = (z - 100) / 60, center = s.x - R * .28 + Math.sin(phase) * 26 + Math.sin(phase * 2.1) * 7;
     const width = 28 + 4 * Math.sin(phase * 1.3), side = Math.max(0, 1 - Math.abs(x - center) / width);
     const ends = smooth(72, 115, z) * (1 - smooth(290, 365, z));
-    const curtain = (170 + 50 * Math.cos(phase * .8)) * Math.pow(side, 1.15) * ends;
+    const curtain = s.profile === 'folds' ? foldedCurtain(s, x, z)
+        : (170 + 50 * Math.cos(phase * .8)) * Math.pow(side, 1.15) * ends;
     const peak = Math.max(a, b, c, curtain);
     return Math.min(300, peak + (a + b + c + curtain - peak) * .15);
+}
+
+// 局部美术试样：几条不等距的宽褶从同一挂根落下，避免高频波纹被16单位纵深采样切成齿。
+// 只在评审显式选用；缺省保留已认可形体。节点是 z、横向偏移、垂坠长度、半宽。
+const FOLDS = [
+    [72, -12, 0, 44], [119, 24, 165, 38], [183, -29, 232, 33],
+    [253, 30, 151, 39], [314, -9, 203, 32], [376, -21, 0, 42],
+];
+function foldedCurtain(s: SpeleothemStudy, x: number, z: number) {
+    if (z <= FOLDS[0][0] || z >= FOLDS[FOLDS.length - 1][0]) return 0;
+    let i = 0; while (z > FOLDS[i + 1][0]) i++;
+    const a = FOLDS[i], b = FOLDS[i + 1], prev = FOLDS[Math.max(0, i - 1)], next = FOLDS[Math.min(FOLDS.length - 1, i + 2)];
+    const span = b[0] - a[0], u = (z - a[0]) / span, u2 = u * u, u3 = u2 * u;
+    const curve = (axis: number) => (2 * u3 - 3 * u2 + 1) * a[axis] + (u3 - 2 * u2 + u) * span * (b[axis] - prev[axis]) / (b[0] - prev[0])
+        + (-2 * u3 + 3 * u2) * b[axis] + (u3 - u2) * span * (next[axis] - a[axis]) / (next[0] - a[0]);
+    const d = Math.abs(x - (s.x - s.radius * .28 + curve(1))), width = curve(3);
+    const blade = Math.max(0, 1 - d / width), root = Math.max(0, 1 - d / (width * 2.25));
+    const fade = smooth(72, 112, z) * (1 - smooth(330, 376, z));
+    return (Math.max(0, curve(2)) * Math.pow(blade, 1.28) + 30 * Math.pow(root, 2.2)) * fade;
 }
