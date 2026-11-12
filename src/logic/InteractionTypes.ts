@@ -31,5 +31,5 @@ export interface InteractionFeedback { point: RopePoint; text: string; timer: nu
 export interface ImpactPulse { point: RopePoint; angle: number; startedAt: number; kind: 'stun' | 'cut' }
 export interface InteractionRuntime {
     gesture: ActionGesture | null; aim: ActionAim | null; task: InteractionTask | null;
-    feedback: InteractionFeedback | null; cooldown: number; nextLinkId: number; lastUpdateAt?: number; impact?: ImpactPulse; holdUntil?: number;
+    feedback: InteractionFeedback | null; cooldown: number; nextLinkId: number; lastUpdateAt?: number; impact?: ImpactPulse;
 }

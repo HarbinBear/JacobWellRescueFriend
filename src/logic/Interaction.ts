@@ -1,4 +1,5 @@
 import { activeWorld, world, circleCollision } from '../world/continuous/Geometry';
+import { worldSegmentClear } from '../world/continuous/Routes';
 import { CONFIG } from '../core/config';
 import { player, state, input, createInteractionState } from '../core/state';
 import { playSFX } from '../audio/AudioManager';
@@ -48,9 +49,15 @@ function canOccupy(point: RopePoint) {
     return !(map.walls || []).some(w => circleHitsRock(w, point.x, point.y, radius));
 }
 
+function clearWorkSegment(from: RopePoint, to: RopePoint, padding = 0) {
+    // 连续洞穴使用空间索引，避免每次接近或出手时遍历整张图的岩壁。
+    return activeWorld() ? worldSegmentClear(from, to, padding) :
+        rockSegmentClear(getActiveMapContext().walls || [], from, to, padding);
+}
+
 function clearApproach(from: RopePoint, to: RopePoint) {
     const radius = state.screen === 'mazeRescue' ? CONFIG.maze.playerRadius : CONFIG.playerRadius;
-    if (!canOccupy(to) || !rockSegmentClear(getActiveMapContext().walls || [], from, to, radius)) return false;
+    if (!canOccupy(to) || !clearWorkSegment(from, to, radius)) return false;
     const dx=to.x-from.x,dy=to.y-from.y,length=Math.hypot(dx,dy)||1,speed=CONFIG.fishInteraction.approachSpeed;
     const contact=getRopeResponseAlong(player,to,radius,dx/length*speed,dy/length*speed);
     if(contact&&contact.kind!=='glide')return false; // Use the same slow-swim collision response, never teleport.
@@ -73,7 +80,7 @@ function workStance(point: RopePoint): RopePoint | null {
         const angle = bearing + offset;
         const candidate = { x: point.x + Math.cos(angle) * reach, y: point.y + Math.sin(angle) * reach };
         if (Math.hypot(candidate.x - player.x, candidate.y - player.y) <= CONFIG.fishInteraction.approachLimit &&
-            clearApproach(player, candidate) && rockSegmentClear(getActiveMapContext().walls || [], candidate, point)) return candidate;
+            clearApproach(player, candidate) && clearWorkSegment(candidate, point)) return candidate;
     }
     return null;
 }
@@ -129,7 +136,6 @@ function applyCut(task:InteractionTask):boolean{
 }
 function impact(task:InteractionTask,point:RopePoint,now:number){
     state.interaction.impact={point:{...point},angle:player.angle,kind:task.kind as 'stun'|'cut',startedAt:now};
-    state.interaction.holdUntil=now+50;
     state.fx.shake=Math.max(state.fx.shake,task.kind==='stun'?7:5.5);
     playSFX('rescueBonk',{volume:task.kind==='stun'?.92:.66,playbackRate:task.kind==='stun'?.78:1.6});
     try{if(typeof wx!=='undefined'&&(wx as any).vibrateShort)(wx as any).vibrateShort({type:'heavy'});}catch(_){}
@@ -223,13 +229,13 @@ export function updateInteractionMovement(now = Date.now()): boolean {
         cancelInteraction(); interactionFeedback('失去接触，操作取消', point); return false;
     }
     player.vx *= .35; player.vy *= .35;
-    if(runtime.holdUntil&&now<runtime.holdUntil)return true;
+    if(task.kind==='cut'&&task.applied&&runtime.impact&&now-runtime.impact.startedAt<50)return true;
     task.time += dt;
     if(task.kind==='stun'&&!task.applied&&task.time>=task.duration*.60){
         if(!task.target?.fish||Math.hypot(point.x-player.x,point.y-player.y)>CONFIG.fishInteraction.handReach+7||!stunFish(task.target.fish)){
             cancelInteraction();interactionFeedback('没有碰到，动作取消',point);return false;
         }
-        task.applied=true;task.time=task.duration*.60;impact(task,point,now);
+        task.applied=true;impact(task,point,now);
     }
     if(task.kind==='cut'&&!task.applied&&task.time>=task.duration*.61){
         if(!applyCut(task)){cancelInteraction();interactionFeedback('目标变化，拆除取消',point);return false;}

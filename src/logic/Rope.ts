@@ -117,12 +117,13 @@ function endRopeAt(anchor: RopeAnchor): boolean {
         cancelRopePlacement(); return false;
     }
     if (!dynamic && path.slice(1).every((b, i) => strands.some(s => pointOnStrand(path[i], s.a, s.b) && pointOnStrand(b, s.a, s.b)))) return false;
-    insertJunctions([current.startOnRope && (source?.point || start), anchor.onRope && anchor.point].filter(Boolean) as RopePoint[]);
+    const junctions = [current.startOnRope && (source?.point || start), anchor.onRope && anchor.point].filter(Boolean) as RopePoint[];
+    insertJunctions(junctions);
     if (dynamic) {
         state.rope.links.push({ id: state.interaction.nextLinkId++, start: source || endpointFor({ point: start,
             wall: current.startWall, onRope: current.startOnRope }), end: endpointFor(anchor), path,
             length: Math.max(CONFIG.fishInteraction.tetherSlack, pathLength(path) + 12), tension: 0, age: 0 });
-        replaceGuideRopes(ropes.slice());
+        if (junctions.length) replaceGuideRopes(ropes.slice());
     } else {
         replaceGuideRopes(ropes.concat({ start: { ...start }, startWall: current.startWall, startOnRope: current.startOnRope,
             end: { ...end }, endWall: anchor.wall || null, endOnRope: !!anchor.onRope, path, slackFactor: 0, mode: 'tight' }));

@@ -60,6 +60,7 @@ function pullBody(endpoint: RopeEndpoint, neighbour: RopePoint, extension: numbe
 }
 
 export function updateRopeTethers() {
+    const continuous = activeWorld();
     for (const link of (state.rope.links || []).slice()) {
         for (const end of ['start', 'end'] as const) {
             const endpoint = link[end];
@@ -79,7 +80,9 @@ export function updateRopeTethers() {
                     const t = i / pieces, offset = Math.sin(t * Math.PI) * sag;
                     curve.push({ x: start.x + dx * t - dy / distance * offset, y: start.y + dy * t + dx / distance * offset });
                 }
-                if (curve.slice(1).every((p, i) => rockSegmentClear(getActiveMapContext().walls || [], curve[i], p))) link.path = curve;
+                const walls = continuous ? [] : getActiveMapContext().walls || [];
+                if (curve.slice(1).every((p, i) => continuous ? worldSegmentClear(curve[i], p) :
+                    rockSegmentClear(walls, curve[i], p))) link.path = curve;
             }
         }
         if (link.path.length < 2 || link.start.kind === 'loose' || link.end.kind === 'loose') { link.tension = 0; continue; }

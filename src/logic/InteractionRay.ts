@@ -3,6 +3,7 @@ import { player, state } from '../core/state';
 import { getActiveMapContext } from '../world/Visibility';
 import { rayHitsRock, circleHitsRock } from '../world/RockGeometry';
 import { getKarstTerrain, karstRay } from '../world/KarstTerrain';
+import { activeWorld, circleCollision } from '../world/continuous/Geometry';
 import { fishShape, fishKnotPoint, fishNetHandlePoint } from './FishGeometry';
 import { getRopeContact, getRopeDeformedPoint } from './Rope';
 import { projectOntoStrand } from './RopeNet';
@@ -123,10 +124,12 @@ export function fishWorldPoint(fish: FishEnemy, local: RopePoint) {
  * but never through a rock or another nearer fish. Empty water never selects. */
 export function firstInteractionHit(angle: number, range: number, handles = false, fishOnly = false): DirectionHit | null {
     const rock = firstRockHit(angle, range), limit = rock ? rock.distance - .1 : range;
+    const continuous = activeWorld(), walls = continuous ? [] : getActiveMapContext().walls || [];
     let important: DirectionHit | null = null;
     const addFish = (hit: DirectionHit) => {
         if (hit.distance > limit || important && hit.distance >= important.distance) return;
-        if ((getActiveMapContext().walls || []).some(w => circleHitsRock(w, hit.point.x, hit.point.y, 0))) return;
+        const { x, y } = hit.point;
+        if (continuous ? circleCollision(x, y, 0) : walls.some(w => circleHitsRock(w, x, y, 0))) return;
         important = hit;
     };
     for (const fish of state.fishEnemies as FishEnemy[]) {

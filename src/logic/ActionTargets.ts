@@ -2,6 +2,7 @@ import { CONFIG } from '../core/config';
 import { player, state } from '../core/state';
 import { getActiveMapContext, isLineOfSight } from '../world/Visibility';
 import { rockSegmentClear } from '../world/RockGeometry';
+import { activeWorld } from '../world/continuous/Geometry';
 import { fishKnotPoint, fishNetHandlePoint, fishName } from './FishGeometry';
 import { firstInteractionHit, fishLocalPoint, fishWorldPoint } from './InteractionRay';
 import { fishPocketCuts, getPlayerRopeEnds, getRopeDeformedPoint, getRopeRemoval, playerRopePoint, ropeEndpointPoint } from './Rope';
@@ -51,7 +52,8 @@ export function isActionTargetValid(target: ActionTarget) {
     return target.kind === 'fish';
 }
 export function visibleInteractionPoint(point: RopePoint, range = Infinity) {
-    return isLineOfSight(player.x, player.y, point.x, point.y, range) && rockSegmentClear(getActiveMapContext().walls || [], player, point);
+    return isLineOfSight(player.x, player.y, point.x, point.y, range) &&
+        (activeWorld() || rockSegmentClear(getActiveMapContext().walls || [], player, point));
 }
 
 /** Legacy reach arguments are ignored; only the ray direction chooses targets. */

@@ -103,16 +103,17 @@ try{
  assert(work.beginActionInteraction(targets.pickActionTarget(0,undefined,true).target));tick(12);assert.equal(impactFish.stunFrames,0,'Windup is not an immediate stun');
  while(state.interaction.task&&!state.interaction.task.applied)tick();
  assert(state.interaction.task?.applied&&impactFish.stunFrames>0,'Stun occurs during output, before recovery ends');
- assert.equal(state.interaction.impact.kind,'stun');assert(state.fx.shake>=6);const frozenTime=state.interaction.task.time;tick(2);
- assert.equal(state.interaction.task.time,frozenTime,'The impact has a short local hold');finishTask();
+ assert.equal(state.interaction.impact.kind,'stun');assert(state.fx.shake>=6);const hitTime=state.interaction.task.time;tick(1);
+ assert(state.interaction.task.time>hitTime,'Stun animation must continue on the first frame after impact');finishTask();
  setup();const impactRope=strand(point(476,500),point(476,620));state.rope.ropes=[impactRope];near(point(476,550));
  assert(work.beginActionInteraction(targets.pickActionTarget(0).target));tick(18);assert.equal(state.rope.ropes.length,1,'Cut windup preserves structure');
  while(state.interaction.task&&!state.interaction.task.applied)tick();
  assert(state.interaction.task?.applied);assert.equal(state.rope.ropes.length,0,'The whole strand disappears from physics at the snap, not after recovery');
  assert.equal(state.interaction.impact.kind,'cut');assert(state.fx.shake>=5);assert.equal(state.rope.fading.length,1);
+ const cutTime=state.interaction.task.time;tick(2);assert.equal(state.interaction.task.time,cutTime,'Shears keep their short snap hold');
  finishTask();assert.equal(state.rope.fading.length,1,'Recovery cannot apply the effect twice');
  assert(CONFIG.fishInteraction.strikeFrames/60*.12<.1&&CONFIG.fishInteraction.cutFrames/60*.09<.1,'Output bursts stay under one tenth of a second');
- console.log('通过：前摇不提前生效，敲击/合剪在瞬时输出帧结算，强震屏与50ms局部顿挫，后摇不重复拆除。');
+ console.log('通过：敲击命中后动作连续推进，合剪保留短顿挫，后摇不重复拆除。');
 
  setup();state.rope.ropes=mesh().concat(mesh(850));const fish=caught('rammer'),other=caught('curious',850);handling.stunFish(fish);near(geometry.fishKnotPoint(fish));
  const bind=wheel.aimRopeAnchor(0).target;assert.equal(bind.kind,'fish');assert(work.beginRopeInteraction(bind.anchor));tick(30);assert(!fish.bound&&!state.rope.active);finishTask();assert(fish.bound&&state.rope.active);
