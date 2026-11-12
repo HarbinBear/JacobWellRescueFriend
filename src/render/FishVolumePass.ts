@@ -13,12 +13,12 @@ export class FishVolumePass {
     constructor(private gl: WebGLRenderingContext) {
         this.buffers = Array.from({ length: 4 }, () => gl.createBuffer()!);
     }
-    prepare(fishes: readonly FishEnemy[], time: number, x: number, y: number, halfW: number, halfH: number, enabled: boolean, light: { x: number; y: number; radius: number }) {
+    prepare(fishes: readonly FishEnemy[], time: number, x: number, y: number, halfW: number, halfH: number, enabled: boolean, light: { x: number; y: number; radius: number }, motionEnabled = true) {
         const inView = (f: FishEnemy) => Math.abs(f.x - x) < halfW + 80 && Math.abs(f.y - y) < halfH + 80;
         const selected = enabled ? fishes.filter(f => supportsFishVolume(f) && (inView(f) || Math.hypot(f.x - light.x, f.y - light.y) < light.radius + 50))
             .sort((a, b) => Number(inView(b)) - Number(inView(a)) || Math.hypot(a.x - x, a.y - y) - Math.hypot(b.x - x, b.y - y)).slice(0, 24) : [];
         this.fishes = new Set(selected);
-        const mesh = buildFishVolumeMesh(selected, time, fish => { const c = getRopeContact(fish); return c?.kind === 'snag' && !isFishStunned(fish) ? Math.sin(c.phase * .6) * (.54 + c.pull * .46) : 0; });
+        const mesh = buildFishVolumeMesh(selected, time, fish => { const c = getRopeContact(fish); return c?.kind === 'snag' && !isFishStunned(fish) ? Math.sin(c.phase * .6) * (.54 + c.pull * .46) : 0; }, motionEnabled);
         this.count = mesh.fishCount; this.triangles = mesh.indices.length / 3;
         this.bytes = mesh.positions.byteLength + mesh.normals.byteLength + mesh.colors.byteLength + mesh.indices.byteLength;
         if (!this.count) return;

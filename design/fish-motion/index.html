@@ -1,0 +1,8 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+            <title>鱼的动作 · 实际游戏对照</title><style>body{margin:24px auto;padding:0 20px;max-width:1320px;background:#081416;color:#d3e0dc;font:16px/1.6 system-ui}h1{font-size:27px}p{color:#9db8b1}.pair{display:grid;grid-template-columns:1fr 1fr;gap:20px}video{width:100%;background:#020707;border:1px solid #324945;border-radius:8px}button{padding:9px 18px;background:#22433e;color:#deebe5;border:1px solid #5d8175;border-radius:6px;cursor:pointer}.normal{max-width:760px}small{color:#829e94}@media(max-width:800px){.pair{display:block}}</style>
+            <h1>鱼的动作 · 实际游戏对照</h1><p>同一组受控目标与速度输入。位置、转向、碰撞均由实际游戏推进；近景对照只切换旧 / 新姿态，不能代表旧运动逻辑。桌面录像，非手机性能验收。</p>
+            <button id="together">从头同播近景对照</button><div class="pair"><section><h2>原摆尾姿态</h2><video id="old" controls playsinline preload="metadata" src="near-legacy.webm"></video></section><section><h2>新身体响应</h2><video id="new" controls playsinline preload="metadata" src="near-motion.webm"></video></section></div>
+            <p>0–2秒 悬停 · 2–5秒 起游/巡游 · 5–6.5秒 加速 · 6.5–9.5秒 滑行 · 9.5–13秒 左转 · 13–16.5秒 右转 · 16.5–20秒 巡游 · 20–22秒 加速 · 22–25秒 滑行</p>
+            <section class="normal"><h2>正常游戏尺寸</h2><video controls playsinline preload="metadata" src="normal-motion.webm"></video></section><p><a style="color:#9bd4c0" href="../../node_modules/.cache/karst-review/live/game.html?fish-motion&near">进入实际游戏回放与自由观察</a></p>
+            <small>角色、洞穴与鱼贴图未在这组视频中重做。目标是检查推进、滑行、转向和身体变形的配合。</small>
+            <script>document.getElementById('together').onclick=()=>{for(const id of ['old','new']){const v=document.getElementById(id);v.currentTime=0;v.play()}}</script></html>

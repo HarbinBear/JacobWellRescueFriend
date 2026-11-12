@@ -1,5 +1,5 @@
 import { stepAirFish, moveContinuousFish } from '../world/continuous/Runtime';
-import { activeWorld, circleCollision } from '../world/continuous/Geometry';
+import { activeWorld, circleCollision, world } from '../world/continuous/Geometry';
 import { CONFIG } from '../core/config';
 import { rayHitsRock, rockTrialCollision } from '../world/RockGeometry';
 import type { RockPoint } from '../world/RockGeometry';
@@ -13,6 +13,7 @@ import { triggerQuickAction } from './ActionWheel';
 import { updateRopeTethers } from './RopeTether';
 import { getActiveMapContext, isLineOfSight } from '../world/Visibility';
 import { getRopeContact, getRopeResponseAlong, resolveWovenRopeContact, steadyRopeContact } from './Rope';
+import { beginFishSwimStep, finishFishSwimStep, steerFishSwim } from './FishSwimMotion';
 
 // =============================================
 // 判断当前是否处于迷宫模式
@@ -708,6 +709,19 @@ function updateShoalFish(fish: FishEnemy, group: SchoolContext) {
 // =============================================
 export function updateFishEnemy(fish: FishEnemy, dt: number, getGlow = illuminatedRockSpot, school?: SchoolContext) {
     if(activeWorld() && !fish.bound && (Math.abs(fish.x-player.x)>1150 || Math.abs(fish.y-player.y)>900)) return;
+    if (fish.dead) return;
+    const supported = fish.kind === 'piranha' || fish.kind === 'curious';
+    const before = supported ? beginFishSwimStep(fish) : null;
+    try { updateFishEnemyStep(fish, dt, getGlow, school); }
+    finally {
+        if (before) {
+            const contact = getRopeContact(fish), task = state.interaction.task;
+            const held = task?.phase === 'perform' && (task.target?.fish === fish || task.anchor?.fish === fish);
+            finishFishSwimStep(fish, before, dt, !!held || !!contact && contact.kind !== 'glide' || activeWorld() && fish.y <= world()!.surfaceY + 8);
+        }
+    }
+}
+function updateFishEnemyStep(fish: FishEnemy, dt: number, getGlow: typeof illuminatedRockSpot, school?: SchoolContext) {
     if(activeWorld() && stepAirFish(fish)) return;
     if (fish.dead) return;
     if (fish.state === 'dying') stunFish(fish); // Compatibility: legacy death state becomes temporary stun.
@@ -1254,6 +1268,11 @@ function moveToward(fish: FishEnemy, tx: number, ty: number, speed: number, turn
     const dy = ty - fish.y;
     const dist = Math.hypot(dx, dy);
     if (dist < 1) return;
+
+    if (fish.kind === 'piranha' || fish.kind === 'curious') {
+        steerFishSwim(fish, Math.atan2(dy, dx), speed, turnFactor);
+        return;
+    }
 
     fish.targetAngle = Math.atan2(dy, dx);
     fish.angle = lerpAngle(fish.angle, fish.targetAngle, turnFactor);

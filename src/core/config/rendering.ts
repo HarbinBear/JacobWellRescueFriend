@@ -10,6 +10,7 @@ export const renderingConfig = {
         occlusionStrength: 0.86,
         lightEnergy: 3.4,
         volumeFish: true,                 // 食人鱼与好奇鱼共用洞室的三维灯光和深度
+        volumeFishMotion: true,           // 真实推进/滑行/转弯驱动身体；评审可切原摆尾，不切换运动轨迹
         volumeRopes: true,                // 未编网的水下固定引导绳，沿真实路径生成细圆管
         volumeAntialias: true,            // 三维细绳与鱼体边缘MSAA；不支持时由平台回退（修改后重启游戏生效）
         volumeVisibility: 1.0,             // 仅手电锥内、受阴影约束的弱水中回散

@@ -1,5 +1,6 @@
 import type { FishEnemy } from '../logic/FishEnemy';
 import { fishShape } from '../logic/FishGeometry';
+import { getFishSwimMotion } from '../logic/FishSwimMotion';
 
 /** World-space fish geometry. Colours are linear RGB albedo, without baked light. */
 export interface FishVolumeMesh {
@@ -12,7 +13,7 @@ export interface FishVolumeMesh {
 
 type Point = [number, number, number];
 type Color = [number, number, number];
-interface Template { positions: number[]; colors: number[]; indices: number[]; }
+interface Template { positions: number[]; colors: number[]; indices: number[]; pectorals: { start: number; end: number; side: number }[] }
 interface Ring { x: number; y: number; z: number; }
 
 const TAU = Math.PI * 2;
@@ -156,7 +157,7 @@ function tube(mesh: Template, path: Point[], radius: number, color: Color) {
 }
 
 function makeTemplate(curious: boolean): Template {
-    const mesh: Template = { positions: [], colors: [], indices: [] };
+    const mesh: Template = { positions: [], colors: [], indices: [], pectorals: [] };
     // x is the original swimming axis; y is anatomical up/down and z is side-to-side.
     const profile: Ring[] = curious ? [
         { x: -.73, y: .065, z: .044 }, { x: -.59, y: .20, z: .115 },
@@ -225,9 +226,11 @@ function makeTemplate(curious: boolean): Template {
     fin(mesh, [[-.62, curious ? .23 : .20, 0], [-.54, curious ? .51 : .42, 0],
         [-.27, curious ? .57 : .51, 0], [-.12, curious ? .46 : .34, 0]], [0, 0, 1], finColor);
     for (const sign of [-1, 1]) {
+        const start = mesh.positions.length;
         fin(mesh, [[.27, .11, sign * .215], [.13, .12, sign * .28],
             [-.22, .30, sign * .395], [-.35, .26, sign * .365],
             [-.13, .13, sign * .225]], [0, -.7, sign * .7], finColor, .014);
+        mesh.pectorals.push({ start, end: mesh.positions.length, side: sign });
         fin(mesh, [[-.02, curious ? .43 : .32, sign * .07], [-.23, curious ? .56 : .47, sign * .16],
             [-.43, curious ? .53 : .44, sign * .11], [-.24, curious ? .39 : .28, sign * .05]],
         [0, .4, sign * .8], finColor, .009);
@@ -268,7 +271,7 @@ function makeTemplate(curious: boolean): Template {
 
 /** Build a small visible batch; overflow fish remain outside this batch (Uint16 limit). */
 export function buildFishVolumeMesh(fishes: readonly FishEnemy[], timeSeconds: number,
-    getStrain?: (fish: FishEnemy) => number): FishVolumeMesh {
+    getStrain?: (fish: FishEnemy) => number, motionEnabled = true): FishVolumeMesh {
     const batch: { fish: FishEnemy; mesh: Template }[] = [];
     let vertexCount = 0, indexCount = 0;
     for (const fish of fishes) {
@@ -292,23 +295,36 @@ export function buildFishVolumeMesh(fishes: readonly FishEnemy[], timeSeconds: n
         const quiet = stunned || fish.bound || fish.state === 'bound';
         const fast = fish.state === 'lunge' || fish.state === 'flee' || fish.state === 'fear' ||
             fish.state === 'bite' || fish.state === 'devour';
-        const phase = fish.animTime * (fast ? 2.5 : fish.state === 'inspect' ? .6 : 1);
-        const amplitude = quiet ? .035 : fast ? .20 : .135;
-        const roll = Math.max(-.17, Math.min(.17, turn * .20)) + (stunned ? .15 : Math.sin(phase * .6) * .018);
+        const motion = motionEnabled ? getFishSwimMotion(fish) : null;
+        const phase = motion ? motion.phase : fish.animTime * (fast ? 2.5 : fish.state === 'inspect' ? .6 : 1);
+        const amplitude = motion ? quiet ? .012 : motion.amplitude : quiet ? .035 : fast ? .20 : .135;
+        const bend = motion && !quiet && !strain ? motion.bend : 0;
+        const roll = (motion ? motion.roll : Math.max(-.17, Math.min(.17, turn * .20))) + (stunned ? .15 : Math.sin(phase * .6) * .018);
         const cr = Math.cos(roll), sr = Math.sin(roll);
         const ca = Math.cos(fish.angle + strain * .31), sa = Math.sin(fish.angle + strain * .31);
         const sx = 1 - Math.abs(strain) * .11;
         const sy = (stunned ? .84 : fish.bound ? .94 : 1) * (1 + Math.abs(strain) * .16);
         const sz = fish.bound ? .88 : 1;
         for (let i = 0; i < mesh.positions.length; i += 3) {
-            const x = mesh.positions[i], y = mesh.positions[i + 1];
-            let z = mesh.positions[i + 2];
+            const sourceX = mesh.positions[i];
+            let x = sourceX, y = mesh.positions[i + 1], z = mesh.positions[i + 2];
+            if (motion) for (const fin of mesh.pectorals) {
+                if (i < fin.start || i >= fin.end) continue;
+                const flare = fin.side * ((motion.finSpread - .4) * .65 + Math.sin(phase * 1.2) * (quiet ? .01 : .045));
+                const fy = y - .11, fz = z - fin.side * .215, c = Math.cos(flare), s = Math.sin(flare);
+                y = .11 + fy * c - fz * s; z = fin.side * .215 + fy * s + fz * c;
+            }
             const rear = Math.max(0, -x) / 1.64;
             // Bending increases smoothly along the tail; head and centreline remain anchored.
             z += Math.sin(phase - rear * 2.8) * amplitude * rear * rear;
             // Only lateral fins extend this far: a small breathing beat preserves the body surface.
-            if (Math.abs(mesh.positions[i + 2]) > .27) {
+            if (!motion && Math.abs(mesh.positions[i + 2]) > .27) {
                 z += Math.sign(z) * Math.sin(phase * .8 + timeSeconds * .25) * .012;
+            }
+            // Bend the rear along a short arc, rotating its cross sections too. The head stays on its interaction axis.
+            if (sourceX < 0 && Math.abs(bend) > .0001) {
+                const theta = -sourceX * bend, c = Math.cos(theta), s = Math.sin(theta);
+                x = -s / bend + y * s; y = (1 - c) / bend + y * c;
             }
             const ry = (y * sy * cr - z * sz * sr) * size, rz = (y * sy * sr + z * sz * cr) * size;
             const p = offset * 3 + i;

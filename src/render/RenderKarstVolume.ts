@@ -253,7 +253,7 @@ export function drawKarstVolume(ctx: CanvasRenderingContext2D, t: KarstTerrain, 
     const quality = CONFIG.karst, resolution = Math.max(.65, Math.min(1.6, CONFIG.quality.scale * 2));
     let w = Math.ceil(logicW * resolution), h = Math.ceil(logicH * resolution);
     const shrink = Math.min(1, Math.sqrt(quality.pixelBudget / Math.max(1, w * h))); w = Math.max(2, Math.round(w * shrink)); h = Math.max(2, Math.round(h * shrink));
-    fishPass?.prepare(state.fishEnemies || [], (state.mazeRescue as any)?.continuous?.elapsed || 0, cx, cy, halfW, halfH, quality.volumeFish, { x: player.x, y: player.y, radius: shadowOn ? CONFIG.lightRange * 1.2 : 0 });
+    fishPass?.prepare(state.fishEnemies || [], (state.mazeRescue as any)?.continuous?.elapsed || 0, cx, cy, halfW, halfH, quality.volumeFish, { x: player.x, y: player.y, radius: shadowOn ? CONFIG.lightRange * 1.2 : 0 }, quality.volumeFishMotion);
     ropePass?.prepare(state.rope.ropes, (state.mazeRescue as any)?.continuous?.elapsed || 0, cx, cy, halfW, halfH, quality.volumeRopes, { x: player.x, y: player.y, radius: shadowOn ? CONFIG.lightRange * 1.2 : 0 }, (state.mazeRescue as any)?.continuous?.surfaceY || 0, getRopeDeformedPoint);
     createActor();
     const world = (state.mazeRescue as any)?.continuous;
