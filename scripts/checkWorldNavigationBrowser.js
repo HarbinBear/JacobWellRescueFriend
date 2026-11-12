@@ -11,6 +11,7 @@ function checkSmallLayouts() {
         '../../core/state': {}, '../../core/config': { CONFIG: config }, '../../render/Canvas': canvas,
         './Geometry': { activeWorld: () => true, world: () => model, layout: { stations: [{ id: 'rest', action: '休息' }] } },
         './Runtime': { isWorldNavigationOpen: () => model.panel === 'navigation' || model.panel === 'confirm-next-world' },
+        './WorldAssets': { worldAssetsBlocked: () => false },
     };
     const source = fs.readFileSync(path.join(__dirname, '../src/world/continuous/WorldHUD.ts'), 'utf8');
     new Function('require', 'module', 'exports', ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText)(id => imports[id] || {}, result, result.exports);
