@@ -26,13 +26,19 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
     const drawn = () => ev('DeepTapeGame.cave.volume.isVolumeRopeDrawn(DeepTapeGame.state.rope.ropes[0])');
     const allDrawn = () => ev('DeepTapeGame.state.rope.ropes.every(r=>DeepTapeGame.cave.volume.isVolumeRopeDrawn(r))');
     const ropePath = () => ev('JSON.stringify(DeepTapeGame.state.rope.ropes.map(r=>r.path))');
-    // 固定世界点周围取样，只用于确认随手电变化，不把明暗阈值当美术评分。
-    async function ropeLuma() {
+    // 固定世界点取样，同时验证受光响应与亮黄色在最终合成中可读。
+    async function ropeSample() {
         return ev(`(()=>{const g=DeepTapeGame,c=g.state.camera,p=window.__ropeVolumeReview.center,can=document.getElementById('game'),cfg=g.cave.config;
             const sx=(cfg.screenWidth/2+(p.x-c.x-c.swayX)*c.zoom)*can.width/cfg.screenWidth;
             const sy=(cfg.screenHeight/2+(p.y-c.y-c.swayY)*c.zoom)*can.height/cfg.screenHeight;
             const a=can.getContext('2d').getImageData(Math.round(sx)-3,Math.round(sy)-3,6,6).data;
-            let sum=0;for(let i=0;i<a.length;i+=4)sum+=.2126*a[i]+.7152*a[i+1]+.0722*a[i+2];return sum/36;})()`);
+            let sum=0,yellow=[0,0,0],strongest=0;
+            for(let i=0;i<a.length;i+=4){
+                const r=a[i],g=a[i+1],b=a[i+2],chroma=Math.min(r,g)-b;
+                sum+=.2126*r+.7152*g+.0722*b;
+                if(chroma>strongest){strongest=chroma;yellow=[r,g,b];}
+            }
+            return{luma:sum/36,yellow};})()`);
     }
     async function actualSwim() {
         const fixedView = 'DeepTapeGame.review.inspectVolumeRopeView(1);Object.assign(DeepTapeGame.state.camera,{zoom:1.4,targetZoom:1.4})';
@@ -191,9 +197,13 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
         assert.equal(afterCache.ropeBuilds, beforeCache.ropeBuilds, '相同静态路径不能每帧重建网格');
         report.stableCache = { builds: afterCache.ropeBuilds, triangles: afterCache.ropeTriangles };
         await ev('DeepTapeGame.review.inspectVolumeRopeView(1)'); await settle(); await shot('03-close-volume');
-        report.frontLuma = await ropeLuma();
-        await ev('DeepTapeGame.review.rotateKarstLight(Math.PI)'); await wait(150); report.turnedLuma = await ropeLuma(); await shot('04-turned-light');
-        await ev('DeepTapeGame.state.flashlightOn=false'); await wait(150); report.offLuma = await ropeLuma(); await shot('05-light-off');
+        const front = await ropeSample(); report.frontLuma = front.luma; report.frontYellow = front.yellow;
+        await ev('DeepTapeGame.review.rotateKarstLight(Math.PI)'); await wait(150); report.turnedLuma = (await ropeSample()).luma; await shot('04-turned-light');
+        await ev('DeepTapeGame.state.flashlightOn=false'); await wait(150);
+        const off = await ropeSample(); report.offLuma = off.luma; report.offYellow = off.yellow; await shot('05-light-off');
+        const [red, green, blue] = front.yellow;
+        assert(Math.min(red, green) > 185 && Math.min(red, green) - blue > 80, '手电直射的绳芯应是饱和亮黄色');
+        assert(Math.min(off.yellow[0], off.yellow[1]) - off.yellow[2] > 55, '近身绳段在关灯时仍应可辨认');
         assert(report.frontLuma > report.offLuma + 1, '绳索可见受光不能在关灯后保持固定亮度');
         assert(report.frontLuma > report.turnedLuma + .5, '绳索受光应跟随手电朝向');
         await ev('DeepTapeGame.state.flashlightOn=true;DeepTapeGame.review.rotateKarstLight(-Math.PI);DeepTapeGame.review.inspectVolumeRopeView(2)');

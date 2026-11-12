@@ -5,7 +5,7 @@ export interface RopeVolumeSource extends NetRope {
     endWall?: unknown;
     mode?: string;
 }
-export const ROPE_VOLUME_RADIUS = 1.15;
+export const ROPE_VOLUME_RADIUS = 1.45;
 export const ROPE_VOLUME_SIDES = 8;
 export const ROPE_VOLUME_STEP = 16;
 export const ROPE_VOLUME_MAX_RINGS = 1024;
@@ -99,6 +99,7 @@ export function buildRopeVolumeMesh(ropes: readonly RopeVolumeSource[],
     const positions: number[] = [], normals: number[] = [], colors: number[] = [], indices: number[] = [];
     const accepted: RopeVolumeSource[] = [], ranges: RopeVolumeRange[] = [], rejected: RopeVolumeMesh['rejected'] = [];
     const sides = ROPE_VOLUME_SIDES, radius = ROPE_VOLUME_RADIUS;
+    const red = .94, green = .73, blue = .006;
     for (const rope of ropes) {
         const visualPath = visualPaths?.get(rope) || rope.path;
         const rings = pathRings(rope, visualPath);
@@ -115,7 +116,7 @@ export function buildRopeVolumeMesh(ropes: readonly RopeVolumeSource[],
                 normals.push(nx / length, ny / length, s / length);
                 // Subtle fibre variation in albedo only; lighting remains entirely in the shared shader.
                 const fibre = 1 + .035 * Math.sin(ring.distance * .26 + angle * 3) + .018 * Math.sin(ring.distance * .071);
-                colors.push(.82 * fibre, .62 * fibre, .045 * fibre);
+                colors.push(red * fibre, green * fibre, blue * fibre);
                 if (i === 0) continue;
                 const a = vertexStart + (i - 1) * sides + j, b = vertexStart + (i - 1) * sides + (j + 1) % sides;
                 indices.push(a, b, b + sides, a, b + sides, a + sides);
@@ -124,11 +125,11 @@ export function buildRopeVolumeMesh(ropes: readonly RopeVolumeSource[],
         for (const end of [0, rings.length - 1]) {
             const ring = rings[end], sign = end === 0 ? -1 : 1;
             const nx = ring.ny * sign, ny = -ring.nx * sign, centre = positions.length / 3;
-            positions.push(ring.x, ring.y, 0); normals.push(nx, ny, 0); colors.push(.80, .60, .044);
+            positions.push(ring.x, ring.y, 0); normals.push(nx, ny, 0); colors.push(red, green, blue);
             for (let j = 0; j < sides; j++) {
                 const source = (vertexStart + end * sides + j) * 3;
                 positions.push(positions[source], positions[source + 1], positions[source + 2]);
-                normals.push(nx, ny, 0); colors.push(.80, .60, .044);
+                normals.push(nx, ny, 0); colors.push(red, green, blue);
             }
             for (let j = 0; j < sides; j++) {
                 const a = centre + 1 + j, b = centre + 1 + (j + 1) % sides;

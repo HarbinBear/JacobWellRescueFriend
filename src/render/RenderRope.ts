@@ -122,10 +122,10 @@ function strokeWovenPath(path: RopePoint[], ropeIndex: number, view: ViewBounds)
     if (visible) {
         ctx.lineCap = 'round'; ctx.lineJoin = 'round';
         ctx.lineWidth = 4.2; ctx.strokeStyle = 'rgba(19,31,29,.82)'; ctx.stroke();
-        ctx.lineWidth = 2.4; ctx.strokeStyle = '#9eab86'; ctx.stroke();
+        ctx.lineWidth = CONFIG.ropeTightWidth; ctx.strokeStyle = CONFIG.ropeTightColor; ctx.stroke();
         ctx.lineWidth = 1.1;
         ctx.setLineDash?.([2, 3]);
-        ctx.strokeStyle = `rgba(244,223,165,${.5 + .42 * Math.min(1, maxDeflection / 22)})`;
+        ctx.strokeStyle = `rgba(255,248,144,${.5 + .42 * Math.min(1, maxDeflection / 22)})`;
         ctx.stroke();
     }
     ctx.restore();
@@ -137,12 +137,12 @@ function drawNetKnot(x: number, y: number, connections: number, selected = false
     ctx.translate(x, y);
     ctx.rotate(-.48);
     ctx.beginPath(); ctx.ellipse(0, 0, radius, radius * .76, 0, 0, Math.PI * 2);
-    ctx.fillStyle = '#7b8063'; ctx.fill();
+    ctx.fillStyle = CONFIG.ropeTightColor; ctx.fill();
     ctx.lineWidth = 1; ctx.strokeStyle = '#273b34'; ctx.stroke();
     ctx.beginPath();
     ctx.moveTo(-radius * .68, -.9); ctx.quadraticCurveTo(0, -radius, radius * .65, -.6);
     ctx.moveTo(-radius * .66, 1.1); ctx.quadraticCurveTo(0, -radius * .34, radius * .65, 1.2);
-    ctx.strokeStyle = '#c0bb88'; ctx.stroke();
+    ctx.strokeStyle = '#8a7013'; ctx.stroke();
     ctx.restore();
 }
 
@@ -227,9 +227,9 @@ export function drawRopeContactWorld(c: CanvasRenderingContext2D, body: RopePoin
         c.bezierCurveTo(-radius * .43 + offset, -width * .55, bulge + wiggle + offset, width * .55, radius * .7 + offset, width * .78);
     }
     c.lineWidth = 4.2; c.strokeStyle = '#26342d'; c.stroke();
-    c.lineWidth = 2.1; c.strokeStyle = caught ? '#debd85' : '#afc297'; c.stroke();
+    c.lineWidth = 2.5; c.strokeStyle = CONFIG.ropeTightColor; c.stroke();
     c.lineWidth = .8; c.setLineDash?.([2, 2.4]);
-    c.strokeStyle = '#f5dab0'; c.stroke();
+    c.strokeStyle = CONFIG.ropeKnotColor; c.stroke();
     c.restore();
 }
 

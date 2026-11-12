@@ -135,8 +135,8 @@ export const modesConfig = {
         npcDistressArmSwing: 0.55,     // 挥手幅度（弧度）
 
         // === 救援绳渲染（玩家↔NPC，绑绳后）===
-        rescueRopeColor: '#d7c48a',    // 绳索基色
-        rescueRopeWidth: 2,            // 绳索粗细
+        rescueRopeColor: '#ffeb00',    // 绳索基色
+        rescueRopeWidth: 2.8,          // 绳索粗细
         rescueRopeSegments: 10,        // 绳索折线段数
         rescueRopeSlackAmp: 6,         // 绳索松弛幅度（像素）
         rescueRopeWaveAmp: 2,          // 绳索水中摆动幅度（像素）

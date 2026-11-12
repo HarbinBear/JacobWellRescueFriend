@@ -112,10 +112,11 @@ export function drawRopeTethersWorld(c: CanvasRenderingContext2D, left: number, 
     c.save(); c.lineCap = 'round'; c.lineJoin = 'round';
     for (const link of state.rope.links) {
         if (link.path.length < 2 || !link.path.some(p => p.x > left - 100 && p.x < right + 100 && p.y > top - 100 && p.y < bottom + 100)) continue;
-        c.strokeStyle = link.tension > .7 ? '#ead2a0' : CONFIG.ropeTightColor; c.lineWidth = CONFIG.ropeTightWidth; line(c, link.path);
+        c.strokeStyle = link.tension > .7 ? CONFIG.ropeKnotColor : CONFIG.ropeTightColor;
+        c.lineWidth = CONFIG.ropeTightWidth; line(c, link.path);
         for (const end of [link.start, link.end]) {
             if (end.kind === 'fish') continue;
-            const p = ropeEndpointPoint(end); circle(c, p.x, p.y, 3); c.fillStyle = '#ebd8ab'; c.fill();
+            const p = ropeEndpointPoint(end); circle(c, p.x, p.y, 3); c.fillStyle = CONFIG.ropeKnotColor; c.fill();
         }
     }
     c.restore();
@@ -125,7 +126,7 @@ export function drawRemovedRopesWorld(c: CanvasRenderingContext2D) {
     const now = Date.now();
     for (const fade of state.rope.fading) {
         const t = Math.min(1, Math.max(0, (now - fade.startedAt) / fade.duration));
-        c.save(); c.globalAlpha = (1 - t) * (1 - t) * .72; c.strokeStyle = '#c7c0a2';
+        c.save(); c.globalAlpha = (1 - t) * (1 - t) * .72; c.strokeStyle = CONFIG.ropeTightColor;
         c.translate(0, 18 * t + 8 * t * t); line(c, fade.path); c.restore();
     }
     c.restore();
@@ -134,7 +135,7 @@ export function drawInteractionWorkWorld(c: CanvasRenderingContext2D) {
     const task = state.interaction.task;
     if (!task || task.phase !== 'perform' || task.kind !== 'tie') return;
     const work = getInteractionWorkPose()!, p = work.progress, fish = task.anchor?.fish;
-    c.save(); c.strokeStyle = '#e8d1a0'; c.lineWidth = 1.6;
+    c.save(); c.strokeStyle = CONFIG.ropeTightColor; c.lineWidth = 2.2;
     if (fish && !fish.bound && p > .18) {
         const shape = fishShape(fish); c.translate(fish.x, fish.y); c.rotate(fish.angle);
         for (let i = 0; i < 2; i++) {

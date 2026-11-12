@@ -91,14 +91,14 @@ export const baseConfig = {
     ropeSegmentLength: 12,         // 绳子渲染分段长度（越小越平滑）
     ropeAvoidPadding: 12,          // 绳子绕岩石的额外间距
     ropeAStarMaxIters: 3000,       // A*寻路最大迭代次数
-    ropeColor: 'rgba(230, 220, 170, 0.9)',   // 铺线中绳子颜色
-    ropeTightColor: 'rgba(230, 220, 170, 1.0)', // 拉紧绳子颜色
-    ropeWidth: 2.5,                // 铺线中绳子宽度
-    ropeTightWidth: 2,             // 拉紧绳子宽度
+    ropeColor: '#ffe624',          // 铺线中绳子颜色
+    ropeTightColor: '#ffeb00',     // 拉紧绳子颜色
+    ropeWidth: 3,                  // 铺线中绳子宽度
+    ropeTightWidth: 2.8,           // 拉紧绳子宽度
     ropeNailRadius: 4,             // 钉子半径
     ropeNailColor: '#888',         // 钉子颜色
     ropeKnotRadius: 3,             // 绳结半径
-    ropeKnotColor: 'rgba(230, 220, 170, 0.95)', // 绳结颜色
+    ropeKnotColor: '#fff264',      // 绳结颜色
     ropeReelRadius: 8,             // 玩家身上线轮指示器半径
     ropeReelColor: 'rgba(200, 190, 140, 0.7)', // 线轮指示器颜色
 

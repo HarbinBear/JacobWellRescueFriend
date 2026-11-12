@@ -110,7 +110,7 @@ function initialize(t: KarstTerrain) {
             surface.addEventListener('webglcontextrestored', () => { forget(); retryAt = 0; });
         }
     }
-    // 细绳仅约两个世界像素宽；硬边单采样会把斜向亮边画成台阶。由平台选择支持的MSAA采样数。
+    // 细绳只有几个世界像素宽；由平台选择支持的 MSAA 采样数以保留斜边。
     gl = surface.getContext('webgl', { alpha: true, depth: true, antialias: CONFIG.karst.volumeAntialias, premultipliedAlpha: false, preserveDrawingBuffer: true });
     if (!gl || gl.isContextLost()) { gl = null; return false; }
     antialiasSamples = gl.getContextAttributes()?.antialias ? gl.getParameter(gl.SAMPLES) || 0 : 0;
@@ -297,8 +297,11 @@ export function drawKarstVolume(ctx: CanvasRenderingContext2D, t: KarstTerrain, 
             gl.uniform1f(f.u.enabled, lightOn ? 1 : 0); gl.uniform1f(f.u.shadowOn, shadowOn ? 1 : 0); gl.uniform1i(f.u.shadowMap, 0);
             gl.uniform1f(f.u.surfaceY, (state.mazeRescue as any)?.continuous?.surfaceY || 0);
             gl.uniform2f(f.u.gridOrigin, t.x, t.y); gl.uniform2f(f.u.gridSize, t.cols, t.rows); gl.uniform1f(f.u.cellSize, t.step); gl.uniform1i(f.u.sliceTex, 1);
-            gl.uniform1f(f.u.matte, 0); fishPass?.draw();
-            gl.uniform1f(f.u.matte, 1); ropePass?.draw();
+            gl.uniform1f(f.u.guideRope, 0); gl.uniform1f(f.u.matte, 0); fishPass?.draw();
+            if (ropePass?.count) {
+                gl.uniform1f(f.u.guideRope, 1); ropePass.draw();
+                gl.uniform1f(f.u.guideRope, 0);
+            }
             gl.uniform1f(f.u.matte, Math.max(0, Math.min(1, actorPass?.matte ?? 1))); actorPainted = drawActor(false);
         }
         gl.flush(); draws++; key = next;

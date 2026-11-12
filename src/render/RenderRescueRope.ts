@@ -4,7 +4,7 @@ import { state, player } from '../core/state';
 // 绘制一个小钉子（锚点），angle 指向"外侧"方向
 function drawAnchor(ctx: CanvasRenderingContext2D, x: number, y: number) {
     ctx.save();
-    ctx.fillStyle = '#d7c48a';
+    ctx.fillStyle = CONFIG.ropeKnotColor;
     ctx.strokeStyle = 'rgba(80,60,30,0.8)';
     ctx.lineWidth = 0.8;
     ctx.beginPath();
@@ -17,7 +17,7 @@ function drawAnchor(ctx: CanvasRenderingContext2D, x: number, y: number) {
 // 绘制绳节（小十字）
 function drawKnot(ctx: CanvasRenderingContext2D, x: number, y: number) {
     ctx.save();
-    ctx.fillStyle = '#b9a06a';
+    ctx.fillStyle = CONFIG.ropeKnotColor;
     ctx.beginPath();
     ctx.arc(x, y, 1.8, 0, Math.PI * 2);
     ctx.fill();
@@ -80,9 +80,9 @@ export function drawRescueRopeWorld(ctx: CanvasRenderingContext2D) {
     ctx.lineWidth = CONFIG.maze.rescueRopeWidth;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    // 绷紧时绳色略变暖（轻微提示拉满）
+    // 绷紧时提高高光亮度，保留黄色。
     if (tension > 0.85) {
-        ctx.strokeStyle = '#e8a86a';
+        ctx.strokeStyle = CONFIG.ropeKnotColor;
     }
     ctx.beginPath();
     ctx.moveTo(pts[0].x, pts[0].y);

@@ -15,6 +15,7 @@ uniform float fov;
 uniform float range;
 uniform float energy;
 uniform float matte;
+uniform float guideRope;
 uniform float surfaceY;
 uniform sampler2D shadowMap;
 uniform sampler2D sliceTex;
@@ -48,15 +49,18 @@ void main() {
         float spill = exp(-pow(theta / max(0.01,fov * 0.36),4.0)) * (1.0 - smoothstep(fov * 0.43,fov * 0.5,theta));
         float cone = (spill * 0.63 + exp(-theta * theta / 0.031) * 0.25) / 0.88 * (1.0 - step(fov * 0.5,theta));
         float beam = cone * visibility() * energy * (1.0 - smoothstep(range * 0.85,range * 1.2,d)) / (1.0 + pow(d / 200.0,2.0));
-        vec3 beamColor = mix(vec3(0.30,0.50,0.57),vec3(0.12,0.35,0.61),smoothstep(200.0,720.0,d));
-        // 黄绳的近场直射保留白色手电下的固有色；远处仍受水体吸收，不增加自发光。
-        beamColor = mix(beamColor,mix(vec3(0.68,0.70,0.68),vec3(0.18,0.40,0.59),smoothstep(120.0,720.0,d)),matte);
-        beamColor *= exp(-extinction * d * 0.38);
-        // 体色保留银灰；窄而柔的水下高光随转身移动，不把整条鱼画成发亮的剪影。
         float diffuse = max(dot(n,l),0.0);
-        // 绳纤维复用同一束光和回光，但用宽而弱的高光，避免变成金属线。
-        float specular = pow(max(dot(n,normalize(l + view)),0.0),mix(44.0,18.0,matte)) * mix(0.24,0.045,matte);
-        col += (C * (diffuse * 0.78 + 0.035) + vec3(specular)) * beamColor * beam;
+        vec3 transmission = exp(-extinction * d * 0.38);
+        if (guideRope > 0.5) {
+            // 高可见度黄绳的纤维朝光源回射。保留光锥、岩石阴影及距离衰减。
+            col += C * (1.4 + 1.55 * diffuse) * transmission * beam;
+        } else {
+            vec3 beamColor = mix(vec3(0.30,0.50,0.57),vec3(0.12,0.35,0.61),smoothstep(200.0,720.0,d));
+            beamColor = mix(beamColor,mix(vec3(0.68,0.70,0.68),vec3(0.18,0.40,0.59),smoothstep(120.0,720.0,d)),matte);
+            // 体色保留银灰；窄而柔的水下高光随转身移动。
+            float specular = pow(max(dot(n,normalize(l + view)),0.0),mix(44.0,18.0,matte)) * mix(0.24,0.045,matte);
+            col += (C * (diffuse * 0.78 + 0.035) + vec3(specular)) * beamColor * transmission * beam;
+        }
         for (int i=0; i<10; i++) {
             vec3 toB = bounce[i].xyz - P;
             float db = length(toB);
@@ -69,5 +73,9 @@ void main() {
     // 关灯时仍与角色共享近身可读性，九十单位之外不增加环境兜底亮度。
     float nearFill = 1.0 - smoothstep(30.0,90.0,length(lightPos - P));
     col += C * vec3(0.025,0.055,0.075) * nearFill * (0.25 + 0.75 * max(dot(n,view),0.0));
+    if (guideRope > 0.5) {
+        float nearby = 1.0 - smoothstep(45.0,190.0,length(lightPos - P));
+        col += C * 0.24 * nearby * (0.4 + 0.6 * max(dot(n,view),0.0));
+    }
     gl_FragColor = vec4(pow(col / (1.0 + col),vec3(1.0 / 2.2)),1.0);
 }

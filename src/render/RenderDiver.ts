@@ -1323,7 +1323,7 @@ export function drawDiver(
         }
         renderCtx.restore();
         if(workMotion.thread.length>1){
-            renderCtx.strokeStyle='#f0d7a1';renderCtx.lineWidth=1.3;renderCtx.lineCap='round';
+            renderCtx.strokeStyle=CONFIG.ropeTightColor;renderCtx.lineWidth=1.7;renderCtx.lineCap='round';
             renderCtx.beginPath();renderCtx.moveTo(workMotion.thread[0].x,workMotion.thread[0].y);
             for(const p of workMotion.thread.slice(1))renderCtx.lineTo(p.x,p.y);renderCtx.stroke();
         }

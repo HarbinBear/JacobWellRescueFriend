@@ -25,9 +25,9 @@ export function drawFishHandlingWorld(c: CanvasRenderingContext2D, fish: FishEne
             const x = -CONFIG.fishEnemy.size * (.12 + i * .30);
             c.strokeStyle = '#293b39'; c.lineWidth = 3.5;
             c.beginPath(); c.ellipse(x, 0, 3.3, shape.radius + 1, -.12, 0, Math.PI * 2); c.stroke();
-            c.strokeStyle = '#e6d4a6'; c.lineWidth = 1.8; c.stroke();
+            c.strokeStyle = CONFIG.ropeTightColor; c.lineWidth = 2.2; c.stroke();
         }
-        c.strokeStyle = '#e6d4a6'; c.lineWidth = 1.5;
+        c.strokeStyle = CONFIG.ropeTightColor; c.lineWidth = 1.8;
         c.beginPath(); c.moveTo(-CONFIG.fishEnemy.size * .44, shape.radius);
         c.lineTo(-CONFIG.fishEnemy.size * .15, shape.radius + 5); c.stroke();
     }
@@ -42,7 +42,7 @@ export function drawFishHandlingWorld(c: CanvasRenderingContext2D, fish: FishEne
     if (fish.bound) {
         const p = fishKnotPoint(fish);
         c.save(); c.translate(p.x, p.y); c.rotate(fish.angle);
-        c.strokeStyle = '#f0dbab'; c.lineWidth = 1.7;
+        c.strokeStyle = CONFIG.ropeKnotColor; c.lineWidth = 2;
         c.beginPath(); c.ellipse(-2, 0, 3.5, 2, -.5, 0, Math.PI * 2);
         c.ellipse(2, 0, 3.5, 2, .5, 0, Math.PI * 2); c.stroke();
         c.restore();
